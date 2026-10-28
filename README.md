@@ -16,7 +16,7 @@
 Deze repository is de bron van waarheid voor de deployment en bijbehorende configuratie, n8n-workflows en overlay-integratie. De oorspronkelijke LibreChat-stack blijft op repository-root zodat Compose-entrypoints hun bestaande relatieve paden behouden. De componentgrenzen zijn:
 
 - **LibreChat deployment en LibreChat-overlay**: [`docker-compose.yml`](docker-compose.yml), [`librechat.yaml`](librechat.yaml), [`nginx/librechat-overlay.conf`](nginx/librechat-overlay.conf), [`overlay/defaults/`](overlay/defaults/) en [`n8n/`](n8n/).
-- **Agent-workflows**: [`agents/n8n/workflows/`](agents/n8n/workflows/); n8n-bootstrap importeert deze bestanden lokaal uit de monorepo.
+- **Agent-workflows**: [`agents/n8n/workflows/`](agents/n8n/workflows/), per functie in een submap; n8n-bootstrap importeert deze bestanden lokaal uit de monorepo.
 - **GovChat Admin-overlay service**: server en beheerinterface in [`services/admin-overlay/admin/`](services/admin-overlay/admin/). Compose mount LibreChat-specifieke defaults uit [`overlay/defaults/`](overlay/defaults/) en neemt dus niet stilzwijgend de Open WebUI-defaults over.
 - **Bridge**: blijft een afzonderlijke repository/service, gekoppeld via een digest-vastgepinde image; alleen stackconfiguratie staat in [`bridge/models.json`](bridge/models.json). Bron: [GovChat-NL/n8n-openai-bridge](https://github.com/GovChat-NL/n8n-openai-bridge).
 
@@ -38,6 +38,10 @@ De request-flow blijft LibreChat → OpenAI-compatibele bridge → n8n webhook �
 4. De live orchestrator-/transcriptietests vereisen draaiende services en providerconfiguratie: `node tests/orchestrator/run-validation.js` en `node tests/transcript/run-validation.js`.
 
 De volledige omgevingsvariabelen staan in [`.env.example`](.env.example); de technische migratie- en testmatrix staat in [`docs/monorepo-migration.md`](docs/monorepo-migration.md). Dit blijft een referentie-implementatie, niet een productieklare deployment.
+
+De [`Makefile`](Makefile) bundelt de gebruikelijke commando's, zoals `make up` en `make reload-workflows`; `make help` toont ze allemaal. Het is een gemak, geen vereiste: elk commando staat ook uitgeschreven in deze README of in [`agents/CONTRIBUTING.md`](agents/CONTRIBUTING.md).
+
+Beheerders die een bestaande installatie bijwerken, vinden de benodigde handelingen in [`UPGRADE.md`](UPGRADE.md).
 
 De stack is breder dan alleen “orchestrator + versimpelaar” en bevat onder meer:
 - **Werkende test-apps in de overlay**:
@@ -237,8 +241,8 @@ curl ${LITELLM_URL}/v1/models
 Werkwijze:
 1. Voeg model toe in LiteLLM UI (admin).
 2. Open n8n workflow(s):
-   - [`orchestrator-litellm.json`](agents/n8n/workflows/orchestrator-litellm.json)
-   - [`versimpelaar-litellm.json`](agents/n8n/workflows/versimpelaar-litellm.json)
+   - [`orchestrator-litellm.json`](agents/n8n/workflows/algemeen/orchestrator-litellm.json)
+   - [`versimpelaar-litellm.json`](agents/n8n/workflows/algemeen/versimpelaar-litellm.json)
 3. Kies het gewenste model in `OpenAI Chat Model` node.
 4. Publish workflow opnieuw in n8n.
 5. Verifieer dat het model zichtbaar is op `${LITELLM_URL}/v1/models`.
@@ -372,7 +376,7 @@ Daarnaast zie je nu:
 
 Bootstrap importeert/publisht nu ook:
 
-- [`govcrawler-run.json`](agents/n8n/workflows/govcrawler-run.json)
+- [`govcrawler-run.json`](agents/n8n/workflows/algemeen/govcrawler-run.json)
 
 Deze workflow heeft:
 
@@ -390,6 +394,7 @@ Toegevoegd in [`.env.example`](.env.example):
 - `AZURE_OPENAI_API_BASE`
 - `AZURE_OPENAI_API_VERSION` (default `2023-05-15`)
 - `AZURE_OPENAI_API_KEY`
+- `AZURE_OPENAI_CHAT_MODEL` (naam van je Azure chat-deployment met `azure/`-prefix, bijv. `azure/<deployment-naam>`)
 - `CRAWLER_ADMIN_BASE_URL` (default `http://govchat-overlay-admin:3002`)
 - `CRAWLER_INTERNAL_TOKEN` (interne auth tussen n8n en overlay-admin)
 - `CRAWLER_N8N_WEBHOOK_URL` (default `http://n8n:5678/webhook/govcrawler-run`)
@@ -416,7 +421,7 @@ Aanbeveling:
 
 ### Bootstrap gedrag
 
-`n8n-bootstrap` gebruikt marker `.govchat-seeded-v5` en voert [`n8n/bootstrap.js`](n8n/bootstrap.js) uit. Het script scant alle top-level `.json`-exports in [`agents/n8n/workflows/`](agents/n8n/workflows/), valideert de bestanden en stabiele IDs, en importeert, verifieert en publiceert de workflows.
+`n8n-bootstrap` gebruikt marker `.govchat-seeded-v5` en voert [`n8n/bootstrap.js`](n8n/bootstrap.js) uit. Het script scant alle `.json`-exports in [`agents/n8n/workflows/`](agents/n8n/workflows/) en de submappen ervan, valideert de bestanden en stabiele IDs, en importeert, verifieert en publiceert de workflows.
 
 Een nieuwe workflow vereist geen wijziging aan Compose of een aparte bestandslijst. Alleen deploybare workflows horen in deze map: iedere gevonden JSON-export wordt gepubliceerd. Bewaar concepten/drafts elders.
 
@@ -439,7 +444,6 @@ Bij opstart voert de [`n8n-bootstrap`-service in Compose](docker-compose.yml) [`
 
 Bootstrapinstellingen in [`.env.example`](.env.example):
 
-- `AGENTS_LOCAL_WORKFLOWS_DIR` (default: `/workspace/agents/n8n/workflows`)
 - `AGENTS_BOOTSTRAP_FORCE` (`false` standaard; zet op `true` om import/publish geforceerd opnieuw uit te voeren)
 - `N8N_OWNER_EMAIL` (optioneel; als gezet wordt owner automatisch geprovisioned)
 - `N8N_OWNER_PASSWORD` (optioneel; samen met `N8N_OWNER_EMAIL`)
@@ -471,13 +475,13 @@ Stabiliteit in productie/lokaal:
 
 - Standaard (`AGENTS_BOOTSTRAP_FORCE=false`) slaat bootstrap import/publish over na de eerste succesvolle seed.
 - Hiermee voorkom je dat workflows bij elke herstart onnodig gedeactiveerd/geherpubliceerd worden terwijl verkeer al loopt.
-- Bij toevoegen/wijzigen van workflow JSON: zet tijdelijk `AGENTS_BOOTSTRAP_FORCE=true`, forceer een nieuwe `n8n-bootstrap`-run en zet het daarna terug op `false`.
+- Na het toevoegen of wijzigen van een workflow: `make reload-workflows` importeert en publiceert alle workflows opnieuw en herstart n8n; zie [`agents/CONTRIBUTING.md`](agents/CONTRIBUTING.md#wijzigingen-lokaal-testen).
 
-Voorbeelden uit de automatisch ontdekte catalogus zijn [`orchestrator-litellm.json`](agents/n8n/workflows/orchestrator-litellm.json), [`versimpelaar-litellm.json`](agents/n8n/workflows/versimpelaar-litellm.json) en [`image-generator-litellm.json`](agents/n8n/workflows/image-generator-litellm.json).
+Voorbeelden uit de automatisch ontdekte catalogus zijn [`orchestrator-litellm.json`](agents/n8n/workflows/algemeen/orchestrator-litellm.json), [`versimpelaar-litellm.json`](agents/n8n/workflows/algemeen/versimpelaar-litellm.json) en [`image-generator-litellm.json`](agents/n8n/workflows/algemeen/image-generator-litellm.json).
 
 Bootstrap-flow:
 
-1. Scant en valideert alle top-level `.json`-workflowexports in `AGENTS_LOCAL_WORKFLOWS_DIR`.
+1. Scant en valideert alle `.json`-workflowexports in [`agents/n8n/workflows/`](agents/n8n/workflows/) en de submappen ervan.
 2. Importeert elk exportbestand met `n8n import:workflow`.
 3. Haalt stabiele IDs uit de JSON, verifieert ze met `n8n export:workflow` en publiceert ze met `n8n publish:workflow`.
 

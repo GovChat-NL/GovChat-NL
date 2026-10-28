@@ -6,9 +6,7 @@ const fs = require('fs');
 const path = require('path');
 
 const N8N_URL = 'http://n8n:5678';
-const WORKFLOWS_DIR = String(
-  process.env.AGENTS_LOCAL_WORKFLOWS_DIR || '/workspace/agents/n8n/workflows',
-).trim();
+const WORKFLOWS_DIR = '/workspace/agents/n8n/workflows';
 const MARKER_FILE = '/home/node/.n8n/.govchat-seeded-v5';
 
 function runN8n(args) {
@@ -110,13 +108,19 @@ function importLiteLLMCredential() {
   runN8n([`import:credentials`, `--input=${credentialPath}`]);
 }
 
+function listWorkflowFiles(dir) {
+  return fs.readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
+    const entryPath = path.join(dir, entry.name);
+    if (entry.isDirectory()) return listWorkflowFiles(entryPath);
+    return entry.isFile() && entry.name.toLowerCase().endsWith('.json') ? [entryPath] : [];
+  });
+}
+
 function discoverWorkflows(workflowsDir = WORKFLOWS_DIR) {
   if (!fs.existsSync(workflowsDir)) throw new Error(`Workflow directory ontbreekt: ${workflowsDir}`);
 
-  const files = fs
-    .readdirSync(workflowsDir, { withFileTypes: true })
-    .filter((entry) => entry.isFile() && entry.name.toLowerCase().endsWith('.json'))
-    .map((entry) => entry.name)
+  const files = listWorkflowFiles(workflowsDir)
+    .map((fullPath) => path.relative(workflowsDir, fullPath))
     .sort((a, b) => a.localeCompare(b));
 
   if (!files.length) throw new Error(`Geen workflow-JSON-bestanden gevonden in ${workflowsDir}`);

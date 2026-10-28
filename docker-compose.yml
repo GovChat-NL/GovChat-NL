@@ -6,7 +6,7 @@ services:
   #  Registry: registry.librechat.ai (officieel, ghcr.io is verouderd)
   #
   #  Vereist op host (via SSH, eenmalig):
-  #    mkdir -p /opt/librechat/{data/mongodb,data/meilisearch,data/pgvector,data/redis,uploads,logs,images,overlay/data,overlay/publish}
+  #    mkdir -p /opt/librechat/{data/meilisearch,data/pgvector,data/redis,uploads,logs,images,overlay/data,overlay/publish}
   #    Standaard configuratiebestand staat in deze repo: ./librechat.yaml
   # ---------------------------------------------------------------------------
   librechat:
@@ -263,7 +263,7 @@ services:
     ports:
       - "${MONGO_PORT:-27017}:27017"
     volumes:
-      - /opt/librechat/data/mongodb:/data/db
+      - mongodb-data:/data/db
     environment:
       MONGO_INITDB_ROOT_USERNAME: ${MONGO_ROOT_USER}
       MONGO_INITDB_ROOT_PASSWORD: ${MONGO_ROOT_PASS}
@@ -356,6 +356,7 @@ services:
       AZURE_OPENAI_API_BASE: ${AZURE_OPENAI_API_BASE}
       AZURE_OPENAI_API_VERSION: ${AZURE_OPENAI_API_VERSION}
       AZURE_OPENAI_API_KEY: ${AZURE_OPENAI_API_KEY}
+      AZURE_OPENAI_CHAT_MODEL: ${AZURE_OPENAI_CHAT_MODEL}
       AZURE_OPENAI_STT_API_BASE: ${AZURE_OPENAI_STT_API_BASE}
       AZURE_OPENAI_STT_API_VERSION: ${AZURE_OPENAI_STT_API_VERSION}
       AZURE_OPENAI_STT_API_KEY: ${AZURE_OPENAI_STT_API_KEY}
@@ -561,7 +562,6 @@ services:
       N8N_OWNER_ENFORCE: ${N8N_OWNER_ENFORCE:-true}
       LITELLM_URL: ${LITELLM_URL}
       LITELLM_API_KEY: ${LITELLM_API_KEY}
-      AGENTS_LOCAL_WORKFLOWS_DIR: ${AGENTS_LOCAL_WORKFLOWS_DIR:-/workspace/agents/n8n/workflows}
       AGENTS_BOOTSTRAP_FORCE: ${AGENTS_BOOTSTRAP_FORCE:-false}
     volumes:
       - n8n-data:/home/node/.n8n
@@ -778,5 +778,6 @@ networks:
     driver: bridge
 
 volumes:
+  mongodb-data:
   n8n-data:
   n8n-postgres-data:

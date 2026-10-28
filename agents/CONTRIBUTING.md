@@ -51,15 +51,33 @@ Workflow-`id` is de unieke technische sleutel van een n8n-workflow.
 
 ## Bestandslocatie
 
-- Plaats deploybare workflow-exports als top-level `.json`-bestanden in `n8n/workflows/`. Bootstrap scant deze map automatisch; ieder gevonden JSON-bestand wordt geïmporteerd en gepubliceerd.
-- Gebruik beschrijvende bestandsnamen, bijvoorbeeld `orchestrator-litellm.json`.
+- Plaats workflow-exports in een submap per functie van `n8n/workflows/`, bijvoorbeeld `algemeen/` of `beleidskompas/`. Bootstrap scant deze map en de submappen automatisch; ieder gevonden `.json`-bestand wordt geïmporteerd en gepubliceerd, dus zet er geen andere JSON-bestanden neer.
+- Gebruik beschrijvende bestandsnamen in kleine letters met streepjes, zonder spaties, bijvoorbeeld `orchestrator-litellm.json`.
 
 ## Versiebeheer-richtlijn
 
 - Gebruik PR's voor elke workflow-wijziging.
 - Benoem migratie-impact als workflow-`id`, webhook-pad of output-schema wijzigt.
 
-## Opmerking voor lokaal testen
+## Wijzigingen lokaal testen
 
-De monorepo bootstrap mount deze workflowmap lokaal. Na een workflowwijziging zet je `AGENTS_BOOTSTRAP_FORCE=true` en voer je `n8n-bootstrap` opnieuw uit om de bestaande seed-marker te forceren; zet de variabele daarna terug op `false`.
+`n8n-bootstrap` zet de workflows uit deze map bij de eerste start van de stack in n8n. Daarna onthoudt het met een markerbestand in het n8n-datavolume dat dit is gebeurd, en slaat het de import bij volgende starts over. Zo worden de workflows niet bij elke herstart opnieuw geïmporteerd en gepubliceerd terwijl er al verkeer loopt.
+
+Een gewijzigde workflow komt daardoor niet vanzelf in n8n terecht. Draai vanuit de root van de repository:
+
+```sh
+make reload-workflows
+```
+
+Dat laat `n8n-bootstrap` nog een keer draaien met `AGENTS_BOOTSTRAP_FORCE=true`, alleen voor die ene run. Daarmee negeert bootstrap de marker en importeert en publiceert het alle workflows opnieuw. Daarna herstart het n8n, want de draaiende n8n blijft anders werken met de workflows die bij het opstarten zijn ingeladen.
+
+Gebruik je geen `make`, dan zijn dit de onderliggende commando's:
+
+```sh
+AGENTS_BOOTSTRAP_FORCE=true docker compose up -d --force-recreate n8n-bootstrap
+docker compose wait n8n-bootstrap
+docker compose restart n8n
+```
+
+Laat `AGENTS_BOOTSTRAP_FORCE` in `.env` op `false` staan. Zet je hem daar op `true`, dan importeert bootstrap bij elke start opnieuw.
 

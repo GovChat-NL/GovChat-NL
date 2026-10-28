@@ -1,6 +1,6 @@
 const fs = require('fs');
 
-const workflowPath = require('path').resolve(__dirname, '../agents/n8n/workflows/orchestrator-litellm.json');
+const workflowPath = require('path').resolve(__dirname, '../agents/n8n/workflows/algemeen/orchestrator-litellm.json');
 const data = JSON.parse(fs.readFileSync(workflowPath, 'utf8'));
 const wf = Array.isArray(data) ? data[0] : data;
 
@@ -214,7 +214,7 @@ if (imageParts > 0) {
   try {
     const base = String($env.LITELLM_URL || 'http://litellm:4000').replace(/\\\/$/, '') + '/v1/chat/completions';
     const apiKey = String($env.LITELLM_API_KEY || $env.N8N_LITELLM_IMAGE_API_KEY || '').trim();
-    const model = String($env.N8N_ORCHESTRATOR_VISION_MODEL || 'gpt-5.4').trim() || 'gpt-5.4';
+    const model = String($env.N8N_ORCHESTRATOR_VISION_MODEL || 'govchat-default').trim() || 'govchat-default';
 
     if (!apiKey) {
       visionCallStatus = 'no_api_key';
@@ -226,7 +226,7 @@ if (imageParts > 0) {
           'content-type': 'application/json',
           authorization: 'Bearer ' + apiKey,
         },
-        body: JSON.stringify({ model, messages: normalizedMessages, temperature: 0.2 }),
+        body: JSON.stringify({ model, messages: normalizedMessages }),
       });
 
       if (r.ok) {
