@@ -15,6 +15,127 @@ Dit document is bedoeld voor beheerders die GovChat-NL installeren en bijwerken.
 
 ---
 
+## Startscherm na het inloggen
+
+| | |
+|---|---|
+| **Status** | Nog niet uitgerold |
+| **Bijwerken vanaf** | Beleidskompas als eigen pagina (hieronder) |
+| **Nieuwe versie** | Wordt ingevuld bij uitrol |
+
+### Samenvatting
+
+Na het inloggen komt de gebruiker op een startscherm, een eigen pagina op `/start/`, met een tegel per app (standaard Chat en Beleidskompas) en een link naar de handleiding. Welke apps er staan, en de titel en ondertitel, staan in `apps.json` onder `landing`; met `"enabled": false` komt de gebruiker zoals voorheen direct in de chat. De App Launcher heeft een tegel "Start" om terug te gaan.
+
+### Vereiste handelingen
+
+1. Herstart nginx, omdat de configuratie een nieuw adres heeft: `docker compose restart librechat-proxy`.
+2. Herstart de beheeromgeving, zodat ze de nieuwe `apps.json` uit de repository overneemt: `docker compose restart govchat-overlay-admin`.
+
+### Ongewijzigd
+
+- Wie geen startscherm wil, zet in `apps.json` `landing.enabled` op `false`; verder verandert er dan niets.
+- Gesprekken, gebruikersaccounts en de instellingen van de beheeromgeving.
+
+---
+
+## Beleidskompas als eigen pagina
+
+| | |
+|---|---|
+| **Status** | Nog niet uitgerold |
+| **Bijwerken vanaf** | Overlay uit de repository, in modules (hieronder) |
+| **Nieuwe versie** | Wordt ingevuld bij uitrol |
+
+### Samenvatting
+
+Beleidskompas is een eigen pagina op `/beleidskompas/`, naast LibreChat, in plaats van een venster over de chat. De tegel in de App Launcher is een link naar die pagina (in `apps.json`: `url` `/beleidskompas/`, `target` `navigate`); het doeltype "Beleidskompas" bestaat niet meer in de apps-editor van de beheeromgeving. De handleiding heeft een hoofdstuk "Beleidskompas gebruiken".
+
+### Vereiste handelingen
+
+1. Herstart nginx, omdat de configuratie nieuwe adressen heeft: `docker compose restart librechat-proxy`.
+2. Bouw de beheeromgeving opnieuw: `make rebuild-admin`. Bij het starten neemt de beheeromgeving de `apps.json` uit de repository over, zoals ze bij elke start doet; de tegel wijst daarna naar de pagina.
+3. Optioneel: het hoofdstuk "Beleidskompas gebruiken" in de handleiding. Een bestaande installatie houdt haar eigen help-tekst; neem het hoofdstuk over uit `overlay/defaults/help-content.json` of voeg het toe in de help-editor.
+
+### Ongewijzigd
+
+- De Beleidskompas-stappen en -instellingen in de beheeromgeving.
+- Gesprekken: een Beleidskompas-casus is een gewoon LibreChat-gesprek en is op de pagina terug te vinden.
+
+---
+
+## Overlay uit de repository, in modules
+
+| | |
+|---|---|
+| **Status** | Nog niet uitgerold |
+| **Bijwerken vanaf** | Beleidskompas als eigen endpoint (hieronder) |
+| **Nieuwe versie** | Wordt ingevuld bij uitrol |
+
+### Samenvatting
+
+De overlay (`overlay.js`, voorheen `loader.js`, en `custom.css`) staat in `overlay/src/` en wordt door nginx rechtstreeks uit die map op de server geladen, niet meer uit de publicatiemap van de beheeromgeving. De overlay is nu een module die uit meerdere bestanden bestaat. De publicatiemap bevat voortaan alleen nog configuratie (`apps.json`, `help-content.json` en dergelijke).
+
+### Vereiste handelingen
+
+1. Start de stack opnieuw met `docker compose up -d`; nginx wordt daarbij opnieuw aangemaakt met de map `overlay/src` erin gemount.
+2. Bouw de beheeromgeving opnieuw: `make rebuild-admin`.
+3. Optioneel: verwijder de achtergebleven `loader.js` en `custom.css` uit `/opt/librechat/overlay/publish` en `/opt/librechat/overlay/data`. Deze bestanden worden niet meer gebruikt.
+
+### Ongewijzigd
+
+- De configuratie van de overlay in de beheeromgeving (apps, help-tekst) en de gepubliceerde bestanden daarvan.
+- Gesprekken en gebruikersaccounts.
+
+---
+
+## Beleidskompas als eigen endpoint in LibreChat
+
+| | |
+|---|---|
+| **Status** | Nog niet uitgerold |
+| **Bijwerken vanaf** | Beleidskompas stap 1 (hieronder) |
+| **Nieuwe versie** | Wordt ingevuld bij uitrol |
+
+### Samenvatting
+
+Beleidskompas is in `librechat.yaml` een eigen endpoint (`govchat-beleidskompas`), dat via de n8n-openai-bridge naar de hoofdagent-workflow gaat; de route daarvoor staat in `bridge/models.json`. Nginx geeft het feedback-verkeer van Beleidskompas (`/govchat-api/beleidskompas-feedback`) door aan de beheeromgeving.
+
+### Vereiste handelingen
+
+1. Herstart LibreChat, de bridge en nginx, omdat ze hun configuratie alleen bij het opstarten lezen: `docker compose restart librechat n8n-openai-bridge librechat-proxy`.
+
+### Ongewijzigd
+
+- Het bestaande chat-endpoint `govchat-orchestrator` en de instellingen ervan.
+- Gesprekken, gebruikersaccounts en de instellingen van de beheeromgeving.
+
+---
+
+## Beleidskompas stap 1: redenering, bronvermelding en feedback
+
+| | |
+|---|---|
+| **Status** | Nog niet uitgerold |
+| **Bijwerken vanaf** | Mongo-data in een named volume (hieronder) |
+| **Nieuwe versie** | Wordt ingevuld bij uitrol |
+
+### Samenvatting
+
+De workflow voor stap 1 van Beleidskompas redeneert nu echt via het taalmodel, met bronvermelding op passage-niveau, en wordt gegenereerd uit broncode in `agents/beleidskompas/`. De hoofdagent accepteert ook het token dat de n8n-openai-bridge meestuurt en geeft het volledige antwoord van een stap door. De beheeromgeving heeft een endpoint voor anonieme gebruikersfeedback uit Beleidskompas en toont die feedback in de Beleidskompas-editor.
+
+### Vereiste handelingen
+
+1. Laad de workflows opnieuw in n8n: `make reload-workflows`.
+2. Bouw de beheeromgeving opnieuw: `make rebuild-admin`.
+
+### Ongewijzigd
+
+- De instellingen `BELEIDSKOMPAS_N8N_BASE_URL` en `BELEIDSKOMPAS_N8N_WEBHOOK_TOKEN` staan nu in `.env.example`; de beheeromgeving las ze al en valt zonder deze regels terug op `http://n8n:5678` en `N8N_WEBHOOK_TOKEN`.
+- Gesprekken, gebruikersaccounts en de instellingen van de beheeromgeving.
+
+---
+
 ## Mongo-data in een named volume
 
 | | |

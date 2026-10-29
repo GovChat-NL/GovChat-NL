@@ -25,3 +25,33 @@ endpoints:
         X-User-Email: "{{LIBRECHAT_USER_EMAIL}}"
         X-User-Name: "{{LIBRECHAT_USER_NAME}}"
         X-User-Role: "{{LIBRECHAT_USER_ROLE}}"
+    - name: govchat-beleidskompas
+      apiKey: "${N8N_OPENAI_BRIDGE_BEARER_TOKEN}"
+      baseURL: "http://n8n-openai-bridge:3333/v1"
+      modelDisplayLabel: "Beleidskompas"
+      # Beleidskompas always runs its full 5-section analysis regardless of
+      # what it's asked, so a plain "give this conversation a short title"
+      # instruction got the same treatment as a real case, producing an
+      # absurd, oversized "title" (verified live). The
+      # __BELEIDSKOMPAS_TITLE_REQUEST__ marker lets the n8n workflow
+      # (runStep1 in logic.js) recognize this specific request and return
+      # just a short title instead of running the analysis pipeline.
+      #
+      # `{convo}` is a LibreChat/@librechat-agents template placeholder
+      # (packages/.../utils/title.ts `createCompletionTitleRunnable`): it is
+      # substituted with the actual "User: ...\nAI: ..." conversation text
+      # before this whole string is sent as the model input. Without it, the
+      # real case text never reaches this request at all (verified via the
+      # n8n execution log) and the resulting title describes the instruction
+      # itself instead of the case.
+      titlePrompt: "__BELEIDSKOMPAS_TITLE_REQUEST__ Geef op basis van het onderstaande gesprek een korte titel (maximaal 6 woorden) die de casus samenvat, zonder opmaak, aanhalingstekens of toelichting.\n\n{convo}"
+      models:
+        default:
+          - govchat-beleidskompas
+        fetch: true
+      headers:
+        X-Chat-Id: "{{LIBRECHAT_BODY_CONVERSATIONID}}"
+        X-User-Id: "{{LIBRECHAT_USER_ID}}"
+        X-User-Email: "{{LIBRECHAT_USER_EMAIL}}"
+        X-User-Name: "{{LIBRECHAT_USER_NAME}}"
+        X-User-Role: "{{LIBRECHAT_USER_ROLE}}"

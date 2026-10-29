@@ -15,7 +15,7 @@
 
 Deze repository is de bron van waarheid voor de deployment en bijbehorende configuratie, n8n-workflows en overlay-integratie. De oorspronkelijke LibreChat-stack blijft op repository-root zodat Compose-entrypoints hun bestaande relatieve paden behouden. De componentgrenzen zijn:
 
-- **LibreChat deployment en LibreChat-overlay**: [`docker-compose.yml`](docker-compose.yml), [`librechat.yaml`](librechat.yaml), [`nginx/librechat-overlay.conf`](nginx/librechat-overlay.conf), [`overlay/defaults/`](overlay/defaults/) en [`n8n/`](n8n/).
+- **LibreChat deployment en LibreChat-overlay**: [`docker-compose.yml`](docker-compose.yml), [`librechat.yaml`](librechat.yaml), [`nginx/librechat-overlay.conf`](nginx/librechat-overlay.conf), [`overlay/src/`](overlay/src/) (de overlay zelf; nginx laadt die rechtstreeks uit deze map), [`overlay/defaults/`](overlay/defaults/) (de standaardconfiguratie ervan) en [`n8n/`](n8n/).
 - **Agent-workflows**: [`agents/n8n/workflows/`](agents/n8n/workflows/), per functie in een submap; n8n-bootstrap importeert deze bestanden lokaal uit de monorepo.
 - **GovChat Admin-overlay service**: server en beheerinterface in [`services/admin-overlay/admin/`](services/admin-overlay/admin/). Compose mount LibreChat-specifieke defaults uit [`overlay/defaults/`](overlay/defaults/) en neemt dus niet stilzwijgend de Open WebUI-defaults over.
 - **Bridge**: blijft een afzonderlijke repository/service, gekoppeld via een digest-vastgepinde image; alleen stackconfiguratie staat in [`bridge/models.json`](bridge/models.json). Bron: [GovChat-NL/n8n-openai-bridge](https://github.com/GovChat-NL/n8n-openai-bridge).
@@ -48,8 +48,9 @@ De stack is breder dan alleen “orchestrator + versimpelaar” en bevat onder m
   - Versimpelaar
   - Live transcriptie
   - Afbeelding-generator (async image jobs)
-  - Beleidskompas (conceptueel / in ontwikkeling)
+  - Beleidskompas (eigen pagina op `/beleidskompas/`; stap 1 uitgewerkt, de overige stappen in ontwikkeling)
   - Crawler-koppeling (conceptueel / in ontwikkeling)
+- **Startscherm** op `/start/`: na het inloggen kiest de gebruiker tussen de chat en de andere apps. Welke apps, en de titel en ondertitel, staan in [`overlay/defaults/apps.json`](overlay/defaults/apps.json) onder `landing`; met `"enabled": false` komt de gebruiker direct in de chat.
 - **RAG-gerelateerde componenten optioneel** via profielen in [`docker-compose.yml`](docker-compose.yml):
   - `pgvector`
   - `rag-api`

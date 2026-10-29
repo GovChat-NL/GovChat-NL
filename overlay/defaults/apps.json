@@ -1,6 +1,15 @@
 {
   "title": "App Launcher",
   "enabled": true,
+  "landing": {
+    "enabled": true,
+    "title": "Welkom bij GovChat-NL",
+    "subtitle": "Kies waarmee je wilt werken.",
+    "apps": [
+      "chat",
+      "beleidskompas"
+    ]
+  },
   "chat_image_status": {
     "enabled": true,
     "first_message": "Afbeelding wordt gegenereerd. Dit duurt meestal 10–40 seconden.",
@@ -8,6 +17,14 @@
     "second_delay_ms": 40000
   },
   "apps": [
+    {
+      "id": "start",
+      "name": "Start",
+      "icon": "🏠",
+      "description": "Terug naar het startscherm",
+      "url": "/start/",
+      "target": "navigate"
+    },
     {
       "id": "chat",
       "name": "Chat",
@@ -34,8 +51,8 @@
       "name": "Beleidskompas",
       "icon": "🧭",
       "description": "Ondersteuning bij beleidsafwegingen in vier stappen (SiS 4.0)",
-      "url": "/c/new",
-      "target": "beleidskompas",
+      "url": "/beleidskompas/",
+      "target": "navigate",
       "config": {
         "specialist_team": "Bij hoge juridische/financiële impact: betrek concernjurist, financieel adviseur en programmaregisseur.",
         "sources": [
@@ -95,4 +112,3 @@
     }
   ]
 }
-

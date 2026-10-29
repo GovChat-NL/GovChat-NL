@@ -53,6 +53,7 @@ Workflow-`id` is de unieke technische sleutel van een n8n-workflow.
 
 - Plaats workflow-exports in een submap per functie van `n8n/workflows/`, bijvoorbeeld `algemeen/` of `beleidskompas/`. Bootstrap scant deze map en de submappen automatisch; ieder gevonden `.json`-bestand wordt geïmporteerd en gepubliceerd, dus zet er geen andere JSON-bestanden neer.
 - Gebruik beschrijvende bestandsnamen in kleine letters met streepjes, zonder spaties, bijvoorbeeld `orchestrator-litellm.json`.
+- `beleidskompas/beleidskompas-step-stap1.json` wordt gegenereerd vanuit [`../beleidskompas/`](../beleidskompas/README.md). Pas dat bestand niet met de hand aan.
 
 ## Versiebeheer-richtlijn
 

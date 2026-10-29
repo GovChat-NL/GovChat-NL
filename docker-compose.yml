@@ -248,6 +248,7 @@ services:
     volumes:
       - ./nginx/librechat-overlay.conf:/etc/nginx/conf.d/default.conf:ro
       - /opt/librechat/overlay/publish:/opt/librechat/overlay/publish:ro
+      - ./overlay/src:/opt/librechat/overlay/src:ro
     networks:
       - librechat-net
 
@@ -698,7 +699,7 @@ services:
 
   # ---------------------------------------------------------------------------
   #  GovChat Overlay Admin
-  #  Publiceert help/apps/loader/css naar gedeelde overlay-map.
+  #  Publiceert help/apps-configuratie naar gedeelde overlay-map.
   #  Let op: gebruikt LibreChat-specifieke defaults via bind mount.
   # ---------------------------------------------------------------------------
   govchat-overlay-admin:

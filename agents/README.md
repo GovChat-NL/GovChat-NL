@@ -8,6 +8,7 @@ Deze directory is de monorepo-bron van waarheid voor GovChat-NL n8n-workflows. D
 ## Integratie
 
 - Workflows: [`n8n/workflows/`](n8n/workflows/), per functie in een submap (`algemeen/`, `beleidskompas/`).
+- Broncode van de Beleidskompas-workflow voor stap 1, waaruit `n8n/workflows/beleidskompas/beleidskompas-step-stap1.json` wordt gegenereerd: [`beleidskompas/`](beleidskompas/README.md).
 - Compose mount de directory read-only op `/workspace/agents`; `n8n-bootstrap` importeert uit `/workspace/agents/n8n/workflows`.
 - Bootstrap scant alle `.json`-bestanden in deze map en de submappen ervan, valideert JSON en stabiele IDs, en importeert/publiceert ze; er is geen handmatige lijst of sibling-checkout nodig.
 - De bootstrap maakt de `LiteLLM API` credential aan. Workflows gebruiken `${LITELLM_URL}/v1` en `${LITELLM_API_KEY}`.

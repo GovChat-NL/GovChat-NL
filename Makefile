@@ -3,7 +3,7 @@
 
 COMPOSE := docker compose
 
-.PHONY: help env up up-n8n down logs reload-workflows rebuild-admin check
+.PHONY: help env up up-n8n down logs reload-workflows rebuild-admin check test-beleidskompas generate-stap1
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z0-9_-]+:.*## ' $(MAKEFILE_LIST) | sed -E 's/:.*## /: /' | sort
@@ -36,3 +36,9 @@ check: ## Validate the compose file, the workflow exports and the scripts (no ru
 	node tests/agents/validate-workflows.js
 	node --check n8n/bootstrap.js
 	node --check services/admin-overlay/admin/server.js
+
+test-beleidskompas: ## Run the Beleidskompas step 1 unit tests (no Docker needed)
+	cd agents/beleidskompas && node --test
+
+generate-stap1: ## Regenerate beleidskompas-step-stap1.json from agents/beleidskompas
+	cd agents/beleidskompas && node generate-workflow.js
