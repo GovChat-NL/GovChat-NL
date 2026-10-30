@@ -1,11 +1,18 @@
-// Start script of the Beleidskompas page (/beleidskompas/): checks the
-// login, picks up LibreChat's theme and the published configuration, and
-// opens the Beleidskompas screen in the empty page.
+// The Beleidskompas page (/beleidskompas/): checks the login, picks up
+// LibreChat's theme and the published configuration, and builds the screen
+// from the store and the panels.
 
 import { getLibreChatAuthToken } from "../../shared/librechat-api.js";
-import { fetchHelpContent } from "../../shared/help.js";
+import { fetchHelpContent, openHelpModal } from "../../shared/help.js";
 import { applyLibreChatTheme } from "../../shared/theme.js";
-import { openBeleidskompas } from "./beleidskompas.js";
+import { requireElement } from "../../shared/dom.js";
+import { buildConfig } from "./config.js";
+import { createStore } from "./store.js";
+import { setupCases } from "./panels/cases.js";
+import { setupChat } from "./panels/chat.js";
+import { setupStepper } from "./panels/stepper.js";
+import { setupStepCard } from "./panels/step-card.js";
+import { setupOverview } from "./panels/overview.js";
 
 const APPS_URL = "/govchat-overlay/apps.json";
 const FLOW_CONFIG_URL = "/govchat-overlay/beleidskompas-config.json";
@@ -37,11 +44,49 @@ async function start() {
   const app = (apps?.apps || []).find((a) => a && a.id === "beleidskompas") || { id: "beleidskompas" };
   const appName = String(librechatConfig?.appTitle || document.title);
 
-  openBeleidskompas(app, {
-    flowConfig,
-    backUrl: CHAT_URL,
-    help: { data: helpData, appName, storageKey: HELP_STORAGE_KEY },
+  openBeleidskompas(buildConfig(app, flowConfig), { data: helpData, appName });
+}
+
+// `help` holds what the manual needs: its text (`data`) and the name of
+// the installation (`appName`).
+function openBeleidskompas(config, help) {
+  const store = createStore(config.steps);
+
+  const container = requireElement("gc-bk");
+  const titleEl = requireElement("gc-bk-title");
+  const disclaimerEl = requireElement("gc-bk-disclaimer");
+  if (config.title) titleEl.textContent = config.title;
+  if (config.disclaimer) disclaimerEl.textContent = config.disclaimer;
+
+  requireElement("gc-bk-back").addEventListener("click", () => {
+    window.location.href = CHAT_URL;
   });
+  // The manual (with the Beleidskompas chapter) can be opened from this page
+  // too; the overlay's floating help button is not shown here.
+  requireElement("gc-bk-help").addEventListener("click", () => {
+    openHelpModal(help.data, { appName: help.appName, storageKey: HELP_STORAGE_KEY });
+  });
+
+  const { resumeConversation } = setupCases(store);
+  setupChat(store, { sources: config.sources });
+  setupStepper(store);
+  setupStepCard(store, { specialistTeam: config.specialistTeam });
+  const { setView } = setupOverview(store);
+
+  store.changed("chat", "steps", "conversation");
+  // A new session starts on the overview; a resumed case opens straight in
+  // the workspace, so you continue where you left off.
+  setView(store.state.conversationId ? "workspace" : "overview");
+  container.hidden = false;
+
+  if (store.state.conversationId) {
+    resumeConversation(store.state.conversationId).catch((err) => {
+      // The stored case is gone or inaccessible (deleted, session expired):
+      // forget it, so the next message does not fail on it again.
+      store.setConversationId(null);
+      store.addMessage("assistant", `Kon vorige casus niet laden (${String(err?.message || err)}). Start een nieuwe chat.`);
+    });
+  }
 }
 
 async function fetchJson(url) {

@@ -15,5 +15,77 @@
   </style>
   <script type="module" src="/govchat-overlay/src/apps/beleidskompas/page.js"></script>
 </head>
-<body></body>
+<body>
+  <div id="gc-bk" hidden>
+  <div class="gc-bk-head">
+    <div class="gc-mini-head-left">
+      <button id="gc-bk-back" class="gc-mini-nav-btn" type="button">← Chat</button>
+      <strong id="gc-bk-title">Beleidskompas</strong>
+    </div>
+    <div class="gc-mini-head-left">
+      <button id="gc-bk-help" class="gc-mini-nav-btn" type="button">Handleiding</button>
+      <button id="gc-bk-view-toggle" class="gc-mini-nav-btn" type="button" aria-pressed="false">Stappenoverzicht</button>
+    </div>
+  </div>
+
+  <div class="gc-bk-note">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M13 16h-1v-4h-1m1-4h.01M12 3a9 9 0 100 18 9 9 0 000-18z"/></svg>
+    <span id="gc-bk-disclaimer">Ondersteunend hulpmiddel, geen automatische besluitvorming.</span>
+  </div>
+
+  <div id="gc-bk-overview" class="gc-bk-overview" hidden>
+    <div class="gc-bk-overview-intro">
+      <h3>Vier stappen (SiS 4.0)</h3>
+      <p>Kies een stap om die uit te werken. Je casus en eerdere uitwerkingen blijven bewaard als je tussen stappen wisselt.</p>
+    </div>
+    <div id="gc-bk-overview-cards" class="gc-bk-overview-cards"></div>
+  </div>
+
+  <div id="gc-bk-workspace" class="gc-bk-grid">
+    <aside class="gc-bk-stepper" aria-label="Processtappen">
+      <div id="gc-bk-step-groups" class="gc-bk-step-groups"></div>
+      <div class="gc-bk-recent-cases">
+        <h4>Eerdere casussen</h4>
+        <div id="gc-bk-recent-cases-list" class="gc-bk-recent-cases-list"></div>
+      </div>
+    </aside>
+
+    <section class="gc-bk-card gc-bk-chat">
+      <div class="gc-bk-card-head">
+        <h2 id="gc-bk-convo-title">Nieuw gesprek</h2>
+        <button id="gc-bk-new-chat" class="gc-bk-head-btn" type="button" title="Nieuw gesprek" aria-label="Nieuw gesprek"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg></button>
+      </div>
+      <div id="gc-bk-chat-log" class="gc-bk-chat-log" role="log" aria-live="polite" aria-label="Gesprek"></div>
+      <div class="gc-bk-chat-compose">
+        <div class="gc-bk-compose-field">
+          <input id="gc-bk-chat-input" type="text" placeholder="Stel een vraag..." aria-label="Stel een vraag over je casus" />
+          <button id="gc-bk-send" type="button" title="Verzenden" aria-label="Verzenden"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"/></svg></button>
+        </div>
+      </div>
+    </section>
+
+    <section class="gc-bk-card gc-bk-step">
+      <div class="gc-bk-card-head">
+        <h2 id="gc-bk-form-title"></h2>
+        <div class="gc-bk-step-nav">
+          <button id="gc-bk-prev" type="button" title="Vorige stap" aria-label="Vorige stap"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7"/></svg></button>
+          <button id="gc-bk-next" type="button" title="Volgende stap" aria-label="Volgende stap"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7"/></svg></button>
+          <button id="gc-bk-step-info" class="gc-bk-info-badge" type="button" title="Toelichting bij deze stap" aria-label="Toelichting bij deze stap">i</button>
+        </div>
+      </div>
+      <div class="gc-bk-step-body">
+        <div id="gc-bk-form-short" class="gc-bk-form-short"></div>
+        <div id="gc-bk-report-status" class="gc-bk-step-status"></div>
+        <div id="gc-bk-report-body" class="gc-bk-step-text"></div>
+        <div id="gc-bk-report-sources" class="gc-bk-citations"></div>
+        <div id="gc-bk-report-meta" class="gc-bk-step-meta"></div>
+      </div>
+      <div class="gc-bk-step-foot">
+        <button id="gc-bk-save-step" type="button">Markeer stap gereed</button>
+        <button id="gc-bk-next-step" type="button">Volgende stap</button>
+      </div>
+    </section>
+  </div>
+  </div>
+</body>
 </html>

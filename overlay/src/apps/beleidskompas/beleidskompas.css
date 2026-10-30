@@ -1,12 +1,12 @@
 /* ---------------------------------------------------------------------------
- *  Beleidskompas-pagina (/beleidskompas/)
+ *  The Beleidskompas page (/beleidskompas/)
  *
- *  Indeling overgenomen van de vorige Beleidskompas-assistent (de Open
- *  WebUI-versie uit GovChat-NL, src/module/n8n_engine/frontend/beleidskompas.html):
- *  links het gesprek, in het midden het stappanel en rechts de stepper met de
- *  processtappen. Vormgeving volgt de overlay (custom.css, dat de pagina ook
- *  laadt: zelfde kop-, kaart- en knopstijlen als de mini-apps) in plaats van
- *  de Tailwind-stijl van die oude pagina.
+ *  The layout follows the previous Beleidskompas assistant (the Open WebUI
+ *  version in GovChat-NL, src/module/n8n_engine/frontend/beleidskompas.html):
+ *  the stepper with the process steps on the left, the chat in the middle
+ *  and the step card on the right. The styling follows the overlay
+ *  (custom.css, which the page also loads: the same head, card and button
+ *  styles as the mini apps) instead of the Tailwind style of that old page.
  * ------------------------------------------------------------------------- */
 
 #gc-bk {
@@ -19,18 +19,24 @@
   background: #fff;
 }
 
-/* Kopbalk deelt de opmaak met de andere mini-apps (.gc-vs-head). */
+/* The head bar shares its styling with the other mini apps (.gc-vs-head). */
 .gc-bk-head {
   flex-shrink: 0;
 }
 
-/* Overzicht en uitwerking wisselen via [hidden]; dat verliest het van een
-   eigen display-waarde (grid/flex), dus hier expliciet. */
+/* The overview and the workspace switch via [hidden], which loses to an
+   element's own display value (grid/flex), so it is set explicitly here. */
 #gc-bk [hidden] {
   display: none !important;
 }
 
-/* Disclaimer-regel (NF: ondersteunend hulpmiddel, geen besluitvorming). */
+/* The page starts hidden until the screen has been filled in. */
+#gc-bk[hidden] {
+  display: none;
+}
+
+/* The disclaimer line (non-functional requirement: a supporting tool, not
+   automated decision-making). */
 .gc-bk-note {
   display: flex;
   align-items: center;
@@ -49,8 +55,8 @@
   color: #2563eb;
 }
 
-/* Stappen links, dan het gesprek, dan de uitwerking - zelfde leesrichting als
-   de vorige Beleidskompas-assistent. */
+/* Steps on the left, then the chat, then the elaboration: the same reading
+   order as the previous Beleidskompas assistant. */
 .gc-bk-grid {
   display: grid;
   grid-template-columns: 210px minmax(300px, 1fr) minmax(320px, 1.25fr);
@@ -68,7 +74,7 @@
   }
 }
 
-/* --- Overzichtspagina vier-stappenplan ---------------------------------- */
+/* --- Overview of the four steps ----------------------------------------- */
 
 .gc-bk-overview {
   flex: 1;
@@ -198,7 +204,7 @@
   background: rgba(22, 101, 52, 0.4);
 }
 
-/* --- Kaarten ------------------------------------------------------------- */
+/* --- Cards --------------------------------------------------------------- */
 
 .gc-bk-card {
   display: flex;
@@ -249,7 +255,7 @@
   height: 17px;
 }
 
-/* --- Gesprek ------------------------------------------------------------- */
+/* --- Chat ---------------------------------------------------------------- */
 
 .gc-bk-chat-log {
   display: flex;
@@ -439,7 +445,7 @@
   cursor: not-allowed;
 }
 
-/* --- Stappanel ----------------------------------------------------------- */
+/* --- Step card ----------------------------------------------------------- */
 
 .gc-bk-step-nav {
   display: flex;
@@ -530,7 +536,7 @@
   color: #6b7280;
 }
 
-/* Lege regels mogen geen ruimte (flex-gap) innemen in de lege staat. */
+/* Empty lines must not take up space (flex gap) in the empty state. */
 .gc-bk-step-body > :empty {
   display: none;
 }
@@ -578,7 +584,7 @@
   cursor: not-allowed;
 }
 
-/* --- Stepper (rechterkolom) --------------------------------------------- */
+/* --- Stepper (left column) ---------------------------------------------- */
 
 .gc-bk-stepper {
   display: flex;
@@ -631,7 +637,7 @@
   transform: rotate(180deg);
 }
 
-/* Zelfde signalering als de vorige versie: actieve stap amber, afgerond groen. */
+/* The same signals as the previous version: active step amber, done green. */
 .gc-bk-step-group.is-active .gc-bk-step-group-head {
   color: #b45309;
 }
@@ -728,7 +734,7 @@
   color: #6b7280;
 }
 
-/* --- Bronverwijzingen ---------------------------------------------------- */
+/* --- Sources ------------------------------------------------------------- */
 
 .gc-bk-citations {
   display: flex;
@@ -737,7 +743,7 @@
   margin-top: 8px;
 }
 
-/* "## kop"-regels uit de Beleidskompas-uitwerking (zie formatRichText). */
+/* "## heading" lines from the Beleidskompas elaboration (see formatRichText). */
 .gc-bk-rich-h {
   font-weight: 700;
   color: #0f172a;
@@ -747,7 +753,7 @@
   color: #f9fafb;
 }
 
-/* --- Uitwerking per stap: secties met oordeel-badge (zie parseAdvice) --- */
+/* --- Elaboration per step: sections with a verdict (see parseAdvice) ---- */
 
 .gc-bk-advice {
   display: flex;
@@ -848,7 +854,7 @@
   border-radius: 8px;
 }
 
-/* Doorverwijzing naar het specialistenteam. */
+/* Referral to the specialist team. */
 .gc-bk-specialist {
   padding: 8px 10px;
   font-size: 12px;
@@ -859,7 +865,7 @@
   border-radius: 8px;
 }
 
-/* Anonieme waardering per antwoord. */
+/* Anonymous rating per answer. */
 .gc-bk-feedback {
   display: flex;
   flex-wrap: wrap;
@@ -936,7 +942,7 @@
   background: #1f2937;
 }
 
-/* Volledige uitwerking achter een uitklapper in het gesprek. */
+/* The full elaboration behind a disclosure in the chat. */
 .gc-bk-msg-more {
   margin-top: 8px;
 }
@@ -1005,7 +1011,7 @@
   border-top-color: #374151;
 }
 
-/* Zichtbare focus voor toetsenbordnavigatie. */
+/* Visible focus for keyboard navigation. */
 #gc-bk button:focus-visible,
 #gc-bk input:focus-visible,
 #gc-bk summary:focus-visible,
@@ -1018,9 +1024,9 @@
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  /* Chip blijft op één regel, maar mag nooit buiten de kaart lopen: lange
-     documenttitels korten af met een ellipsis (volledige titel in de title
-     en in de bronpreview). */
+  /* A chip stays on one line but must never run outside the card: long
+     document titles are cut off with an ellipsis (the full title is in the
+     title attribute and in the source preview). */
   max-width: 100%;
   min-width: 0;
   white-space: nowrap;
@@ -1049,7 +1055,7 @@
   opacity: 0.9;
 }
 
-/* --- Modals (bronpreview + staptoelichting) ----------------------------- */
+/* --- Modals (source preview and step explanation) ----------------------- */
 
 .gc-bk-doc-modal {
   position: fixed;
@@ -1115,7 +1121,7 @@
   white-space: pre-wrap;
 }
 
-/* Toelichtingsmodal bevat opgemaakte HTML in plaats van ruwe brontekst. */
+/* The step explanation modal holds formatted HTML instead of raw source text. */
 .gc-bk-doc-body.is-rich {
   white-space: normal;
 }
@@ -1138,7 +1144,7 @@
   padding-left: 18px;
 }
 
-/* --- Donkere modus ------------------------------------------------------ */
+/* --- Dark mode ---------------------------------------------------------- */
 
 .dark #gc-bk {
   background: #0b1220;

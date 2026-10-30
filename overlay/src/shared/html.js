@@ -1,9 +1,10 @@
 // Helpers to put untrusted text into HTML without it being read as markup.
 
 export function escapeHTML(str) {
-  const d = document.createElement("div");
-  d.textContent = str || "";
-  return d.innerHTML;
+  return String(str || "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
 }
 
 export function escapeAttr(str) {

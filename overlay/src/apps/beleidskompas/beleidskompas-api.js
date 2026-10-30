@@ -1,25 +1,20 @@
-// ---------------------------------------------------------------------
-// LibreChat chat pipeline for Beleidskompas
+// Talking to the Beleidskompas endpoint of LibreChat. Beleidskompas is a
+// LibreChat custom endpoint ("govchat-beleidskompas" in librechat.yaml), so
+// a case is an ordinary LibreChat conversation: stored in MongoDB and listed
+// like any other chat.
 //
-// Beleidskompas is wired up as a real LibreChat custom endpoint
-// ("govchat-beleidskompas" in librechat.yaml), so a case is a genuine
-// LibreChat conversation (persisted in MongoDB, listed like any other
-// chat) instead of an in-memory object that disappeared on reload.
-//
-// LibreChat's real send/receive contract (v0.8.7, verified against its
-// own source): POST /api/agents/chat/:endpoint returns a {streamId}
-// immediately; the actual reply arrives via SSE on
+// Sending a message takes two calls: POST /api/agents/chat/:endpoint returns
+// a {streamId} at once, and the reply arrives via SSE on
 // GET /api/agents/chat/stream/:streamId (streamId === conversationId).
-// ---------------------------------------------------------------------
 
 import { getLibreChatAuthToken, librechatFetch, newClientMessageId } from "../../shared/librechat-api.js";
 
 const BELEIDSKOMPAS_ENDPOINT = "govchat-beleidskompas";
 const NO_PARENT_MESSAGE_ID = "00000000-0000-0000-0000-000000000000";
 
-/** Extracts the assistant's final text from a LibreChat message object
- *  (content-parts array is the real field; `.text` is left blank on this
- *  LibreChat version once content-parts are used). */
+/** Extracts the assistant's text from a LibreChat message object. LibreChat
+ *  puts the text in the content parts and leaves `.text` empty once it uses
+ *  those. */
 function extractMessageText(message) {
   if (!message) return "";
   if (Array.isArray(message.content)) {
@@ -33,17 +28,15 @@ const CITATIONS_META_MARKER = "BELEIDSKOMPAS-META";
 
 const CITATIONS_META_LABEL = "beleidskompas-meta";
 
-/** Mirrors logic.js's parseCitationsMetaBlock: n8n-openai-bridge only
- *  forwards plain text to LibreChat, so citations/retrieval_trace travel
- *  along as a trailing markdown link definition (appendCitationsMetaBlock in
- *  logic.js) - onzichtbaar in elke markdown-weergave, ook in LibreChat zelf.
- *  Splits it back out here. Safe to call on text that never had one. */
+/** n8n-openai-bridge only forwards plain text to LibreChat, so the citations
+ *  and the retrieval trace travel along as a trailing markdown link
+ *  definition (appendCitationsMetaBlock in agents/beleidskompas/logic.js),
+ *  which no markdown view shows. This splits it back out; safe to call on
+ *  text that never had one. */
 export function parseCitationsMetaBlock(text) {
   const raw = String(text || "");
   const empty = { displayText: raw.trim(), citations: [], retrieval_trace: null };
 
-  // Citations are normalized by the caller (normalizeCitations lives inside
-  // openBeleidskompas; this helper is module-level).
   const shape = (parsed, displayText) => ({
     displayText,
     citations: Array.isArray(parsed.citations) ? parsed.citations : [],
@@ -62,7 +55,7 @@ export function parseCitationsMetaBlock(text) {
     }
   }
 
-  // Messages stored before the switch still carry an HTML comment.
+  // Older messages carry the block as an HTML comment instead.
   const marker = `<!--${CITATIONS_META_MARKER}:`;
   const startIdx = raw.lastIndexOf(marker);
   if (startIdx === -1) return empty;
@@ -92,6 +85,30 @@ function extractDeltaText(payload) {
     .map((p) => p.text)
     .join("");
   return text || null;
+}
+
+/** Sends a rating for an answer to the admin, which stores it anonymously:
+ *  no user or conversation id, only the rating, an optional comment and
+ *  the step it is about. */
+export async function sendBeleidskompasFeedback({ rating, comment, stepId }) {
+  const resp = await fetch("/govchat-api/beleidskompas-feedback", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ rating, comment: String(comment || ""), step_id: stepId }),
+  });
+  if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+}
+
+/** The only channel to the backend is the chat message's plain text, so the
+ *  context of a question (the step, what was found so far and the known
+ *  sources) is composed into one labeled text. */
+export function composePrompt({ step, priorReports, currentReport, sources, question }) {
+  const lines = [`Stap: ${step.id} (${step.title})`];
+  const findings = String(priorReports || currentReport || "").trim();
+  if (findings) lines.push(`Casus/eerdere bevindingen: ${findings}`);
+  if (sources.length) lines.push(`Bekende bronnen: ${sources.join("; ")}`);
+  lines.push(`Vraag: ${String(question || "").trim()}`);
+  return lines.join("\n");
 }
 
 /** Sends one message to the Beleidskompas custom endpoint and waits for
@@ -182,7 +199,7 @@ export async function sendBeleidskompasChatMessage({ text, conversationId, paren
   try {
     reader.cancel();
   } catch (_) {
-    // ignore
+    // The reply is complete; a failed cancel of the stream changes nothing.
   }
 
   if (!finalPayload) {
