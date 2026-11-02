@@ -1,7 +1,7 @@
 # GovChat-NL
 
 > [!IMPORTANT]
-> **The LibreChat deployment is the default GovChat-NL stack.** This repository is intended to become `GovChat-NL/GovChat-NL`; use it for new deployments and ongoing development. The former OpenWebUI repository is retained as [`GovChat-NL-legacy`](https://github.com/GovChat-NL/GovChat-NL-legacy).
+> **The LibreChat deployment is the default GovChat-NL stack.** This is the `GovChat-NL/GovChat-NL` repository for new deployments and ongoing development. The former OpenWebUI repository is retained as [`GovChat-NL-legacy`](https://github.com/GovChat-NL/GovChat-NL-legacy).
 >
 > The steering group approved this transition on **13 October 2026**. Quorum was met (5 of 8 members present) and the motion passed unanimously (5/5 votes).
 
