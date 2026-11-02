@@ -16,7 +16,7 @@
 
 Een configureerbare overlay die **help-button**, **app launcher** en **admin panel** toevoegt aan een standaard [Open WebUI](https://github.com/open-webui/open-webui) deployment — zonder fork, zonder codewijzigingen.
 
-Ontwikkeld als onderdeel van [GovChat-NL](https://govchat-nl.nl), het open-source AI-chatplatform voor de Nederlandse overheid.
+Ontwikkeld als onderdeel van [GovChat-NL](https://github.com/GovChat-NL/GovChat-NL), het open-source AI-platform met LibreChat als standaard front-end. Zie de [GovChat-NL-documentatie](https://govchat-nl.github.io/) voor actuele informatie.
 
 ## Wat zit erin?
 
@@ -158,7 +158,7 @@ De overlay-bestanden worden automatisch opnieuw gepubliceerd door de admin conta
 
 ## GovChat-NL
 
-Dit project is onderdeel van **[GovChat-NL](https://govchat-nl.nl)** — een initiatief dat AI-chattools toegankelijk en veilig maakt voor de Nederlandse overheid.
+Dit project is onderdeel van **[GovChat-NL](https://github.com/GovChat-NL/GovChat-NL)** — een initiatief dat AI-chattools toegankelijk en veilig maakt voor de Nederlandse overheid.
 
 ### Wat is GovChat-NL?
 
@@ -172,7 +172,7 @@ GovChat-NL is een samenwerkingsverband van Nederlandse overheidsorganisaties —
 
 GovChat-NL is open source en staat open voor deelname van alle Nederlandse overheidsorganisaties.
 
-- **Website**: [govchat-nl.nl](https://govchat-nl.nl)
+- **Documentatie**: [govchat-nl.github.io](https://govchat-nl.github.io/)
 - **Contact**: Neem contact op via de website voor meer informatie over deelname
 - **GitHub**: Bekijk de broncode, dien issues in of draag bij via pull requests
 - **Licentie**: Open source — vrij te gebruiken en aan te passen

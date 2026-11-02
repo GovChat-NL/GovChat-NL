@@ -4,7 +4,7 @@
 
 | Source | Destination | Ownership / rationale |
 |---|---|---|
-| `GovChat-NL-LibreChat` repository root | Monorepo root | Kept in place: Compose entrypoints, LibreChat config, Nginx, stack overlay, LiteLLM, n8n runtime settings, tests, fixtures, scripts and deployment docs retain root-relative paths. |
+| Current local stack checkout root (`GovChat-NL-LibreChat/`) | Canonical `GovChat-NL` monorepo root | Kept in place: Compose entrypoints, LibreChat config, Nginx, stack overlay, LiteLLM, n8n runtime settings, tests, fixtures, scripts and deployment docs retain root-relative paths. |
 | `GovChat-NL-Agents` repository | [`agents/`](../agents/) | Workflow exports and agent documentation. Bootstrap reads `agents/n8n/workflows` from the monorepo. |
 | `GovChat-AdminOverlay` repository | [`services/admin-overlay/`](../services/admin-overlay/) | Keeps standalone source and provenance. Compose builds `services/admin-overlay/admin` only when the `admin-overlay` profile is enabled; it is WIP and off by default. |
 | Stack-owned bridge model configuration | [`bridge/models.json`](../bridge/models.json) | Deployment config only, not bridge service source. |
@@ -44,8 +44,20 @@ Reference configuration baseline from the LibreChat checkout: LibreChat image `v
 
 | Repository | Remote / default branch | HEAD at audit | Worktree |
 |---|---|---|---|
-| LibreChat stack | `https://github.com/GovChat-NL/GovChat-NL-LibreChat.git`; local branch `feature/monorepo-migration`, remote default `main` | `a4b9e67` | Clean; feature branch tracked its origin branch. |
+| GovChat-NL default stack | `https://github.com/GovChat-NL/GovChat-NL.git` (after repository rename); local checkout currently named `GovChat-NL-LibreChat`, branch `feature/monorepo-migration` | `a4b9e67` | Canonical LibreChat stack; update local `origin` after the GitHub-side rename. |
 | Agents | `https://github.com/GovChat-NL/GovChat-NL-Agents.git`; default `main` | `58319d0` | Clean. The workspace description said this was not a Git checkout, but audit found a valid Git repository and the full workflow tree. |
+
+## GitHub repository rename cutover
+
+Repository slugs are GitHub-side settings and are not changed by editing this checkout. Perform the cutover in this order:
+
+1. Rename the existing OpenWebUI repository `GovChat-NL/GovChat-NL` to `GovChat-NL/GovChat-NL-legacy`.
+2. Rename the LibreChat stack repository `GovChat-NL/GovChat-NL-LibreChat` to `GovChat-NL/GovChat-NL`.
+3. Confirm the new canonical repository default branch, branch protections, Actions secrets/variables, releases, and deployment settings.
+4. In each canonical stack checkout, update the local remote after the GitHub rename: `git remote set-url origin https://github.com/GovChat-NL/GovChat-NL.git`.
+5. Open the renamed legacy repository and confirm its README directs new users to the canonical LibreChat stack.
+
+The old repository slug is intentionally reused by the new canonical repository. Do not rely on GitHub's automatic rename redirect to preserve an OpenWebUI landing page at that URL; the legacy repository's new `GovChat-NL-legacy` README is its explicit user-facing redirect.
 | Admin Overlay | `https://github.com/GovChat-NL/GovChat-AdminOverlay.git`; default `main` | `8d36b5e` | Clean. |
 | Bridge | `https://github.com/GovChat-NL/n8n-openai-bridge.git`; default `main` | `8003d03` | Clean; remains separate. |
 
