@@ -57,6 +57,8 @@ Voor lokaal testen kun je de gepubliceerde Provincie Limburg-snapshot expliciet 
 
 De volledige omgevingsvariabelen staan in [`.env.example`](.env.example); de technische migratie- en testmatrix staat in [`docs/monorepo-migration.md`](docs/monorepo-migration.md). Dit blijft een referentie-implementatie, niet een productieklare deployment.
 
+Het configureerbare gegevensbewaarbeleid en de daadwerkelijke opschoonmechanismen staan in [`docs/retention-policy.md`](docs/retention-policy.md).
+
 De stack is breder dan alleen “orchestrator + versimpelaar” en bevat onder meer:
 - **Werkende test-apps in de overlay**:
   - Versimpelaar
