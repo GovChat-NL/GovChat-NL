@@ -1,6 +1,6 @@
 # Bijdragen aan GovChat-NL agent-workflows
 
-De workflowbron staat in `agents/` van de canonical GovChat-NL-repository. Dien workflow- en runtimewijzigingen daar in en valideer exports met `node tests/agents/validate-workflows.js`.
+De workflowbron staat in `agents/` van de GovChat-NL-hoofdrepository. Dien workflow- en runtimewijzigingen daar in en valideer exports met `node tests/agents/validate-workflows.js`.
 
 ## Ontwerpprincipes
 

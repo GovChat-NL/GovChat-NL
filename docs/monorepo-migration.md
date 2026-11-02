@@ -4,7 +4,7 @@
 
 | Source | Destination | Ownership / rationale |
 |---|---|---|
-| Current local stack checkout root (`GovChat-NL-LibreChat/`) | Canonical `GovChat-NL` monorepo root | Kept in place: Compose entrypoints, LibreChat config, Nginx, stack overlay, LiteLLM, n8n runtime settings, tests, fixtures, scripts and deployment docs retain root-relative paths. |
+| Current local stack checkout root (`GovChat-NL-LibreChat/`) | `GovChat-NL` repository root | Kept in place: Compose entrypoints, LibreChat config, Nginx, stack overlay, LiteLLM, n8n runtime settings, tests, fixtures, scripts and deployment docs retain root-relative paths. |
 | `GovChat-NL-Agents` repository | [`agents/`](../agents/) | Workflow exports and agent documentation. Bootstrap reads `agents/n8n/workflows` from the monorepo. |
 | `GovChat-AdminOverlay` repository | [`services/admin-overlay/`](../services/admin-overlay/) | Keeps standalone source and provenance. Compose builds `services/admin-overlay/admin` only when the `admin-overlay` profile is enabled; it is WIP and off by default. |
 | Stack-owned bridge model configuration | [`bridge/models.json`](../bridge/models.json) | Deployment config only, not bridge service source. |
@@ -40,32 +40,15 @@ The GovChat-NL bridge `main` branch contains the promotion of the live tool-call
 
 Reference configuration baseline from the LibreChat checkout: LibreChat image `v0.8.7`; n8n default `2.25.7`; GovChat-NL bridge main source; LibreChat stack/overlay source commit `a4b9e67`. This is a configuration record, **not evidence of completed end-to-end or production acceptance testing**. Native tool cards require a compatible bridge, streaming n8n workflow, and LibreChat runtime overlay tested together.
 
-## Git provenance, source of truth and migration safety
+## Repository ownership and rename cutover
 
-| Repository | Remote / default branch | HEAD at audit | Worktree |
-|---|---|---|---|
-| GovChat-NL default stack | `https://github.com/GovChat-NL/GovChat-NL.git` (after repository rename); local checkout currently named `GovChat-NL-LibreChat`, branch `feature/monorepo-migration` | `a4b9e67` | Canonical LibreChat stack; update local `origin` after the GitHub-side rename. |
-| Agents | `https://github.com/GovChat-NL/GovChat-NL-Agents.git`; default `main` | `58319d0` | Clean. The workspace description said this was not a Git checkout, but audit found a valid Git repository and the full workflow tree. |
+The LibreChat Compose stack and its deployment documentation are maintained in the GovChat-NL main repository. The former OpenWebUI files remain in the separate legacy repository. Workflow assets are maintained under `agents/`; the GovChat bridge remains a separate repository and is built by Compose from its `main` branch.
 
-## GitHub repository rename cutover
+The GitHub repository names have been changed. The old OpenWebUI repository is now `GovChat-NL/GovChat-NL-legacy`, and the LibreChat stack is now `GovChat-NL/GovChat-NL`. The local stack checkout's `origin` should point to `https://github.com/GovChat-NL/GovChat-NL.git`; the legacy checkout should point to `https://github.com/GovChat-NL/GovChat-NL-legacy.git`.
 
-Repository slugs are GitHub-side settings and are not changed by editing this checkout. Perform the cutover in this order:
+The old `GovChat-NL/GovChat-NL` URL is now occupied by the LibreChat stack, so do not rely on a GitHub rename redirect to lead users to the legacy OpenWebUI files. The README in `GovChat-NL-legacy` is the user-facing pointer for existing deployments.
 
-1. Rename the existing OpenWebUI repository `GovChat-NL/GovChat-NL` to `GovChat-NL/GovChat-NL-legacy`.
-2. Rename the LibreChat stack repository `GovChat-NL/GovChat-NL-LibreChat` to `GovChat-NL/GovChat-NL`.
-3. Confirm the new canonical repository default branch, branch protections, Actions secrets/variables, releases, and deployment settings.
-4. In each canonical stack checkout, update the local remote after the GitHub rename: `git remote set-url origin https://github.com/GovChat-NL/GovChat-NL.git`.
-5. Open the renamed legacy repository and confirm its README directs new users to the canonical LibreChat stack.
-
-The old repository slug is intentionally reused by the new canonical repository. Do not rely on GitHub's automatic rename redirect to preserve an OpenWebUI landing page at that URL; the legacy repository's new `GovChat-NL-legacy` README is its explicit user-facing redirect.
-| Admin Overlay | `https://github.com/GovChat-NL/GovChat-AdminOverlay.git`; default `main` | `8d36b5e` | Clean. |
-| Bridge | `https://github.com/GovChat-NL/n8n-openai-bridge.git`; default `main` | `8003d03` | Clean; remains separate. |
-
-Agents and Admin Overlay were imported with non-squashed Git subtree imports at `agents/` and `services/admin-overlay/`; their source commit histories remain reachable. Local recovery checkpoint: `backup/pre-monorepo-migration-20261022` at `a4b9e67`. From migration review/merge onward, this monorepo is the source of truth for deployment, workflows and the integrated Admin service. No push, remote repository creation, source-repository archival or deletion was performed.
-
-The task described two uncommitted edits in the LibreChat Compose and Nginx files. `git status`, `git diff` and `git diff --cached` showed the checkout clean at audit time, so those edits were not present to preserve. The checkpoint retains the audited original HEAD. Reconcile against any other checkout before synchronizing it.
-
-The live tool-calling producer is maintained in the bridge repository and its `main` branch; the corresponding LibreChat and n8n runtime overlays are enabled by the standard Compose stack.
+The live tool-calling producer is maintained in the separate bridge repository. The matching LibreChat and n8n runtime overlays are enabled by the standard Compose stack.
 
 Only `.env.example` and tracked configuration belong in source control. Keep real `.env` files, credentials, database volumes, uploads/user data, runtime logs and build products local. The stack root ignore rules cover `.env` and `.env.*`; recheck staged files and secrets before any future commit.
 
