@@ -8,3 +8,5 @@
 /{console.error(e)
 /{const
 /testdata/openbesluitvorming/
+**/__pycache__/
+*.py[cod]

@@ -1,0 +1,3 @@
+{
+  "govchat-orchestrator": "http://n8n:5678/webhook/orchestrator"
+}

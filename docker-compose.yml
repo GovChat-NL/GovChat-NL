@@ -45,6 +45,7 @@ services:
       PORT: "3080"
       NODE_ENV: production
       NODE_OPTIONS: --require=/app/govchat-overlay/librechat-tool-event-preload.js
+      TEMP_CHAT_RETENTION_HOURS: ${GOVCHAT_CHAT_RETENTION_HOURS:-720}
       # Include Agents endpoint by default so the Agents UI is visible in LibreChat.
       ENDPOINTS: ${ENDPOINTS:-custom,agents}
       DOMAIN_CLIENT: ${PUBLIC_BASE_URL}
@@ -137,6 +138,46 @@ services:
       - librechat-net
 
   # ---------------------------------------------------------------------------
+  #  LibreChat-aware retention worker (same pinned image, no HTTP listener)
+  #  Uses LibreChat's model and file-service deletion paths, not raw DB deletes.
+  # ---------------------------------------------------------------------------
+  govchat-retention:
+    image: registry.librechat.ai/danny-avila/librechat:v0.8.7
+    container_name: govchat-retention
+    restart: unless-stopped
+    command: ["node", "/app/govchat-overlay/govchat-retention-worker.js"]
+    depends_on:
+      librechat-permissions:
+        condition: service_completed_successfully
+      mongodb:
+        condition: service_healthy
+    volumes:
+      - ${LIBRECHAT_CONFIG_PATH:-./librechat.yaml}:/app/librechat.yaml:ro
+      - /opt/librechat/uploads:/app/uploads
+      - /opt/librechat/images:/app/client/public/images
+      - ./scripts/govchat-retention-policy.js:/app/govchat-overlay/govchat-retention-policy.js:ro
+      - ./scripts/govchat-retention-worker.js:/app/govchat-overlay/govchat-retention-worker.js:ro
+    environment:
+      NODE_ENV: production
+      # The standalone worker uses process-local caches; CI disables LibreChat's
+      # periodic cache-maintenance timer, which is normally stopped by the HTTP server.
+      CI: "true"
+      DOMAIN_CLIENT: ${PUBLIC_BASE_URL}
+      DOMAIN_SERVER: ${PUBLIC_BASE_URL}
+      TZ: ${TZ:-Europe/Amsterdam}
+      MONGO_URI: mongodb://${MONGO_ROOT_USER}:${MONGO_ROOT_PASS}@mongodb:27017/LibreChat?authSource=admin
+      CREDS_KEY: ${CREDS_KEY}
+      CREDS_IV: ${CREDS_IV}
+      GOVCHAT_CHAT_RETENTION_HOURS: ${GOVCHAT_CHAT_RETENTION_HOURS:-720}
+      GOVCHAT_UPLOAD_RETENTION_DAYS: ${GOVCHAT_UPLOAD_RETENTION_DAYS:-30}
+      GOVCHAT_PROMPT_RETENTION_DAYS: ${GOVCHAT_PROMPT_RETENTION_DAYS:-730}
+      GOVCHAT_GENERATED_IMAGE_RETENTION_DAYS: ${GOVCHAT_GENERATED_IMAGE_RETENTION_DAYS:-30}
+      GOVCHAT_GENERATED_IMAGES_DIR: /app/client/public/images
+      GOVCHAT_RETENTION_SWEEP_INTERVAL_MINUTES: ${GOVCHAT_RETENTION_SWEEP_INTERVAL_MINUTES:-60}
+    networks:
+      - librechat-net
+
+  # ---------------------------------------------------------------------------
   #  Init job: zet juiste rechten op upload mount voor non-root LibreChat user
   #  - Draait eenmalig per `docker compose up`
   #  - Maakt /opt/librechat/uploads schrijfbaar voor UID/GID 1000 (node)
@@ -147,11 +188,12 @@ services:
     restart: "no"
     command: >
       sh -lc "
-        mkdir -p /app/uploads/temp /app/images &&
-        chown -R 1000:1000 /app/uploads /app/images &&
-        chmod -R u+rwX,g+rwX /app/uploads /app/images
+        mkdir -p /app/uploads/temp /app/images /app/n8n-logs &&
+        chown -R 1000:1000 /app/uploads /app/images /app/n8n-logs &&
+        chmod -R u+rwX,g+rwX /app/uploads /app/images /app/n8n-logs
       "
     volumes:
+      - /opt/librechat/logs/n8n:/app/n8n-logs
       - /opt/librechat/uploads:/app/uploads
       - /opt/librechat/images:/app/images
     networks:
@@ -436,6 +478,8 @@ services:
     container_name: librechat-n8n
     restart: unless-stopped
     depends_on:
+      librechat-permissions:
+        condition: service_completed_successfully
       n8n-postgres:
         condition: service_healthy
       litellm:
@@ -471,7 +515,20 @@ services:
       WEBHOOK_URL: http://localhost:5678
       GENERIC_TIMEZONE: ${TZ:-Europe/Amsterdam}
       TZ: ${TZ:-Europe/Amsterdam}
-      N8N_LOG_LEVEL: ${N8N_LOG_LEVEL:-warn}
+      N8N_LOG_LEVEL: error
+      N8N_LOG_OUTPUT: file
+      N8N_LOG_FILE_LOCATION: /var/log/n8n/n8n.log
+      N8N_LOG_FILE_SIZE_MAX: ${N8N_LOG_FILE_SIZE_MAX:-10485760}
+      N8N_LOG_FILE_COUNT_MAX: ${N8N_LOG_FILE_COUNT_MAX:-1000}
+      EXECUTIONS_DATA_SAVE_ON_ERROR: all
+      EXECUTIONS_DATA_SAVE_ON_SUCCESS: none
+      EXECUTIONS_DATA_SAVE_MANUAL_EXECUTIONS: "false"
+      EXECUTIONS_DATA_PRUNE: "true"
+      EXECUTIONS_DATA_MAX_AGE: ${N8N_EXECUTION_RETENTION_HOURS:-718}
+      EXECUTIONS_DATA_PRUNE_MAX_COUNT: ${N8N_EXECUTION_PRUNE_MAX_COUNT:-10000}
+      EXECUTIONS_DATA_HARD_DELETE_BUFFER: ${N8N_EXECUTION_HARD_DELETE_BUFFER_HOURS:-0}
+      EXECUTIONS_DATA_PRUNE_HARD_DELETE_INTERVAL: ${N8N_EXECUTION_HARD_DELETE_INTERVAL_MINUTES:-15}
+      EXECUTIONS_DATA_PRUNE_SOFT_DELETE_INTERVAL: ${N8N_EXECUTION_SOFT_DELETE_INTERVAL_MINUTES:-60}
       N8N_PUBLIC_API_DISABLED: "true"
       N8N_BLOCK_FILE_ACCESS_TO_N8N_FILES: "true"
       # Nodig voor Code node gebruik van $env.* in external runners mode
@@ -499,6 +556,7 @@ services:
       CRAWLER_INTERNAL_TOKEN: ${CRAWLER_INTERNAL_TOKEN:-${N8N_WEBHOOK_TOKEN}}
     volumes:
       - n8n-data:/home/node/.n8n
+      - /opt/librechat/logs/n8n:/var/log/n8n
       - /opt/librechat/images:/shared-images
       - ./scripts/n8n-createAgentSequence.patched.js:/usr/local/lib/node_modules/n8n/node_modules/.pnpm/@n8n+n8n-nodes-langchain@file+packages+@n8n+nodes-langchain_8bf81e0cdf1fe65cc684d3daaa3ca5c1/node_modules/@n8n/n8n-nodes-langchain/dist/nodes/agents/Agent/agents/ToolsAgent/V3/helpers/createAgentSequence.js:ro
       - ./scripts/n8n-processEventStream.patched.js:/usr/local/lib/node_modules/n8n/node_modules/.pnpm/@n8n+n8n-nodes-langchain@file+packages+@n8n+nodes-langchain_8bf81e0cdf1fe65cc684d3daaa3ca5c1/node_modules/@n8n/n8n-nodes-langchain/dist/utils/agent-execution/processEventStream.js:ro
@@ -508,6 +566,29 @@ services:
       timeout: 10s
       retries: 5
       start_period: 30s
+    networks:
+      - librechat-net
+    logging:
+      driver: local
+      options:
+        max-size: ${N8N_LOG_MAX_SIZE:-10m}
+        max-file: ${N8N_LOG_MAX_FILES:-10}
+
+  n8n-log-pruner:
+    build:
+      context: ./services/n8n-log-retention
+      dockerfile: Dockerfile
+    image: govchat-n8n-log-pruner:local
+    container_name: govchat-n8n-log-pruner
+    restart: unless-stopped
+    depends_on:
+      n8n:
+        condition: service_started
+    environment:
+      N8N_LOG_RETENTION_DAYS: ${N8N_LOG_RETENTION_DAYS:-30}
+      N8N_LOG_PRUNE_INTERVAL_SECONDS: ${N8N_LOG_PRUNE_INTERVAL_SECONDS:-3600}
+    volumes:
+      - /opt/librechat/logs/n8n:/var/log/n8n
     networks:
       - librechat-net
 
