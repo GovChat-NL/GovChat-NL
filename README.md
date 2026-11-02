@@ -8,27 +8,27 @@
 
 GovChat-NL is een open platform waarmee Nederlandse overheidsorganisaties AI-toepassingen kunnen beheren en gebruiken. De webomgeving is gebaseerd op LibreChat. Workflows en agents draaien in n8n; LiteLLM verbindt de toepassing met taalmodelaanbieders.
 
-## Wat kun je ermee?
+## Waarom GovChat-NL?
 
 - **Chatten met taalmodellen** vanuit de GovChat-NL-webomgeving.
-- **Apps en agents gebruiken** die zijn opgebouwd uit n8n-workflows, waaronder de Versimpelaar en live transcriptie.
+- **Toepassingen en agenten gebruiken** die zijn opgebouwd uit n8n-workflows, waaronder de Versimpelaar en live transcriptie.
 - **Zelf de modelaanbieder kiezen** via LiteLLM, bijvoorbeeld Azure OpenAI of andere ondersteunde aanbieders.
 - **Verantwoord werken met AI** met aandacht voor AI-geletterdheid en de Nederlandse overheidscontext; zie de [AI-geletterdheidshandleiding](https://govchat-nl.github.io/docs/ai-geletterdheid).
 - **De toepassing zelf beheren** met Docker Compose, inclusief de configuratie, verbindingen en workflow-import.
 
-### Live tool-calling in de chat
+### Live aanroepen van n8n-hulpmiddelen in de chat
 
-Wanneer een n8n-agent tijdens een gesprek een tool gebruikt, toont LibreChat die aanroep direct als een eigen toolkaart in de chat. De gebruiker ziet de tool starten, de voortgang en het resultaat of de foutmelding; de gewone tekst van de assistent blijft leesbaar. Dit werkt door de samenwerking tussen de GovChat-bridge, n8n en de LibreChat-interface.
+Wanneer een n8n-agent tijdens een gesprek een hulpmiddel gebruikt, toont LibreChat die aanroep direct als een ingebouwde kaart in de chat. De gebruiker ziet het hulpmiddel starten, de voortgang en het resultaat of de foutmelding; de gewone tekst van de assistent blijft leesbaar. Dit werkt door de samenwerking tussen de GovChat-bridge, n8n en de LibreChat-interface.
 
-De architectuur en controlepunten staan in [Live tool-calling](docs/live-tool-calling.md).
+De architectuur en controlepunten staan in de uitleg over [live aanroepen van hulpmiddelen](docs/live-tool-calling.md).
 
 ## Verbonden systemen
 
 | Systeem | Rol binnen GovChat-NL |
 | --- | --- |
 | [LibreChat](https://www.librechat.ai/) | Webomgeving voor gesprekken, bestanden en agents. |
-| [GovChat n8n-bridge](https://github.com/GovChat-NL/n8n-openai-bridge) | Verbindt LibreChat via een OpenAI-compatibele koppeling met n8n en geeft toolgebeurtenissen terug voor de live toolkaarten. |
-| [n8n](https://n8n.io/) | Voert agents, tools en andere geautomatiseerde workflows uit. De meegeleverde workflows worden bij het starten ingeladen. |
+| [GovChat-bridge voor n8n](https://github.com/GovChat-NL/n8n-openai-bridge) | Verbindt LibreChat via een OpenAI-compatibele koppeling met n8n en geeft gebeurtenissen van hulpmiddelen terug voor de live kaarten. |
+| [n8n](https://n8n.io/) | Voert agenten, hulpmiddelen en andere geautomatiseerde workflows uit. De meegeleverde workflows worden bij het starten ingeladen. |
 | [LiteLLM](https://github.com/BerriAI/litellm) | Verbindt GovChat-NL en n8n met de gekozen taalmodellen. |
 | [OpenBesluitvorming](https://github.com/ontola/openbesluitvorming) · [website](https://openbesluitvorming.nl/) | Project voor het ontsluiten en doorzoeken van openbare besluitvormingsinformatie; GovChat-workflows kunnen hierop aansluiten. |
 | Microsoft Entra ID | Optionele SSO-koppeling; vereist inrichting voor de eigen organisatie. |
