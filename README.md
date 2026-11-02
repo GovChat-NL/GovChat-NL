@@ -1,4 +1,11 @@
-# GovChat-NL-LibreChat
+# GovChat-NL
+
+> [!IMPORTANT]
+> **The LibreChat deployment is the default GovChat-NL stack.** This repository is intended to become `GovChat-NL/GovChat-NL`; use it for new deployments and ongoing development. The former OpenWebUI repository is retained as [`GovChat-NL-legacy`](https://github.com/GovChat-NL/GovChat-NL-legacy).
+>
+> The steering group approved this transition on **13 October 2026**. Quorum was met (5 of 8 members present) and the motion passed unanimously (5/5 votes).
+
+GovChat-NL now has a shared Docker Compose foundation: the standard deployment starts the application services, wires their internal connections, and automatically imports the n8n workflows. The bridge also relays n8n tool lifecycle events so tool calls appear as native, live tool cards in the LibreChat frontend. See [`docs/live-tool-calling.md`](docs/live-tool-calling.md) for the event flow and operational checks.
 
 > [!WARNING]
 > **Status: niet productierijp / niet gegarandeerd werkend.**
@@ -23,15 +30,9 @@ Deze repository is de bron van waarheid voor de deployment en bijbehorende confi
 
 De request-flow blijft LibreChat → OpenAI-compatibele GovChat-NL-bridge → n8n webhook → workflow/LiteLLM (rechtstreeks vanuit n8n). Tool-calling en native live tool-cards zijn standaard actief: Compose bouwt de bridge vanaf `main` en laadt de bijbehorende LibreChat- en n8n-runtime-overlays. Zie [`docs/live-tool-calling.md`](docs/live-tool-calling.md) en [`docs/monorepo-migration.md`](docs/monorepo-migration.md).
 
-## OpenBesluitvorming
+## OpenBesluitvorming-workflows
 
-De OpenBesluitvorming-workflows maken publieke besluitvormingsdocumenten doorzoekbaar met bronverwijzingen. De workflow-JSON staat als monorepo-assets in [`agents/n8n/workflows/`](agents/n8n/workflows/): documentworker, checkpointed snapshot-ingest, high-recall search, incremental sync en de orchestrator-integratie. De lokale n8n-bootstrap importeert deze bestanden samen met de overige agent-workflows.
-
-De snapshot-ingest en delta-sync zijn standaard inactief. Configureer de zichtbare workflow-nodes voor bron en collectie, voltooi eerst de initiële snapshot en activeer daarna pas de delta-sync. Qdrant is een interne Compose-service zonder gepubliceerde hostpoort. Zie [`docs/openbesluitvorming-release-artifacts.md`](docs/openbesluitvorming-release-artifacts.md) voor snapshotdistributie, governance, herstel en wekelijkse release-operaties.
-
-De zoekworkflow gebruikt begrensde queryvarianten, brede Qdrant-kandidaten, document-level reciprocal-rank fusion en optionele LiteLLM-reranking. Resultaten bevatten bronmetadata, beschikbare documentlinks en een expliciete dekkingsmelding; vectorzoekresultaten zijn geen volledigheidsgarantie. Bij politiek gevoelige vragen gebruikt de orchestrator deze zoektool en citeert hij primaire bronlinks. De delta-sync verwerkt maximaal één pagina van 500 wijzigingen per uitvoering en hoort pas te worden geactiveerd nadat de initiële snapshot-checkpoint is voltooid; de aanbevolen frequentie is eens per zes uur.
-
-Voor lokaal testen kun je de gepubliceerde Provincie Limburg-snapshot expliciet inladen via het Compose-profiel `openbesluitvorming-test`; zie [`docs/openbesluitvorming-release-artifacts.md`](docs/openbesluitvorming-release-artifacts.md). Dit restore-profiel wordt niet gestart door de normale `docker compose up`.
+De n8n-workflows voor OpenBesluitvorming maken publieke besluitvormingsdocumenten doorzoekbaar met bronverwijzingen. De workflow-JSON staat in [`agents/n8n/workflows/`](agents/n8n/workflows/) en wordt door de lokale bootstrap geïmporteerd. De bijbehorende ingest- en synchronisatieworkflows blijven inactief totdat een organisatie haar bron, collectie, credentials en beheerproces expliciet heeft ingericht. Qdrant is een interne Compose-service; de stack publiceert deze niet als publieke endpoint. Raadpleeg de workflowconfiguratie en validering voordat je deze functionaliteit activeert.
 
 ### Snelle start en controles
 

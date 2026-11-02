@@ -71,7 +71,7 @@ The bridge repository's configured `origin` points at
 `GovChat-NL/n8n-openai-bridge`. Confirm the authorized destination before pushing
 this branch; do not publish this work to the upstream project by accident.
 
-### `GovChat-NL-LibreChat/`
+### `GovChat-NL/` (huidige stack)
 
 - `scripts/librechat-tool-event-preload.js` installs a CommonJS loader hook
   before the API starts.
@@ -155,7 +155,7 @@ after completion.
 
 ## Deployment
 
-From `GovChat-NL-LibreChat/`, clone the bridge `main` branch beside this
+From the GovChat-NL repository root, clone the bridge `main` branch beside this
 repository once, then use the single standard Compose file:
 
 ```bash

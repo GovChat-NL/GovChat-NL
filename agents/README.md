@@ -12,7 +12,7 @@ Deze directory is de monorepo-bron van waarheid voor GovChat-NL n8n-workflows. D
 - Bootstrap scant alle top-level `.json`-bestanden in deze map, valideert JSON en stabiele IDs, en importeert/publiceert ze; er is geen handmatige lijst of sibling-checkout nodig.
 - De bootstrap maakt de `LiteLLM API` credential aan. Workflows gebruiken `${LITELLM_URL}/v1` en `${LITELLM_API_KEY}`.
 
-De OpenBesluitvorming-exports staan direct in `n8n/workflows/` zodat ze door dezelfde bootstrap worden ontdekt. De snapshot-ingest en delta-sync gebruiken de interne Compose-service `qdrant`; configureer de workflow-nodes voor de gewenste bron en collectie voordat ingest of sync wordt geactiveerd. Raadpleeg [`../docs/openbesluitvorming-release-artifacts.md`](../docs/openbesluitvorming-release-artifacts.md) voor release- en herstelprocedures.
+De OpenBesluitvorming-exports staan direct in `n8n/workflows/` zodat ze door dezelfde bootstrap worden ontdekt. De ingest- en synchronisatieworkflows gebruiken de interne Compose-service `qdrant`; configureer de workflow-nodes voor de gewenste bron, collectie en credentials voordat een workflow wordt geactiveerd.
 
 ## Verzoekroute en modelroute
 

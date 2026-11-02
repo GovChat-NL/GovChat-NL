@@ -79,8 +79,7 @@ def main():
     manifest_path = TEST_DATA_DIR / MANIFEST_NAME
     if not manifest_path.is_file():
         raise RuntimeError(
-            f"Missing {manifest_path}; download the pinned release assets as described in "
-            "docs/openbesluitvorming-release-artifacts.md"
+            f"Missing {manifest_path}; provide the approved local test manifest and matching snapshot."
         )
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
 
@@ -107,8 +106,7 @@ def main():
     downloaded_snapshot = TEST_DATA_DIR / filename
     if not downloaded_snapshot.is_file():
         raise RuntimeError(
-            f"Missing {downloaded_snapshot}; download the pinned release assets as described in "
-            "docs/openbesluitvorming-release-artifacts.md"
+            f"Missing {downloaded_snapshot}; provide the approved local test snapshot named in the manifest."
         )
     actual_size, actual_hash = hash_file(downloaded_snapshot)
     if actual_size != expected_size or actual_hash != expected_hash:
