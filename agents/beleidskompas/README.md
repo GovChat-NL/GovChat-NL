@@ -1,14 +1,29 @@
-# Beleidskompas stap 1
+# Beleidskompas
 
-Deze map bevat de broncode van de Beleidskompas-workflow voor stap 1.
+Deze map bevat de broncode van de Beleidskompas-workflows: de hoofdagent en stap 1.
 
-## Gegenereerde workflow
+## Gegenereerde workflows
 
-Het script `generate-workflow.js` stelt uit `logic.js` en de bestanden in `fixtures/` de workflow samen die n8n inlaadt. Deze workflow staat niet in deze map, maar bij de overige workflows: [`n8n/workflows/beleidskompas/beleidskompas-step-stap1.json`](../n8n/workflows/beleidskompas/beleidskompas-step-stap1.json).
+n8n leest alleen workflow-bestanden (JSON), met de code als tekst in een Code node. Het script `generate-workflow.js` maakt die bestanden uit de broncode in deze map en zet ze bij de overige workflows in [`n8n/workflows/beleidskompas/`](../n8n/workflows/beleidskompas/):
 
-Wijzig dat bestand niet handmatig. Het script maakt het bij elke uitvoering volledig opnieuw aan, waardoor handmatige wijzigingen verloren gaan. Wijzigingen worden altijd in `logic.js` of `fixtures/` aangebracht.
+| Workflow | Broncode |
+|---|---|
+| `beleidskompas-hoofdagent.json` | `main-agent.js` (en de functies die het leent uit `logic.js`) |
+| `beleidskompas-step-stap1.json` | `logic.js` en de bestanden in `fixtures/` |
 
-## Wat de workflow doet
+Wijzig die bestanden niet handmatig. Het script maakt ze bij elke uitvoering volledig opnieuw aan, waardoor handmatige wijzigingen verloren gaan. Wijzigingen worden altijd in de broncode aangebracht.
+
+## Wat de hoofdagent doet
+
+De hoofdagent is de webhook achter het Beleidskompas-endpoint van LibreChat. Elk bericht komt daar binnen.
+
+- **Token**: het token van de aanroeper wordt vergeleken met `BELEIDSKOMPAS_N8N_WEBHOOK_TOKEN` (of `N8N_WEBHOOK_TOKEN`). Klopt het niet, dan komt er `ok: false` terug.
+- **Titelverzoek**: LibreChat vraagt via hetzelfde endpoint om een korte gesprekstitel (herkenbaar aan de markering in `titlePrompt` in `librechat.yaml`). De hoofdagent beantwoordt dat zelf met een titel, zonder een stap aan te roepen.
+- **Stap bepalen**: de stap staat op de eerste regel van het bericht, die de Beleidskompas-pagina altijd meegeeft als `Stap: stap2 (…)`. Alleen `stap1` tot en met `stap4` worden herkend.
+- **Doorsturen**: het bericht gaat ongewijzigd naar de webhook van die stap (`beleidskompas-step-<stap>`), met het token van de aanroeper, en het antwoord van de stap gaat ongewijzigd terug.
+- **Geen stap herkend**: dan wordt het bericht niet beantwoord. De hoofdagent geeft `ok: false` terug met een leesbare melding in het tekstveld, zodat die in de chat zichtbaar is. Er is bewust geen standaardstap: een antwoord van de verkeerde stap zou op de pagina onopgemerkt onder de actieve stap terechtkomen.
+
+## Wat de workflow van stap 1 doet
 
 - **Retrieval**: dezelfde keyword/tag-scoring als de Beleidskompas-admineditor, tegen een klein,
   vast setje brondocumenten in [`fixtures/source-passages.json`](fixtures/source-passages.json)
@@ -24,16 +39,15 @@ Wijzig dat bestand niet handmatig. Het script maakt het bij elke uitvoering voll
   uitvoer met dezelfde structuur (nooit stilzwijgend een gok voorwenden als AI-oordeel).
 - **Output**: stabiel JSON-schema met `case_summary`, `public_interest`, `provincial_interest`,
   `reasoning`, `assumptions_missing_info`, `disclaimer`, `citations` (bron op passage-niveau) en
-  `retrieval_trace`. `beleidskompas-hoofdagent.json` geeft dit object ongewijzigd door aan de
-  aanroeper.
+  `retrieval_trace`. De hoofdagent geeft dit object ongewijzigd door aan de aanroeper.
 
 ## Wijzigingen doorvoeren
 
-Voer na een wijziging in deze map de tests uit, genereer de workflow opnieuw en laad hem opnieuw in n8n. Vanuit de root van de repository:
+Voer na een wijziging in deze map de tests uit, genereer de workflows opnieuw en laad ze opnieuw in n8n. Vanuit de root van de repository:
 
 ```sh
 make test-beleidskompas
-make generate-stap1
+make generate-workflows
 make reload-workflows
 ```
 
