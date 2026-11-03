@@ -10,6 +10,9 @@ const workflowIds = workflows.flatMap((entry) => entry.ids);
 if (new Set(workflowIds).size !== workflowIds.length) {
   throw new Error('Discovered workflow IDs are not unique');
 }
+if (workflowIds.some((id) => id.length > 36)) {
+  throw new Error('A workflow ID exceeds the n8n/Postgres 36-character limit');
+}
 
 const assert = (condition, message) => {
   if (!condition) throw new Error(message);

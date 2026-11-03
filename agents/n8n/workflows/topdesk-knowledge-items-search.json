@@ -1,5 +1,5 @@
 {
-  "id": "govchat-topdesk-knowledge-items-search",
+  "id": "3d74c6d5-0475-4b79-9f11-2a876fd1c002",
   "name": "TOPdesk - Search Knowledge Items",
   "description": "Configurable semantic search over a Qdrant collection populated by the TOPdesk ingest workflow.",
   "active": false,

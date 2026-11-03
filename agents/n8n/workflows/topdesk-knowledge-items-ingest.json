@@ -1,5 +1,5 @@
 {
-  "id": "govchat-topdesk-knowledge-items-ingest",
+  "id": "3d74c6d5-0475-4b79-9f11-2a876fd1c001",
   "name": "TOPdesk - Ingest Knowledge Items",
   "description": "Configurable TOPdesk Knowledge Base child-item and attachment ingestion into Qdrant.",
   "active": false,
