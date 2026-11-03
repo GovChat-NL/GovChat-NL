@@ -54,15 +54,18 @@ De ingest-workflow heeft ook een **Run with parameters**-trigger zodat een boven
 
 Als `include_attachments` ontbreekt wordt `configuredIncludeAttachments` gebruikt (standaard `true`). Een rootnummer of ID is vereist voor runtime-aanroepen; geplande/handmatige runs gebruiken standaard `configuredRootKnowledgeItemNumber`.
 
-## 2. Maak credentials aan in n8n
+## 2. Configureer TOPdesk Basic Auth via environment
 
-Geheimen worden **niet** in workflow-JSON, `.env`-bestanden of workflow-inputs gezet. Maak credentials aan in n8n en koppel ze in elke bijbehorende HTTP Request-node via **Authentication**. De workflow-exports bevatten herkenbare credential-placeholders; selecteer na import de echte credentials in de node(s).
+Zet de gebruikersnaam en application password in de lokale `.env`:
 
-### TOPdesk
+- `TOPDESK_API_USERNAME` — bijvoorbeeld `APILAICA`.
+- `TOPDESK_API_PASSWORD` — TOPdesk application password.
 
-De standaardnodes zijn ingesteld op **HTTP Basic Auth**. Maak een n8n HTTP Basic Auth-credential met de TOPdesk API-gebruikersnaam en het bijbehorende API-wachtwoord/application password. Koppel dezelfde credential aan de lijst-, bijlage- en downloadnodes.
+De n8n-bootstrap leest beide waarden, importeert een HTTP Basic Auth-credential met een stabiel ID in de versleutelde n8n credential store en verwijdert daarna het tijdelijke credentialbestand. De ingestnodes voor kennisitems, bijlagen en downloads refereren aan die credential. De geheimen worden niet in workflow-JSON of Code-node inputs opgeslagen en worden niet als runtimevariabelen aan de n8n Code-node doorgegeven. Zorg dat `N8N_ENCRYPTION_KEY` ingesteld is.
 
-Als jouw organisatie TOPdesk met een API-key/header gebruikt, maak dan een n8n **HTTP Header Auth**-credential met de door TOPdesk vereiste headernaam en waarde. Wijzig op alle TOPdesk HTTP Request-nodes de authentication-kind naar HTTP Header Auth en selecteer die credential. De API-key zelf blijft dan opgeslagen in n8n's versleutelde credential store.
+Als beide TOPdesk-variabelen leeg zijn, slaat bootstrap het aanmaken van de credential over; als slechts één is ingevuld, stopt bootstrap met een duidelijke configuratiefout. Na het wijzigen van een credential kun je een herimport forceren met `AGENTS_BOOTSTRAP_FORCE=true`.
+
+De meegeleverde nodes gebruiken HTTP Basic Auth. Als een TOPdesk-tenant uitsluitend een API-key/header accepteert, moet die auth-methode apart worden ingericht in n8n en in de nodes geselecteerd worden; deze bootstrapcredential is Basic Auth.
 
 ### Embeddings en Qdrant
 

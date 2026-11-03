@@ -110,6 +110,42 @@ function importLiteLLMCredential() {
   runN8n([`import:credentials`, `--input=${credentialPath}`]);
 }
 
+function buildTopdeskCredential(env = process.env) {
+  const username = String(env.TOPDESK_API_USERNAME || '').trim();
+  const password = String(env.TOPDESK_API_PASSWORD || '');
+  if (!username && !password) {
+    return null;
+  }
+  if (!username || !password) {
+    throw new Error('TOPDESK_API_USERNAME en TOPDESK_API_PASSWORD moeten beide ingesteld zijn');
+  }
+
+  return {
+    id: '00000000-0000-4000-8000-000000000222',
+    name: 'TOPdesk API - Knowledge Items',
+    type: 'httpBasicAuth',
+    data: { user: username, password },
+  };
+}
+
+function importTopdeskCredential() {
+  const credential = buildTopdeskCredential();
+  if (!credential) {
+    console.log('[bootstrap] TOPdesk credential bootstrap overgeslagen (TOPDESK_API_USERNAME/TOPDESK_API_PASSWORD leeg)');
+    return false;
+  }
+
+  const credentialPath = '/tmp/topdesk-basic-auth-credential.json';
+  fs.writeFileSync(credentialPath, JSON.stringify([credential]), { mode: 0o600 });
+  try {
+    runN8n([`import:credentials`, `--input=${credentialPath}`]);
+  } finally {
+    fs.rmSync(credentialPath, { force: true });
+  }
+  console.log('[bootstrap] TOPdesk HTTP Basic Auth credential geïmporteerd');
+  return true;
+}
+
 function discoverWorkflows(workflowsDir = WORKFLOWS_DIR) {
   if (!fs.existsSync(workflowsDir)) throw new Error(`Workflow directory ontbreekt: ${workflowsDir}`);
 
@@ -251,10 +287,11 @@ async function main() {
   console.log('[bootstrap] Controleer n8n owner setup...');
   await ensureOwner();
   importLiteLLMCredential();
+  importTopdeskCredential();
   importVerifyAndPublish(workflows);
 }
 
-module.exports = { discoverWorkflows, getTopdeskBaseUrl, renderWorkflowTemplate };
+module.exports = { buildTopdeskCredential, discoverWorkflows, getTopdeskBaseUrl, renderWorkflowTemplate };
 
 if (require.main === module) {
   main().catch((error) => {

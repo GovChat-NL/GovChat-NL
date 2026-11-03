@@ -54,7 +54,7 @@
       },
       "type": "n8n-nodes-base.httpRequest", "typeVersion": 4.2,
       "position": [-500, 0], "id": "tdki-ingest-list", "name": "2. Fetch child knowledge items",
-      "credentials": { "httpBasicAuth": { "id": "TOPDESK_CREDENTIAL_ID", "name": "TOPdesk API (configure in n8n)" } }
+      "credentials": { "httpBasicAuth": { "id": "00000000-0000-4000-8000-000000000222", "name": "TOPdesk API - Knowledge Items" } }
     },
     {
       "parameters": {
@@ -109,7 +109,7 @@
       },
       "type": "n8n-nodes-base.httpRequest", "typeVersion": 4.2,
       "position": [20, 180], "id": "tdki-ingest-attachments", "name": "4b. List attachments",
-      "credentials": { "httpBasicAuth": { "id": "TOPDESK_CREDENTIAL_ID", "name": "TOPdesk API (configure in n8n)" } },
+      "credentials": { "httpBasicAuth": { "id": "00000000-0000-4000-8000-000000000222", "name": "TOPdesk API - Knowledge Items" } },
       "onError": "continueRegularOutput"
     },
     {
@@ -127,7 +127,7 @@
       },
       "type": "n8n-nodes-base.httpRequest", "typeVersion": 4.2,
       "position": [540, 180], "id": "tdki-ingest-attachment-download", "name": "6b. Download attachment",
-      "credentials": { "httpBasicAuth": { "id": "TOPDESK_CREDENTIAL_ID", "name": "TOPdesk API (configure in n8n)" } }
+      "credentials": { "httpBasicAuth": { "id": "00000000-0000-4000-8000-000000000222", "name": "TOPdesk API - Knowledge Items" } }
     },
     {
       "parameters": {

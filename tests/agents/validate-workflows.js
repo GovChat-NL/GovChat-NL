@@ -2,7 +2,7 @@
 'use strict';
 
 const path = require('path');
-const { discoverWorkflows, getTopdeskBaseUrl, renderWorkflowTemplate } = require('../../n8n/bootstrap');
+const { buildTopdeskCredential, discoverWorkflows, getTopdeskBaseUrl, renderWorkflowTemplate } = require('../../n8n/bootstrap');
 
 const workflowsDir = path.resolve(__dirname, '../../agents/n8n/workflows');
 const workflows = discoverWorkflows(workflowsDir);
@@ -42,6 +42,27 @@ assert(idOverrideConfig.rootQuery === "parent.id=='sample-id'", 'TOPdesk ID over
 assert(idOverrideConfig.includeAttachments === false, 'TOPdesk per-run attachment toggle must be honored');
 assert(nodeByName(ingest, '7b. Extract attachment text (Apache Tika)'), 'Tika attachment extraction node is missing');
 assert(nodeByName(ingest, '7a. Upsert article in Qdrant'), 'Qdrant article upsert node is missing');
+const topdeskHttpNodes = ingest.nodes.filter((node) => node.type === 'n8n-nodes-base.httpRequest' && node.credentials?.httpBasicAuth);
+assert(topdeskHttpNodes.length === 3, 'Expected the three TOPdesk API HTTP Request nodes');
+assert(topdeskHttpNodes.every((node) => node.credentials?.httpBasicAuth?.id === '00000000-0000-4000-8000-000000000222'), 'TOPdesk API nodes must share the bootstrap-managed Basic Auth credential');
+const bootstrapSource = require('fs').readFileSync(path.resolve(__dirname, '../../n8n/bootstrap.js'), 'utf8');
+for (const marker of ['TOPDESK_API_USERNAME', 'TOPDESK_API_PASSWORD', "type: 'httpBasicAuth'", "data: { user: username, password }"]) {
+  assert(bootstrapSource.includes(marker), `TOPdesk credential bootstrap is missing ${marker}`);
+}
+const generatedTopdeskCredential = buildTopdeskCredential({ TOPDESK_API_USERNAME: 'APILAICA', TOPDESK_API_PASSWORD: 'test-only-password' });
+assert(generatedTopdeskCredential.type === 'httpBasicAuth' && generatedTopdeskCredential.data.user === 'APILAICA', 'TOPdesk Basic Auth credential username/type is incorrect');
+assert(generatedTopdeskCredential.id === '00000000-0000-4000-8000-000000000222', 'TOPdesk Basic Auth credential ID is not stable');
+assert(buildTopdeskCredential({ TOPDESK_API_USERNAME: '', TOPDESK_API_PASSWORD: '' }) === null, 'Empty TOPdesk credentials should be skipped');
+let partialCredentialRejected = false;
+try {
+  buildTopdeskCredential({ TOPDESK_API_USERNAME: 'APILAICA', TOPDESK_API_PASSWORD: '' });
+} catch {
+  partialCredentialRejected = true;
+}
+assert(partialCredentialRejected, 'Incomplete TOPdesk Basic Auth environment must be rejected');
+const composeSource = require('fs').readFileSync(path.resolve(__dirname, '../../docker-compose.yml'), 'utf8');
+assert((composeSource.match(/^\s+TOPDESK_API_USERNAME:/gm) || []).length === 1, 'TOPdesk username must be passed only to the bootstrap service');
+assert((composeSource.match(/^\s+TOPDESK_API_PASSWORD:/gm) || []).length === 1, 'TOPdesk password must be passed only to the bootstrap service');
 assert(nodeByName(search, 'Execute Workflow Trigger'), 'TOPdesk search must be callable as a subworkflow');
 assert(nodeByName(search, '4. Search Qdrant'), 'TOPdesk Qdrant search node is missing');
 assert(nodeByName(search, '5. Return ranked sources'), 'TOPdesk search result formatter is missing');
