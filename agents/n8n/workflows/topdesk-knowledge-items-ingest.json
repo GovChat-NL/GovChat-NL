@@ -81,7 +81,7 @@
       },
       "type": "n8n-nodes-base.httpRequest", "typeVersion": 4.2,
       "position": [280, -180], "id": "tdki-ingest-article-embed", "name": "5a. Embed article",
-      "credentials": { "httpHeaderAuth": { "id": "EMBEDDING_CREDENTIAL_ID", "name": "Embeddings API (configure in n8n)" } }
+      "credentials": { "httpHeaderAuth": { "id": "00000000-0000-4000-8000-000000000333", "name": "LiteLLM Embeddings Header Auth" } }
     },
     {
       "parameters": {
@@ -156,7 +156,7 @@
       },
       "type": "n8n-nodes-base.httpRequest", "typeVersion": 4.2,
       "position": [1320, 180], "id": "tdki-ingest-attachment-embed", "name": "9b. Embed attachment",
-      "credentials": { "httpHeaderAuth": { "id": "EMBEDDING_CREDENTIAL_ID", "name": "Embeddings API (configure in n8n)" } }
+      "credentials": { "httpHeaderAuth": { "id": "00000000-0000-4000-8000-000000000333", "name": "LiteLLM Embeddings Header Auth" } }
     },
     {
       "parameters": {

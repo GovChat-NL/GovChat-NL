@@ -69,7 +69,7 @@ De meegeleverde nodes gebruiken HTTP Basic Auth. Als een TOPdesk-tenant uitsluit
 
 ### Embeddings en Qdrant
 
-Maak voor het embeddings-endpoint een HTTP Header Auth-credential met header `Authorization` en waarde `Bearer <jouw API-key>` (of de header die jouw provider vereist). Koppel deze aan de embeddingnodes.
+Bootstrap maakt ook automatisch de HTTP Header Auth-credential voor embeddings aan: header `Authorization`, waarde `Bearer <LITELLM_API_KEY>`, beheerd in de versleutelde n8n credential store. De ingest- en zoeknodes verwijzen naar deze credential. De endpoint/modelalias blijven configureerbaar in de workflow; voor een andere embeddingsprovider kun je een eigen credential maken en de nodes daarnaar omzetten.
 
 Voor Qdrant zonder API-key is geen credential nodig. Als Qdrant-authenticatie aanstaat, maak een HTTP Header Auth-credential aan, bijvoorbeeld header `api-key`, en koppel die aan de Qdrant-nodes. Configureer credentials afzonderlijk per n8n-omgeving; credential-inhoud wordt niet door bootstrap gedeeld of overschreven.
 

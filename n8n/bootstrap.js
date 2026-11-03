@@ -146,6 +146,28 @@ function importTopdeskCredential() {
   return true;
 }
 
+function buildEmbeddingHeaderCredential(env = process.env) {
+  const apiKey = String(env.LITELLM_API_KEY || '').trim();
+  if (!apiKey) throw new Error("LITELLM_API_KEY ontbreekt; kan n8n embedding header credential niet bootstrap'en");
+  return {
+    id: '00000000-0000-4000-8000-000000000333',
+    name: 'LiteLLM Embeddings Header Auth',
+    type: 'httpHeaderAuth',
+    data: { name: 'Authorization', value: `Bearer ${apiKey}` },
+  };
+}
+
+function importEmbeddingHeaderCredential() {
+  const credentialPath = '/tmp/litellm-embeddings-header-credential.json';
+  fs.writeFileSync(credentialPath, JSON.stringify([buildEmbeddingHeaderCredential()]), { mode: 0o600 });
+  try {
+    runN8n([`import:credentials`, `--input=${credentialPath}`]);
+  } finally {
+    fs.rmSync(credentialPath, { force: true });
+  }
+  console.log('[bootstrap] LiteLLM embeddings HTTP Header Auth credential geïmporteerd');
+}
+
 function discoverWorkflows(workflowsDir = WORKFLOWS_DIR) {
   if (!fs.existsSync(workflowsDir)) throw new Error(`Workflow directory ontbreekt: ${workflowsDir}`);
 
@@ -288,10 +310,17 @@ async function main() {
   await ensureOwner();
   importLiteLLMCredential();
   importTopdeskCredential();
+  importEmbeddingHeaderCredential();
   importVerifyAndPublish(workflows);
 }
 
-module.exports = { buildTopdeskCredential, discoverWorkflows, getTopdeskBaseUrl, renderWorkflowTemplate };
+module.exports = {
+  buildEmbeddingHeaderCredential,
+  buildTopdeskCredential,
+  discoverWorkflows,
+  getTopdeskBaseUrl,
+  renderWorkflowTemplate,
+};
 
 if (require.main === module) {
   main().catch((error) => {

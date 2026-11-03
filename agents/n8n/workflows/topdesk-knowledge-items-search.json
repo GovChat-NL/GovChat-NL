@@ -28,7 +28,7 @@
       },
       "type": "n8n-nodes-base.httpRequest", "typeVersion": 4.2,
       "position": [-260, 0], "id": "tdki-search-embed", "name": "2. Embed question",
-      "credentials": { "httpHeaderAuth": { "id": "EMBEDDING_CREDENTIAL_ID", "name": "Embeddings API (configure in n8n)" } }
+      "credentials": { "httpHeaderAuth": { "id": "00000000-0000-4000-8000-000000000333", "name": "LiteLLM Embeddings Header Auth" } }
     },
     {
       "parameters": {

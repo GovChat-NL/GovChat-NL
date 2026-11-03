@@ -2,7 +2,13 @@
 'use strict';
 
 const path = require('path');
-const { buildTopdeskCredential, discoverWorkflows, getTopdeskBaseUrl, renderWorkflowTemplate } = require('../../n8n/bootstrap');
+const {
+  buildEmbeddingHeaderCredential,
+  buildTopdeskCredential,
+  discoverWorkflows,
+  getTopdeskBaseUrl,
+  renderWorkflowTemplate,
+} = require('../../n8n/bootstrap');
 
 const workflowsDir = path.resolve(__dirname, '../../agents/n8n/workflows');
 const workflows = discoverWorkflows(workflowsDir);
@@ -49,6 +55,12 @@ const bootstrapSource = require('fs').readFileSync(path.resolve(__dirname, '../.
 for (const marker of ['TOPDESK_API_USERNAME', 'TOPDESK_API_PASSWORD', "type: 'httpBasicAuth'", "data: { user: username, password }"]) {
   assert(bootstrapSource.includes(marker), `TOPdesk credential bootstrap is missing ${marker}`);
 }
+const embeddingCredential = buildEmbeddingHeaderCredential({ LITELLM_API_KEY: 'test-only-key' });
+assert(embeddingCredential.type === 'httpHeaderAuth' && embeddingCredential.data.name === 'Authorization', 'LiteLLM header credential schema is incorrect');
+assert(embeddingCredential.data.value === 'Bearer test-only-key', 'LiteLLM Bearer header is not constructed from LITELLM_API_KEY');
+const embeddingHttpNodes = [...ingest.nodes, ...search.nodes].filter((node) => node.credentials?.httpHeaderAuth);
+assert(embeddingHttpNodes.length === 3, 'Expected all three embedding HTTP nodes to use the managed header credential');
+assert(embeddingHttpNodes.every((node) => node.credentials.httpHeaderAuth.id === embeddingCredential.id), 'Embedding nodes must reference the bootstrap-managed credential');
 const generatedTopdeskCredential = buildTopdeskCredential({ TOPDESK_API_USERNAME: 'APILAICA', TOPDESK_API_PASSWORD: 'test-only-password' });
 assert(generatedTopdeskCredential.type === 'httpBasicAuth' && generatedTopdeskCredential.data.user === 'APILAICA', 'TOPdesk Basic Auth credential username/type is incorrect');
 assert(generatedTopdeskCredential.id === '00000000-0000-4000-8000-000000000222', 'TOPdesk Basic Auth credential ID is not stable');
