@@ -37,12 +37,28 @@ assert(nodeByName(ingest, 'Run with parameters').parameters.workflowInputs.value
 assert(nodeByName(ingest, 'Run with parameters').parameters.workflowInputs.values.some((value) => value.name === 'root_knowledge_item_number'), 'TOPdesk parent number input is missing');
 assert(nodeByName(ingest, 'Run with parameters').parameters.workflowInputs.values.some((value) => value.name === 'include_attachments'), 'TOPdesk attachment toggle input is missing');
 assert(nodeByName(ingest, '2. Fetch child knowledge items'), 'TOPdesk item-fetch node is missing');
+assert(nodeByName(ingest, '1b. Check Qdrant collection'), 'TOPdesk ingest must check for its Qdrant collection');
+assert(nodeByName(ingest, '1d. Create Qdrant collection'), 'TOPdesk ingest must create a missing Qdrant collection');
 assert(nodeByName(ingest, '1. Configuration (edit after import)').parameters.jsCode.includes("configuredRootKnowledgeItemNumber='KI 0975'"), 'TOPdesk root item number default is missing');
 assert(nodeByName(ingest, '1. Configuration (edit after import)').parameters.jsCode.includes("embeddingModel:'govchat-embedding'"), 'TOPdesk ingest LiteLLM embedding alias is not configured');
 const ingestConfigCode = nodeByName(ingest, '1. Configuration (edit after import)').parameters.jsCode;
 const runIngestConfig = new Function('$input', ingestConfigCode);
 const defaultIngestConfig = runIngestConfig({ first: () => ({ json: {} }) })[0].json;
 assert(defaultIngestConfig.rootQuery === "parent.number=='KI 0975'", 'TOPdesk default query must select children by parent item number');
+assert(defaultIngestConfig.vectorSize === 3072 && defaultIngestConfig.vectorDistance === 'Cosine', 'Qdrant collection defaults must match the embedding dimensions and distance');
+const collectionDecisionCode = nodeByName(ingest, '1c. Validate or create collection').parameters.jsCode;
+const runCollectionDecision = new Function('$', '$json', collectionDecisionCode);
+const decisionContext = () => ({ first: () => ({ json: defaultIngestConfig }) });
+assert(runCollectionDecision(decisionContext, { statusCode: 404 })[0].json.createCollection === true, 'Missing Qdrant collection should trigger creation');
+const existingCollection = { statusCode: 200, body: { result: { config: { params: { vectors: { size: 3072, distance: 'Cosine' } } } } } };
+assert(runCollectionDecision(decisionContext, existingCollection)[0].json.createCollection === false, 'Existing matching Qdrant collection should be reused');
+let mismatchedCollectionRejected = false;
+try {
+  runCollectionDecision(decisionContext, { statusCode: 200, body: { result: { config: { params: { vectors: { size: 1536, distance: 'Cosine' } } } } } });
+} catch {
+  mismatchedCollectionRejected = true;
+}
+assert(mismatchedCollectionRejected, 'Existing incompatible Qdrant collection must not be overwritten');
 const idOverrideConfig = runIngestConfig({ first: () => ({ json: { root_knowledge_item_id: 'sample-id', include_attachments: false } }) })[0].json;
 assert(idOverrideConfig.rootQuery === "parent.id=='sample-id'", 'TOPdesk ID override must query parent.id');
 assert(idOverrideConfig.includeAttachments === false, 'TOPdesk per-run attachment toggle must be honored');

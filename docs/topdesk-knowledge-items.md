@@ -12,7 +12,7 @@ Beide exports worden automatisch meegenomen door [`n8n/bootstrap.js`](../n8n/boo
 - n8n en Qdrant uit de GovChat Compose-stack.
 - Een TOPdesk Knowledge Base API-account dat de gekozen kennisitems en bijlagen mag lezen.
 - Een OpenAI-compatible embeddings-endpoint, bijvoorbeeld LiteLLM.
-- Een Qdrant-collectie waarvan de vector size en distance overeenkomen met het embeddingmodel. Maak de collectie vooraf aan. De standaardconfiguratie gebruikt `3072` dimensies en `Cosine`; controleer dit voor het door jouw organisatie gekozen model.
+- Qdrant bereikbaar vanuit n8n. De ingest controleert de gekozen collectie en maakt die automatisch aan als hij ontbreekt. De standaardconfiguratie gebruikt `3072` dimensies en `Cosine`.
 - Apache Tika (`tika` in de Compose-stack) wanneer `includeAttachments` ingeschakeld is. Tika is alleen intern bereikbaar. Voor een extern Tika-endpoint kan `tikaUrl` worden aangepast.
 
 ## 1. Stel de workflowconfiguratie in
@@ -36,6 +36,7 @@ Open de workflow in n8n en pas in de node **1. Configuration (edit after import)
 | `tikaUrl` | Tika endpoint, standaard `http://tika:9998/tika`. |
 | `embeddingUrl`, `embeddingModel` | OpenAI-compatible embeddings endpoint en LiteLLM-modelalias. GovChat gebruikt `govchat-embedding`, geconfigureerd in `litellm/config.yaml` als Azure `text-embedding-3-large`. Gebruik bij een andere provider diens modelnaam/alias en endpointvorm (`/embeddings` of `/v1/embeddings`). Dezelfde waarden moeten in de **1. Validate and configure search**-node van de zoekworkflow staan. |
 | `qdrantUrl`, `collection`, `vectorSize` | Qdrant endpoint, collectie en vectorafmeting. |
+| `vectorDistance` | Qdrant afstandsmaat; standaard `Cosine`. Een ontbrekende collectie wordt met deze vectorconfiguratie aangemaakt. |
 | `visibleOnly` | Indexeer alleen items waarvan TOPdesk `sspVisibility` als `VISIBLE` rapporteert. |
 | `top_k`, `score_threshold` | Optionele zoekinput voor maximum aantal resultaten en minimale Qdrant-score. De zoekworkflow begrenst `top_k` op 1–50. |
 
@@ -73,9 +74,11 @@ Bootstrap maakt ook automatisch de HTTP Header Auth-credential voor embeddings a
 
 Voor Qdrant zonder API-key is geen credential nodig. Als Qdrant-authenticatie aanstaat, maak een HTTP Header Auth-credential aan, bijvoorbeeld header `api-key`, en koppel die aan de Qdrant-nodes. Configureer credentials afzonderlijk per n8n-omgeving; credential-inhoud wordt niet door bootstrap gedeeld of overschreven.
 
-## 3. Controleer de Qdrant-collectie en activeer
+## 3. Test de ingest en activeer
 
-Maak de collectie met de geconfigureerde vector size en `Cosine` distance aan vóór de eerste ingest-run. Gebruik een aparte collectie per dataset/organisatie als isolatie vereist is. De workflow gebruikt TOPdesk `id` als stabiele punt-id en bewaart de visibility-status, titel, beschrijving, trefwoorden, datums, inhoud en bronverwijzing in de payload.
+De ingest controleert eerst of de ingestelde collectie bestaat. Bij een 404 maakt hij die aan met de ingestelde vector size en distance. Als de collectie al bestaat maar een andere vectorconfiguratie heeft, stopt hij met een mismatch-fout; hij wijzigt of verwijdert geen bestaande collectie. Gebruik een aparte collectienaam per dataset/organisatie als isolatie vereist is. De workflow gebruikt TOPdesk `id` als stabiele punt-id en bewaart de visibility-status, titel, beschrijving, trefwoorden, datums, inhoud en bronverwijzing in de payload.
+
+Voer ingest één keer uit voordat je de zoekworkflow test, zodat de collectie bestaat en punten bevat.
 
 Voer eerst **Test workflow** uit met een kleine testcollectie. Controleer de TOPdesk-response, embeddingdimensie, Tika-extractie en Qdrant-upsert. Activeer daarna de ingest-workflow om de ingestelde planning te gebruiken. De zoekworkflow is bedoeld om vanuit een bovenliggende n8n-workflow of tool aangeroepen te worden; voer bij het testen `question` mee en eventueel `top_k`, `collection` en `score_threshold`.
 

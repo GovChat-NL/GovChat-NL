@@ -33,10 +33,54 @@
     },
     {
       "parameters": {
-        "jsCode": "// Set a default parent item number for manual/scheduled runs; runtime ID or number overrides it. TOPdesk URLs are rendered by bootstrap.\nconst configuredRootKnowledgeItemId='';const configuredRootKnowledgeItemNumber='KI 0975';const configuredIncludeAttachments=true;const input=$input.first()?.json||{};const rootKnowledgeItemId=String(input.root_knowledge_item_id||input.rootKnowledgeItemId||configuredRootKnowledgeItemId).trim();const rootKnowledgeItemNumber=String(input.root_knowledge_item_number||input.rootKnowledgeItemNumber||configuredRootKnowledgeItemNumber).trim();if(!rootKnowledgeItemId&&!rootKnowledgeItemNumber)throw new Error('Provide root_knowledge_item_id or root_knowledge_item_number');const rootQueryField=rootKnowledgeItemId?'parent.id':'parent.number';const rootQueryValue=rootKnowledgeItemId||rootKnowledgeItemNumber;if(rootQueryValue.includes(\"'\"))throw new Error('Root item selector cannot contain a single quote');const rootQuery=rootQueryField+\"=='\"+rootQueryValue+\"'\";const rawAttachments=input.include_attachments??input.includeAttachments;const includeAttachments=rawAttachments===undefined?configuredIncludeAttachments:(rawAttachments===true||String(rawAttachments).toLowerCase()==='true');return [{json:{topdeskBaseUrl:'__TOPDESK_BASE_URL__',rootKnowledgeItemId,rootKnowledgeItemNumber,rootQuery,pageSize:500,fields:'content,title,status,visibility,description,keywords,creationDate,modificationDate',publicKnowledgeItemUrl:'__TOPDESK_PUBLIC_BASE_URL__',includeAttachments,tikaUrl:'http://tika:9998/tika',embeddingUrl:'http://litellm:4000/embeddings',embeddingModel:'govchat-embedding',qdrantUrl:'http://qdrant:6333',collection:'topdesk_knowledge_items',vectorSize:3072,visibleOnly:true}}];"
+        "jsCode": "// Set the collection vector configuration together with the other non-secret deployment defaults. Runtime root/attachment inputs override their defaults.\nconst configuredRootKnowledgeItemId='';const configuredRootKnowledgeItemNumber='KI 0975';const configuredIncludeAttachments=true;const input=$input.first()?.json||{};const rootKnowledgeItemId=String(input.root_knowledge_item_id||input.rootKnowledgeItemId||configuredRootKnowledgeItemId).trim();const rootKnowledgeItemNumber=String(input.root_knowledge_item_number||input.rootKnowledgeItemNumber||configuredRootKnowledgeItemNumber).trim();if(!rootKnowledgeItemId&&!rootKnowledgeItemNumber)throw new Error('Provide root_knowledge_item_id or root_knowledge_item_number');const rootQueryField=rootKnowledgeItemId?'parent.id':'parent.number';const rootQueryValue=rootKnowledgeItemId||rootKnowledgeItemNumber;if(rootQueryValue.includes(\"'\"))throw new Error('Root item selector cannot contain a single quote');const rootQuery=rootQueryField+\"=='\"+rootQueryValue+\"'\";const rawAttachments=input.include_attachments??input.includeAttachments;const includeAttachments=rawAttachments===undefined?configuredIncludeAttachments:(rawAttachments===true||String(rawAttachments).toLowerCase()==='true');return [{json:{topdeskBaseUrl:'__TOPDESK_BASE_URL__',rootKnowledgeItemId,rootKnowledgeItemNumber,rootQuery,pageSize:500,fields:'content,title,status,visibility,description,keywords,creationDate,modificationDate',publicKnowledgeItemUrl:'__TOPDESK_PUBLIC_BASE_URL__',includeAttachments,tikaUrl:'http://tika:9998/tika',embeddingUrl:'http://litellm:4000/embeddings',embeddingModel:'govchat-embedding',qdrantUrl:'http://qdrant:6333',collection:'topdesk_knowledge_items',vectorSize:3072,vectorDistance:'Cosine',visibleOnly:true}}];"
       },
       "type": "n8n-nodes-base.code", "typeVersion": 2,
       "position": [-760, 0], "id": "tdki-ingest-config", "name": "1. Configuration (edit after import)"
+    },
+    {
+      "parameters": {
+        "url": "={{ $('1. Configuration (edit after import)').first().json.qdrantUrl.replace(/\\/$/,'') + '/collections/' + encodeURIComponent($('1. Configuration (edit after import)').first().json.collection) }}",
+        "options": { "timeout": 15000, "response": { "response": { "responseFormat": "json", "fullResponse": true, "neverError": true } } }
+      },
+      "type": "n8n-nodes-base.httpRequest", "typeVersion": 4.2,
+      "position": [-520, -180], "id": "tdki-qdrant-check", "name": "1b. Check Qdrant collection"
+    },
+    {
+      "parameters": {
+        "jsCode": "const cfg=$('1. Configuration (edit after import)').first().json;const response=$json;const status=Number(response.statusCode||0);if(status===404)return [{json:{...cfg,createCollection:true}}];if(status<200||status>=300)throw new Error('Qdrant collection check failed with HTTP '+status);const body=response.body||response;const vectors=body.result?.config?.params?.vectors;if(!vectors||typeof vectors.size!=='number')throw new Error('Existing Qdrant collection uses named vectors or has an unsupported vector configuration; expected a single unnamed vector');if(Number(vectors.size)!==Number(cfg.vectorSize)||String(vectors.distance)!==String(cfg.vectorDistance))throw new Error('Existing Qdrant collection vector config mismatch: expected '+cfg.vectorSize+' '+cfg.vectorDistance+', got '+vectors.size+' '+vectors.distance);return [{json:{...cfg,createCollection:false}}];"
+      },
+      "type": "n8n-nodes-base.code", "typeVersion": 2,
+      "position": [-280, -180], "id": "tdki-qdrant-decision", "name": "1c. Validate or create collection"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict", "version": 2 },
+          "conditions": [ { "leftValue": "={{ $json.createCollection }}", "rightValue": true, "operator": { "type": "boolean", "operation": "true", "singleValue": true } } ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if", "typeVersion": 2.2,
+      "position": [-40, -180], "id": "tdki-qdrant-if-missing", "name": "Collection missing?"
+    },
+    {
+      "parameters": {
+        "method": "PUT", "url": "={{ $json.qdrantUrl.replace(/\\/$/,'') + '/collections/' + encodeURIComponent($json.collection) }}",
+        "sendHeaders": true, "headerParameters": { "parameters": [ { "name": "Content-Type", "value": "application/json" } ] },
+        "sendBody": true, "specifyBody": "json", "jsonBody": "={{ JSON.stringify({vectors:{size:$json.vectorSize,distance:$json.vectorDistance}}) }}",
+        "options": { "timeout": 30000 }
+      },
+      "type": "n8n-nodes-base.httpRequest", "typeVersion": 4.2,
+      "position": [200, -280], "id": "tdki-qdrant-create", "name": "1d. Create Qdrant collection"
+    },
+    {
+      "parameters": {
+        "jsCode": "const cfg=$('1. Configuration (edit after import)').first().json;const response=$json;if(response.error||response.status==='error')throw new Error('Qdrant collection creation failed: '+JSON.stringify(response));return [{json:cfg}];"
+      },
+      "type": "n8n-nodes-base.code", "typeVersion": 2,
+      "position": [440, -280], "id": "tdki-qdrant-created", "name": "1e. Continue after collection create"
     },
     {
       "parameters": {
@@ -180,7 +224,12 @@
     "Manual run": { "main": [[{ "node": "1. Configuration (edit after import)", "type": "main", "index": 0 }]] },
     "Weekly schedule": { "main": [[{ "node": "1. Configuration (edit after import)", "type": "main", "index": 0 }]] },
     "Run with parameters": { "main": [[{ "node": "1. Configuration (edit after import)", "type": "main", "index": 0 }]] },
-    "1. Configuration (edit after import)": { "main": [[{ "node": "2. Fetch child knowledge items", "type": "main", "index": 0 }]] },
+    "1. Configuration (edit after import)": { "main": [[{ "node": "1b. Check Qdrant collection", "type": "main", "index": 0 }]] },
+    "1b. Check Qdrant collection": { "main": [[{ "node": "1c. Validate or create collection", "type": "main", "index": 0 }]] },
+    "1c. Validate or create collection": { "main": [[{ "node": "Collection missing?", "type": "main", "index": 0 }]] },
+    "Collection missing?": { "main": [[{ "node": "1d. Create Qdrant collection", "type": "main", "index": 0 }], [{ "node": "2. Fetch child knowledge items", "type": "main", "index": 0 }]] },
+    "1d. Create Qdrant collection": { "main": [[{ "node": "1e. Continue after collection create", "type": "main", "index": 0 }]] },
+    "1e. Continue after collection create": { "main": [[{ "node": "2. Fetch child knowledge items", "type": "main", "index": 0 }]] },
     "2. Fetch child knowledge items": { "main": [[{ "node": "3. Normalize knowledge items", "type": "main", "index": 0 }]] },
     "3. Normalize knowledge items": { "main": [[{ "node": "4a. Prepare article text", "type": "main", "index": 0 }, { "node": "Attachments enabled?", "type": "main", "index": 0 }]] },
     "Attachments enabled?": { "main": [[{ "node": "4b. List attachments", "type": "main", "index": 0 }], []] },
