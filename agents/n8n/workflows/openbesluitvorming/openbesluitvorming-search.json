@@ -1,0 +1,254 @@
+{
+  "id": "govchat-openbesluitvorming-search",
+  "name": "OpenBesluitvorming - High Recall Search",
+  "description": "Generic inactive high-recall search based on the original validate/embed/retrieve/format/rerank/cut-off architecture. It uses query variants, broad candidate retrieval, reciprocal-rank fusion, rerank fallback, provenance, and explicit coverage limits.",
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "saveExecutionProgress": true,
+    "saveManualExecutions": true,
+    "availableInMCP": false
+  },
+  "nodes": [
+    {
+      "parameters": {
+        "inputSource": "passthrough"
+      },
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        -1080,
+        0
+      ],
+      "id": "ob-search-trigger",
+      "name": "Execute Workflow Trigger"
+    },
+    {
+      "parameters": {
+        "jsCode": "const input=$input.first()?.json||{};\nconst query=String(input.query||input.question||input.text||'').trim();\nif(query.length<2) throw new Error('A search query of at least two characters is required');\nconst integer=(value,fallback,min,max)=>{const n=Number(value);return Number.isFinite(n)?Math.max(min,Math.min(max,Math.floor(n))):fallback;};\nconst flag=value=>value===true||String(value).toLowerCase()==='true';\nconst sourceKey=String(input.source_key||input.sourceKey||input.organization||'').trim()||null;\nconst collection=String(input.collection||input.collectionName||'openraadsinformatie_v1').trim();\nconst stopwords=new Set(['aan','als','bij','dan','dat','de','den','der','des','die','dit','door','een','en','er','het','hun','in','is','met','naar','niet','of','om','onder','op','over','te','ten','ter','uit','van','voor','wat','we','wel','wie','zijn','zo','zou']);\nconst terms=(query.toLowerCase().match(/[\\p{L}\\p{N}][\\p{L}\\p{N}-]{2,}/gu)||[]).filter(word=>!stopwords.has(word));\nconst variants=[query]; const uniqueTerms=[...new Set(terms)].slice(0,12); if(uniqueTerms.length>=2) variants.push(uniqueTerms.join(' '));\nfor(const match of query.matchAll(/[\"“”]([^\"“”]{3,120})[\"“”]/g)){const phrase=match[1].trim();if(!variants.includes(phrase))variants.push(phrase);}\nreturn [{json:{query,query_variants:[...new Set(variants)].slice(0,4),keywords:uniqueTerms,source_key:sourceKey,collection,candidate_limit:integer(input.candidate_limit||input.top_k,500,50,500),rerank_limit:integer(input.rerank_limit,500,50,500),result_limit:integer(input.result_limit,40,10,100),min_relevance_score:Number.isFinite(Number(input.min_relevance_score))?Number(input.min_relevance_score):0,relative_dropoff:Number.isFinite(Number(input.relative_dropoff))?Number(input.relative_dropoff):0,include_content:flag(input.include_content),qdrant_base:String(input.qdrant_base||input.qdrantUrl||'http://qdrant:6333').replace(/\\/$/,''),litellm_base:String(input.litellm_base||input.litellmUrl||'http://litellm:4000').replace(/\\/$/,''),litellm_api_key:String(input.litellm_api_key||input.litellmApiKey||$env.LITELLM_API_KEY||''),embedding_model:String(input.embedding_model||input.embeddingModel||'govchat-embedding'),reranker_model:String(input.reranker_model||input.rerankerModel||'cohere-rerank-v4.0-fast').trim()}}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -860,
+        0
+      ],
+      "id": "ob-search-validate",
+      "name": "1. Validate And Normalise Parameters"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $json.litellm_base + \"/embeddings\" }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $json.litellm_api_key }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ model: $json.embedding_model, input: $json.query_variants }) }}",
+        "options": {
+          "timeout": 45000
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -610,
+        0
+      ],
+      "id": "ob-search-embed",
+      "name": "2. Embed Search Variants (LiteLLM)"
+    },
+    {
+      "parameters": {
+        "jsCode": "const config=$('1. Validate And Normalise Parameters').first().json; const data=$input.first().json?.data;\nif(!Array.isArray(data)||data.length!==config.query_variants.length) throw new Error('Embedding response did not contain all requested query variants');\nconst filter=config.source_key?{must:[{key:'source_key',match:{value:config.source_key}}]}:undefined;\nreturn data.map((entry,index)=>{if(!Array.isArray(entry.embedding)||entry.embedding.length!==3072) throw new Error('Unexpected query embedding dimension');return {json:{...config,variant:config.query_variants[index],request_body:{query:entry.embedding,limit:config.candidate_limit,with_payload:true,with_vector:false,filter}}};});"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -350,
+        0
+      ],
+      "id": "ob-search-candidates",
+      "name": "3. Retrieve Broad Candidate Pool (Qdrant)"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $json.qdrant_base + \"/collections/\" + encodeURIComponent($json.collection) + \"/points/query\" }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.request_body) }}",
+        "options": {
+          "timeout": 45000
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -100,
+        0
+      ],
+      "id": "ob-search-qdrant",
+      "name": "3b. Query Qdrant Candidate Pool"
+    },
+    {
+      "parameters": {
+        "jsCode": "const config=$('1. Validate And Normalise Parameters').first().json; const requests=$('3. Retrieve Broad Candidate Pool (Qdrant)').all(); const responses=$input.all(); const byDocument=new Map();\nfor(let i=0;i<responses.length;i++){const points=responses[i].json?.result?.points||[];const variant=requests[i]?.json?.variant||`variant-${i+1}`;for(let rank=0;rank<points.length;rank++){const point=points[rank]||{},payload=point.payload||{},documentId=String(payload.source_id||point.id||'');if(!documentId)continue;const row=byDocument.get(documentId)||{document_id:documentId,point,payload,semantic_score:0,rrf_score:0,best_rank:Infinity,matched_variants:[]};row.semantic_score=Math.max(row.semantic_score,Number(point.score||0));row.rrf_score+=1/(60+rank+1);row.best_rank=Math.min(row.best_rank,rank+1);if(!row.matched_variants.includes(variant))row.matched_variants.push(variant);byDocument.set(documentId,row);}}\nconst ranked=[...byDocument.values()].sort((a,b)=>b.rrf_score-a.rrf_score||b.semantic_score-a.semantic_score); const hardCeiling=500; const requestedCeiling=Math.min(config.rerank_limit,hardCeiling); const boundaryIndex=Math.min(ranked.length,requestedCeiling); const rerankThreshold=boundaryIndex?ranked[boundaryIndex-1].rrf_score:null; const candidates=ranked.slice(0,boundaryIndex);\nconst documents=candidates.map(row=>{const p=row.payload||{};return ['Title: '+String(p.title||p.file_name||''),'Date: '+String(p.date||''),'Organisation: '+String(p.organization||''),'Classification: '+JSON.stringify(p.classification||[]),'Content: '+String(p.content_preview||'').slice(0,3000)].join('\\n');});\nconst excluded=ranked.slice(boundaryIndex); const excludedSummary=excluded.length?{count:excluded.length,first_excluded_rrf_score:excluded[0].rrf_score,last_excluded_rrf_score:excluded[excluded.length-1].rrf_score,reason:`Bounded to ${requestedCeiling} documents for reranker capacity; candidates are ordered by fused reciprocal-rank score and remain observable in this audit summary.`}:null;\nreturn [{json:{...config,candidates,documents,rerank_request:{model:config.reranker_model,query:config.query,documents,top_n:documents.length},candidate_pool:{query_variants:config.query_variants,candidate_limit_per_variant:config.candidate_limit,raw_candidates:responses.reduce((sum,item)=>sum+(item.json?.result?.points||[]).length,0),unique_documents:ranked.length,rerank_candidates:candidates.length,rerank_ceiling:requestedCeiling,rerank_threshold_rrf_score:rerankThreshold,excluded_from_rerank:excludedSummary}}}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        160,
+        0
+      ],
+      "id": "ob-search-format",
+      "name": "4. Format Candidate Pool For Reranker"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $json.litellm_base + \"/v1/rerank\" }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $json.litellm_api_key }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.rerank_request) }}",
+        "options": {
+          "timeout": 45000
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        420,
+        0
+      ],
+      "id": "ob-search-rerank",
+      "name": "5. Rerank Candidate Pool (LiteLLM)",
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const prepared=$('4. Format Candidate Pool For Reranker').first().json;const response=$input.first().json||{};const rerank=Array.isArray(response.results)?response.results:[];const scores=new Map(rerank.map(item=>[Number(item.index),Number(item.relevance_score||0)]));\nconst ranked=prepared.candidates.map((candidate,index)=>({candidate,rerank_score:scores.get(index),score:scores.has(index)?scores.get(index):candidate.rrf_score*100})).sort((a,b)=>b.score-a.score);const topScore=ranked[0]?.score||0;const threshold=prepared.min_relevance_score>0?Math.max(prepared.min_relevance_score,prepared.relative_dropoff>0?topScore*(1-prepared.relative_dropoff):0):0;\nconst selected=(threshold>0?ranked.filter(item=>item.score>=threshold):ranked).slice(0,prepared.result_limit);const output=(selected.length?selected:ranked.slice(0,prepared.result_limit)).map((item,index)=>{const p=item.candidate.payload||{};return {rank:index+1,relevance_score:Number(item.score.toFixed(6)),semantic_score:item.candidate.semantic_score,rerank_score:item.rerank_score,matched_query_variants:item.candidate.matched_variants,source:{source_id:p.source_id||item.candidate.document_id,title:p.title||p.file_name||null,organization:p.organization||null,date:p.date||null,meeting_id:p.meeting_id||null,original_url:p.original_url||p.download_url||p.pdf_url||null,download_url:p.download_url||null,pdf_url:p.pdf_url||null},metadata:{supplier:p.supplier||null,classification:p.classification||[],last_discussed_at:p.last_discussed_at||null,referenced_by:p.referenced_by||null,indexed_at:p.indexed_at||null},...(prepared.include_content?{content_preview:String(p.content_preview||'').slice(0,3000)}:{})};});\nreturn [{json:{query:prepared.query,source_key:prepared.source_key,collection:prepared.collection,results:output,candidate_pool:prepared.candidate_pool,reranking:{requested:Boolean(prepared.reranker_model),applied:rerank.length>0,fallback_used:Boolean(prepared.reranker_model)&&rerank.length===0},coverage_notice:'High-recall retrieval reduces omission risk but cannot prove completeness. All fused documents up to the configured rerank ceiling (maximum 500) are reranked. If candidate_pool.excluded_from_rerank is present, inspect its score boundary or narrow the question/filter before treating the answer as sufficiently covered. For politically sensitive matters, inspect primary-source links, repeat searches with alternative wording, broaden or remove filters, and verify claims against underlying documents.',no_results:output.length===0}}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        680,
+        0
+      ],
+      "id": "ob-search-output",
+      "name": "6. Dynamic Cut-off, Coverage And Provenance"
+    }
+  ],
+  "connections": {
+    "Execute Workflow Trigger": {
+      "main": [
+        [
+          {
+            "node": "1. Validate And Normalise Parameters",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "1. Validate And Normalise Parameters": {
+      "main": [
+        [
+          {
+            "node": "2. Embed Search Variants (LiteLLM)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "2. Embed Search Variants (LiteLLM)": {
+      "main": [
+        [
+          {
+            "node": "3. Retrieve Broad Candidate Pool (Qdrant)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "3. Retrieve Broad Candidate Pool (Qdrant)": {
+      "main": [
+        [
+          {
+            "node": "3b. Query Qdrant Candidate Pool",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "3b. Query Qdrant Candidate Pool": {
+      "main": [
+        [
+          {
+            "node": "4. Format Candidate Pool For Reranker",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "4. Format Candidate Pool For Reranker": {
+      "main": [
+        [
+          {
+            "node": "5. Rerank Candidate Pool (LiteLLM)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "5. Rerank Candidate Pool (LiteLLM)": {
+      "main": [
+        [
+          {
+            "node": "6. Dynamic Cut-off, Coverage And Provenance",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  }
+}

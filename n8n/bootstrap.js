@@ -7,7 +7,7 @@ const path = require('path');
 
 const N8N_URL = 'http://n8n:5678';
 const WORKFLOWS_DIR = '/workspace/agents/n8n/workflows';
-const MARKER_FILE = '/home/node/.n8n/.govchat-seeded-v5';
+const MARKER_FILE = '/home/node/.n8n/.govchat-seeded-v6';
 
 function runN8n(args) {
   execFileSync('n8n', args, { stdio: 'inherit' });

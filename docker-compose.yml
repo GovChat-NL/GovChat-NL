@@ -45,6 +45,7 @@ services:
       PORT: "3080"
       NODE_ENV: production
       NODE_OPTIONS: --require=/app/govchat-overlay/librechat-tool-event-preload.js
+      TEMP_CHAT_RETENTION_HOURS: ${GOVCHAT_CHAT_RETENTION_HOURS:-720}
       # Include Agents endpoint by default so the Agents UI is visible in LibreChat.
       ENDPOINTS: ${ENDPOINTS:-custom,agents}
       DOMAIN_CLIENT: ${PUBLIC_BASE_URL}
@@ -83,7 +84,7 @@ services:
       OPENID_CALLBACK_URL: /oauth/openid/callback
       OPENID_BUTTON_LABEL: Inloggen met Microsoft
       OPENID_USE_END_SESSION_ENDPOINT: "true"
-      DEBUG_OPENID_REQUESTS: "true"
+      DEBUG_OPENID_REQUESTS: "${DEBUG_OPENID_REQUESTS:-false}"
       OPENID_GENERATE_NONCE: "true"
 
 
@@ -127,12 +128,52 @@ services:
       ADMIN_PANEL_URL: ${ADMIN_PANEL_PUBLIC_URL}
 
       # --- Logging ---
-      DEBUG_LOGGING: "true"
-      DEBUG_CONSOLE: "true"
+      DEBUG_LOGGING: "${DEBUG_LOGGING:-false}"
+      DEBUG_CONSOLE: "${DEBUG_CONSOLE:-false}"
 
       # --- Email (uitgeschakeld) ---
       EMAIL_SERVICE: ""
 
+    networks:
+      - librechat-net
+
+  # ---------------------------------------------------------------------------
+  #  LibreChat-aware retention worker (same pinned image, no HTTP listener)
+  #  Uses LibreChat's model and file-service deletion paths, not raw DB deletes.
+  # ---------------------------------------------------------------------------
+  govchat-retention:
+    image: registry.librechat.ai/danny-avila/librechat:v0.8.7
+    container_name: govchat-retention
+    restart: unless-stopped
+    command: ["node", "/app/govchat-overlay/govchat-retention-worker.js"]
+    depends_on:
+      librechat-permissions:
+        condition: service_completed_successfully
+      mongodb:
+        condition: service_healthy
+    volumes:
+      - ${LIBRECHAT_CONFIG_PATH:-./librechat.yaml}:/app/librechat.yaml:ro
+      - /opt/librechat/uploads:/app/uploads
+      - /opt/librechat/images:/app/client/public/images
+      - ./scripts/govchat-retention-policy.js:/app/govchat-overlay/govchat-retention-policy.js:ro
+      - ./scripts/govchat-retention-worker.js:/app/govchat-overlay/govchat-retention-worker.js:ro
+    environment:
+      NODE_ENV: production
+      # The standalone worker uses process-local caches; CI disables LibreChat's
+      # periodic cache-maintenance timer, which is normally stopped by the HTTP server.
+      CI: "true"
+      DOMAIN_CLIENT: ${PUBLIC_BASE_URL}
+      DOMAIN_SERVER: ${PUBLIC_BASE_URL}
+      TZ: ${TZ:-Europe/Amsterdam}
+      MONGO_URI: mongodb://${MONGO_ROOT_USER}:${MONGO_ROOT_PASS}@mongodb:27017/LibreChat?authSource=admin
+      CREDS_KEY: ${CREDS_KEY}
+      CREDS_IV: ${CREDS_IV}
+      GOVCHAT_CHAT_RETENTION_HOURS: ${GOVCHAT_CHAT_RETENTION_HOURS:-720}
+      GOVCHAT_UPLOAD_RETENTION_DAYS: ${GOVCHAT_UPLOAD_RETENTION_DAYS:-30}
+      GOVCHAT_PROMPT_RETENTION_DAYS: ${GOVCHAT_PROMPT_RETENTION_DAYS:-730}
+      GOVCHAT_GENERATED_IMAGE_RETENTION_DAYS: ${GOVCHAT_GENERATED_IMAGE_RETENTION_DAYS:-30}
+      GOVCHAT_GENERATED_IMAGES_DIR: /app/client/public/images
+      GOVCHAT_RETENTION_SWEEP_INTERVAL_MINUTES: ${GOVCHAT_RETENTION_SWEEP_INTERVAL_MINUTES:-60}
     networks:
       - librechat-net
 
@@ -147,11 +188,12 @@ services:
     restart: "no"
     command: >
       sh -lc "
-        mkdir -p /app/uploads/temp /app/images &&
-        chown -R 1000:1000 /app/uploads /app/images &&
-        chmod -R u+rwX,g+rwX /app/uploads /app/images
+        mkdir -p /app/uploads/temp /app/images /app/n8n-logs &&
+        chown -R 1000:1000 /app/uploads /app/images /app/n8n-logs &&
+        chmod -R u+rwX,g+rwX /app/uploads /app/images /app/n8n-logs
       "
     volumes:
+      - /opt/librechat/logs/n8n:/app/n8n-logs
       - /opt/librechat/uploads:/app/uploads
       - /opt/librechat/images:/app/images
     networks:
@@ -237,9 +279,21 @@ services:
   #  - Injecteert GovChat overlay assets (help + app launcher) in HTML
   # ---------------------------------------------------------------------------
   librechat-proxy:
-    image: nginx:1.27-alpine
+    image: ${NGINX_IMAGE:-nginx:1.28-alpine}
     container_name: librechat-proxy
     restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - SETUID
+      - SETGID
+    read_only: true
+    tmpfs:
+      - /var/cache/nginx
+      - /var/run
     depends_on:
       librechat:
         condition: service_started
@@ -247,6 +301,8 @@ services:
       - "${LC_PORT:-3080}:3080"
     volumes:
       - ./nginx/librechat-overlay.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./nginx/trusted-proxies.conf:/etc/nginx/trusted-proxies.conf:ro
+      - ./nginx/trusted-proxies.geo:/etc/nginx/trusted-proxies.geo:ro
       - /opt/librechat/overlay/publish:/opt/librechat/overlay/publish:ro
       - ./overlay/src:/opt/librechat/overlay/src:ro
     networks:
@@ -255,14 +311,15 @@ services:
   # ---------------------------------------------------------------------------
   #  MongoDB 8.0.20 - Gesprekken, gebruikers, agents, presets
   #  Gepinde versie conform officieel LibreChat docker-compose
-  #  Poort open voor n8n (andere VM). Auth via MONGO_ROOT_USER/PASS.
+  #  Hostpoort standaard alleen op localhost; gebruik VPN/firewall of SSH-tunnel
+  #  als remote MongoDB-toegang expliciet noodzakelijk is.
   # ---------------------------------------------------------------------------
   mongodb:
     image: mongo:8.0.20
     container_name: librechat-mongodb
     restart: unless-stopped
     ports:
-      - "${MONGO_PORT:-27017}:27017"
+      - "${MONGO_BIND_IP:-127.0.0.1}:${MONGO_PORT:-27017}:27017"
     volumes:
       - mongodb-data:/data/db
     environment:
@@ -348,7 +405,7 @@ services:
       litellm-postgres:
         condition: service_healthy
     ports:
-      - "${LITELLM_PORT:-4000}:4000"
+      - "127.0.0.1:${LITELLM_PORT:-4000}:4000"
     environment:
       DATABASE_URL: postgresql://litellm:${LITELLM_POSTGRES_PASSWORD}@litellm-postgres:5432/litellm
       DATABASE_CONNECTION_POOL_LIMIT: ${LITELLM_DB_POOL_LIMIT:-10}
@@ -414,7 +471,7 @@ services:
       - librechat-net
 
   # ---------------------------------------------------------------------------
-  #  n8n - workflow engine (niet publiek geëxposed)
+  #  n8n - workflow engine (alleen intern op het Docker-netwerk)
   #  - Versimpelaar webhook draait hierop
   #  - Alleen webhook route wordt via nginx geproxied
   # ---------------------------------------------------------------------------
@@ -423,12 +480,12 @@ services:
     container_name: librechat-n8n
     restart: unless-stopped
     depends_on:
+      librechat-permissions:
+        condition: service_completed_successfully
       n8n-postgres:
         condition: service_healthy
       litellm:
         condition: service_healthy
-    ports:
-      - "5678:5678"
     expose:
       - "5678"
       - "5679"
@@ -460,7 +517,20 @@ services:
       WEBHOOK_URL: http://localhost:5678
       GENERIC_TIMEZONE: ${TZ:-Europe/Amsterdam}
       TZ: ${TZ:-Europe/Amsterdam}
-      N8N_LOG_LEVEL: ${N8N_LOG_LEVEL:-warn}
+      N8N_LOG_LEVEL: error
+      N8N_LOG_OUTPUT: file
+      N8N_LOG_FILE_LOCATION: /var/log/n8n/n8n.log
+      N8N_LOG_FILE_SIZE_MAX: ${N8N_LOG_FILE_SIZE_MAX:-10485760}
+      N8N_LOG_FILE_COUNT_MAX: ${N8N_LOG_FILE_COUNT_MAX:-1000}
+      EXECUTIONS_DATA_SAVE_ON_ERROR: all
+      EXECUTIONS_DATA_SAVE_ON_SUCCESS: none
+      EXECUTIONS_DATA_SAVE_MANUAL_EXECUTIONS: "false"
+      EXECUTIONS_DATA_PRUNE: "true"
+      EXECUTIONS_DATA_MAX_AGE: ${N8N_EXECUTION_RETENTION_HOURS:-718}
+      EXECUTIONS_DATA_PRUNE_MAX_COUNT: ${N8N_EXECUTION_PRUNE_MAX_COUNT:-10000}
+      EXECUTIONS_DATA_HARD_DELETE_BUFFER: ${N8N_EXECUTION_HARD_DELETE_BUFFER_HOURS:-0}
+      EXECUTIONS_DATA_PRUNE_HARD_DELETE_INTERVAL: ${N8N_EXECUTION_HARD_DELETE_INTERVAL_MINUTES:-15}
+      EXECUTIONS_DATA_PRUNE_SOFT_DELETE_INTERVAL: ${N8N_EXECUTION_SOFT_DELETE_INTERVAL_MINUTES:-60}
       N8N_PUBLIC_API_DISABLED: "true"
       N8N_BLOCK_FILE_ACCESS_TO_N8N_FILES: "true"
       # Nodig voor Code node gebruik van $env.* in external runners mode
@@ -488,6 +558,7 @@ services:
       CRAWLER_INTERNAL_TOKEN: ${CRAWLER_INTERNAL_TOKEN:-${N8N_WEBHOOK_TOKEN}}
     volumes:
       - n8n-data:/home/node/.n8n
+      - /opt/librechat/logs/n8n:/var/log/n8n
       - /opt/librechat/images:/shared-images
       - ./scripts/n8n-createAgentSequence.patched.js:/usr/local/lib/node_modules/n8n/node_modules/.pnpm/@n8n+n8n-nodes-langchain@file+packages+@n8n+nodes-langchain_8bf81e0cdf1fe65cc684d3daaa3ca5c1/node_modules/@n8n/n8n-nodes-langchain/dist/nodes/agents/Agent/agents/ToolsAgent/V3/helpers/createAgentSequence.js:ro
       - ./scripts/n8n-processEventStream.patched.js:/usr/local/lib/node_modules/n8n/node_modules/.pnpm/@n8n+n8n-nodes-langchain@file+packages+@n8n+nodes-langchain_8bf81e0cdf1fe65cc684d3daaa3ca5c1/node_modules/@n8n/n8n-nodes-langchain/dist/utils/agent-execution/processEventStream.js:ro
@@ -497,6 +568,29 @@ services:
       timeout: 10s
       retries: 5
       start_period: 30s
+    networks:
+      - librechat-net
+    logging:
+      driver: local
+      options:
+        max-size: ${N8N_LOG_MAX_SIZE:-10m}
+        max-file: ${N8N_LOG_MAX_FILES:-10}
+
+  n8n-log-pruner:
+    build:
+      context: ./services/n8n-log-retention
+      dockerfile: Dockerfile
+    image: govchat-n8n-log-pruner:local
+    container_name: govchat-n8n-log-pruner
+    restart: unless-stopped
+    depends_on:
+      n8n:
+        condition: service_started
+    environment:
+      N8N_LOG_RETENTION_DAYS: ${N8N_LOG_RETENTION_DAYS:-30}
+      N8N_LOG_PRUNE_INTERVAL_SECONDS: ${N8N_LOG_PRUNE_INTERVAL_SECONDS:-3600}
+    volumes:
+      - /opt/librechat/logs/n8n:/var/log/n8n
     networks:
       - librechat-net
 
@@ -573,9 +667,12 @@ services:
       - librechat-net
 
   n8n-openai-bridge:
-    # Pinned OCI index digest: ghcr.io/sveneisenschmidt/n8n-openai-bridge:pr-72
-    # Resolve a future GovChat-NL release here only after compatibility testing.
-    image: ghcr.io/sveneisenschmidt/n8n-openai-bridge@sha256:d61947deaa1b094d03fbdb268fbaf9f35766a792c8776d8014bf7d1188f0232d
+    # Build the clean GovChat-NL main-branch checkout kept beside this repository.
+    # It emits the sideband used by the LibreChat and n8n runtime overlays.
+    image: govchat-nl/n8n-openai-bridge:main
+    build:
+      context: ../n8n-openai-bridge-main
+      dockerfile: docker/Dockerfile.build
     container_name: n8n-openai-bridge
     restart: unless-stopped
     depends_on:
@@ -604,6 +701,54 @@ services:
       timeout: 5s
       retries: 3
       start_period: 15s
+    networks:
+      - librechat-net
+
+  # ---------------------------------------------------------------------------
+  #  Qdrant - interne vector store voor OpenBesluitvorming-workflows
+  #  Geen hostpoort: alleen services op het Compose-netwerk kunnen erbij.
+  # ---------------------------------------------------------------------------
+  qdrant:
+    image: qdrant/qdrant:v1.16.2
+    container_name: librechat-qdrant
+    restart: unless-stopped
+    expose:
+      - "6333"
+      - "6334"
+    volumes:
+      - qdrant-storage:/qdrant/storage
+      - qdrant-snapshot-cache:/qdrant/snapshots
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c '</dev/tcp/127.0.0.1/6333'"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 15s
+    networks:
+      - librechat-net
+
+  # ---------------------------------------------------------------------------
+  #  Opt-in local test data restore. Not part of normal Compose startup.
+  #  Run with --profile openbesluitvorming-test after explicitly acknowledging.
+  # ---------------------------------------------------------------------------
+  openbesluitvorming-test-restore:
+    image: python:3.12-slim
+    container_name: librechat-openbesluitvorming-test-restore
+    restart: "no"
+    profiles:
+      - openbesluitvorming-test
+    depends_on:
+      qdrant:
+        condition: service_healthy
+    environment:
+      QDRANT_URL: http://qdrant:6333
+      OPENBESLUITVORMING_TEST_RESTORE_APPROVED: ${OPENBESLUITVORMING_TEST_RESTORE_APPROVED:-}
+      OPENBESLUITVORMING_TEST_RESTORE_REPLACE_EXISTING: ${OPENBESLUITVORMING_TEST_RESTORE_REPLACE_EXISTING:-}
+    volumes:
+      - qdrant-snapshot-cache:/qdrant/snapshots
+      - ./testdata/openbesluitvorming:/testdata:ro
+      - ./scripts/openbesluitvorming-test-restore.py:/restore.py:ro
+    entrypoint: ["python", "/restore.py"]
     networks:
       - librechat-net
 
@@ -683,7 +828,7 @@ services:
     container_name: librechat-admin-panel
     restart: unless-stopped
     ports:
-      - "${ADMIN_PANEL_PORT:-3100}:3000"
+      - "127.0.0.1:${ADMIN_PANEL_PORT:-3100}:3000"
     depends_on:
       - librechat
     extra_hosts:
@@ -700,7 +845,8 @@ services:
   # ---------------------------------------------------------------------------
   #  GovChat Overlay Admin
   #  Publiceert help/apps-configuratie naar gedeelde overlay-map.
-  #  Let op: gebruikt LibreChat-specifieke defaults via bind mount.
+  #  WIP; opt-in met --profile admin-overlay. Standaard uitgeschakeld.
+  #  Gebruikt LibreChat-specifieke defaults via bind mount.
   # ---------------------------------------------------------------------------
   govchat-overlay-admin:
     build:
@@ -710,16 +856,16 @@ services:
     container_name: govchat-overlay-admin
     restart: unless-stopped
     ports:
-      - "${GOVCHAT_OVERLAY_ADMIN_PORT:-3002}:3002"
+      - "127.0.0.1:${GOVCHAT_OVERLAY_ADMIN_PORT:-3002}:3002"
     environment:
       - ADMIN_PASSWORD=${GOVCHAT_ADMIN_PASSWORD}
       - CORS_ORIGIN=${GOVCHAT_OVERLAY_CORS_ORIGIN}
+      - PUBLIC_BASE_URL=${PUBLIC_BASE_URL}
       - DATA_DIR=/data
       - PUBLISH_DIR=/publish
       - BELEIDSKOMPAS_N8N_BASE_URL=${BELEIDSKOMPAS_N8N_BASE_URL:-http://n8n:5678}
       - BELEIDSKOMPAS_N8N_WEBHOOK_TOKEN=${BELEIDSKOMPAS_N8N_WEBHOOK_TOKEN:-${N8N_WEBHOOK_TOKEN}}
       - IMAGE_JOBS_ENABLED=${IMAGE_JOBS_ENABLED:-false}
-      - IMAGE_JOBS_TOKEN=${IMAGE_JOBS_TOKEN:-}
       - IMAGE_JOBS_WEBHOOK_URL=${IMAGE_JOBS_WEBHOOK_URL:-http://n8n:5678/webhook/image-generator}
       - IMAGE_JOBS_WEBHOOK_TOKEN=${IMAGE_JOBS_WEBHOOK_TOKEN:-${N8N_WEBHOOK_TOKEN}}
       - IMAGE_JOBS_CONCURRENCY=${IMAGE_JOBS_CONCURRENCY:-1}
@@ -744,8 +890,8 @@ services:
       - /opt/librechat/overlay/data:/data
       - /opt/librechat/overlay/publish:/publish
       - ./overlay/defaults:/app/defaults:ro
-    depends_on:
-      - librechat-proxy
+    profiles:
+      - admin-overlay
     networks:
       - librechat-net
 
@@ -758,7 +904,7 @@ services:
     container_name: librechat-pgadmin
     restart: unless-stopped
     ports:
-      - "${PGADMIN_PORT:-5051}:80"
+      - "127.0.0.1:${PGADMIN_PORT:-5051}:80"
     environment:
       PGADMIN_DEFAULT_EMAIL: ${PGADMIN_DEFAULT_EMAIL}
       PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_DEFAULT_PASSWORD}
@@ -782,3 +928,5 @@ volumes:
   mongodb-data:
   n8n-data:
   n8n-postgres-data:
+  qdrant-storage:
+  qdrant-snapshot-cache:

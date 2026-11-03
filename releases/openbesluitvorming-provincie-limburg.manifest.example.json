@@ -1,0 +1,41 @@
+{
+  "format_version": 1,
+  "dataset": "openbesluitvorming-qdrant-starter",
+  "release_tag": "vYYYY.MM.DD",
+  "created_at": "YYYY-MM-DDTHH:MM:SSZ",
+  "artifact": {
+    "file_name": "openbesluitvorming-provincie-limburg.snapshot",
+    "media_type": "application/octet-stream",
+    "sha256": "SHA256_OF_NATIVE_QDRANT_SNAPSHOT",
+    "bytes": 0
+  },
+  "qdrant": {
+    "minimum_version": "1.16.2",
+    "collection": "openbesluitvorming",
+    "vectors": {
+      "size": 3072,
+      "distance": "Cosine"
+    },
+    "points_count": 0,
+    "indexed_vectors_count": 0
+  },
+  "embedding": {
+    "model_alias": "govchat-embedding",
+    "vector_size": 3072
+  },
+  "source": {
+    "provider": "OpenBesluitvorming",
+    "source_key": "provincie_limburg",
+    "source_snapshot_completed": true,
+    "source_changes_cursor": "REQUIRED_FOR_DELTA_SYNC",
+    "indexed_documents": 0,
+    "dead_letters": 0,
+    "checkpointed_at": "YYYY-MM-DDTHH:MM:SSZ"
+  },
+  "governance": {
+    "redistribution_review_required": true,
+    "takedown_and_withdrawal_process_required": true,
+    "refresh_owner_required": true,
+    "notes": "Publish only after documented provenance, terms, privacy, and takedown review. Attach the native snapshot and this manifest to an immutable GitHub Release; do not commit snapshot binaries to Git history."
+  }
+}

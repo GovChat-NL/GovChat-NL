@@ -23,50 +23,6 @@
   border: 1px solid rgba(255, 255, 255, 0.16);
 }
 
-#gc-chat-image-inline-hint {
-  width: min(860px, 100%);
-  margin: 10px auto;
-  display: flex;
-  justify-content: flex-start;
-}
-
-.gc-chat-image-inline-card {
-  max-width: 88%;
-  display: inline-flex;
-  align-items: center;
-  gap: 10px;
-  padding: 10px 14px;
-  border-radius: 14px;
-  background: #f3f4f6;
-  color: #111827;
-  border: 1px solid #e5e7eb;
-  box-shadow: 0 6px 20px rgba(2, 6, 23, 0.08);
-  font-size: 13px;
-  line-height: 1.35;
-}
-
-.dark .gc-chat-image-inline-card,
-html[data-theme="dark"] .gc-chat-image-inline-card,
-body[data-theme="dark"] .gc-chat-image-inline-card {
-  background: #1f2937;
-  color: #f9fafb;
-  border-color: #374151;
-}
-
-.gc-chat-image-inline-card-done {
-  background: #ecfdf5;
-  border-color: #86efac;
-  color: #065f46;
-}
-
-.dark .gc-chat-image-inline-card-done,
-html[data-theme="dark"] .gc-chat-image-inline-card-done,
-body[data-theme="dark"] .gc-chat-image-inline-card-done {
-  background: #052e1b;
-  border-color: #166534;
-  color: #86efac;
-}
-
 #gc-help-btn.gc-theme-light,
 #gc-launcher-btn.gc-theme-light {
   background: #111827;

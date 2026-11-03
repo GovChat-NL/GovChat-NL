@@ -1,0 +1,463 @@
+{
+  "id": "govchat-ob-document-worker",
+  "name": "OpenBesluitvorming - Document Worker",
+  "description": "Full-document Open Besluitvorming worker. It persists available source metadata, uses bounded embedding batches and weighted mean pooling, and records individual dead letters.",
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "saveExecutionProgress": true,
+    "saveManualExecutions": true,
+    "availableInMCP": false
+  },
+  "nodes": [
+    {
+      "parameters": {
+        "inputSource": "passthrough"
+      },
+      "id": "11f5ea17-e431-4d27-a9ad-6f974e000001",
+      "name": "1. Receive Snapshot Page",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        -1320,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const input=$input.first().json; const max=Number(input.maxDocumentsInPage||0), records=Array.isArray(input.documents)?input.documents:[]; return records.filter(r=>r?.entity_id&&r.op==='upsert'&&r.entity_type==='Document').slice(0,max||undefined).map(record=>({json:{record,entityId:record.entity_id,sourceKey:input.sourceKey,runId:input.runId,collection:input.collection}}));"
+      },
+      "id": "11f5ea17-e431-4d27-a9ad-6f974e000002",
+      "name": "2. Split Documents",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -1100,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "url": "=https://openbesluitvorming.nl/api/entities/{{ encodeURIComponent($json.entityId) }}",
+        "options": {
+          "timeout": 45000,
+          "batching": {
+            "batch": {
+              "batchSize": 1,
+              "batchInterval": 1100
+            }
+          }
+        }
+      },
+      "id": "11f5ea17-e431-4d27-a9ad-6f974e000004",
+      "name": "4. Fetch Entity Detail (45s)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -650,
+        0
+      ],
+      "onError": "continueErrorOutput",
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000
+    },
+    {
+      "parameters": {
+        "jsCode": "const results=$input.all(), originals=$('2. Split Documents').all(); return results.map((result,index)=>{const original=originals[index]?.json;if(!original)return {json:{outcome:'dead_letter',stage:'entity_detail',code:'input_alignment_failed',message:'Could not align entity response'}};if(result.error||result.json?.error)return {json:{outcome:'dead_letter',runId:original.runId,sourceKey:original.sourceKey,entityId:original.entityId,stage:'entity_detail',code:'http_failure',message:String((result.error||result.json?.error).message||'Entity fetch failed').slice(0,500)}};const detail=result.json||{},text=String(detail.markdownText||detail.markdown_text||'');if(!text.trim())return {json:{outcome:'dead_letter',runId:original.runId,sourceKey:original.sourceKey,entityId:original.entityId,stage:'validation',code:'empty_content',message:'Entity has no indexable markdown text'}};return {json:{outcome:'continue',runId:original.runId,sourceKey:original.sourceKey,entityId:original.entityId,record:original.record,collection:original.collection,detail,text}};});"
+      },
+      "id": "11f5ea17-e431-4d27-a9ad-6f974e000005",
+      "name": "5. Detail Result Or Dead Letter",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -420,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.outcome }}",
+              "rightValue": "continue",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        }
+      },
+      "id": "11f5ea17-e431-4d27-a9ad-6f974e000006",
+      "name": "6. Has Indexable Text?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        -190,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Full-document traversal: create small embedding batches, not one oversized request.\nconst CHUNK_CHARS=6000,OVERLAP_CHARS=500,EMBEDDING_BATCH_SIZE=8,MAX_CHUNKS_PER_DOCUMENT=48;\nconst output=[];\nfor(const item of $input.all()){\n  const j=item.json,text=String(j.text||'');\n  const chunks=[],weights=[];\n  for(let i=0;i<text.length;i+=CHUNK_CHARS-OVERLAP_CHARS){\n    const body=text.slice(i,i+CHUNK_CHARS);\n    chunks.push(`Titel: ${j.detail.title||j.entityId}\\nOrganisatie: ${j.detail.organization||j.sourceKey}\\n\\nInhoud:\\n${body}`);\n    weights.push(Math.max(1,body.length));\n  }\n  const totalChunks=Math.max(1,chunks.length);\n  if(totalChunks>MAX_CHUNKS_PER_DOCUMENT){\n    output.push({json:{outcome:'dead_letter',runId:j.runId,sourceKey:j.sourceKey,entityId:j.entityId,stage:'chunking',code:'document_chunk_budget_exceeded',message:`Document requires ${totalChunks} chunks; maximum is ${MAX_CHUNKS_PER_DOCUMENT}`,document_characters:text.length,required_chunks:totalChunks,max_chunks:MAX_CHUNKS_PER_DOCUMENT}});\n    continue;\n  }\n  for(let offset=0;offset<chunks.length;offset+=EMBEDDING_BATCH_SIZE){\n    output.push({json:{...j,text:undefined,chunks:chunks.slice(offset,offset+EMBEDDING_BATCH_SIZE),chunk_weights:weights.slice(offset,offset+EMBEDDING_BATCH_SIZE),document_characters:text.length,chunk_count:totalChunks,embedding_batch_index:offset/EMBEDDING_BATCH_SIZE,embedding_batch_count:Math.ceil(totalChunks/EMBEDDING_BATCH_SIZE),text_truncated:false}});\n  }\n}\nreturn output;"
+      },
+      "id": "11f5ea17-e431-4d27-a9ad-6f974e000007",
+      "name": "7. Bound Text And Build Chunks",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        40,
+        -100
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://litellm:4000/embeddings",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $env.LITELLM_API_KEY }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={ \"model\": \"govchat-embedding\", \"input\": {{ JSON.stringify($json.chunks) }} }",
+        "options": {
+          "timeout": 45000
+        }
+      },
+      "id": "11f5ea17-e431-4d27-a9ad-6f974e000008",
+      "name": "8. Create Embeddings (45s)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        270,
+        -100
+      ],
+      "onError": "continueErrorOutput",
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000
+    },
+    {
+      "parameters": {
+        "jsCode": "// Combine all bounded embedding requests for each document with a weighted mean.\nconst results=$input.all(), originals=$('7. Bound Text And Build Chunks').all();\nfunction pointId(input){let h1=0xdeadbeef,h2=0x41c64e6d,h3=0x12345678,h4=0x87654321;for(const c of input){const x=c.charCodeAt(0);h1=Math.imul(h1^x,2654435761);h2=Math.imul(h2^x,1597334677);h3=Math.imul(h3^x,2246822507);h4=Math.imul(h4^x,3266489909)}const hex=[h1,h2,h3,h4].map(x=>(x>>>0).toString(16).padStart(8,'0')).join('');return `${hex.slice(0,8)}-${hex.slice(8,12)}-5${hex.slice(13,16)}-${((parseInt(hex.slice(16,18),16)&0x3f)|0x80).toString(16)}${hex.slice(18,20)}-${hex.slice(20,32)}`;}\nconst groups=new Map();\nfor(let index=0;index<results.length;index++){\n  const original=originals[index]?.json, result=results[index];\n  if(!original) continue;\n  const group=groups.get(original.entityId)||{original,batches:[],error:null};\n  if(result.error||result.json?.error) group.error=String((result.error||result.json?.error).message||'Embedding request failed').slice(0,500);\n  else group.batches.push({data:result.json.data||[],weights:original.chunk_weights||[]});\n  groups.set(original.entityId,group);\n}\nconst output=[];\nfor(const [entityId,group] of groups){\n  const o=group.original||{};\n  if(!o.detail){output.push({json:{outcome:'dead_letter',runId:o.runId||null,sourceKey:o.sourceKey||null,entityId,stage:'entity_detail',code:'missing_indexable_detail',message:'No entity detail/text was available for embedding'}});continue;}\n  if(group.error){output.push({json:{outcome:'dead_letter',runId:o.runId||null,sourceKey:o.sourceKey||null,entityId,stage:'embedding',code:'http_failure',message:group.error}});continue;}\n  const vectors=[],weights=[];\n  for(const batch of group.batches) for(let i=0;i<batch.data.length;i++){const vector=batch.data[i]?.embedding;if(Array.isArray(vector)) {vectors.push(vector);weights.push(Number(batch.weights[i]||1));}}\n  if(!vectors.length||vectors[0].length!==3072){output.push({json:{outcome:'dead_letter',runId:o.runId||null,sourceKey:o.sourceKey||null,entityId,stage:'embedding',code:'invalid_vector',message:'Embedding output missing or unexpected dimension'}});continue;}\n  const averaged=new Array(3072).fill(0); let weightTotal=0;\n  for(let i=0;i<vectors.length;i++){const weight=weights[i];weightTotal+=weight;for(let d=0;d<3072;d++)averaged[d]+=vectors[i][d]*weight;}\n  for(let d=0;d<3072;d++)averaged[d]/=weightTotal;\n  const norm=Math.sqrt(averaged.reduce((sum,value)=>sum+value*value,0)); const vector=norm?averaged.map(value=>value/norm):averaged;\n  const d=o.detail||{},r=o.record||{};\n  output.push({json:{outcome:'continue',collection:o.collection||'openbesluitvorming',point:{id:pointId(entityId),vector,payload:{source_id:entityId,source_key:o.sourceKey,entity_type:'Document',supplier:r?.supplier||null,commit_id:r?.commit_id||null,content_hash:r?.content_hash||null,source_sequence:r?.seq??null,source_operation:r?.op||null,source_time:r?.time||null,schema_version:r?.schema_version||null,title:d?.title||entityId,organization:d?.organization||null,date:d?.sortDate||d?.date||null,meeting_id:d?.meetingId||null,download_url:d?.downloadUrl||null,pdf_url:d?.pdfUrl||null,original_url:r?.payload?.original_url||null,file_name:r?.payload?.file_name||null,classification:r?.payload?.classification||[],last_discussed_at:r?.payload?.last_discussed_at||null,referenced_by:r?.payload?.is_referenced_by||null,derived_content:r?.payload?.derived_content||{},media_urls:r?.payload?.media_urls||[],source_payload:r?.payload||{},content_preview:String(d?.markdownText||d?.markdown_text||'').slice(0,3000),text_truncated:false,document_characters:o.document_characters,chunk_count:o.chunk_count,embedding_batch_count:o.embedding_batch_count,indexed_at:new Date().toISOString()}},runId:o.runId||null,sourceKey:o.sourceKey||null,entityId}});\n}\nreturn output;"
+      },
+      "id": "11f5ea17-e431-4d27-a9ad-6f974e000009",
+      "name": "9. Mean Pool And Build Point",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        500,
+        -100
+      ]
+    },
+    {
+      "parameters": {
+        "method": "PUT",
+        "url": "={{ 'http://qdrant:6333/collections/' + encodeURIComponent($json.collection) + '/points?wait=true' }}",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={ \"points\": [{{ JSON.stringify($json.point) }}] }",
+        "options": {
+          "timeout": 45000
+        }
+      },
+      "id": "11f5ea17-e431-4d27-a9ad-6f974e000010",
+      "name": "10. Upsert Qdrant Point (45s)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        730,
+        -100
+      ],
+      "onError": "continueErrorOutput",
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000
+    },
+    {
+      "parameters": {
+        "jsCode": "const results=$input.all(), originals=$('9. Mean Pool And Build Point').all();\nconst output=[];\nfor(let index=0;index<results.length;index++){\n  const result=results[index],p=originals[index]?.json;\n  if(!p){output.push({json:{outcome:'dead_letter',stage:'qdrant_upsert',code:'input_alignment_failed',message:'Could not align Qdrant response to source point'}});continue;}\n  if(result.error||result.json?.error){output.push({json:{outcome:'dead_letter',runId:p.runId||null,sourceKey:p.sourceKey||null,entityId:p.entityId||null,stage:'qdrant_upsert',code:'http_failure',message:String((result.error||result.json?.error).message||'Qdrant upsert failed').slice(0,500)}});continue;}\n  output.push({json:{outcome:'indexed',runId:p.runId||null,sourceKey:p.sourceKey||null,entityId:p.entityId||null,truncated:Boolean(p.point?.payload?.text_truncated),stage:'qdrant_upsert'}});\n}\nreturn output;"
+      },
+      "id": "11f5ea17-e431-4d27-a9ad-6f974e000011",
+      "name": "11. Upsert Result Or Dead Letter",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        960,
+        -100
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "return $input.all().map(item=>({json:{...item.json,logged_at:new Date().toISOString(),level:item.json.outcome==='indexed'?'info':'warn'}}));"
+      },
+      "id": "11f5ea17-e431-4d27-a9ad-6f974e000012",
+      "name": "12. Emit Compact Outcome Log",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1190,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const outcomes=$input.all().map(item=>item.json);const first=outcomes[0]||{};return [{json:{runId:first.runId||null,sourceKey:first.sourceKey||null,pageSummary:{indexed:outcomes.filter(item=>item.outcome==='indexed').length,failed:outcomes.filter(item=>item.outcome==='dead_letter').length,truncated:outcomes.filter(item=>item.truncated).length,outcomes:outcomes.map(item=>({outcome:item.outcome,entityId:item.entityId,stage:item.stage||null,code:item.code||null,message:item.message||null,truncated:Boolean(item.truncated)}))}}}];"
+      },
+      "id": "11f5ea17-e431-4d27-a9ad-6f974e000013",
+      "name": "14. Aggregate Page Outcomes",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1420,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "append"
+      },
+      "id": "11f5ea17-e431-4d27-a9ad-6f974e000014",
+      "name": "13. Merge Successes And Dead Letters",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3,
+      "position": [
+        1420,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.outcome }}",
+              "rightValue": "continue",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        }
+      },
+      "id": "11f5ea17-e431-4d27-a9ad-6f974e000015",
+      "name": "7a. Within Full-Document Chunk Budget?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        230,
+        -100
+      ]
+    }
+  ],
+  "connections": {
+    "1. Receive Snapshot Page": {
+      "main": [
+        [
+          {
+            "node": "2. Split Documents",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "2. Split Documents": {
+      "main": [
+        [
+          {
+            "node": "4. Fetch Entity Detail (45s)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "4. Fetch Entity Detail (45s)": {
+      "main": [
+        [
+          {
+            "node": "5. Detail Result Or Dead Letter",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "5. Detail Result Or Dead Letter",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "5. Detail Result Or Dead Letter": {
+      "main": [
+        [
+          {
+            "node": "6. Has Indexable Text?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "6. Has Indexable Text?": {
+      "main": [
+        [
+          {
+            "node": "7. Bound Text And Build Chunks",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "13. Merge Successes And Dead Letters",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "7. Bound Text And Build Chunks": {
+      "main": [
+        [
+          {
+            "node": "7a. Within Full-Document Chunk Budget?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "8. Create Embeddings (45s)": {
+      "main": [
+        [
+          {
+            "node": "9. Mean Pool And Build Point",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "9. Mean Pool And Build Point",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "9. Mean Pool And Build Point": {
+      "main": [
+        [
+          {
+            "node": "10. Upsert Qdrant Point (45s)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "10. Upsert Qdrant Point (45s)": {
+      "main": [
+        [
+          {
+            "node": "11. Upsert Result Or Dead Letter",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "11. Upsert Result Or Dead Letter",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "11. Upsert Result Or Dead Letter": {
+      "main": [
+        [
+          {
+            "node": "12. Emit Compact Outcome Log",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "12. Emit Compact Outcome Log": {
+      "main": [
+        [
+          {
+            "node": "13. Merge Successes And Dead Letters",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "13. Merge Successes And Dead Letters": {
+      "main": [
+        [
+          {
+            "node": "14. Aggregate Page Outcomes",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "7a. Within Full-Document Chunk Budget?": {
+      "main": [
+        [
+          {
+            "node": "8. Create Embeddings (45s)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "13. Merge Successes And Dead Letters",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "versionId": "44f5ea17-e431-4d27-a9ad-6f974e006008",
+  "tags": []
+}

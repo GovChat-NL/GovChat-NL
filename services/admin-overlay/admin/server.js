@@ -11,11 +11,11 @@ const app = express();
 const PORT = process.env.PORT || 3002;
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "changeme";
 const CORS_ORIGIN = process.env.CORS_ORIGIN || "*";
+const PUBLIC_BASE_URL = String(process.env.PUBLIC_BASE_URL || "").trim();
 const DATA_DIR = process.env.DATA_DIR || "/data";
 const PUBLISH_DIR = process.env.PUBLISH_DIR || "/publish";
 const SESSION_SECRET = crypto.randomBytes(32).toString("hex");
 const IMAGE_JOBS_ENABLED = String(process.env.IMAGE_JOBS_ENABLED || "false").toLowerCase() === "true";
-const IMAGE_JOBS_TOKEN = String(process.env.IMAGE_JOBS_TOKEN || "").trim();
 const IMAGE_JOBS_WEBHOOK_URL = String(
   process.env.IMAGE_JOBS_WEBHOOK_URL || "http://n8n:5678/webhook/image-generator",
 ).trim();
@@ -148,7 +148,7 @@ function verifyJwtHs256(token, secret) {
 
     const payload = JSON.parse(decodeBase64Url(payloadB64));
     const nowSec = Math.floor(Date.now() / 1000);
-    if (Number.isFinite(Number(payload?.exp)) && Number(payload.exp) < nowSec) return null;
+    if (!Number.isFinite(Number(payload?.exp)) || Number(payload.exp) <= nowSec) return null;
     if (Number.isFinite(Number(payload?.nbf)) && Number(payload.nbf) > nowSec) return null;
     return payload;
   } catch {
@@ -263,19 +263,11 @@ app.use(express.json({ limit: "20mb" }));
 app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
 
-// CORS for public API endpoints
+// CORS for public, read-only configuration endpoints
 app.use("/api/config", (req, res, next) => {
   res.set("Access-Control-Allow-Origin", CORS_ORIGIN);
   res.set("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
   res.set("Access-Control-Allow-Headers", "Content-Type");
-  if (req.method === "OPTIONS") return res.sendStatus(204);
-  next();
-});
-
-app.use("/api/image-jobs", (req, res, next) => {
-  res.set("Access-Control-Allow-Origin", CORS_ORIGIN);
-  res.set("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
-  res.set("Access-Control-Allow-Headers", "Content-Type, Authorization, x-govchat-token");
   if (req.method === "OPTIONS") return res.sendStatus(204);
   next();
 });
@@ -2090,15 +2082,31 @@ function requireImageJobsAuth(req, res, next) {
   if (!IMAGE_JOBS_ENABLED) {
     return res.status(404).json({ error: "Image jobs endpoint staat uit" });
   }
-  if (!IMAGE_JOBS_TOKEN) {
-    return res.status(503).json({ error: "Server misconfiguratie: IMAGE_JOBS_TOKEN ontbreekt" });
+
+  const user = resolveUserFromVerifiedRefreshToken(req);
+  if (!user || !/^[A-Za-z0-9_-]{8,64}$/.test(user.id)) {
+    return res.status(401).json({ error: "Niet ingelogd" });
   }
 
-  const supplied = extractToken(req);
-  if (!supplied || supplied !== IMAGE_JOBS_TOKEN) {
-    return res.status(401).json({ error: "Unauthorized" });
+  const requestOrigin = String(req.get("origin") || "").trim();
+  if (req.method !== "GET" || requestOrigin) {
+    let expectedOrigin = "";
+    try {
+      expectedOrigin = new URL(PUBLIC_BASE_URL).origin;
+    } catch {
+      return res.status(503).json({ error: "Server misconfiguratie: PUBLIC_BASE_URL is ongeldig" });
+    }
+    if (!requestOrigin || requestOrigin !== expectedOrigin) {
+      return res.status(403).json({ error: "Cross-origin verzoek geweigerd" });
+    }
   }
 
+  const fetchSite = String(req.get("sec-fetch-site") || "").trim().toLowerCase();
+  if (fetchSite && fetchSite !== "same-origin") {
+    return res.status(403).json({ error: "Cross-site verzoek geweigerd" });
+  }
+
+  req.librechatUser = user;
   return next();
 }
 
@@ -2270,7 +2278,7 @@ async function runImageJob(jobId) {
     updateImageJob(existing, {
       status: "failed",
       completed_at: new Date().toISOString(),
-      error: "Server misconfiguratie: IMAGE_JOBS_WEBHOOK_TOKEN ontbreekt",
+      error: "Afbeelding-generatie is tijdelijk niet beschikbaar.",
     });
     return;
   }
@@ -2292,6 +2300,7 @@ async function runImageJob(jobId) {
         prompt: running.prompt,
         size: running.size,
         quality: running.quality,
+        user_id: running.user_id,
       }),
       signal: AbortSignal.timeout(240000),
     });
@@ -2305,18 +2314,29 @@ async function runImageJob(jobId) {
     }
 
     if (!res.ok) {
-      const msg = String(payload?.error || payload?.message || raw || "").trim();
       updateImageJob(running, {
         status: "failed",
         completed_at: new Date().toISOString(),
-        error: msg || `Image-webhook gaf HTTP ${res.status}`,
+        error: "Afbeelding-generatie is mislukt; probeer het later opnieuw.",
       });
       return;
     }
 
-    const imageUrl = String(payload?.image_url || "").trim() || null;
-    const markdown = String(payload?.markdown || "").trim() || null;
-    const responseText = String(payload?.response || "").trim() || null;
+    const imageUrl = String(payload?.image_url || "").trim();
+    const expectedImagePrefix = `/images/${running.user_id}/`;
+    const imageName = imageUrl.startsWith(expectedImagePrefix)
+      ? imageUrl.slice(expectedImagePrefix.length)
+      : "";
+    if (!/^generated-\d+-[0-9a-f-]{36}\.(png|jpg)$/.test(imageName)) {
+      updateImageJob(running, {
+        status: "failed",
+        completed_at: new Date().toISOString(),
+        error: "Afbeelding-generatie is mislukt; probeer het later opnieuw.",
+      });
+      return;
+    }
+    const markdown = `![gegenereerde afbeelding](${imageUrl})`;
+    const responseText = markdown;
 
     updateImageJob(running, {
       status: "succeeded",
@@ -2330,7 +2350,7 @@ async function runImageJob(jobId) {
     updateImageJob(running, {
       status: "failed",
       completed_at: new Date().toISOString(),
-      error: String(err?.message || err || "Onbekende fout"),
+      error: "Afbeelding-generatie is tijdelijk niet beschikbaar.",
     });
   }
 }
@@ -2358,7 +2378,7 @@ function pumpImageJobs() {
   }
 }
 
-function createImageJob({ prompt, size, quality }) {
+function createImageJob({ prompt, size, quality, userId }) {
   const now = new Date().toISOString();
   const job = {
     id: crypto.randomUUID(),
@@ -2370,6 +2390,7 @@ function createImageJob({ prompt, size, quality }) {
     prompt,
     size,
     quality,
+    user_id: userId,
     image_url: null,
     markdown: null,
     result_text: null,
@@ -2492,24 +2513,49 @@ app.post("/api/crawler/internal/runs", requireCrawlerInternalAuth, (req, res) =>
   }
 });
 
+app.get("/api/internal/image-auth", (req, res) => {
+  res.set("Cache-Control", "no-store");
+  const owner = String(req.get("x-image-owner") || "").trim();
+  if (!/^[A-Za-z0-9_-]{8,64}$/.test(owner)) return res.sendStatus(401);
+
+  const user = resolveUserFromVerifiedRefreshToken(req);
+  if (!user || user.id !== owner) return res.sendStatus(401);
+  return res.sendStatus(204);
+});
+
 app.post("/api/image-jobs", requireImageJobsAuth, (req, res) => {
-  const prompt = String(req.body?.prompt || "").trim();
-  const size = String(req.body?.size || "1024x1024").trim();
-  const quality = String(req.body?.quality || "standard").trim();
+  const prompt = String(req.body?.prompt || "")
+    .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, "")
+    .trim();
+  const size = String(req.body?.size || "1024x1024").trim().toLowerCase();
+  const quality = String(req.body?.quality || "standard").trim().toLowerCase();
 
   if (!prompt) {
     return res.status(400).json({ error: "Veld \"prompt\" is verplicht" });
   }
 
-  if (prompt.length > 3000) {
-    return res.status(400).json({ error: "Prompt is te lang (maximaal 3000 tekens)" });
+  if (prompt.length > 2000) {
+    return res.status(400).json({ error: "Prompt is te lang (maximaal 2000 tekens)" });
   }
 
-  const job = createImageJob({ prompt, size, quality });
+  const allowedSizes = new Set(["1024x1024", "1536x1024", "1024x1536", "1792x1024", "1024x1792"]);
+  const allowedQualities = new Set(["standard", "auto", "low", "medium", "high", "hd"]);
+  if (!allowedSizes.has(size) || !allowedQualities.has(quality)) {
+    return res.status(400).json({ error: "Ongeldig formaat of kwaliteitsniveau" });
+  }
+
+  const activeUserJobs = [...imageJobs.values()].filter(
+    (job) => job.user_id === req.librechatUser.id && ["queued", "running"].includes(job.status),
+  ).length;
+  if (activeUserJobs >= 2) {
+    return res.status(429).json({ error: "Je hebt al twee afbeeldingsopdrachten in uitvoering" });
+  }
+
+  const job = createImageJob({ prompt, size, quality, userId: req.librechatUser.id });
   return res.status(202).json({
     ...toPublicImageJob(job),
-    status_url: `/api/image-jobs/${job.id}`,
-    result_url: `/api/image-jobs/${job.id}`,
+    status_url: `/govchat-api/image-jobs/${job.id}`,
+    result_url: `/govchat-api/image-jobs/${job.id}`,
   });
 });
 
@@ -2517,6 +2563,10 @@ app.get("/api/image-jobs/:jobId", requireImageJobsAuth, (req, res) => {
   const jobId = String(req.params.jobId || "").trim();
   const job = imageJobs.get(jobId);
   if (!job) {
+    return res.status(404).json({ error: "Job niet gevonden" });
+  }
+
+  if (job.user_id !== req.librechatUser.id) {
     return res.status(404).json({ error: "Job niet gevonden" });
   }
 

@@ -10,12 +10,6 @@
       "beleidskompas"
     ]
   },
-  "chat_image_status": {
-    "enabled": true,
-    "first_message": "Afbeelding wordt gegenereerd. Dit duurt meestal 10–40 seconden.",
-    "second_message": "Nog bezig met genereren. De afbeelding verschijnt hier zodra deze klaar is.",
-    "second_delay_ms": 40000
-  },
   "apps": [
     {
       "id": "start",
@@ -72,8 +66,7 @@
       "url": "/govchat-api/image-jobs",
       "target": "imagegen",
       "config": {
-        "image_jobs_api": "/govchat-api/image-jobs",
-        "image_jobs_token": "local_image_jobs_token_change_me"
+        "image_jobs_api": "/govchat-api/image-jobs"
       }
     },
     {

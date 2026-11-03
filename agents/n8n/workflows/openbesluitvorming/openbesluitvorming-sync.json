@@ -1,0 +1,446 @@
+{
+  "id": "govchat-openbesluitvorming-sync",
+  "name": "OpenBesluitvorming - Incremental Sync",
+  "description": "Inactive generic six-hour delta synchronisation. It only runs after the initial snapshot checkpoint is complete, consumes the documented /api/export/changes feed from the durable changes cursor, upserts changed documents through the document worker, deletes tombstoned document vectors, and commits its delta cursor only after both operations succeed.",
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "saveExecutionProgress": true,
+    "saveManualExecutions": true,
+    "availableInMCP": false
+  },
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "ob-sync-001",
+      "name": "1. Start Sync Manually",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        -1220,
+        -100
+      ]
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 0 0,6,12,18 * * *"
+            }
+          ]
+        }
+      },
+      "id": "ob-sync-002",
+      "name": "1. Sync At 00 06 12 18 UTC",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -1220,
+        100
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Set these values to the same source, collection and checkpoint used by the initial snapshot workflow.\nconst sourceKey = 'your_organisation';\nconst collection = 'openbesluitvorming';\nconst checkpointId = '00000000-0000-5000-8000-000000000001';\nreturn [{ json: { runId: `openbesluitvorming-sync-${Date.now()}`, sourceKey, collection, checkpointId, qdrantBase: 'http://qdrant:6333', vectorSize: 3072, changesLimit: 500 } }];"
+      },
+      "id": "ob-sync-003",
+      "name": "2. Configure Delta Sync",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -990,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "url": "={{ $json.qdrantBase + '/collections/' + encodeURIComponent($json.collection) + '/points/' + $json.checkpointId }}",
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "id": "ob-sync-004",
+      "name": "3. Read Durable Snapshot Checkpoint",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -750,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const cfg = $('2. Configure Delta Sync').first().json;\nconst payload = $input.first().json?.result?.payload || $input.first().json?.payload || null;\nif (!payload || payload.kind !== 'ori_checkpoint' || payload.source_key !== cfg.sourceKey) throw new Error('Initial snapshot checkpoint is missing or belongs to a different source');\n// The delta workflow deliberately stays idle until the snapshot cursor has reached the end.\nif (payload.completed !== true) return [];\nconst cursor = payload.sync_changes_cursor || payload.changes_cursor || null;\nif (!cursor) throw new Error('Initial snapshot did not persist X-Changes-Cursor; do not start delta synchronisation');\nreturn [{ json: { ...cfg, checkpoint: payload, changesCursor: cursor } }];"
+      },
+      "id": "ob-sync-005",
+      "name": "4. Guard Snapshot Completion And Changes Cursor",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -510,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "url": "https://openbesluitvorming.nl/api/export/changes",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "source",
+              "value": "={{ $json.sourceKey }}"
+            },
+            {
+              "name": "cursor",
+              "value": "={{ $json.changesCursor }}"
+            },
+            {
+              "name": "limit",
+              "value": "={{ String($json.changesLimit) }}"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 45000,
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": false
+            }
+          }
+        }
+      },
+      "id": "ob-sync-006",
+      "name": "5. Fetch One Changes Page",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -270,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const cfg = $('4. Guard Snapshot Completion And Changes Cursor').first().json;\nconst response = $input.first().json || {};\nconst headers = response.headers || {};\nconst header = name => headers[name] || headers[name.toLowerCase()] || null;\nconst body = String(response.body || response.data || '');\nconst records = body.split('\\n').filter(Boolean).map(line => { try { return JSON.parse(line); } catch { return null; } }).filter(Boolean);\nconst upserts = records.filter(record => record.op === 'upsert' && record.entity_type === 'Document');\nconst deletes = records.filter(record => record.op === 'delete' && record.entity_type === 'Document');\nconst nextCursor = header('x-next-cursor') || cfg.changesCursor;\nconst hasMore = String(header('x-has-more')).toLowerCase() === 'true';\nreturn [{ json: { ...cfg, records, upserts, deletes, nextCursor, hasMore, change_page_records: records.length } }];"
+      },
+      "id": "ob-sync-007",
+      "name": "6. Parse Upserts And Tombstones",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -30,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const page = $('6. Parse Upserts And Tombstones').first().json;\nreturn [{ json: { runId: page.runId, sourceKey: page.sourceKey, collection: page.collection, qdrantBase: page.qdrantBase, vectorSize: page.vectorSize, documents: page.upserts, maxDocumentsInPage: page.upserts.length } }];"
+      },
+      "id": "ob-sync-009",
+      "name": "8. Build Upsert Worker Page",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        440,
+        -100
+      ]
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "govchat-ob-document-worker",
+          "cachedResultName": "OpenBesluitvorming - Document Worker"
+        },
+        "options": {
+          "waitForSubWorkflow": true
+        }
+      },
+      "id": "ob-sync-010",
+      "name": "9. Apply Changed Document Upserts",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.3,
+      "position": [
+        680,
+        -100
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const page = $('6. Parse Upserts And Tombstones').first().json;\nfunction pointId(input){let h1=0xdeadbeef,h2=0x41c64e6d,h3=0x12345678,h4=0x87654321;for(const c of input){const x=c.charCodeAt(0);h1=Math.imul(h1^x,2654435761);h2=Math.imul(h2^x,1597334677);h3=Math.imul(h3^x,2246822507);h4=Math.imul(h4^x,3266489909)}const hex=[h1,h2,h3,h4].map(x=>(x>>>0).toString(16).padStart(8,'0')).join('');return `${hex.slice(0,8)}-${hex.slice(8,12)}-5${hex.slice(13,16)}-${((parseInt(hex.slice(16,18),16)&0x3f)|0x80).toString(16)}${hex.slice(18,20)}-${hex.slice(20,32)}`;}\nconst ids = page.deletes.map(record => pointId(String(record.entity_id))).filter(Boolean);\nreturn [{ json: { ...page, deletePointIds: ids, deleteBody: { points: ids } } }];"
+      },
+      "id": "ob-sync-011",
+      "name": "10. Build Tombstone Delete Request",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        680,
+        100
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $json.qdrantBase + '/collections/' + encodeURIComponent($json.collection) + '/points/delete?wait=true' }}",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.deleteBody) }}",
+        "options": {
+          "timeout": 45000
+        }
+      },
+      "id": "ob-sync-012",
+      "name": "11. Apply Tombstone Deletes",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        920,
+        100
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const page = $('6. Parse Upserts And Tombstones').first().json;\nconst prior = page.checkpoint;\nconst now = new Date().toISOString();\nconst checkpoint = { ...prior, sync_changes_cursor: page.nextCursor, sync_last_at: now, sync_last_records: page.change_page_records, sync_last_upserts: page.upserts.length, sync_last_deletes: page.deletes.length, sync_has_more: page.hasMore, sync_runs: Number(prior.sync_runs || 0) + 1 };\nconst point = { id: page.checkpointId, vector: new Array(page.vectorSize).fill(0), payload: checkpoint };\nreturn [{ json: { ...page, checkpoint, checkpointPoint: point } }];"
+      },
+      "id": "ob-sync-013",
+      "name": "12. Commit Delta Cursor Only After Apply",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1160,
+        100
+      ]
+    },
+    {
+      "parameters": {
+        "method": "PUT",
+        "url": "={{ $json.qdrantBase + '/collections/' + encodeURIComponent($json.collection) + '/points?wait=true' }}",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={ \"points\": [{{ JSON.stringify($json.checkpointPoint) }}] }",
+        "options": {
+          "timeout": 45000
+        }
+      },
+      "id": "ob-sync-014",
+      "name": "13. Persist Delta Checkpoint",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1400,
+        100
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const page = $('12. Commit Delta Cursor Only After Apply').first().json;\nconsole.log(JSON.stringify({ event: 'delta_page_committed', run_id: page.runId, source_key: page.sourceKey, changes_cursor: page.checkpoint.sync_changes_cursor, records: page.change_page_records, upserts: page.upserts.length, deletes: page.deletes.length, has_more: page.hasMore }));\nreturn [{ json: { status: page.hasMore ? 'more_changes_pending' : 'caught_up', source_key: page.sourceKey, records: page.change_page_records, upserts: page.upserts.length, deletes: page.deletes.length, next_changes_cursor: page.checkpoint.sync_changes_cursor } }];"
+      },
+      "id": "ob-sync-015",
+      "name": "14. Log Sync Result",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1640,
+        100
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.deletePointIds.length > 0 }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        }
+      },
+      "id": "ob-sync-011b",
+      "name": "10b. Tombstones Present?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        820,
+        100
+      ]
+    }
+  ],
+  "connections": {
+    "1. Start Sync Manually": {
+      "main": [
+        [
+          {
+            "node": "2. Configure Delta Sync",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "2. Configure Delta Sync": {
+      "main": [
+        [
+          {
+            "node": "3. Read Durable Snapshot Checkpoint",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "3. Read Durable Snapshot Checkpoint": {
+      "main": [
+        [
+          {
+            "node": "4. Guard Snapshot Completion And Changes Cursor",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "4. Guard Snapshot Completion And Changes Cursor": {
+      "main": [
+        [
+          {
+            "node": "5. Fetch One Changes Page",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "5. Fetch One Changes Page": {
+      "main": [
+        [
+          {
+            "node": "6. Parse Upserts And Tombstones",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "6. Parse Upserts And Tombstones": {
+      "main": [
+        [
+          {
+            "node": "8. Build Upsert Worker Page",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "8. Build Upsert Worker Page": {
+      "main": [
+        [
+          {
+            "node": "9. Apply Changed Document Upserts",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "9. Apply Changed Document Upserts": {
+      "main": [
+        [
+          {
+            "node": "10. Build Tombstone Delete Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "10. Build Tombstone Delete Request": {
+      "main": [
+        [
+          {
+            "node": "10b. Tombstones Present?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "11. Apply Tombstone Deletes": {
+      "main": [
+        [
+          {
+            "node": "12. Commit Delta Cursor Only After Apply",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "12. Commit Delta Cursor Only After Apply": {
+      "main": [
+        [
+          {
+            "node": "13. Persist Delta Checkpoint",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "13. Persist Delta Checkpoint": {
+      "main": [
+        [
+          {
+            "node": "14. Log Sync Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "10b. Tombstones Present?": {
+      "main": [
+        [
+          {
+            "node": "11. Apply Tombstone Deletes",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "12. Commit Delta Cursor Only After Apply",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "1. Sync At 00 06 12 18 UTC": {
+      "main": [
+        [
+          {
+            "node": "2. Configure Delta Sync",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  }
+}

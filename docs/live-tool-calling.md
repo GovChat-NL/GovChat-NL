@@ -71,7 +71,7 @@ The bridge repository's configured `origin` points at
 `GovChat-NL/n8n-openai-bridge`. Confirm the authorized destination before pushing
 this branch; do not publish this work to the upstream project by accident.
 
-### `GovChat-NL-LibreChat/`
+### `GovChat-NL/` (huidige stack)
 
 - `scripts/librechat-tool-event-preload.js` installs a CommonJS loader hook
   before the API starts.
@@ -82,10 +82,9 @@ this branch; do not publish this work to the upstream project by accident.
   sideband control data as user-visible text.
 - `scripts/librechat-tool-event-protocol.js` is the image-local decoder copy.
 - `docker-compose.yml` mounts the LibreChat overlay files read-only, loads the
-  preload through `NODE_OPTIONS`, and mounts the n8n streaming patches. These
-  mounts are required for the sideband events to become native LibreChat steps.
-- `docker-compose.live-tool-calling.yml` is an optional bridge build override
-  for deployments that need to build the checked-out bridge source locally.
+  preload through `NODE_OPTIONS`, mounts the n8n streaming patches, and builds
+  the bridge from GovChat-NL's `main` branch. These settings are enabled by
+  default and are required for sideband events to become native LibreChat steps.
 - `scripts/n8n-processEventStream.patched.js` forwards actual `on_tool_end` and
   `on_tool_error` events. It no longer treats a tool-call log or final assistant
   text as a successful tool result.
@@ -156,18 +155,21 @@ after completion.
 
 ## Deployment
 
-From `GovChat-NL-LibreChat/`, with the bridge feature branch checked out in the
-sibling `../n8n-openai-bridge` directory:
+From the GovChat-NL repository root, clone the bridge `main` branch beside this
+repository once, then use the single standard Compose file:
 
 ```bash
-docker compose -f docker-compose.yml -f docker-compose.live-tool-calling.yml --env-file .env up -d --build --force-recreate --no-deps librechat n8n-openai-bridge n8n
-docker compose -f docker-compose.yml -f docker-compose.live-tool-calling.yml --env-file .env logs -f librechat n8n-openai-bridge n8n n8n-runners
+git clone --depth 1 --branch main https://github.com/GovChat-NL/n8n-openai-bridge.git ../n8n-openai-bridge-main
+docker compose --env-file .env up -d
+docker compose --env-file .env logs -f librechat n8n-openai-bridge n8n n8n-runners
 ```
 
-The live-tool-calling override is only needed when the base stack still points
-to a prebuilt bridge image; the LibreChat and n8n overlays are activated by the
-base compose file. If you deploy with another Compose file, make sure it carries
-the `NODE_OPTIONS` preload and all five bind mounts from the base services.
+Compose builds the bridge from the local `../n8n-openai-bridge-main` checkout
+when its image is missing. Keep that clone on `main`; no alternate Compose file
+or feature-branch switch is required. To rebuild after changing bridge source,
+run `docker compose --env-file .env build n8n-openai-bridge` explicitly. Keep the
+LibreChat `NODE_OPTIONS` preload and n8n streaming-patch mounts enabled; they
+are part of the default stack.
 
 The runner is a separate service; restart it independently if its JavaScript
 worker is stuck:
@@ -193,17 +195,13 @@ still reachable.
 
 LibreChat deployment configuration, its runtime overlays, n8n patches, workflows,
 and stack documentation are maintained in this monorepo. The sideband event
-producer remains in the separate `GovChat-NL/n8n-openai-bridge` repository. A
-complete end-to-end rollout therefore requires both the monorepo changes and a
-bridge build containing the companion `feature/live-tool-calling` changes. The
-digest currently pinned in [`../bridge/models.json`](../bridge/models.json) is
-not changed by this feature branch; the optional
-[`../docker-compose.live-tool-calling.yml`](../docker-compose.live-tool-calling.yml)
-override builds a checked-out sibling bridge source tree for local testing.
+producer remains in the separate `GovChat-NL/n8n-openai-bridge` repository. The
+standard stack builds the local clone of GovChat-NL's `main` branch, which
+includes the live tool-calling producer; no separate feature-branch build or
+Compose override is needed.
 
 No patch to the LibreChat source repository is needed. Keep the orchestrator
 model pointed at LiteLLM; pointing it at the bridge would recurse back to the
 same webhook. Do not stage `.env`, diagnostic-only edits, or the temporary
-`wait_test_tool` fixture in production changes. Before a production rollout,
-publish the companion bridge build and update the pinned digest in a separate,
-reviewed change.
+`wait_test_tool` fixture in production changes. The bridge source revision used
+at deployment is the current commit checked out in `../n8n-openai-bridge-main`.

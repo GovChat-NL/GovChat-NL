@@ -1,0 +1,7 @@
+# Weekly release artifact, after the Sunday 18:00 UTC delta-sync run.
+# Requires explicit acknowledgements in /etc/govchat/openbesluitvorming-release.env.
+# Qdrant remains private; no endpoint or credential is written to GitHub.
+SHELL=/bin/sh
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+TZ=UTC
+0 20 * * 0 . /etc/govchat/openbesluitvorming-release.env && /opt/app/govchat-nl-librechat-ori/scripts/openbesluitvorming-weekly-release.sh >> /var/log/govchat-openbesluitvorming-weekly-release.log 2>&1

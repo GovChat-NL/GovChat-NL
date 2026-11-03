@@ -4,15 +4,15 @@
 
 | Source | Destination | Ownership / rationale |
 |---|---|---|
-| `GovChat-NL-LibreChat` repository root | Monorepo root | Kept in place: Compose entrypoints, LibreChat config, Nginx, stack overlay, LiteLLM, n8n runtime settings, tests, fixtures, scripts and deployment docs retain root-relative paths. |
+| Current local stack checkout root (`GovChat-NL-LibreChat/`) | `GovChat-NL` repository root | Kept in place: Compose entrypoints, LibreChat config, Nginx, stack overlay, LiteLLM, n8n runtime settings, tests, fixtures, scripts and deployment docs retain root-relative paths. |
 | `GovChat-NL-Agents` repository | [`agents/`](../agents/) | Workflow exports and agent documentation. Bootstrap reads `agents/n8n/workflows` from the monorepo. |
-| `GovChat-AdminOverlay` repository | [`services/admin-overlay/`](../services/admin-overlay/) | Keeps standalone source and provenance. Compose builds `services/admin-overlay/admin`; the Admin service provides LibreChat integration endpoints. |
+| `GovChat-AdminOverlay` repository | [`services/admin-overlay/`](../services/admin-overlay/) | Keeps standalone source and provenance. Compose builds `services/admin-overlay/admin` only when the `admin-overlay` profile is enabled; it is WIP and off by default. |
 | Stack-owned bridge model configuration | [`bridge/models.json`](../bridge/models.json) | Deployment config only, not bridge service source. |
-| `n8n-openai-bridge` repository | External repository | Separate upstream-derived service with its own releases and tests. Stack consumes a digest-pinned image. |
+| `n8n-openai-bridge` repository | External repository | Separate GovChat-NL-maintained service with its own releases and tests. Standard Compose builds its `main` branch directly. |
 
 ### Admin Overlay ownership audit
 
-The LibreChat Compose service builds only `services/admin-overlay/admin` and mounts the monorepo's `overlay/defaults/` at `/app/defaults`. The admin server/views and API endpoints (including image jobs, crawler, transcript sessions and policy editor features) are used by the LibreChat deployment. The LibreChat overlay's `overlay/defaults/{loader.js,custom.css,apps.json,help-content.json}` remains a distinct component served by Nginx.
+The optional `govchat-overlay-admin` Compose service builds `services/admin-overlay/admin` only under profile `admin-overlay`; it is WIP and disabled by default. When enabled, it mounts the monorepo's `overlay/defaults/` at `/app/defaults`. Its admin server/views and API endpoints (including image jobs, crawler, transcript sessions and policy editor features) are distinct from the always-on LibreChat overlay assets served by Nginx. Nginx resolves this optional API upstream at request time, so the proxy itself can start while the profile is disabled.
 
 The imported Admin Overlay project also contains standalone Open WebUI deployment artifacts: root-level `loader.js`, `custom.css`, `apps.json`, `help-content.json`, Open WebUI Compose examples, and `admin/defaults/`. Those files are preserved for provenance/standalone use, but are **not** the active LibreChat defaults: Compose bind-mounts the stack's `overlay/defaults` over `/app/defaults`. Similar names do not make these assets interchangeable.
 
@@ -22,37 +22,33 @@ The imported Admin Overlay project also contains standalone Open WebUI deploymen
 - [`n8n/bootstrap.js`](../n8n/bootstrap.js) is mounted into the n8n image and run as the one-shot bootstrap. It scans sorted `*.json` exports from `./agents/n8n/workflows` and its subfolders and derives workflow IDs from each export; a per-file environment list and external workflow source are not needed.
 - Admin build context is `./services/admin-overlay/admin`; LibreChat runtime defaults stay at `./overlay/defaults`.
 - Bridge config moved from a directory whose name resembled the external bridge checkout to `bridge/models.json`.
-- Optional bridge development is configured in [`docker-compose.bridge-dev.yml`](../docker-compose.bridge-dev.yml). With the external source checkout at sibling path `../n8n-openai-bridge`, run:
+- Clone the bridge repository beside this checkout on `main`, then start the standard stack:
 
   ```sh
-  docker compose -f docker-compose.yml -f docker-compose.bridge-dev.yml --env-file .env up -d --build n8n-openai-bridge
+  git clone --depth 1 --branch main https://github.com/GovChat-NL/n8n-openai-bridge.git ../n8n-openai-bridge-main
+  docker compose --env-file .env up -d
   ```
 
-  This is development-only and is not required for a clean checkout. Bridge source remains outside the monorepo Git tree.
+  The standard [`docker-compose.yml`](../docker-compose.yml) builds from that local sibling clone if the image is not present locally; no extra Compose override is needed. Rebuild after bridge source changes with `docker compose --env-file .env build n8n-openai-bridge`.
 - The request flow remains LibreChat → bridge → n8n webhook; n8n calls LiteLLM directly; the stream and tool-lifecycle events return through the bridge to LibreChat's native tool cards.
 
-## Bridge pin and compatibility record
+## Bridge source and compatibility record
 
-The standard Compose image uses OCI index digest `sha256:d61947deaa1b094d03fbdb268fbaf9f35766a792c8776d8014bf7d1188f0232d`, resolved from the existing integration tag `ghcr.io/sveneisenschmidt/n8n-openai-bridge:pr-72`. `docker buildx imagetools inspect` reported this index and amd64/arm64 platform manifests. The deployment does not rely on mutable `latest`.
+The standard Compose configuration builds from `../n8n-openai-bridge-main` and tags the resulting local image `govchat-nl/n8n-openai-bridge:main`. Clone that checkout from GovChat-NL's `main` branch; it includes the bridge sideband events used for native tool cards. The older upstream integration digest is historical only and is no longer used by Compose.
 
-The separate GovChat-NL bridge checkout audited here is commit `8003d03` on `main`. The publisher/source revision for the existing `pr-72` artifact could not be tied independently to that fork commit during the migration. Do not claim the checkout and artifact are byte-for-byte identical. Before switching to a GovChat-NL release image, verify package visibility and compatibility with the live tool lifecycle protocol, update the pinned digest, and rerun integration tests.
+The GovChat-NL bridge `main` branch contains the promotion of the live tool-calling protocol. Compose now builds that maintained source branch rather than consuming the legacy upstream `pr-72` artifact; the exact source revision follows the local clone's checked-out commit rather than a pinned digest.
 
-Reference configuration baseline from the LibreChat checkout: LibreChat image `v0.8.7`; n8n default `2.25.7`; bridge digest above; LibreChat stack/overlay source commit `a4b9e67`. This is a reproducible configuration record, **not evidence of completed end-to-end or production acceptance testing**. Native tool cards require a compatible bridge, streaming n8n workflow, and LibreChat runtime overlay tested together.
+Reference configuration baseline from the LibreChat checkout: LibreChat image `v0.8.7`; n8n default `2.25.7`; GovChat-NL bridge main source; LibreChat stack/overlay source commit `a4b9e67`. This is a configuration record, **not evidence of completed end-to-end or production acceptance testing**. Native tool cards require a compatible bridge, streaming n8n workflow, and LibreChat runtime overlay tested together.
 
-## Git provenance, source of truth and migration safety
+## Repository ownership and rename cutover
 
-| Repository | Remote / default branch | HEAD at audit | Worktree |
-|---|---|---|---|
-| LibreChat stack | `https://github.com/GovChat-NL/GovChat-NL-LibreChat.git`; local branch `feature/monorepo-migration`, remote default `main` | `a4b9e67` | Clean; feature branch tracked its origin branch. |
-| Agents | `https://github.com/GovChat-NL/GovChat-NL-Agents.git`; default `main` | `58319d0` | Clean. The workspace description said this was not a Git checkout, but audit found a valid Git repository and the full workflow tree. |
-| Admin Overlay | `https://github.com/GovChat-NL/GovChat-AdminOverlay.git`; default `main` | `8d36b5e` | Clean. |
-| Bridge | `https://github.com/GovChat-NL/n8n-openai-bridge.git`; default `main` | `8003d03` | Clean; remains separate. |
+The LibreChat Compose stack and its deployment documentation are maintained in the GovChat-NL main repository. The former OpenWebUI files remain in the separate legacy repository. Workflow assets are maintained under `agents/`; the GovChat bridge remains a separate repository and is built by Compose from its `main` branch.
 
-Agents and Admin Overlay were imported with non-squashed Git subtree imports at `agents/` and `services/admin-overlay/`; their source commit histories remain reachable. Local recovery checkpoint: `backup/pre-monorepo-migration-20261022` at `a4b9e67`. From migration review/merge onward, this monorepo is the source of truth for deployment, workflows and the integrated Admin service. No push, remote repository creation, source-repository archival or deletion was performed.
+The GitHub repository names have been changed. The old OpenWebUI repository is now `GovChat-NL/GovChat-NL-legacy`, and the LibreChat stack is now `GovChat-NL/GovChat-NL`. The local stack checkout's `origin` should point to `https://github.com/GovChat-NL/GovChat-NL.git`; the legacy checkout should point to `https://github.com/GovChat-NL/GovChat-NL-legacy.git`.
 
-The task described two uncommitted edits in the LibreChat Compose and Nginx files. `git status`, `git diff` and `git diff --cached` showed the checkout clean at audit time, so those edits were not present to preserve. The checkpoint retains the audited original HEAD. Reconcile against any other checkout before synchronizing it.
+The old `GovChat-NL/GovChat-NL` URL is now occupied by the LibreChat stack, so do not rely on a GitHub rename redirect to lead users to the legacy OpenWebUI files. The README in `GovChat-NL-legacy` is the user-facing pointer for existing deployments.
 
-The separate `feature/live-tool-calling` branch was not checked out, merged, or committed into this migration. Its live-card implementation remains a separate feature decision; this branch records the request-flow boundary and explicitly notes that its runtime patches are not active here.
+The live tool-calling producer is maintained in the separate bridge repository. The matching LibreChat and n8n runtime overlays are enabled by the standard Compose stack.
 
 Only `.env.example` and tracked configuration belong in source control. Keep real `.env` files, credentials, database volumes, uploads/user data, runtime logs and build products local. The stack root ignore rules cover `.env` and `.env.*`; recheck staged files and secrets before any future commit.
 

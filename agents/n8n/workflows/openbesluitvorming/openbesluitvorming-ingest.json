@@ -1,0 +1,636 @@
+{
+  "id": "govchat-openbesluitvorming-ingest",
+  "name": "OpenBesluitvorming - Checkpointed Ingest",
+  "description": "Inactive, generic Open Besluitvorming full-snapshot ingest. Configure the organisation and collection in node 2 before activation. Each execution handles one bounded page and commits a durable Qdrant checkpoint.",
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "saveExecutionProgress": true,
+    "saveManualExecutions": true,
+    "availableInMCP": false
+  },
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "66f5ea17-e431-4d27-a9ad-6f974e000001",
+      "name": "1. Start One Page Manually",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        -1200,
+        -100
+      ]
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 2
+            }
+          ]
+        }
+      },
+      "id": "66f5ea17-e431-4d27-a9ad-6f974e000002",
+      "name": "1. Continue Every Two Minutes",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -1200,
+        100
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Set these values before activating this workflow.\nconst sourceKey = 'your_organisation';\nconst collection = 'openbesluitvorming';\nconst checkpointId = '00000000-0000-5000-8000-000000000001';\nreturn [{ json: { runId: `openbesluitvorming-page-${Date.now()}`, sourceKey, collection, checkpointId, qdrantBase: 'http://qdrant:6333', vectorSize: 3072, snapshotLimit: 20 } }];"
+      },
+      "id": "66f5ea17-e431-4d27-a9ad-6f974e000003",
+      "name": "2. Configure Ingest",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -960,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "url": "={{ $json.qdrantBase + '/collections/' + encodeURIComponent($json.collection) }}",
+        "options": {
+          "timeout": 10000,
+          "response": {
+            "response": {
+              "fullResponse": true
+            }
+          }
+        }
+      },
+      "id": "66f5ea17-e431-4d27-a9ad-6f974e000004",
+      "name": "3. Check Qdrant Collection",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -720,
+        0
+      ],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const cfg = $('2. Configure Ingest').first().json;\nconst response = $input.first().json || {};\nconst error = response.error || null;\nconst status = Number(response.statusCode || response.status || error?.httpCode || error?.statusCode || 0);\nconst body = response.body || response.data || response;\nconst text = typeof body === 'string' ? body : JSON.stringify(body);\nif (status === 404 || text.includes('Not found: Collection')) return [{ json: { ...cfg, collectionAction: 'create' } }];\nif (error || (status && (status < 200 || status >= 300))) throw new Error(`Qdrant collection check failed: HTTP ${status || 'unknown'}`);\nconst vectors = body.result?.config?.params?.vectors;\nif (!vectors || Number(vectors.size) !== cfg.vectorSize || vectors.distance !== 'Cosine') throw new Error('Qdrant collection schema mismatch');\nreturn [{ json: { ...cfg, collectionAction: 'ready' } }];"
+      },
+      "id": "66f5ea17-e431-4d27-a9ad-6f974e000005",
+      "name": "4. Validate Or Create Decision",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -480,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.collectionAction }}",
+              "rightValue": "create",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        }
+      },
+      "id": "66f5ea17-e431-4d27-a9ad-6f974e000006",
+      "name": "5. Collection Missing?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        -250,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "PUT",
+        "url": "={{ $json.qdrantBase + '/collections/' + encodeURIComponent($json.collection) }}",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={ \"vectors\": { \"size\": {{ $json.vectorSize }}, \"distance\": \"Cosine\" } }",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "id": "66f5ea17-e431-4d27-a9ad-6f974e000007",
+      "name": "6. Create Qdrant Collection",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -20,
+        -100
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "return [{ json: $('4. Validate Or Create Decision').first().json }];"
+      },
+      "id": "66f5ea17-e431-4d27-a9ad-6f974e000008",
+      "name": "7. Prepare Checkpoint Lookup",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -20,
+        100
+      ]
+    },
+    {
+      "parameters": {
+        "url": "={{ $json.qdrantBase + '/collections/' + encodeURIComponent($json.collection) + '/points/' + $json.checkpointId }}",
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "id": "66f5ea17-e431-4d27-a9ad-6f974e000009",
+      "name": "8. Read Durable Checkpoint",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        220,
+        100
+      ],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const cfg = $('7. Prepare Checkpoint Lookup').first().json;\nconst response = $input.first().json || {};\nconst payload = response.result?.payload || response.payload || null;\nif (response.error || !payload || payload.kind !== 'ori_checkpoint' || payload.source_key !== cfg.sourceKey) return [{ json: { ...cfg, cursor: null, pages: 0, indexed: 0, failed: 0, truncated: 0, dead_letters: [], changes_cursor: null, completed: false } }];\nreturn [{ json: { ...cfg, cursor: payload.cursor || null, pages: Number(payload.pages || 0), indexed: Number(payload.indexed || 0), failed: Number(payload.failed || 0), truncated: Number(payload.truncated || 0), dead_letters: payload.dead_letters || [], changes_cursor: payload.changes_cursor || null, completed: payload.completed === true } }];"
+      },
+      "id": "66f5ea17-e431-4d27-a9ad-6f974e000010",
+      "name": "9. Resume From Durable Checkpoint",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        460,
+        100
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.completed }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        }
+      },
+      "id": "66f5ea17-e431-4d27-a9ad-6f974e000011",
+      "name": "10. Source Already Complete?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        700,
+        100
+      ]
+    },
+    {
+      "parameters": {
+        "url": "https://openbesluitvorming.nl/api/export/snapshot",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "source",
+              "value": "={{ $json.sourceKey }}"
+            },
+            {
+              "name": "limit",
+              "value": "={{ String($json.snapshotLimit) }}"
+            },
+            {
+              "name": "cursor",
+              "value": "={{ $json.cursor || undefined }}"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 45000,
+          "response": {
+            "response": {
+              "fullResponse": true
+            }
+          }
+        }
+      },
+      "id": "66f5ea17-e431-4d27-a9ad-6f974e000012",
+      "name": "11. Fetch Exactly One Snapshot Page",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        930,
+        0
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000
+    },
+    {
+      "parameters": {
+        "jsCode": "const cfg = $('9. Resume From Durable Checkpoint').first().json;\nconst response = $input.first().json || {};\nconst headers = response.headers || {};\nconst body = String(response.body || response.data || '');\nconst documents = body.split('\\n').filter(Boolean).map(line => { try { return JSON.parse(line); } catch { return null; } }).filter(record => record?.op === 'upsert' && record.entity_type === 'Document');\nreturn [{ json: { ...cfg, documents, maxDocumentsInPage: documents.length, nextCursor: headers['x-next-cursor'] || null, hasMore: headers['x-has-more'] === 'true' || headers['x-has-more'] === true, changesCursor: cfg.changes_cursor || headers['x-changes-cursor'] || null, page: cfg.pages + 1 } }];"
+      },
+      "id": "66f5ea17-e431-4d27-a9ad-6f974e000013",
+      "name": "12. Parse Page And Next Cursor",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1170,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.documents.length }}",
+              "rightValue": 0,
+              "operator": {
+                "type": "number",
+                "operation": "gt"
+              }
+            }
+          ],
+          "combinator": "and"
+        }
+      },
+      "id": "66f5ea17-e431-4d27-a9ad-6f974e000014",
+      "name": "13. Page Has Documents?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1410,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "source": "database",
+        "workflowId": {
+          "__rl": true,
+          "value": "govchat-ob-document-worker",
+          "mode": "list",
+          "cachedResultName": "OpenBesluitvorming - Document Worker"
+        },
+        "mode": "once",
+        "options": {
+          "waitForSubWorkflow": true
+        }
+      },
+      "id": "66f5ea17-e431-4d27-a9ad-6f974e000015",
+      "name": "14. Process This Page",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.3,
+      "position": [
+        1640,
+        -100
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const page = $('12. Parse Page And Next Cursor').first().json;\nconst summary = $input.first().json.pageSummary || { indexed: 0, failed: 1, truncated: 0, outcomes: [{ outcome: 'dead_letter', stage: 'worker', code: 'invalid_worker_summary', message: 'Worker returned no page summary' }] };\nreturn [{ json: { page, summary } }];"
+      },
+      "id": "66f5ea17-e431-4d27-a9ad-6f974e000016",
+      "name": "15. Summarize Page Outcome",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1870,
+        -100
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const data = $input.first().json;\nconst page = data.page, summary = data.summary;\nconst prior = $('9. Resume From Durable Checkpoint').first().json;\nconst deadLetters = summary.outcomes.filter(item => item.outcome === 'dead_letter').map(item => ({ entity_id: item.entityId, stage: item.stage || null, code: item.code || null, message: item.message || null, recorded_at: new Date().toISOString() }));\nconst checkpoint = { kind: 'ori_checkpoint', source_key: page.sourceKey, cursor: page.nextCursor, completed: !page.hasMore || !page.nextCursor, pages: page.page, indexed: Number(prior.indexed || 0) + Number(summary.indexed || 0), failed: Number(prior.failed || 0) + Number(summary.failed || 0), truncated: Number(prior.truncated || 0) + Number(summary.truncated || 0), dead_letters: [...(prior.dead_letters || []), ...deadLetters].slice(-2000), changes_cursor: prior.changes_cursor || page.changesCursor || null, last_page_at: new Date().toISOString(), last_page_documents: page.maxDocumentsInPage };\nconst zeroVector = new Array(page.vectorSize).fill(0);\nreturn [{ json: { ...page, checkpoint, checkpointPoint: { id: page.checkpointId, vector: zeroVector, payload: checkpoint } } }];"
+      },
+      "id": "66f5ea17-e431-4d27-a9ad-6f974e000017",
+      "name": "16. Build Durable Checkpoint",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2100,
+        -100
+      ]
+    },
+    {
+      "parameters": {
+        "method": "PUT",
+        "url": "={{ $json.qdrantBase + '/collections/' + encodeURIComponent($json.collection) + '/points?wait=true' }}",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={ \"points\": [{{ JSON.stringify($json.checkpointPoint) }}] }",
+        "options": {
+          "timeout": 45000
+        }
+      },
+      "id": "66f5ea17-e431-4d27-a9ad-6f974e000018",
+      "name": "17. Commit Checkpoint To Qdrant",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2330,
+        -100
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000
+    },
+    {
+      "parameters": {
+        "jsCode": "const page = $('16. Build Durable Checkpoint').first().json;\nconsole.log(JSON.stringify({ run_id: page.runId, event: 'page_committed', source_key: page.sourceKey, page: page.checkpoint.pages, page_documents: page.checkpoint.last_page_documents, total_indexed: page.checkpoint.indexed, total_failed: page.checkpoint.failed, next_cursor: page.checkpoint.cursor, completed: page.checkpoint.completed }));\nreturn [{ json: { status: page.checkpoint.completed ? 'completed' : 'page_committed', source_key: page.sourceKey, page: page.checkpoint.pages, page_documents: page.checkpoint.last_page_documents, indexed: page.checkpoint.indexed, failed: page.checkpoint.failed, truncated: page.checkpoint.truncated, next_cursor: page.checkpoint.cursor, completed: page.checkpoint.completed, changes_cursor: page.checkpoint.changes_cursor } }];"
+      },
+      "id": "66f5ea17-e431-4d27-a9ad-6f974e000019",
+      "name": "18. Report Committed Page",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2560,
+        -100
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const page = $('12. Parse Page And Next Cursor').first().json;\nconst prior = $('9. Resume From Durable Checkpoint').first().json;\nconst checkpoint = { kind: 'ori_checkpoint', source_key: page.sourceKey, cursor: page.nextCursor, completed: !page.hasMore || !page.nextCursor, pages: page.page, indexed: Number(prior.indexed || 0), failed: Number(prior.failed || 0), truncated: Number(prior.truncated || 0), dead_letters: prior.dead_letters || [], changes_cursor: prior.changes_cursor || page.changesCursor || null, last_page_at: new Date().toISOString(), last_page_documents: 0 };\nreturn [{ json: { ...page, checkpoint, checkpointPoint: { id: page.checkpointId, vector: new Array(page.vectorSize).fill(0), payload: checkpoint } } }];"
+      },
+      "id": "66f5ea17-e431-4d27-a9ad-6f974e000020",
+      "name": "16. Build Empty Page Checkpoint",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1640,
+        200
+      ]
+    }
+  ],
+  "connections": {
+    "1. Start One Page Manually": {
+      "main": [
+        [
+          {
+            "node": "2. Configure Ingest",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "3. Check Qdrant Collection": {
+      "main": [
+        [
+          {
+            "node": "4. Validate Or Create Decision",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "4. Validate Or Create Decision": {
+      "main": [
+        [
+          {
+            "node": "5. Collection Missing?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "5. Collection Missing?": {
+      "main": [
+        [
+          {
+            "node": "6. Create Qdrant Collection",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "7. Prepare Checkpoint Lookup",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "6. Create Qdrant Collection": {
+      "main": [
+        [
+          {
+            "node": "7. Prepare Checkpoint Lookup",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "7. Prepare Checkpoint Lookup": {
+      "main": [
+        [
+          {
+            "node": "8. Read Durable Checkpoint",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "8. Read Durable Checkpoint": {
+      "main": [
+        [
+          {
+            "node": "9. Resume From Durable Checkpoint",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "9. Resume From Durable Checkpoint": {
+      "main": [
+        [
+          {
+            "node": "10. Source Already Complete?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "10. Source Already Complete?": {
+      "main": [
+        [
+          {
+            "node": "18. Report Committed Page",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "11. Fetch Exactly One Snapshot Page",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "11. Fetch Exactly One Snapshot Page": {
+      "main": [
+        [
+          {
+            "node": "12. Parse Page And Next Cursor",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "12. Parse Page And Next Cursor": {
+      "main": [
+        [
+          {
+            "node": "13. Page Has Documents?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "13. Page Has Documents?": {
+      "main": [
+        [
+          {
+            "node": "14. Process This Page",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "16. Build Empty Page Checkpoint",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "14. Process This Page": {
+      "main": [
+        [
+          {
+            "node": "15. Summarize Page Outcome",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "15. Summarize Page Outcome": {
+      "main": [
+        [
+          {
+            "node": "16. Build Durable Checkpoint",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "16. Build Durable Checkpoint": {
+      "main": [
+        [
+          {
+            "node": "17. Commit Checkpoint To Qdrant",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "16. Build Empty Page Checkpoint": {
+      "main": [
+        [
+          {
+            "node": "17. Commit Checkpoint To Qdrant",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "17. Commit Checkpoint To Qdrant": {
+      "main": [
+        [
+          {
+            "node": "18. Report Committed Page",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "2. Configure Ingest": {
+      "main": [
+        [
+          {
+            "node": "3. Check Qdrant Collection",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "1. Continue Every Two Minutes": {
+      "main": [
+        [
+          {
+            "node": "2. Configure Ingest",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "versionId": "66f5ea17-e431-4d27-a9ad-6f974e006001",
+  "tags": []
+}
