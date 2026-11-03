@@ -143,7 +143,14 @@ function discoverWorkflows(workflowsDir = WORKFLOWS_DIR) {
       ids.add(id);
     }
 
-    return { file, fullPath, ids: workflows.map((workflow) => String(workflow.id).trim()) };
+    return {
+      file,
+      fullPath,
+      ids: workflows.map((workflow) => String(workflow.id).trim()),
+      inactiveIds: workflows
+        .filter((workflow) => workflow.active !== true)
+        .map((workflow) => String(workflow.id).trim()),
+    };
   });
 }
 
@@ -225,6 +232,12 @@ function importVerifyAndPublish(workflows) {
 
   for (const workflow of workflows) {
     for (const id of workflow.ids) runN8n([`publish:workflow`, `--id=${id}`]);
+  }
+
+  // n8n 2.x publishes inactive exports as active by default. Restore the
+  // source export's intended disabled state after publishing its draft.
+  for (const workflow of workflows) {
+    for (const id of workflow.inactiveIds || []) runN8n([`unpublish:workflow`, `--id=${id}`]);
   }
 
   fs.mkdirSync(path.dirname(MARKER_FILE), { recursive: true });

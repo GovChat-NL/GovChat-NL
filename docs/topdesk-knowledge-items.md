@@ -5,7 +5,7 @@ GovChat bevat twee generieke, inactieve n8n-workflows voor het indexeren en sema
 - `topdesk-knowledge-items-ingest.json` haalt directe kinderen van een gekozen hoofdkennisitem op basis van het TOPdesk-ID op, voegt artikel- en optioneel bijlagetext samen, genereert embeddings en upsert de punten in Qdrant.
 - `topdesk-knowledge-items-search.json` embedt een vraag, zoekt in een gekozen Qdrant-collectie en geeft resultaten met score, titel, TOPdesk-nummer, bron-id en URL terug.
 
-Beide exports worden automatisch meegenomen door [`n8n/bootstrap.js`](../n8n/bootstrap.js). Importeren/publiceren activeert de workflows niet; dat voorkomt dat een verse installatie verbinding maakt met een nog niet ingerichte TOPdesk-omgeving.
+Beide exports worden automatisch meegenomen door [`n8n/bootstrap.js`](../n8n/bootstrap.js). Bootstrap herstelt na publiceren de actieve status uit de workflow-export; de TOPdesk-workflows blijven dus ongepubliceerd/inactief totdat ze bewust na configuratie worden geactiveerd. Zo maakt een verse installatie geen verbinding met een nog niet ingerichte TOPdesk-omgeving.
 
 ## Vereisten
 

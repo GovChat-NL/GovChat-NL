@@ -7,6 +7,7 @@ const { discoverWorkflows, getTopdeskBaseUrl, renderWorkflowTemplate } = require
 const workflowsDir = path.resolve(__dirname, '../../agents/n8n/workflows');
 const workflows = discoverWorkflows(workflowsDir);
 const workflowIds = workflows.flatMap((entry) => entry.ids);
+const inactiveWorkflowIds = workflows.flatMap((entry) => entry.inactiveIds || []);
 if (new Set(workflowIds).size !== workflowIds.length) {
   throw new Error('Discovered workflow IDs are not unique');
 }
@@ -23,6 +24,7 @@ const ingest = readWorkflow('topdesk-knowledge-items-ingest.json');
 const search = readWorkflow('topdesk-knowledge-items-search.json');
 
 assert(ingest.active === false && search.active === false, 'TOPdesk workflows must remain inactive until configured');
+assert(inactiveWorkflowIds.includes(ingest.id) && inactiveWorkflowIds.includes(search.id), 'Bootstrap must preserve TOPdesk inactive defaults');
 assert(nodeByName(ingest, '1. Configuration (edit after import)'), 'TOPdesk ingest configuration node is missing');
 assert(nodeByName(ingest, 'Run with parameters'), 'TOPdesk ingest runtime parameter trigger is missing');
 assert(nodeByName(ingest, 'Run with parameters').parameters.workflowInputs.values.some((value) => value.name === 'root_knowledge_item_id'), 'TOPdesk parent ID input is missing');
