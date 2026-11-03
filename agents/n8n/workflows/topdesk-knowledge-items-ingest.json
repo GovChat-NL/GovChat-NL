@@ -15,7 +15,7 @@
       "position": [-1000, 80], "id": "tdki-ingest-schedule", "name": "Weekly schedule"
     },
     {
-      "parameters": { "workflowInputs": { "values": [ { "name": "root_knowledge_item_id" }, { "name": "include_attachments", "type": "boolean" } ] } },
+      "parameters": { "workflowInputs": { "values": [ { "name": "root_knowledge_item_id" }, { "name": "root_knowledge_item_number" }, { "name": "include_attachments", "type": "boolean" } ] } },
       "type": "n8n-nodes-base.executeWorkflowTrigger", "typeVersion": 1.1,
       "position": [-1000, 280], "id": "tdki-ingest-subworkflow-trigger", "name": "Run with parameters"
     },
@@ -33,7 +33,7 @@
     },
     {
       "parameters": {
-        "jsCode": "// Configure a default root ID here for manual/scheduled runs. Runtime inputs override these defaults. TOPdesk URLs are rendered from bootstrap environment settings.\nconst configuredRootKnowledgeItemId='';const configuredIncludeAttachments=true;const input=$input.first()?.json||{};const rootKnowledgeItemId=String(input.root_knowledge_item_id||input.rootKnowledgeItemId||configuredRootKnowledgeItemId).trim();if(!rootKnowledgeItemId)throw new Error('root_knowledge_item_id is required (TOPdesk ID of the parent knowledge item)');const rawAttachments=input.include_attachments??input.includeAttachments;const includeAttachments=rawAttachments===undefined?configuredIncludeAttachments:(rawAttachments===true||String(rawAttachments).toLowerCase()==='true');return [{json:{topdeskBaseUrl:'__TOPDESK_BASE_URL__',rootKnowledgeItemId,pageSize:500,fields:'content,title,status,visibility,description,keywords,creationDate,modificationDate',publicKnowledgeItemUrl:'__TOPDESK_PUBLIC_BASE_URL__',includeAttachments,tikaUrl:'http://tika:9998/tika',embeddingUrl:'http://litellm:4000/embeddings',embeddingModel:'your-embedding-model',qdrantUrl:'http://qdrant:6333',collection:'topdesk_knowledge_items',vectorSize:3072,visibleOnly:true}}];"
+        "jsCode": "// Set a default parent item number for manual/scheduled runs; runtime ID or number overrides it. TOPdesk URLs are rendered by bootstrap.\nconst configuredRootKnowledgeItemId='';const configuredRootKnowledgeItemNumber='KI 0975';const configuredIncludeAttachments=true;const input=$input.first()?.json||{};const rootKnowledgeItemId=String(input.root_knowledge_item_id||input.rootKnowledgeItemId||configuredRootKnowledgeItemId).trim();const rootKnowledgeItemNumber=String(input.root_knowledge_item_number||input.rootKnowledgeItemNumber||configuredRootKnowledgeItemNumber).trim();if(!rootKnowledgeItemId&&!rootKnowledgeItemNumber)throw new Error('Provide root_knowledge_item_id or root_knowledge_item_number');const rootQueryField=rootKnowledgeItemId?'parent.id':'parent.number';const rootQueryValue=rootKnowledgeItemId||rootKnowledgeItemNumber;if(rootQueryValue.includes(\"'\"))throw new Error('Root item selector cannot contain a single quote');const rootQuery=rootQueryField+\"=='\"+rootQueryValue+\"'\";const rawAttachments=input.include_attachments??input.includeAttachments;const includeAttachments=rawAttachments===undefined?configuredIncludeAttachments:(rawAttachments===true||String(rawAttachments).toLowerCase()==='true');return [{json:{topdeskBaseUrl:'__TOPDESK_BASE_URL__',rootKnowledgeItemId,rootKnowledgeItemNumber,rootQuery,pageSize:500,fields:'content,title,status,visibility,description,keywords,creationDate,modificationDate',publicKnowledgeItemUrl:'__TOPDESK_PUBLIC_BASE_URL__',includeAttachments,tikaUrl:'http://tika:9998/tika',embeddingUrl:'http://litellm:4000/embeddings',embeddingModel:'govchat-embedding',qdrantUrl:'http://qdrant:6333',collection:'topdesk_knowledge_items',vectorSize:3072,visibleOnly:true}}];"
       },
       "type": "n8n-nodes-base.code", "typeVersion": 2,
       "position": [-760, 0], "id": "tdki-ingest-config", "name": "1. Configuration (edit after import)"
@@ -45,7 +45,7 @@
         "sendQuery": true,
         "queryParameters": { "parameters": [
           { "name": "page_size", "value": "={{ $('1. Configuration (edit after import)').first().json.pageSize }}" },
-          { "name": "query", "value": "={{ \"parent.id=='\" + $('1. Configuration (edit after import)').first().json.rootKnowledgeItemId + \"'\" }}" },
+          { "name": "query", "value": "={{ $('1. Configuration (edit after import)').first().json.rootQuery }}" },
           { "name": "fields", "value": "={{ $('1. Configuration (edit after import)').first().json.fields }}" }
         ] },
         "sendHeaders": true,

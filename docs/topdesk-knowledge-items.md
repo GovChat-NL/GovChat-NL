@@ -28,31 +28,31 @@ Open de workflow in n8n en pas in de node **1. Configuration (edit after import)
 | Instelling | Betekenis |
 | --- | --- |
 | `topdeskBaseUrl` | Wordt bij bootstrap opgebouwd uit `TOPDESK_TENANT` en `TOPDESK_BASE_DOMAIN`; niet hardcoded in het workflowtemplate. |
-| `configuredRootKnowledgeItemId` | TOPdesk-ID voor handmatige/geplande runs. Bij subworkflow-aanroepen kan `root_knowledge_item_id` dit per run overschrijven. |
+| `configuredRootKnowledgeItemNumber` | TOPdesk-nummer voor handmatige/geplande runs; staat standaard op `KI 0975`. Een ID kan in plaats daarvan worden ingesteld met `configuredRootKnowledgeItemId`. |
 | `pageSize` | TOPdesk paginaomvang (standaard 500). De workflow vraagt één pagina op; verhoog de waarde niet boven de limiet van jouw TOPdesk-tenant. Gebruik bij grotere datasets de pagination-opties van de API/node of voer ingest in gecontroleerde batches uit. |
 | `fields` | TOPdesk velden die nodig zijn voor inhoud en metadata. |
 | `publicKnowledgeItemUrl` | Wordt gevuld vanuit `TOPDESK_PUBLIC_BASE_URL`; leeg laten om geen publieke URL in de bronpayload te zetten. |
 | `configuredIncludeAttachments` | Default om bijlagen via Tika mee te nemen (standaard `true`); bij subworkflow-aanroepen kan `include_attachments` dit per run overschrijven. |
 | `tikaUrl` | Tika endpoint, standaard `http://tika:9998/tika`. |
-| `embeddingUrl`, `embeddingModel` | OpenAI-compatible embeddings endpoint en model. Gebruik de endpointvorm die jouw provider verwacht (`/embeddings` of `/v1/embeddings`). Dezelfde waarden moeten in de **1. Validate and configure search**-node van de zoekworkflow staan. |
+| `embeddingUrl`, `embeddingModel` | OpenAI-compatible embeddings endpoint en LiteLLM-modelalias. GovChat gebruikt `govchat-embedding`, geconfigureerd in `litellm/config.yaml` als Azure `text-embedding-3-large`. Gebruik bij een andere provider diens modelnaam/alias en endpointvorm (`/embeddings` of `/v1/embeddings`). Dezelfde waarden moeten in de **1. Validate and configure search**-node van de zoekworkflow staan. |
 | `qdrantUrl`, `collection`, `vectorSize` | Qdrant endpoint, collectie en vectorafmeting. |
 | `visibleOnly` | Indexeer alleen items waarvan TOPdesk `sspVisibility` als `VISIBLE` rapporteert. |
 | `top_k`, `score_threshold` | Optionele zoekinput voor maximum aantal resultaten en minimale Qdrant-score. De zoekworkflow begrenst `top_k` op 1–50. |
 
-De meegeleverde endpoint-, model- en collectiewaarden zijn voorbeelden en wijzen niet naar een specifieke organisatie. Vul `configuredRootKnowledgeItemId` in voor handmatige/geplande runs. De query filtert op `parent.id` en verwerkt de directe kinderen van dat hoofditem; het hoofditem zelf wordt niet geïndexeerd. Pas de query aan als jouw TOPdesk-hiërarchie anders werkt.
+De query filtert standaard op `parent.number=='KI 0975'` en verwerkt de directe kinderen van dat hoofditem; het hoofditem zelf wordt niet geïndexeerd. Voor een andere tenant kun je het standaardnummer vervangen. Als een `root_knowledge_item_id` wordt meegegeven, gebruikt de workflow `parent.id` in plaats daarvan. Pas de query aan als jouw TOPdesk-hiërarchie anders werkt.
 
 ### Runtime-parameters
 
-De ingest-workflow heeft ook een **Run with parameters**-trigger zodat een bovenliggende agent/workflow per uitvoering een hoofditem kan kiezen en bijlage-extractie kan toggelen. Geef de TOPdesk UUID mee als `root_knowledge_item_id` en optioneel een boolean `include_attachments`:
+De ingest-workflow heeft ook een **Run with parameters**-trigger zodat een bovenliggende agent/workflow per uitvoering een hoofditem kan kiezen en bijlage-extractie kan toggelen. Geef `root_knowledge_item_number` óf `root_knowledge_item_id` mee, plus optioneel een boolean `include_attachments`:
 
 ```json
 {
-  "root_knowledge_item_id": "<TOPdesk-knowledge-item-UUID>",
+  "root_knowledge_item_number": "KI 0975",
   "include_attachments": false
 }
 ```
 
-Als `include_attachments` ontbreekt wordt `configuredIncludeAttachments` gebruikt (standaard `true`). De `root_knowledge_item_id` is vereist voor parameter-aanroepen; geplande/manual runs gebruiken `configuredRootKnowledgeItemId`.
+Als `include_attachments` ontbreekt wordt `configuredIncludeAttachments` gebruikt (standaard `true`). Een rootnummer of ID is vereist voor runtime-aanroepen; geplande/handmatige runs gebruiken standaard `configuredRootKnowledgeItemNumber`.
 
 ## 2. Maak credentials aan in n8n
 
