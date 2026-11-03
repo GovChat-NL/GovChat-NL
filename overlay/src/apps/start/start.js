@@ -63,7 +63,8 @@ async function start() {
 
 function isChatUrl(url) {
   try {
-    return /^\/c(\/|$)/i.test(new URL(url || "", window.location.origin).pathname);
+    const parsed = new URL(url || "", window.location.origin);
+    return parsed.origin === window.location.origin && /^\/c(\/|$)/i.test(parsed.pathname);
   } catch {
     return false;
   }
