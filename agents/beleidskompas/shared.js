@@ -1,24 +1,19 @@
 'use strict';
 
 /**
- * Beleidskompas step 1 ("Publiek en provinciaal belang") core logic.
- *
- * This module is the single source of truth for the reasoning embedded in the
- * n8n workflow `beleidskompas-step-stap1.json`. `generate-workflow.js` inlines
- * every function below (via Function.prototype.toString) into that workflow's
- * Code node, so the exact code exercised by logic.test.js is what runs in n8n.
- *
- * The output schema (case_summary / public_interest / provincial_interest /
- * reasoning / assumptions_missing_info / disclaimer) condenses the 6-agent
- * chain (001-006) from the prior Python/OpenWebUI/Qdrant Beleidskompas PoC
- * into a single LLM call, keeping the
- * five public-interest test criteria from 002_OVERHEIDSINTERVENTIE and the
- * public/provincial verdict shape from 005_INTEGRALE_AFWEGING.
+ * What every Beleidskompas workflow shares: reading the caller's token,
+ * sending HTTP requests and calling the language model through LiteLLM,
+ * scoring the source passages, the citations block that travels with a
+ * chat message, and LibreChat's conversation-title request. The step
+ * definitions in steps/ and main-agent.js build on these; generate-workflow.js
+ * copies the functions a workflow needs into its Code node.
  */
 
 const DISCLAIMER =
   'Dit resultaat is een ondersteunend concept ten behoeve van de voorbereiding van beleidsadvies. ' +
   'Het is geen besluit en vervangt geen menselijke afweging of besluitvorming.';
+
+// --- The caller's token ---
 
 function extractSuppliedToken(headers) {
   const h = headers && typeof headers === 'object' ? headers : {};
@@ -33,6 +28,54 @@ function extractSuppliedToken(headers) {
   }
   return '';
 }
+
+// --- The message as the Beleidskompas page composes it ---
+
+// The page can only send text, so it puts everything a step needs in one
+// message with a label at the start of each part (composePrompt in
+// overlay/src/apps/beleidskompas/beleidskompas-api.js writes these).
+const PAGE_MESSAGE_LABELS = {
+  step: 'Stap:',
+  findings: 'Casus/eerdere bevindingen:',
+  sources: 'Bekende bronnen:',
+  question: 'Vraag:',
+};
+
+/** Splits a message from the page into its parts: the step id, the findings
+ *  of the earlier steps (which span many lines), the list of known sources
+ *  and the question. A part whose label is missing is '' (or [] for the
+ *  sources). A message without any label is returned whole as the question,
+ *  so a direct webhook call with a plain case text keeps working. */
+function parsePageMessage(text) {
+  const parts = { stepId: '', findings: '', sources: '', question: '' };
+  const unlabeled = [];
+  let current = null;
+
+  for (const line of String(text || '').split('\n')) {
+    const key = Object.keys(PAGE_MESSAGE_LABELS).find((k) => line.startsWith(PAGE_MESSAGE_LABELS[k]));
+    if (key) {
+      current = key;
+      parts[key] = line.slice(PAGE_MESSAGE_LABELS[key].length).trim();
+    } else if (current) {
+      parts[current] += '\n' + line;
+    } else {
+      unlabeled.push(line);
+    }
+  }
+
+  if (!current) parts.question = unlabeled.join('\n');
+  const stepMatch = /^([A-Za-z0-9_-]+)/.exec(parts.step || '');
+  parts.stepId = stepMatch ? stepMatch[1].toLowerCase() : '';
+  delete parts.step;
+  for (const key of Object.keys(parts)) parts[key] = String(parts[key] || '').trim();
+  parts.sources = parts.sources
+    .split(';')
+    .map((name) => name.trim())
+    .filter(Boolean);
+  return parts;
+}
+
+// --- Scoring the source passages ---
 
 function tokenizePolicyText(value) {
   return String(value || '')
@@ -92,203 +135,6 @@ function selectSources(passages, queryBlob, ragSettings) {
       matched_docs: scored.length,
     },
   };
-}
-
-function detectMissingInfo(stepFields, caseText) {
-  const fields = stepFields && typeof stepFields === 'object' ? stepFields : {};
-  const missing = [];
-  if (!String(caseText || '').trim() && !String(fields.problem || '').trim()) {
-    missing.push(
-      'Geen casusbeschrijving of probleemdefinitie aangeleverd; de analyse hieronder gaat uit van de letterlijke vraagtekst alleen.',
-    );
-  }
-  if (!String(fields.causes || '').trim()) {
-    missing.push('Oorzaken van het probleem zijn niet aangeleverd en worden daarom als "onbekend" behandeld.');
-  }
-  if (!String(fields.perspectives || '').trim()) {
-    missing.push(
-      'Er is niet aangegeven welke perspectieven of belanghebbenden nog ontbreken; dit dient in een vervolgstap expliciet te worden nagegaan.',
-    );
-  }
-  if (!String(fields.references || '').trim()) {
-    missing.push('Geen expliciete bronverwijzingen aangeleverd door de gebruiker; de analyse steunt op de geraadpleegde beleidsbronnen hieronder.');
-  }
-  return missing;
-}
-
-function buildSystemPrompt(sources) {
-  const sourceList = Array.isArray(sources) && sources.length ? sources.join('; ') : 'geen aanvullende bronlijst aangeleverd';
-  return (
-    'Je bent een realistisch analysemodel voor stap 1 (Publiek en provinciaal belang) van het Beleidskompas van Provincie Limburg. ' +
-    'Je combineert drie deelanalyses tot een samenhangend oordeel: (1) probleemdefinitie - het feitelijke probleem, oorzaken, symptomen en ontbrekende perspectieven; ' +
-    '(2) overheidsinterventie - toets langs vijf criteria of publiek belang aanwezig is: marktfalen, publieke goederen/diensten, sociale rechtvaardigheid, externe effecten, consumentenbescherming; ' +
-    '(3) provinciaal belang - past de taak binnen de wettelijke taken, bevoegdheden en vastgestelde beleidskaders van de provincie, of is dit een gemeentelijke aangelegenheid? ' +
-    'Gebruik uitsluitend expliciete informatie uit de casus en de aangeleverde brondocumenten (' + sourceList + '). ' +
-    'Maak geen eigen interpretaties of feitelijke aannames; benoem ontbrekende informatie expliciet in plaats van te verzinnen. Redeneer stap voor stap en wees feitelijk en beknopt. ' +
-    // De explanation-velden worden als markdown weergegeven (ook in het
-    // opgeslagen LibreChat-bericht), dus per criterium een regel leest daar
-    // veel beter dan "(1) ... (2) ..." in één lange alinea.
-    'Zet in "explanation" elk criterium op een eigen regel als markdown-opsomming ("- criterium: bevinding"), gescheiden door regeleindes. ' +
-    'Zet in "reasoning" elke redeneerstap ook op een eigen regel, genummerd ("1. ...", "2. ...") en gescheiden door regeleindes. ' +
-    'Dit is een ondersteunend hulpmiddel: benoem dit resultaat nooit als een besluit. ' +
-    'Antwoord UITSLUITEND met een geldig JSON-object, zonder markdown-codeblok, exact met deze velden: ' +
-    '{"case_summary": string, "public_interest": {"verdict": "ja"|"nee"|"onduidelijk", "explanation": string}, ' +
-    '"provincial_interest": {"verdict": "ja"|"nee"|"beperkt"|"onduidelijk", "explanation": string}, ' +
-    '"reasoning": string, "assumptions_missing_info": string[]}'
-  );
-}
-
-function buildUserPrompt({ question, caseText, stepFields, citations, missingInfo }) {
-  const fields = stepFields && typeof stepFields === 'object' ? stepFields : {};
-  const lines = [];
-  if (caseText) lines.push('Casus: ' + caseText);
-  if (fields.problem) lines.push('Probleemdefinitie (aangeleverd): ' + fields.problem);
-  if (fields.causes) lines.push('Oorzaken (aangeleverd): ' + fields.causes);
-  if (fields.perspectives) lines.push('Ontbrekend perspectief (aangeleverd): ' + fields.perspectives);
-  if (question) lines.push('Vraag: ' + question);
-
-  if (Array.isArray(citations) && citations.length) {
-    lines.push('Geraadpleegde beleidsbronnen:');
-    citations.forEach((c) => {
-      lines.push(`[bron ${c.rank}] ${c.filename}: "${c.preview}"`);
-    });
-  } else {
-    lines.push('Geen beleidsbronnen boven de relevantiedrempel gevonden voor deze casus.');
-  }
-
-  if (Array.isArray(missingInfo) && missingInfo.length) {
-    lines.push('Reeds gedetecteerde ontbrekende informatie: ' + missingInfo.join(' '));
-  }
-
-  return lines.join('\n');
-}
-
-function parseAgentJson(rawText) {
-  const text = String(rawText || '').trim();
-  const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/i);
-  const candidate = fenced ? fenced[1].trim() : text;
-  try {
-    const parsed = JSON.parse(candidate);
-    if (parsed && typeof parsed === 'object') return { structured: parsed, parse_warning: false };
-  } catch (_) {
-    // fall through
-  }
-  return {
-    structured: {
-      case_summary: '',
-      public_interest: { verdict: 'onduidelijk', explanation: '' },
-      provincial_interest: { verdict: 'onduidelijk', explanation: '' },
-      reasoning: text || 'Het taalmodel gaf geen bruikbare output terug.',
-      assumptions_missing_info: ['Kon het modelantwoord niet als JSON verwerken; ruwe tekst is opgenomen in het redeneerveld.'],
-    },
-    parse_warning: true,
-  };
-}
-
-function buildDemoFallbackStructured({ question, caseText, stepFields, citations, missingInfo }) {
-  const fields = stepFields && typeof stepFields === 'object' ? stepFields : {};
-  const hasCase = Boolean(String(caseText || '').trim() || String(fields.problem || '').trim());
-
-  const summaryParts = [];
-  if (caseText) summaryParts.push(caseText);
-  else if (fields.problem) summaryParts.push(fields.problem);
-  else if (question) summaryParts.push(question);
-  const case_summary = summaryParts.join(' ').trim() || 'Onvoldoende informatie aangeleverd om een casusomschrijving samen te stellen.';
-
-  const topDocFilenames = (Array.isArray(citations) ? citations : []).map((c) => c.filename);
-
-  const public_interest = hasCase
-    ? {
-        verdict: 'onduidelijk',
-        explanation:
-          'Demo-modus (geen taalmodel geconfigureerd): een deterministische plaatsvervanger kan marktfalen, publieke goederen, sociale rechtvaardigheid, ' +
-          'externe effecten en consumentenbescherming niet inhoudelijk beoordelen. Vereist een echte modelanalyse van de casustekst.',
-      }
-    : { verdict: 'onduidelijk', explanation: 'Onvoldoende casusinformatie aangeleverd om publiek belang te beoordelen.' };
-
-  const provincial_interest = {
-    verdict: 'onduidelijk',
-    explanation: topDocFilenames.length
-      ? 'Demo-modus: mogelijk relevante beleidsbronnen gevonden (' + topDocFilenames.join(', ') + '), maar de daadwerkelijke provinciale-bevoegdheidstoets vereist een taalmodel.'
-      : 'Demo-modus: geen relevante beleidsbronnen boven de drempel gevonden en geen taalmodel beschikbaar om provinciale bevoegdheid te toetsen.',
-  };
-
-  const reasoning =
-    '⚠️ DEMO-MODUS: er is geen LITELLM_API_KEY/OPENAI_API_KEY geconfigureerd, dus deze uitvoer is een deterministische placeholder ' +
-    'in plaats van een echte AI-beoordeling. De structuur van het antwoord (samenvatting, publiek belang, provinciaal belang, redenering, aannames, bronnen) ' +
-    'is representatief voor de productiemodus, maar de inhoud is niet inhoudelijk beoordeeld.';
-
-  return {
-    case_summary,
-    public_interest,
-    provincial_interest,
-    reasoning,
-    assumptions_missing_info: [
-      ...(Array.isArray(missingInfo) ? missingInfo : []),
-      'Geen taalmodel geconfigureerd (LITELLM_API_KEY/OPENAI_API_KEY ontbreekt): dit is een demo-fallback, geen AI-beoordeling.',
-    ],
-  };
-}
-
-/** Stelt het antwoord samen als markdown. Dit is niet alleen de tekst voor de
- *  Beleidskompas-interface: LibreChat bewaart hem als gespreksbericht, dus wie
- *  de casus in de gewone chat opent ziet exact dit. Daarom kopjes, vette
- *  labels en een expliciete bronnenlijst - die bronnen zitten verder alleen in
- *  het onzichtbare meta-blok en zouden daar anders ontbreken (F-25). */
-function composeAnswerText(structured, mode, citations) {
-  const s = structured && typeof structured === 'object' ? structured : {};
-  const pub = s.public_interest && typeof s.public_interest === 'object' ? s.public_interest : {};
-  const prov = s.provincial_interest && typeof s.provincial_interest === 'object' ? s.provincial_interest : {};
-  const assumptions = Array.isArray(s.assumptions_missing_info) ? s.assumptions_missing_info : [];
-  const sources = Array.isArray(citations) ? citations : [];
-
-  const lines = [];
-  if (mode === 'demo_fallback') {
-    lines.push('⚠️ DEMO-UITVOER (geen taalmodel geconfigureerd) - onderstaande tekst is een deterministische placeholder, geen AI-beoordeling.');
-    lines.push('');
-  }
-  lines.push('**Stap 1 · Publiek en provinciaal belang**');
-  lines.push('');
-  lines.push('### Samenvatting casus');
-  lines.push(s.case_summary || 'onbekend');
-  lines.push('');
-  lines.push('### Publiek belang');
-  lines.push(`**Oordeel:** ${pub.verdict || 'onduidelijk'}`);
-  if (pub.explanation) {
-    lines.push('');
-    lines.push(pub.explanation);
-  }
-  lines.push('');
-  lines.push('### Provinciaal belang');
-  lines.push(`**Oordeel:** ${prov.verdict || 'onduidelijk'}`);
-  if (prov.explanation) {
-    lines.push('');
-    lines.push(prov.explanation);
-  }
-  lines.push('');
-  lines.push('### Redenering');
-  lines.push(s.reasoning || 'onbekend');
-  lines.push('');
-  lines.push('### Aannames en ontbrekende informatie');
-  lines.push(assumptions.length ? assumptions.map((a) => '- ' + a).join('\n') : '- geen');
-  lines.push('');
-  lines.push('### Bronnen');
-  lines.push(
-    sources.length
-      ? sources
-          .map((c, idx) => {
-            const score = Number(c && c.score);
-            const relevance = Number.isFinite(score) && score > 0 ? ` - relevantie ${score.toFixed(3)}` : '';
-            return `${idx + 1}. **${String((c && c.filename) || 'Onbekende bron')}**${relevance}`;
-          })
-          .join('\n')
-      : '- geen bronnen boven de relevantiedrempel',
-  );
-  lines.push('');
-  lines.push('---');
-  lines.push(DISCLAIMER);
-
-  return lines.join('\n');
 }
 
 // --- Citations side-channel for the LibreChat chat pipeline ---
@@ -563,54 +409,79 @@ async function buildTitleResponse({ titleSource, env, fetchImpl, httpModule, htt
   return { ok: true, step_id: 'stap1', mode: 'title', answer: title, text: title };
 }
 
-// --- Top-level orchestration (embedded verbatim into the n8n Code node) ---
+// --- Running a step ---
 
-async function runStep1(ctx) {
-  const { input, env, sources, passages, fetchImpl, httpModule, httpsModule, urlModule } = ctx;
+function buildUserPrompt({ question, caseText, citations }) {
+  const lines = [];
+  if (caseText) lines.push('Casus: ' + caseText);
+  // The first message of a case is the case description itself; then the
+  // question is the case and is not repeated.
+  if (question && question !== caseText) lines.push('Vraag: ' + question);
+
+  if (Array.isArray(citations) && citations.length) {
+    lines.push('Geraadpleegde beleidsbronnen:');
+    citations.forEach((c) => {
+      lines.push(`[bron ${c.rank}] ${c.filename}: "${c.preview}"`);
+    });
+  } else {
+    lines.push('Geen beleidsbronnen boven de relevantiedrempel gevonden voor deze casus.');
+  }
+
+  return lines.join('\n');
+}
+
+/** Reads the model's reply as JSON, also when it is wrapped in a markdown
+ *  code block. When that fails, the step's `emptyStructured` gives the
+ *  answer shape with the raw reply as the reasoning, and parse_warning is
+ *  set. */
+function parseAgentJson(rawText, emptyStructured) {
+  const text = String(rawText || '').trim();
+  const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/i);
+  const candidate = fenced ? fenced[1].trim() : text;
+  try {
+    const parsed = JSON.parse(candidate);
+    if (parsed && typeof parsed === 'object') return { structured: parsed, parse_warning: false };
+  } catch (_) {
+    // fall through
+  }
+  return { structured: emptyStructured(text), parse_warning: true };
+}
+
+/** What the Code node of every step workflow runs.
+ *
+ *  `step` is the step's definition (see steps/): its id, its system prompt,
+ *  the shape of an empty answer, its demo fallback and how it composes the
+ *  answer text. `ctx.input` is the request as the main agent sends it
+ *  (`$json`: body with question, case_text and sources, plus headers),
+ *  `ctx.env` the settings from `$env`, `ctx.passages` the source passages to
+ *  search, `ctx.sources` the names of the sources when the request names
+ *  none, and the rest the means to send HTTP. In order: check the token,
+ *  read the fields, find the relevant passages, ask the model (or fall back
+ *  to the demo answer), compose the answer. */
+async function runStep(step, ctx) {
+  const { input, env, sources: defaultSources, passages, fetchImpl, httpModule, httpsModule, urlModule } = ctx;
   const raw = input || {};
   const body = raw.body || {};
   const headers = raw.headers || {};
 
+  // A wrong token gives a normal answer with ok: false, not a thrown error:
+  // n8n can turn a thrown error into an empty response, and then the caller
+  // sees nothing at all.
   const suppliedToken = extractSuppliedToken(headers);
   const expectedToken = String((env && (env.BELEIDSKOMPAS_N8N_WEBHOOK_TOKEN || env.N8N_WEBHOOK_TOKEN)) || '').trim();
   if (expectedToken && suppliedToken !== expectedToken) {
-    // Returned (not thrown): some n8n versions turn a thrown Code-node error into
-    // a bare empty 200 response for a webhook in `responseNode` mode instead of a
-    // visible error, which would silently swallow this rejection. Returning a
-    // normal ok:false item guarantees the caller always sees a clear message.
-    return { ok: false, step_id: 'stap1', error: 'Unauthorized webhook token', text: '' };
+    return { ok: false, step_id: step.id, error: 'Unauthorized webhook token', text: '' };
   }
 
-  // `currentMessage`/`chatInput` are how the n8n-openai-bridge (LibreChat's real
-  // chat pipeline) delivers the user's message; `question`/`case_text` remain
-  // supported for direct webhook calls (curl, the custom step-form UI).
-  const chatMessage = String(body.currentMessage || body.chatInput || '').trim();
-  const question = String(body.question || chatMessage || '').trim();
-  const caseText = String(body.case_text || (body.question ? '' : chatMessage) || '').trim();
-  const stepFields = body.step_fields && typeof body.step_fields === 'object' ? body.step_fields : {};
+  const question = String(body.question || '').trim();
+  const caseText = String(body.case_text || '').trim();
+  // The names of the sources the page knows, when it sent them; otherwise
+  // the fixed list this workflow was generated with.
+  const sources = Array.isArray(body.sources) && body.sources.length ? body.sources : defaultSources;
 
-  // LibreChat's own conversation-title request (see TITLE_REQUEST_MARKER):
-  // short-circuit before running any analysis, on whichever field the
-  // marker landed in (systemPrompt vs. the message itself).
-  const systemPromptField = String(body.systemPrompt || '').trim();
-  if (isTitleRequest(chatMessage) || isTitleRequest(question) || isTitleRequest(systemPromptField)) {
-    return buildTitleResponse({
-      titleSource: caseText || question || chatMessage,
-      env,
-      fetchImpl,
-      httpModule,
-      httpsModule,
-      urlModule,
-    });
-  }
-
-  const queryBlob = [question, caseText, stepFields.problem, stepFields.causes, stepFields.perspectives, stepFields.references]
-    .filter(Boolean)
-    .join(' ');
-
+  const queryBlob = [question, caseText].filter(Boolean).join(' ');
   const ragSettings = { algorithm: 'needle', top_k: 3, min_score: 0.12 };
   const { citations, retrieval_trace } = selectSources(passages, queryBlob, ragSettings);
-  const missingInfo = detectMissingInfo(stepFields, caseText);
 
   const litellmUrl = String((env && env.LITELLM_URL) || '').trim();
   const litellmApiKey = String((env && (env.LITELLM_API_KEY || env.OPENAI_API_KEY)) || '').trim();
@@ -622,11 +493,11 @@ async function runStep1(ctx) {
 
   if (demoMode) {
     mode = 'demo_fallback';
-    structured = buildDemoFallbackStructured({ question, caseText, stepFields, citations, missingInfo });
+    structured = step.buildDemoFallbackStructured({ question, caseText, citations });
   } else {
     mode = 'llm';
-    const systemPrompt = buildSystemPrompt(sources);
-    const userPrompt = buildUserPrompt({ question, caseText, stepFields, citations, missingInfo });
+    const systemPrompt = step.buildSystemPrompt(sources);
+    const userPrompt = buildUserPrompt({ question, caseText, citations });
     try {
       const rawAnswer = await callLiteLLM({
         baseUrl: litellmUrl,
@@ -640,34 +511,29 @@ async function runStep1(ctx) {
         httpsModule,
         urlModule,
       });
-      const parsed = parseAgentJson(rawAnswer);
+      const parsed = parseAgentJson(rawAnswer, step.emptyStructured);
       structured = parsed.structured;
       parseWarning = parsed.parse_warning;
-      if (Array.isArray(missingInfo) && missingInfo.length) {
-        structured.assumptions_missing_info = [...new Set([...(structured.assumptions_missing_info || []), ...missingInfo])];
-      }
     } catch (err) {
       mode = 'demo_fallback';
-      structured = buildDemoFallbackStructured({ question, caseText, stepFields, citations, missingInfo });
+      structured = step.buildDemoFallbackStructured({ question, caseText, citations });
       structured.reasoning =
         `⚠️ DEMO-MODUS (LLM-aanroep mislukt: ${String((err && err.message) || err)}): ` + structured.reasoning;
     }
   }
 
   structured.disclaimer = DISCLAIMER;
-  const answer = composeAnswerText(structured, mode, citations);
+  const answer = step.composeAnswerText(structured, mode, citations);
 
   return {
     ok: true,
-    step_id: 'stap1',
+    step_id: step.id,
     mode,
     parse_warning: parseWarning,
     answer,
-    // Variant of `answer` actually delivered through the LibreChat chat
-    // pipeline: the n8n-openai-bridge extracts `content || text || output ||
-    // message` from each response chunk (not `answer`), and only forwards
-    // that string, so citations/retrieval_trace are appended as an invisible
-    // trailing block (see appendCitationsMetaBlock) instead of being lost.
+    // What the chat pipeline delivers: the bridge reads `text`, not
+    // `answer`, so the citations and the retrieval trace travel along in the
+    // invisible block appended here (see appendCitationsMetaBlock).
     text: appendCitationsMetaBlock(answer, citations, retrieval_trace),
     structured,
     citations,
@@ -681,22 +547,20 @@ module.exports = {
   CITATIONS_META_LABEL,
   TITLE_REQUEST_MARKER,
   TITLE_PREFIX,
-  isTitleRequest,
-  buildFallbackTitle,
-  extractConvoCaseText,
-  buildTitleResponse,
+  PAGE_MESSAGE_LABELS,
   extractSuppliedToken,
+  parsePageMessage,
   tokenizePolicyText,
   selectSources,
-  detectMissingInfo,
-  buildSystemPrompt,
-  buildUserPrompt,
-  parseAgentJson,
-  buildDemoFallbackStructured,
-  composeAnswerText,
   appendCitationsMetaBlock,
   parseCitationsMetaBlock,
   requestRaw,
   callLiteLLM,
-  runStep1,
+  isTitleRequest,
+  buildFallbackTitle,
+  extractConvoCaseText,
+  buildTitleResponse,
+  buildUserPrompt,
+  parseAgentJson,
+  runStep,
 };

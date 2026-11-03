@@ -1,0 +1,6 @@
+{
+  "_comment": "Deliberately short case, reused from the prior Beleidskompas PoC's prompt-consistency test set (src/module/prompt_consistency_tester/evaluation_tool/Prompt-test_een-boer-wil.json in the old-framework repo).",
+  "step_id": "stap1",
+  "question": "Is dit een zaak voor de provincie?",
+  "case_text": "Een boer in Limburg wil zijn bedrijf uitbreiden met 200 extra koeien."
+}

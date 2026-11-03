@@ -5,21 +5,20 @@
  *
  * Every chat message for the Beleidskompas endpoint arrives here first,
  * through the n8n-openai-bridge. The main agent does not answer anything
- * about a case itself: it checks the caller's token, reads which step the
- * message is for and forwards the message to that step's workflow, whose
- * answer it returns unchanged. A message that names no known step is refused
- * with a message for the chat, never sent to a default step. The one request
- * it does answer itself is LibreChat's request for a conversation title,
- * which belongs to no step.
+ * about a case itself: it checks the caller's token, takes the message apart
+ * into the parts the page composed it from (step, findings so far, sources,
+ * question) and sends those as fields to that step's workflow, whose answer
+ * it returns unchanged. A message that names no known step is refused with a
+ * message for the chat, never sent to a default step. The one request it does
+ * answer itself is LibreChat's request for a conversation title, which
+ * belongs to no step.
  *
- * generate-workflow.js copies these functions, plus the two borrowed from
- * logic.js, into the Code node of beleidskompas-hoofdagent.json, so the
+ * generate-workflow.js copies these functions, with the ones they use from
+ * shared.js, into the Code node of beleidskompas-hoofdagent.json, so the
  * code that runs in n8n is this code.
  */
 
-// Borrowed from step 1: reading the token from the request headers, sending
-// an HTTP request, and recognising and answering LibreChat's title request.
-const { extractSuppliedToken, requestRaw, isTitleRequest, buildTitleResponse } = require('./logic');
+const { extractSuppliedToken, parsePageMessage, requestRaw, isTitleRequest, extractConvoCaseText, buildTitleResponse } = require('./shared');
 
 // Which step id belongs to which webhook path in n8n. The paths are the
 // addresses of the four step workflows.
@@ -35,37 +34,41 @@ const UNKNOWN_STEP_TEXT =
   'Beleidskompas kon niet bepalen voor welke stap dit bericht is en heeft het daarom niet beantwoord. ' +
   'Stel je vraag opnieuw vanaf de Beleidskompas-pagina, met een stap gekozen.';
 
-/** Reads the step id from the first line of a message.
- *
- *  The Beleidskompas page starts every message with a line like
- *  "Stap: stap2 (Rolbepaling provincie)". Only that first line counts: the
- *  earlier findings quoted further down in the message mention steps too.
- *  Returns '' when the first line is not such a line. */
-function parseStepFromMessage(text) {
-  const firstLine =
-    String(text || '')
-      .split('\n')
-      .map((line) => line.trim())
-      .find(Boolean) || '';
-  const match = /^Stap:\s*([A-Za-z0-9_-]+)/i.exec(firstLine);
-  return match ? match[1].toLowerCase() : '';
+/** The text of the incoming message: the bridge delivers it in
+ *  `currentMessage` and `chatInput`, direct webhook calls in `question`. */
+function incomingMessage(body) {
+  const b = body && typeof body === 'object' ? body : {};
+  return String(b.currentMessage || b.chatInput || b.question || '');
 }
 
-/** Returns the id of the step a request is for, or '' when the message
- *  names no step that is in `routes`. The bridge delivers the message in
- *  `currentMessage` and `chatInput`; `question` is what direct webhook
- *  calls use. */
-function determineStep(body, routes) {
-  const b = body && typeof body === 'object' ? body : {};
-  const stepId = parseStepFromMessage(b.currentMessage || b.chatInput || b.question || '');
+/** Returns the id of the step a message is for, or '' when it names no step
+ *  that is in `routes`. */
+function determineStep(parts, routes) {
+  const stepId = String((parts && parts.stepId) || '');
   return Object.prototype.hasOwnProperty.call(routes, stepId) ? stepId : '';
 }
 
-/** Sends the request on to a step workflow and returns that step's answer.
+/** What a step workflow receives: the parts of the message as fields, plus
+ *  who is asking. `case_text` is what is known about the case so far: the
+ *  findings of the earlier steps, or the question itself when there are
+ *  none yet (the first message of a case is the case description). */
+function buildStepRequest(stepId, parts, body) {
+  const b = body && typeof body === 'object' ? body : {};
+  return {
+    step_id: stepId,
+    question: parts.question,
+    case_text: parts.findings || parts.question,
+    sources: parts.sources,
+    sessionId: b.sessionId || null,
+    userId: b.userId || null,
+  };
+}
+
+/** Sends a request to a step workflow and returns that step's answer.
  *
  *  Takes everything it needs as named arguments: the n8n address
- *  (`baseUrl`) and the step's webhook path, the request `body` to pass on
- *  unchanged, the caller's own token (so the step still checks it itself),
+ *  (`baseUrl`) and the step's webhook path, the request `body` to send (see
+ *  buildStepRequest), the caller's own token (so the step still checks it itself),
  *  and the means to send HTTP (`fetchImpl`, or the http/https/url modules
  *  when fetch is not available). The answer always has `text` (what the
  *  chat pipeline reads) and `answer` (what direct callers read); when a step
@@ -123,9 +126,9 @@ async function forwardToStep({ baseUrl, path, stepId, body, callerToken, timeout
  *  `input` is the incoming request as n8n hands it over (`$json`: the
  *  request's `body` and `headers`), `env` holds the settings read from
  *  n8n's `$env`, and the rest are the means to send HTTP. In order: check
- *  the token, answer a title request, read the step from the message,
- *  forward to that step. The returned object is what the workflow responds
- *  with. */
+ *  the token, answer a title request, take the message apart and read the
+ *  step from it, send the parts to that step. The returned object is what
+ *  the workflow responds with. */
 async function runMainAgent(ctx) {
   const { input, env, fetchImpl, httpModule, httpsModule, urlModule } = ctx;
   const raw = input || {};
@@ -145,13 +148,16 @@ async function runMainAgent(ctx) {
   // request carries TITLE_REQUEST_MARKER (set in librechat.yaml), sometimes
   // in systemPrompt and sometimes in the message itself. It names no step,
   // so it is answered here with a title instead of being forwarded.
-  const message = String(body.currentMessage || body.chatInput || body.question || '');
+  const message = incomingMessage(body);
   if (isTitleRequest(message) || isTitleRequest(String(body.systemPrompt || ''))) {
-    const title = await buildTitleResponse({ titleSource: message, env, fetchImpl, httpModule, httpsModule, urlModule });
+    // The title is made from the case itself, not from the labels around it.
+    const caseText = parsePageMessage(extractConvoCaseText(message)).question;
+    const title = await buildTitleResponse({ titleSource: caseText || message, env, fetchImpl, httpModule, httpsModule, urlModule });
     return Object.assign({}, title, { step_id: null });
   }
 
-  const stepId = determineStep(body, STEP_ROUTES);
+  const parts = parsePageMessage(message);
+  const stepId = determineStep(parts, STEP_ROUTES);
   if (!stepId) {
     return { ok: false, step_id: null, error: 'No step recognised in the request', text: UNKNOWN_STEP_TEXT, answer: UNKNOWN_STEP_TEXT };
   }
@@ -160,7 +166,7 @@ async function runMainAgent(ctx) {
     baseUrl: env && env.BELEIDSKOMPAS_N8N_BASE_URL,
     path: STEP_ROUTES[stepId],
     stepId,
-    body,
+    body: buildStepRequest(stepId, parts, body),
     callerToken,
     timeoutMs: 120000,
     fetchImpl,
@@ -173,8 +179,9 @@ async function runMainAgent(ctx) {
 module.exports = {
   STEP_ROUTES,
   UNKNOWN_STEP_TEXT,
-  parseStepFromMessage,
+  incomingMessage,
   determineStep,
+  buildStepRequest,
   forwardToStep,
   runMainAgent,
 };

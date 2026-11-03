@@ -30,7 +30,7 @@ const CITATIONS_META_LABEL = "beleidskompas-meta";
 
 /** n8n-openai-bridge only forwards plain text to LibreChat, so the citations
  *  and the retrieval trace travel along as a trailing markdown link
- *  definition (appendCitationsMetaBlock in agents/beleidskompas/logic.js),
+ *  definition (appendCitationsMetaBlock in agents/beleidskompas/shared.js),
  *  which no markdown view shows. This splits it back out; safe to call on
  *  text that never had one. */
 export function parseCitationsMetaBlock(text) {

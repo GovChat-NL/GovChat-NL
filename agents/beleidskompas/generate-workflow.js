@@ -6,7 +6,9 @@
  * the source files in this folder:
  *
  * - beleidskompas-hoofdagent.json from main-agent.js
- * - beleidskompas-step-stap1.json from logic.js and the fixtures
+ * - beleidskompas-step-stapN.json from steps/stepN.js and the fixtures
+ *
+ * All of them also get the functions they use from shared.js.
  *
  * n8n cannot read these source files; it only reads workflow JSON, in which
  * the code of a Code node is plain text. So this script copies the source of
@@ -20,8 +22,9 @@
 
 const fs = require('node:fs');
 const path = require('node:path');
-const logic = require('./logic');
+const shared = require('./shared');
 const mainAgent = require('./main-agent');
+const step1 = require('./steps/step1');
 
 const WORKFLOWS_DIR = path.join(__dirname, '..', 'n8n', 'workflows', 'beleidskompas');
 
@@ -37,13 +40,14 @@ const DEFAULT_SOURCES = [
   'Overzicht wettelijke taken Provincie',
 ];
 
-/** The source text of the named functions of a module, one after another. */
-function inlineFunctions(moduleObj, moduleName, names) {
+/** The source text of the named functions, one after another, each taken
+ *  from the first of `modules` that exports it. */
+function inlineFunctions(modules, names) {
   return names
     .map((name) => {
-      const fn = moduleObj[name];
-      if (typeof fn !== 'function') throw new Error(`${moduleName} does not export a function named "${name}"`);
-      return fn.toString();
+      const moduleObj = modules.find((m) => typeof m[name] === 'function');
+      if (!moduleObj) throw new Error(`No module exports a function named "${name}"`);
+      return moduleObj[name].toString();
     })
     .join('\n\n');
 }
@@ -55,8 +59,8 @@ function envLiteral(names) {
 }
 
 const TITLE_CONSTANTS = [
-  `const TITLE_REQUEST_MARKER = ${JSON.stringify(logic.TITLE_REQUEST_MARKER)};`,
-  `const TITLE_PREFIX = ${JSON.stringify(logic.TITLE_PREFIX)};`,
+  `const TITLE_REQUEST_MARKER = ${JSON.stringify(shared.TITLE_REQUEST_MARKER)};`,
+  `const TITLE_PREFIX = ${JSON.stringify(shared.TITLE_PREFIX)};`,
 ];
 
 // What every Code node needs to send HTTP: n8n's `fetch` when it exists,
@@ -67,10 +71,8 @@ const HTTP_ARGS = ["  fetchImpl: typeof fetch === 'function' ? fetch : null,", '
 /** Every Beleidskompas workflow has the same three nodes: a Webhook node
  *  that receives the request, a Code node that does the work and a Respond
  *  to Webhook node that returns the result as JSON. */
-function buildWorkflow({ id, name, webhookPath, nodeLabel, jsCode }) {
-  const webhookName = `Webhook ${nodeLabel}`;
-  const codeName = `Build ${nodeLabel} Answer`;
-  const respondName = `Respond ${nodeLabel}`;
+function buildWorkflow({ id, name, webhookPath, nodeNames, jsCode }) {
+  const { webhook: webhookName, code: codeName, respond: respondName } = nodeNames;
   return [
     {
       id,
@@ -115,9 +117,10 @@ function buildWorkflow({ id, name, webhookPath, nodeLabel, jsCode }) {
 
 // --- Hoofdagent ---
 
-// The functions main-agent.js borrows from logic.js, and the ones those use.
-const MAIN_AGENT_LOGIC_FUNCTIONS = [
+// The functions main-agent.js uses from shared.js, and the ones those use.
+const MAIN_AGENT_SHARED_FUNCTIONS = [
   'extractSuppliedToken',
+  'parsePageMessage',
   'requestRaw',
   'callLiteLLM',
   'isTitleRequest',
@@ -126,17 +129,18 @@ const MAIN_AGENT_LOGIC_FUNCTIONS = [
   'buildTitleResponse',
 ];
 
-const MAIN_AGENT_FUNCTIONS = ['parseStepFromMessage', 'determineStep', 'forwardToStep', 'runMainAgent'];
+const MAIN_AGENT_FUNCTIONS = ['incomingMessage', 'determineStep', 'buildStepRequest', 'forwardToStep', 'runMainAgent'];
 
 function buildMainAgentJsCode() {
   return [
     ...TITLE_CONSTANTS,
+    `const PAGE_MESSAGE_LABELS = ${JSON.stringify(shared.PAGE_MESSAGE_LABELS)};`,
     `const STEP_ROUTES = ${JSON.stringify(mainAgent.STEP_ROUTES)};`,
     `const UNKNOWN_STEP_TEXT = ${JSON.stringify(mainAgent.UNKNOWN_STEP_TEXT)};`,
     '',
-    inlineFunctions(logic, 'logic.js', MAIN_AGENT_LOGIC_FUNCTIONS),
+    inlineFunctions([shared], MAIN_AGENT_SHARED_FUNCTIONS),
     '',
-    inlineFunctions(mainAgent, 'main-agent.js', MAIN_AGENT_FUNCTIONS),
+    inlineFunctions([mainAgent], MAIN_AGENT_FUNCTIONS),
     '',
     ...HTTP_MODULES,
     '',
@@ -163,48 +167,69 @@ function buildMainAgentWorkflow() {
     id: 'govchat-beleidskompas-hoofdagent',
     name: 'Beleidskompas Hoofdagent',
     webhookPath: 'beleidskompas-hoofdagent',
-    nodeLabel: 'Hoofdagent',
+    nodeNames: { webhook: 'Webhook Hoofdagent', code: 'Route To Step', respond: 'Respond Hoofdagent' },
     jsCode: buildMainAgentJsCode(),
   });
 }
 
-// --- Stap 1 ---
+// --- The steps ---
 
-const STEP1_FUNCTIONS = [
+// What every step workflow's Code node needs from shared.js, in order.
+const STEP_SHARED_FUNCTIONS = [
   'extractSuppliedToken',
   'tokenizePolicyText',
   'selectSources',
-  'detectMissingInfo',
-  'buildSystemPrompt',
   'buildUserPrompt',
   'parseAgentJson',
-  'buildDemoFallbackStructured',
-  'composeAnswerText',
   'appendCitationsMetaBlock',
   'requestRaw',
   'callLiteLLM',
-  'isTitleRequest',
-  'buildFallbackTitle',
-  'extractConvoCaseText',
-  'buildTitleResponse',
-  'runStep1',
+  'runStep',
 ];
 
-function buildStep1JsCode() {
+// One row per step workflow: the step's definition (its module's STEP) and
+// how the workflow is named in n8n.
+const STEP_WORKFLOWS = [
+  {
+    step: step1.STEP,
+    file: 'beleidskompas-step-stap1.json',
+    id: 'govchat-beleidskompas-step-stap1',
+    name: 'Beleidskompas Specialist - Stap 1',
+    webhookPath: 'beleidskompas-step-stap1',
+    nodeNames: { webhook: 'Webhook Step 1', code: 'Build Step 1 Answer', respond: 'Respond Step 1' },
+  },
+];
+
+/** The text of `const STEP = { ... }` for a Code node: the step's functions
+ *  by name (they are copied into the node above it), the other values as
+ *  JSON. */
+function stepDefinitionLiteral(step) {
+  const entries = Object.keys(step).map((key) => {
+    const value = step[key];
+    return typeof value === 'function' ? `  ${key}: ${value.name},` : `  ${key}: ${JSON.stringify(value)},`;
+  });
+  return ['const STEP = {', ...entries, '};'].join('\n');
+}
+
+function buildStepJsCode(step) {
+  const stepFunctions = Object.values(step).filter((value) => typeof value === 'function');
   return [
-    `const DISCLAIMER = ${JSON.stringify(logic.DISCLAIMER)};`,
-    `const CITATIONS_META_MARKER = ${JSON.stringify(logic.CITATIONS_META_MARKER)};`,
-    `const CITATIONS_META_LABEL = ${JSON.stringify(logic.CITATIONS_META_LABEL)};`,
-    ...TITLE_CONSTANTS,
+    `const DISCLAIMER = ${JSON.stringify(shared.DISCLAIMER)};`,
+    `const CITATIONS_META_MARKER = ${JSON.stringify(shared.CITATIONS_META_MARKER)};`,
+    `const CITATIONS_META_LABEL = ${JSON.stringify(shared.CITATIONS_META_LABEL)};`,
     '',
-    inlineFunctions(logic, 'logic.js', STEP1_FUNCTIONS),
+    inlineFunctions([shared], STEP_SHARED_FUNCTIONS),
+    '',
+    stepFunctions.map((fn) => fn.toString()).join('\n\n'),
+    '',
+    stepDefinitionLiteral(step),
     '',
     `const PASSAGES = ${JSON.stringify(passages)};`,
     `const SOURCES = ${JSON.stringify(DEFAULT_SOURCES)};`,
     '',
     ...HTTP_MODULES,
     '',
-    'const result = await runStep1({',
+    'const result = await runStep(STEP, {',
     '  input: $json,',
     `  env: ${envLiteral([
       'N8N_WEBHOOK_TOKEN',
@@ -223,13 +248,13 @@ function buildStep1JsCode() {
   ].join('\n');
 }
 
-function buildStep1Workflow() {
+function buildStepWorkflow(row) {
   return buildWorkflow({
-    id: 'govchat-beleidskompas-step-stap1',
-    name: 'Beleidskompas Specialist - Stap 1',
-    webhookPath: 'beleidskompas-step-stap1',
-    nodeLabel: 'Step 1',
-    jsCode: buildStep1JsCode(),
+    id: row.id,
+    name: row.name,
+    webhookPath: row.webhookPath,
+    nodeNames: row.nodeNames,
+    jsCode: buildStepJsCode(row.step),
   });
 }
 
@@ -241,7 +266,7 @@ function writeWorkflow(fileName, workflow) {
 
 function main() {
   writeWorkflow('beleidskompas-hoofdagent.json', buildMainAgentWorkflow());
-  writeWorkflow('beleidskompas-step-stap1.json', buildStep1Workflow());
+  for (const row of STEP_WORKFLOWS) writeWorkflow(row.file, buildStepWorkflow(row));
 }
 
 main();
