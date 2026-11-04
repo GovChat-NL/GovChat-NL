@@ -1,0 +1,11 @@
+services:
+  librechat:
+    entrypoint:
+      - /bin/sh
+      - /app/govchat-overlay/apply-branding.sh
+    environment:
+      BRANDING_MODE: ${BRANDING_MODE:-govchat}
+    volumes:
+      - ./branding:/opt/branding/govchat:ro
+      - ./custom-branding:/opt/branding/custom:ro
+      - ./scripts/apply-branding.sh:/app/govchat-overlay/apply-branding.sh:ro

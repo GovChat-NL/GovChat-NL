@@ -61,6 +61,8 @@ De installatie bevat onder andere workflows voor:
 
 Lees daarna de [omgevingsvariabelen](https://govchat-nl.github.io/docs/handleidingen/librechat-omgevingsvariabelen), de [snelle start](https://govchat-nl.github.io/docs/handleidingen/librechat-pre-release) en het [overzicht van de containers](docs/services.md). Open poorten, SSO, secrets, gegevensbewaring en back-ups moeten bij de eigen organisatie-inrichting passen.
 
+De drie configureerbare huisstijlopties en het plaatsen van eigen logo's staan in [Branding configureren](docs/BRANDING.md).
+
 ## Documentatie en bijdragen
 
 - [GovChat-NL-documentatie](https://govchat-nl.github.io/)
