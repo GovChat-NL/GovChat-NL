@@ -37,6 +37,11 @@ assert(nodeByName(ingest, 'Run with parameters').parameters.workflowInputs.value
 assert(nodeByName(ingest, 'Run with parameters').parameters.workflowInputs.values.some((value) => value.name === 'root_knowledge_item_number'), 'TOPdesk parent number input is missing');
 assert(nodeByName(ingest, 'Run with parameters').parameters.workflowInputs.values.some((value) => value.name === 'include_attachments'), 'TOPdesk attachment toggle input is missing');
 assert(nodeByName(ingest, '2. Fetch child knowledge items'), 'TOPdesk item-fetch node is missing');
+const fetchTopdeskNode = nodeByName(ingest, '2. Fetch child knowledge items');
+const fetchTopdeskHeaders = fetchTopdeskNode.parameters.headerParameters.parameters;
+assert(fetchTopdeskHeaders.some((header) => header.name === 'Accept' && header.value === 'application/json'), 'TOPdesk list request must accept JSON');
+assert(fetchTopdeskHeaders.some((header) => header.name === 'Content-Type' && header.value === 'application/json'), 'TOPdesk list request must match the working sample Content-Type header');
+assert(fetchTopdeskNode.parameters.options.timeout === undefined, 'TOPdesk list request should not impose the previous 60-second timeout');
 assert(nodeByName(ingest, '1b. Check Qdrant collection'), 'TOPdesk ingest must check for its Qdrant collection');
 assert(nodeByName(ingest, '1d. Create Qdrant collection'), 'TOPdesk ingest must create a missing Qdrant collection');
 assert(nodeByName(ingest, '1. Configuration (edit after import)').parameters.jsCode.includes("configuredRootKnowledgeItemNumber='KI 0975'"), 'TOPdesk root item number default is missing');

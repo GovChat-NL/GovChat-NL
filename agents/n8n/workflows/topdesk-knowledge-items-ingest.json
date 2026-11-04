@@ -93,8 +93,8 @@
           { "name": "fields", "value": "={{ $('1. Configuration (edit after import)').first().json.fields }}" }
         ] },
         "sendHeaders": true,
-        "headerParameters": { "parameters": [ { "name": "Accept", "value": "application/json" } ] },
-        "options": { "response": { "response": { "responseFormat": "json" } }, "timeout": 60000 }
+        "headerParameters": { "parameters": [ { "name": "Accept", "value": "application/json" }, { "name": "Content-Type", "value": "application/json" } ] },
+        "options": { "response": { "response": { "responseFormat": "json" } } }
       },
       "type": "n8n-nodes-base.httpRequest", "typeVersion": 4.2,
       "position": [-500, 0], "id": "tdki-ingest-list", "name": "2. Fetch child knowledge items",
