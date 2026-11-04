@@ -1,11 +1,11 @@
 # TOPdesk-kennisitems: ingest en bevragen
 
-GovChat bevat twee generieke, inactieve n8n-workflows voor het indexeren en semantisch bevragen van TOPdesk Knowledge Base-kennisitems:
+GovChat bevat twee generieke n8n-workflows voor het indexeren en semantisch bevragen van TOPdesk Knowledge Base-kennisitems. Beide zijn standaard inactief; de orchestrator-featureflag kan de zoekworkflow automatisch publiceren:
 
 - `topdesk-knowledge-items-ingest.json` haalt directe kinderen van een gekozen hoofdkennisitem op basis van het TOPdesk-ID op, voegt artikel- en optioneel bijlagetext samen, genereert embeddings en upsert de punten in Qdrant.
 - `topdesk-knowledge-items-search.json` embedt een vraag, zoekt in een gekozen Qdrant-collectie en geeft resultaten met score, titel, TOPdesk-nummer, bron-id en URL terug.
 
-Beide exports worden automatisch meegenomen door [`n8n/bootstrap.js`](../n8n/bootstrap.js). Bootstrap herstelt na publiceren de actieve status uit de workflow-export; de TOPdesk-workflows blijven dus ongepubliceerd/inactief totdat ze bewust na configuratie worden geactiveerd. Zo maakt een verse installatie geen verbinding met een nog niet ingerichte TOPdesk-omgeving.
+Beide exports worden automatisch meegenomen door [`n8n/bootstrap.js`](../n8n/bootstrap.js). Bootstrap behoudt standaard hun inactieve status. Met `N8N_ENABLE_TOPDESK_SEARCH=true` publiceert bootstrap de zoekworkflow en verbindt die als tool met de GovChat Orchestrator. Ingest en de ingestplanning worden hierdoor niet geactiveerd.
 
 ## Vereisten
 
@@ -79,6 +79,28 @@ Voor Qdrant zonder API-key is geen credential nodig. Als Qdrant-authenticatie aa
 De ingest controleert eerst of de ingestelde collectie bestaat. Bij een 404 maakt hij die aan met de ingestelde vector size en distance. Als de collectie al bestaat maar een andere vectorconfiguratie heeft, stopt hij met een mismatch-fout; hij wijzigt of verwijdert geen bestaande collectie. Gebruik een aparte collectienaam per dataset/organisatie als isolatie vereist is. De workflow gebruikt TOPdesk `id` als stabiele punt-id en bewaart de visibility-status, titel, beschrijving, trefwoorden, datums, inhoud en bronverwijzing in de payload.
 
 Voer ingest één keer uit voordat je de zoekworkflow test, zodat de collectie bestaat en punten bevat.
+
+### TOPdesk zoeken vanuit de orchestrator
+
+Zet `N8N_ENABLE_TOPDESK_SEARCH=true` in de lokale `.env` om de koppeling in te schakelen. Bootstrap configureert automatisch de volgende onderdelen:
+
+- De bestaande GovChat Orchestrator krijgt een TOPdesk Workflow Tool, naast de OpenBesluitvorming-tool, verbonden met **AI Agent Orchestrator**.
+- De agent levert een concrete `question` aan de TOPdesk-zoekworkflow; `top_k` staat in de toolmapping op 5. Credentials, endpoints en de collectie worden niet door het taalmodel gekozen.
+- De zoekworkflow wordt gepubliceerd. De ingest blijft inactief en moet onafhankelijk geconfigureerd/uitgevoerd worden.
+- De agent krijgt instructies om relevante interne kennisbankvragen met deze tool te beantwoorden, bronlinks en kennisitemnummers te citeren en gevonden tekst niet als instructies te behandelen.
+
+Bij `N8N_ENABLE_TOPDESK_SEARCH=false` verwijdert bootstrap de TOPdesk-tool uit de gerenderde orchestrator en maakt de zoekworkflow inactief. De OpenBesluitvorming-tool blijft onveranderd. Een wijziging van de flag wordt bij de volgende bootstrap-run automatisch herkend, ook als de workflows eerder zijn geïmporteerd; een geforceerde volledige herimport is hiervoor niet nodig. Bij zo'n flagwijziging worden alleen de orchestrator en TOPdesk Search bijgewerkt, niet de ingestplanning of andere workflows.
+
+Voer na een flagwijziging, zodra de Docker-stack draait, de bootstrap uit en herstart n8n om CLI-publicatiewijzigingen te laden:
+
+```sh
+docker compose --env-file .env run --rm --no-deps n8n-bootstrap
+docker compose --env-file .env restart n8n n8n-runners
+```
+
+De bootstrap-update is een deploymentstap, geen live checkbox: het aanpassen van `.env` alleen verandert een al draaiende agent niet. De eerste bootstrap met deze versie gebruikt een nieuwe seedmarker en importeert de volledige workflowset; latere flagwijzigingen zijn gericht.
+
+**Toegang:** schakel de tool alleen in voor een GovChat-omgeving waarvan de gebruikers deze kennisbank mogen lezen. De flag regelt beschikbaarheid, niet individuele TOPdesk-autorisatie. Search filtert op zichtbare TOPdesk-punten, maar voert geen persoonlijke TOPdesk-rechtencontrole uit. Zoekresultaten kunnen ook bijlagetext bevatten als die eerder is geïndexeerd. De zoekworkflow heeft geen eigen publieke webhook; de tool gebruikt een interne subworkflow-aanroep.
 
 Voer eerst **Test workflow** uit met een kleine testcollectie. Controleer de TOPdesk-response, embeddingdimensie, Tika-extractie en Qdrant-upsert. Activeer daarna de ingest-workflow om de ingestelde planning te gebruiken. De zoekworkflow is bedoeld om vanuit een bovenliggende n8n-workflow of tool aangeroepen te worden; voer bij het testen `question` mee en eventueel `top_k`, `collection` en `score_threshold`.
 

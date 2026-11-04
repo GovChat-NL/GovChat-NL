@@ -6,7 +6,12 @@
   "settings": { "executionOrder": "v1", "availableInMCP": false },
   "nodes": [
     {
-      "parameters": { "inputSource": "passthrough" },
+      "parameters": { "workflowInputs": { "values": [
+        { "name": "question" },
+        { "name": "top_k", "type": "number" },
+        { "name": "collection" },
+        { "name": "score_threshold", "type": "number" }
+      ] } },
       "type": "n8n-nodes-base.executeWorkflowTrigger", "typeVersion": 1.1,
       "position": [-760, 0], "id": "tdki-search-trigger", "name": "Execute Workflow Trigger",
       "notes": "Input: question (required), top_k (optional)."
@@ -32,7 +37,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const cfg=$('1. Validate and configure search').first().json;const vector=$json.data?.[0]?.embedding;if(!Array.isArray(vector)||vector.length!==cfg.vectorSize)throw new Error('Embedding dimension mismatch: expected '+cfg.vectorSize+', received '+(Array.isArray(vector)?vector.length:'no vector'));return [{json:{...cfg,request:{vector,limit:cfg.topK,with_payload:true,with_vector:false,score_threshold:cfg.scoreThreshold}}}];"
+        "jsCode": "const cfg=$('1. Validate and configure search').first().json;const vector=$json.data?.[0]?.embedding;if(!Array.isArray(vector)||vector.length!==cfg.vectorSize)throw new Error('Embedding dimension mismatch: expected '+cfg.vectorSize+', received '+(Array.isArray(vector)?vector.length:'no vector'));return [{json:{...cfg,request:{vector,limit:cfg.topK,with_payload:true,with_vector:false,score_threshold:cfg.scoreThreshold,filter:{must:[{key:'source',match:{value:'topdesk'}},{key:'visible',match:{value:true}}]}}}}];"
       },
       "type": "n8n-nodes-base.code", "typeVersion": 2,
       "position": [0, 0], "id": "tdki-search-request", "name": "3. Build vector query"

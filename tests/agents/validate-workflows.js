@@ -11,7 +11,7 @@ const {
 } = require('../../n8n/bootstrap');
 
 const workflowsDir = path.resolve(__dirname, '../../agents/n8n/workflows');
-const workflows = discoverWorkflows(workflowsDir);
+const workflows = discoverWorkflows(workflowsDir, { N8N_ENABLE_TOPDESK_SEARCH: 'false' });
 const workflowIds = workflows.flatMap((entry) => entry.ids);
 const inactiveWorkflowIds = workflows.flatMap((entry) => entry.inactiveIds || []);
 if (new Set(workflowIds).size !== workflowIds.length) {

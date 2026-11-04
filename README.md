@@ -42,7 +42,7 @@ De installatie bevat onder andere workflows voor:
 - **Live transcriptie** — zet audio om naar tekst via de geconfigureerde spraak- en modeldiensten.
 - **Afbeeldingsgeneratie** — optioneel in te schakelen.
 - **OpenBesluitvorming** — workflows voor zoeken en werken met besluitvormingsinformatie; de organisatie configureert zelf de gegevensbron en toegang.
-- **TOPdesk Knowledge Base** — optionele workflows voor ingest en semantisch zoeken van kennisitems; hoofditem, credentials, endpoints en bijlageverwerking configureert de organisatie zelf. Zie [TOPdesk-kennisitems instellen](docs/topdesk-knowledge-items.md).
+- **TOPdesk Knowledge Base** — optionele workflows voor ingest en semantisch zoeken van kennisitems; met `N8N_ENABLE_TOPDESK_SEARCH=true` koppelt bootstrap de zoekworkflow automatisch als tool aan de orchestrator. Hoofditem, credentials, endpoints en bijlageverwerking configureert de organisatie zelf. Zie [TOPdesk-kennisitems instellen](docs/topdesk-knowledge-items.md).
 
 ## Snel starten
 
