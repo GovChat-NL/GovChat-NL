@@ -15,6 +15,9 @@ mkdir -p "$govchat" "$custom" "$assets"
 export BRANDING_GOVCHAT_DIR="$govchat"
 export BRANDING_CUSTOM_DIR="$custom"
 export BRANDING_ASSETS_DIR="$assets"
+export LIBRECHAT_NL_TRANSLATIONS_ENABLED=false
+export LIBRECHAT_NL_TRANSLATIONS_SCRIPT="$repo_root/scripts/apply-dutch-translations.js"
+export LIBRECHAT_NL_TRANSLATIONS_BACKUP_DIR="$temporary_root/translation-backup"
 
 fail() {
   printf 'FAIL: %s\n' "$*" >&2
