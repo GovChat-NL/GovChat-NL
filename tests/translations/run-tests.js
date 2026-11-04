@@ -10,6 +10,7 @@ const {
   applyTranslations,
   normalizeTranslations,
   patchDutchBundle,
+  patchServiceWorker,
   translationsEnabled,
 } = require('../../scripts/apply-dutch-translations');
 
@@ -74,6 +75,25 @@ test('waarden en placeholders worden ongewijzigd bewaard', () => {
   assertions += 1;
 });
 
+test('serviceworker-cache is gebonden aan de overrideversie en verwijdert oude locale-caches', () => {
+  const source = 'self.skipWaiting();urlPattern:/assets/locale-[^/]+.js;new p.StaleWhileRevalidate({cacheName:"locale-chunks"});';
+  const patched = patchServiceWorker(source, '0123456789abcdef');
+  assert.match(patched, /cacheName:"locale-chunks-govchat-0123456789abcdef"/);
+  assert.match(patched, /n==="locale-chunks"/);
+  assert.match(patched, /caches\.delete\(n\)/);
+  expectThrow(() => patchServiceWorker('self.skipWaiting();', 'version'), /onbekende locale-cacheconfiguratie/);
+
+  // Controlled upgrade fixture: another minifier layout and quote style while
+  // retaining the same explicitly supported Workbox runtime-cache contract.
+  const upgraded = patchServiceWorker(
+    "self.skipWaiting();urlPattern:/assets/locale-[^/]+.js;new p.StaleWhileRevalidate({ cacheName : 'locale-chunks' });",
+    'fedcba9876543210',
+  );
+  assert.match(upgraded, /cacheName:"locale-chunks-govchat-fedcba9876543210"/);
+  assert.match(upgraded, /n!=="locale-chunks-govchat-fedcba9876543210"/);
+  assertions += 5;
+});
+
 test('andere talenbundels worden niet geselecteerd of aangepast', () => {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'govchat-locale-test-'));
   const translationsFile = path.join(directory, 'translation.json');
@@ -109,6 +129,7 @@ test('echte bundel, gzip- en brotli-varianten krijgen dezelfde override', () => 
   const assetsDir = path.join(directory, 'assets');
   const backupDir = path.join(directory, 'backup');
   fs.mkdirSync(assetsDir);
+  fs.writeFileSync(path.join(directory, 'sw.js'), 'urlPattern:/assets/locale-[^/]+.js;new p.StaleWhileRevalidate({cacheName:"locale-chunks"});');
   fs.writeFileSync(translationsFile, JSON.stringify({ own: 'Eigen {{name}}', blank: ' ' }));
   const bundlePath = path.join(assetsDir, 'locale-nl.test.js');
   const originalSource = 'const te={stock:"Nederlands"};export{te as t};';
@@ -123,7 +144,9 @@ test('echte bundel, gzip- en brotli-varianten krijgen dezelfde override', () => 
   assert.ok(patched.includes(JSON.stringify({ own: 'Eigen {{name}}' })));
   assert.equal(zlib.gunzipSync(fs.readFileSync(`${bundlePath}.gz`)).toString(), patched);
   assert.equal(zlib.brotliDecompressSync(fs.readFileSync(`${bundlePath}.br`)).toString(), patched);
-  assertions += 4;
+  const patchedServiceWorker = fs.readFileSync(path.join(directory, 'sw.js'), 'utf8');
+  assert.match(patchedServiceWorker, new RegExp(`locale-chunks-govchat-${result.cacheVersion}`));
+  assertions += 5;
 
   // Repeated startup uses the clean backup as its base, never layering overrides.
   applyTranslations({ enabled: true, translationsFile, assetsDir, backupDir });
@@ -133,7 +156,8 @@ test('echte bundel, gzip- en brotli-varianten krijgen dezelfde override', () => 
   const disabled = applyTranslations({ enabled: false, translationsFile, assetsDir, backupDir });
   assert.equal(disabled.restored, true);
   assert.equal(fs.readFileSync(bundlePath, 'utf8'), originalSource);
-  assertions += 2;
+  assert.equal(fs.readFileSync(path.join(directory, 'sw.js'), 'utf8'), 'urlPattern:/assets/locale-[^/]+.js;new p.StaleWhileRevalidate({cacheName:"locale-chunks"});');
+  assertions += 3;
   fs.rmSync(directory, { recursive: true, force: true });
 });
 
