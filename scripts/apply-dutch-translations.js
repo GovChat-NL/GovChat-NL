@@ -4,11 +4,13 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const zlib = require('node:zlib');
+const crypto = require('node:crypto');
 
 const DEFAULT_ASSETS_DIR = '/app/client/dist/assets';
 const DEFAULT_TRANSLATIONS_FILE = '/app/govchat-overlay/translation.json';
 const DEFAULT_BACKUP_DIR = '/tmp/govchat-locale-original';
 const EXPORT_PATTERN = /export\{([A-Za-z_$][\w$]*) as t\};\s*$/;
+const LOCALE_CACHE_PATTERN = /cacheName\s*:\s*(["'])locale-chunks\1/g;
 
 function translationsEnabled(value = process.env.LIBRECHAT_NL_TRANSLATIONS_ENABLED) {
   if (value == null) return true;
@@ -56,6 +58,29 @@ function patchDutchBundle(source, translations) {
   return source.replace(EXPORT_PATTERN, replacement);
 }
 
+function patchServiceWorker(source, version) {
+  const cacheNames = [...source.matchAll(LOCALE_CACHE_PATTERN)];
+  if (
+    cacheNames.length !== 1
+    || !source.includes('StaleWhileRevalidate')
+    || !source.includes('locale-[^/]+')
+  ) {
+    throw new Error(
+      'De LibreChat-serviceworker heeft een onbekende locale-cacheconfiguratie; '
+        + 'pas de serviceworker niet automatisch aan.',
+    );
+  }
+
+  const cacheName = `locale-chunks-govchat-${version}`;
+  const patched = source.replace(LOCALE_CACHE_PATTERN, `cacheName:"${cacheName}"`);
+  const cleanup = `self.addEventListener("activate",e=>e.waitUntil(caches.keys().then(k=>Promise.all(k.filter(n=>(n==="locale-chunks"||n.startsWith("locale-chunks-govchat-"))&&n!=="${cacheName}").map(n=>caches.delete(n))))));`;
+  return `${patched}\n${cleanup}\n`;
+}
+
+function hash(value) {
+  return crypto.createHash('sha256').update(value).digest('hex');
+}
+
 function applyTranslations({
   enabled = process.env.LIBRECHAT_NL_TRANSLATIONS_ENABLED,
   assetsDir = process.env.LIBRECHAT_ASSETS_DIR || DEFAULT_ASSETS_DIR,
@@ -66,9 +91,10 @@ function applyTranslations({
     let restored = false;
     if (fs.existsSync(backupDir)) {
       const backups = fs.readdirSync(backupDir)
-        .filter((name) => /^locale-nl\..+\.js(?:\.gz|\.br)?$/.test(name));
+        .filter((name) => /^locale-nl\..+\.js(?:\.gz|\.br)?$/.test(name) || name === 'sw.js');
       for (const filename of backups) {
-        fs.copyFileSync(path.join(backupDir, filename), path.join(assetsDir, filename));
+        const destinationDir = filename === 'sw.js' ? path.dirname(assetsDir) : assetsDir;
+        fs.copyFileSync(path.join(backupDir, filename), path.join(destinationDir, filename));
         restored = true;
       }
       fs.rmSync(backupDir, { recursive: true, force: true });
@@ -89,7 +115,8 @@ function applyTranslations({
   }
 
   const bundlePath = path.join(assetsDir, candidates[0]);
-  const backupPaths = [bundlePath, `${bundlePath}.gz`, `${bundlePath}.br`];
+  const serviceWorkerPath = path.join(path.dirname(assetsDir), 'sw.js');
+  const backupPaths = [bundlePath, `${bundlePath}.gz`, `${bundlePath}.br`, serviceWorkerPath];
   const backups = backupPaths.map((filePath) => path.join(backupDir, path.basename(filePath)));
 
   let rawTranslations;
@@ -110,25 +137,30 @@ function applyTranslations({
   }
 
   let original;
+  let originalServiceWorker;
   try {
     original = fs.readFileSync(backups[0], 'utf8');
+    originalServiceWorker = fs.readFileSync(backups[3], 'utf8');
   } catch (error) {
-    throw new Error(`Kan oorspronkelijke Nederlandse LibreChat-taalbundel niet lezen: ${error.message}`);
+    throw new Error(`Kan de originele taalbundel of serviceworker niet lezen: ${error.message}`);
   }
 
   const patched = patchDutchBundle(original, translations);
   if (patched === original) throw new Error('Geen wijziging in Nederlandse LibreChat-taalbundel aangebracht.');
+  const cacheVersion = hash(`${JSON.stringify(translations)}\n${candidates[0]}\n${hash(original)}\n${hash(originalServiceWorker)}`).slice(0, 16);
+  const patchedServiceWorker = patchServiceWorker(originalServiceWorker, cacheVersion);
 
   try {
     fs.writeFileSync(bundlePath, patched);
     fs.writeFileSync(`${bundlePath}.gz`, zlib.gzipSync(patched));
     fs.writeFileSync(`${bundlePath}.br`, zlib.brotliCompressSync(patched));
+    fs.writeFileSync(serviceWorkerPath, patchedServiceWorker);
   } catch (error) {
-    throw new Error(`Kan de Nederlandse LibreChat-taalbundel niet bijwerken: ${error.message}`);
+    throw new Error(`Kan de Nederlandse taalbundel of serviceworker niet bijwerken: ${error.message}`);
   }
 
-  console.log(`Nederlandse vertalingen: ${Object.keys(translations).length} eigen vertalingen toegepast.`);
-  return { applied: true, count: Object.keys(translations).length, bundlePath };
+  console.log(`Nederlandse vertalingen: ${Object.keys(translations).length} eigen vertalingen toegepast; serviceworker-cacheversie ${cacheVersion}.`);
+  return { applied: true, count: Object.keys(translations).length, bundlePath, cacheVersion };
 }
 
 if (require.main === module) {
@@ -140,4 +172,10 @@ if (require.main === module) {
   }
 }
 
-module.exports = { applyTranslations, normalizeTranslations, patchDutchBundle, translationsEnabled };
+module.exports = {
+  applyTranslations,
+  normalizeTranslations,
+  patchDutchBundle,
+  patchServiceWorker,
+  translationsEnabled,
+};
