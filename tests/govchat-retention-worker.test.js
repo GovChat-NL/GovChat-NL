@@ -46,6 +46,57 @@ test('worker initializes LibreChat before starting retention and drains before d
   assert.equal(processRef.listenerCount('SIGINT'), 0);
 });
 
+test('worker loads its runtime when none is supplied', async () => {
+  const events = [];
+  const processRef = new EventEmitter();
+  const stop = await startRetentionWorker({
+    loadRuntime: () => {
+      events.push('runtime');
+      return makeRuntime(events);
+    },
+    processRef,
+    startPolicy: () => {
+      events.push('start-policy');
+      return async () => events.push('stop-policy');
+    },
+  });
+
+  assert.deepEqual(events, ['runtime', 'connect', 'config', 'storage', 'start-policy']);
+  await stop();
+  assert.deepEqual(events, ['runtime', 'connect', 'config', 'storage', 'start-policy', 'stop-policy', 'disconnect']);
+  assert.equal(processRef.listenerCount('SIGTERM'), 0);
+  assert.equal(processRef.listenerCount('SIGINT'), 0);
+});
+
+test('SIGTERM and SIGINT drain the policy before disconnecting MongoDB', async () => {
+  for (const signal of ['SIGTERM', 'SIGINT']) {
+    const events = [];
+    const processRef = new EventEmitter();
+    let finishPolicyStop;
+    const policyDrain = new Promise((resolve) => {
+      finishPolicyStop = resolve;
+    });
+    const stop = await startRetentionWorker({
+      runtime: makeRuntime(events),
+      processRef,
+      startPolicy: () => async () => {
+        events.push('stop-policy');
+        await policyDrain;
+      },
+    });
+
+    processRef.emit(signal);
+    const shutdown = stop();
+    assert.deepEqual(events, ['connect', 'config', 'storage', 'stop-policy']);
+    finishPolicyStop();
+    await shutdown;
+
+    assert.deepEqual(events, ['connect', 'config', 'storage', 'stop-policy', 'disconnect']);
+    assert.equal(processRef.listenerCount('SIGTERM'), 0);
+    assert.equal(processRef.listenerCount('SIGINT'), 0);
+  }
+});
+
 test('worker fails closed and disconnects if LibreChat configuration is unavailable', async () => {
   const events = [];
   const runtime = makeRuntime(events, { appConfig: null });
