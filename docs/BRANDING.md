@@ -67,8 +67,12 @@ harde refresh: **Ctrl+F5** op Windows/Linux of **Cmd+Shift+R** op macOS. Browser
 cachen SVG-logo's en favicons vaak agressief.
 
 De instelbare modi en containerstart zijn getest met de geïsoleerde
-shelltests in `tests/branding/run-tests.sh`; voer ze uit met:
+shelltests in [`tests/branding/run-tests.sh`](../tests/branding/run-tests.sh); voer ze uit met:
 
 ```sh
 sh tests/branding/run-tests.sh
 ```
+
+De aparte Nederlandse vertaaloverride en alle LibreChat-wijzigingen zijn
+beschreven in het [overzicht van overrides](OVERRIDES.md) en de handleiding
+[Nederlandse vertalingen](TRANSLATIONS.md).

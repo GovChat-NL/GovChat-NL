@@ -63,11 +63,15 @@ Lees daarna de [omgevingsvariabelen](https://govchat-nl.github.io/docs/handleidi
 
 De drie configureerbare huisstijlopties en het plaatsen van eigen logo's staan in [Branding configureren](docs/BRANDING.md).
 
+De LibreChat-overrides en de instelbare Nederlandse vertalingen staan in het [overzicht van overrides](docs/OVERRIDES.md) en [Nederlandse vertalingen](docs/TRANSLATIONS.md). De vertaaloverride staat standaard aan en kan met [`LIBRECHAT_NL_TRANSLATIONS_ENABLED`](.env.example:11) op `false` worden uitgezet.
+
 ## Documentatie en bijdragen
 
 - [GovChat-NL-documentatie](https://govchat-nl.github.io/)
 - [Architectuur](https://govchat-nl.github.io/docs/architectuur/librechat)
 - [Containeroverzicht](docs/services.md)
+- [LibreChat-overrides](docs/OVERRIDES.md)
+- [Nederlandse LibreChat-vertalingen](docs/TRANSLATIONS.md)
 - [Bijdragen aan agents en workflows](agents/CONTRIBUTING.md)
 - [Bridge voor n8n](https://github.com/GovChat-NL/n8n-openai-bridge)
 

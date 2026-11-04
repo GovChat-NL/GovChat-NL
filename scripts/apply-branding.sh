@@ -67,6 +67,11 @@ case "$mode" in
     ;;
 esac
 
+# Apply or restore the optional Dutch locale overlay independently of branding.
+translations_script=${LIBRECHAT_NL_TRANSLATIONS_SCRIPT:-/app/govchat-overlay/apply-dutch-translations.js}
+command -v node >/dev/null 2>&1 || fail 'Node.js ontbreekt; kan de Nederlandse vertaaloverride niet toepassen'
+node "$translations_script"
+
 # With no arguments, retain the current official LibreChat image CMD.
 if [ "$#" -eq 0 ]; then
   set -- npm run backend
