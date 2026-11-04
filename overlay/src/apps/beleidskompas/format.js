@@ -43,7 +43,7 @@ export function formatRichText(text) {
 }
 
 /** The elaboration has a fixed structure (composeAnswerText in
- *  agents/beleidskompas/steps/step1.js): an optional demo warning, then "## "
+ *  agents/beleidskompas/shared.js): an optional demo warning, then "## "
  *  sections, of which public and provincial interest start with
  *  "Oordeel: ...", and after a "---" line the disclaimer. It is taken apart
  *  here so the step card can show the verdicts as badges instead of one

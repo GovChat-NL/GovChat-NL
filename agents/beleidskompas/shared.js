@@ -9,6 +9,50 @@
  * copies the functions a workflow needs into its Code node.
  */
 
+const fs = require('node:fs');
+const path = require('node:path');
+
+// --- The prompt texts ---
+//
+// The texts the model gets live as files in prompts/: the template of the
+// system prompt, the rules that apply to every step, and per step the role
+// of the model and one instruction per substep. They are read here, in
+// Node; generate-workflow.js pastes them as text into the workflows, so n8n
+// never reads a file.
+
+const PROMPTS_DIR = path.join(__dirname, 'prompts');
+
+/** The text of a file in prompts/, without surrounding whitespace. */
+function readPrompt(relativePath) {
+  return fs.readFileSync(path.join(PROMPTS_DIR, relativePath), 'utf-8').trim();
+}
+
+/** A substep's prompt file: the instruction, and at the end, after
+ *  "Antwoord in deze vorm:", a ```json block with the example answer. The
+ *  example is what the model is asked to return and what the code uses to
+ *  check and show the answer, so it has to be valid JSON. */
+function readSubstepPrompt(relativePath) {
+  const text = readPrompt(relativePath);
+  const match = /\n```json\s*\n([\s\S]*?)\n```\s*$/.exec(text);
+  if (!match) throw new Error(`${relativePath} has no \`\`\`json example at the end`);
+  let example;
+  try {
+    example = JSON.parse(match[1]);
+  } catch (err) {
+    throw new Error(`${relativePath}: the example is not valid JSON (${err.message})`);
+  }
+  const instruction = text.slice(0, match.index).replace(/\n*Antwoord in deze vorm:\s*$/, '').trim();
+  return { instruction, example };
+}
+
+const SYSTEM_PROMPT_TEMPLATE = readPrompt('system-prompt.md');
+
+// One rule per line in rules.md.
+const COMMON_RULES = readPrompt('rules.md')
+  .split('\n')
+  .map((line) => line.trim())
+  .filter(Boolean);
+
 const DISCLAIMER =
   'Dit resultaat is een ondersteunend concept ten behoeve van de voorbereiding van beleidsadvies. ' +
   'Het is geen besluit en vervangt geen menselijke afweging of besluitvorming.';
@@ -37,17 +81,16 @@ function extractSuppliedToken(headers) {
 const PAGE_MESSAGE_LABELS = {
   step: 'Stap:',
   findings: 'Casus/eerdere bevindingen:',
-  sources: 'Bekende bronnen:',
   question: 'Vraag:',
 };
 
 /** Splits a message from the page into its parts: the step id, the findings
- *  of the earlier steps (which span many lines), the list of known sources
- *  and the question. A part whose label is missing is '' (or [] for the
- *  sources). A message without any label is returned whole as the question,
- *  so a direct webhook call with a plain case text keeps working. */
+ *  of the earlier steps (which span many lines) and the question. A part
+ *  whose label is missing is ''. A message without any label is returned
+ *  whole as the question, so a direct webhook call with a plain case text
+ *  keeps working. */
 function parsePageMessage(text) {
-  const parts = { stepId: '', findings: '', sources: '', question: '' };
+  const parts = { stepId: '', findings: '', question: '' };
   const unlabeled = [];
   let current = null;
 
@@ -68,10 +111,6 @@ function parsePageMessage(text) {
   parts.stepId = stepMatch ? stepMatch[1].toLowerCase() : '';
   delete parts.step;
   for (const key of Object.keys(parts)) parts[key] = String(parts[key] || '').trim();
-  parts.sources = parts.sources
-    .split(';')
-    .map((name) => name.trim())
-    .filter(Boolean);
   return parts;
 }
 
@@ -396,8 +435,8 @@ async function buildTitleResponse({ titleSource, env, fetchImpl, httpModule, htt
       while (end > start && (wrapperChars.has(raw[end - 1]) || /\s/.test(raw[end - 1]))) end -= 1;
       title = raw.slice(start, end);
     } catch (_) {
-      // LLM call failed: title falls through to the deterministic one below,
-      // same as the demo-fallback pattern used elsewhere in this file.
+      // A failed title must never break the conversation: fall through to
+      // the deterministic title below.
       title = '';
     }
   }
@@ -406,35 +445,172 @@ async function buildTitleResponse({ titleSource, env, fetchImpl, httpModule, htt
   // LibreChat's conversation-list sidebar, alongside other endpoints/agents.
   title = TITLE_PREFIX + title;
 
-  return { ok: true, step_id: 'stap1', mode: 'title', answer: title, text: title };
+  return { ok: true, step_id: null, mode: 'title', answer: title, text: title };
+}
+
+// --- A step as a list of substeps ---
+//
+// A step definition (see steps/) is data: its id, number and title, the
+// sentence that tells the model its role, and its substeps. A substep has
+// an instruction for the model and an example of the answer, both from its
+// file in prompts/. The example is the contract: its keys are the parts of
+// the answer (and the labels on the page), and the shape of each value says
+// what it is: a string is text, an array is a list, an object with
+// "oordeel" is a verdict, shown on the page as a heading of its own with a
+// badge. From that the functions below make the system prompt, the shape of
+// an empty answer, and the answer text with a heading per substep.
+
+function isVerdict(value) {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value) && 'oordeel' in value;
+}
+
+/** The answer format the model is asked for: the fixed fields, and per
+ *  substep the example from its prompt file. */
+function answerFormat(step) {
+  return JSON.stringify(
+    {
+      case_summary: 'korte, feitelijke samenvatting van de casus',
+      substeps: Object.fromEntries(step.substeps.map((substep) => [substep.id, substep.example])),
+      reasoning: 'de redenering, stap voor stap',
+      assumptions_missing_info: ['aannames en ontbrekende informatie'],
+    },
+    null,
+    2,
+  );
+}
+
+/** Fills the system prompt template (prompts/system-prompt.md) for a step. */
+function buildSystemPrompt(step) {
+  const values = {
+    role: step.role,
+    substeps: step.substeps.map((substep) => `Deelstap ${substep.id}: ${substep.title}\n${substep.instruction}`).join('\n\n'),
+    rules: COMMON_RULES.map((rule) => '- ' + rule).join('\n'),
+    answer_format: answerFormat(step),
+  };
+  return SYSTEM_PROMPT_TEMPLATE.replace(/\{\{(\w+)\}\}/g, (match, key) => (key in values ? values[key] : match));
+}
+
+/** The value of a part of the answer when nothing can be said about it,
+ *  in the shape its example has. */
+function emptyValue(example) {
+  if (Array.isArray(example)) return [];
+  if (isVerdict(example)) return { oordeel: 'onduidelijk', toelichting: '' };
+  return '';
+}
+
+/** The answer when the model's reply is not JSON: every part empty, the
+ *  raw reply kept as the reasoning. */
+function emptyStructured(step, rawText) {
+  return {
+    case_summary: '',
+    substeps: Object.fromEntries(
+      step.substeps.map((substep) => [
+        substep.id,
+        Object.fromEntries(Object.entries(substep.example).map(([label, example]) => [label, emptyValue(example)])),
+      ]),
+    ),
+    reasoning: rawText || 'Het taalmodel gaf geen bruikbare output terug.',
+    assumptions_missing_info: ['Kon het modelantwoord niet als JSON verwerken; ruwe tekst is opgenomen in het redeneerveld.'],
+  };
+}
+
+/** The parts of the answer the model left out, as notes for the reader. */
+function missingParts(step, structured) {
+  const answers = structured && structured.substeps && typeof structured.substeps === 'object' ? structured.substeps : {};
+  return step.substeps.flatMap((substep) => {
+    const given = answers[substep.id] && typeof answers[substep.id] === 'object' ? answers[substep.id] : {};
+    return Object.keys(substep.example)
+      .filter((label) => !(label in given))
+      .map((label) => `Het taalmodel gaf geen antwoord voor "${label}" (deelstap ${substep.id}).`);
+  });
+}
+
+// The answer text is markdown: a heading per section. It is not only what
+// the Beleidskompas page shows; LibreChat stores it as the chat message, so
+// it has to read well on its own, sources included.
+
+function asList(value) {
+  if (Array.isArray(value)) return value.map((v) => String(v)).filter(Boolean);
+  const text = String(value || '').trim();
+  return text ? [text] : [];
+}
+
+function bullets(items) {
+  return items.length ? items.map((item) => '- ' + item).join('\n') : '- geen';
+}
+
+function section(title, body) {
+  return `### ${title}\n${body}`;
+}
+
+/** One part of a substep's answer under the substep heading. `alone`: it is
+ *  the substep's only part, so it needs no label. */
+function partText(label, example, value, alone) {
+  if (Array.isArray(example)) return `**${label}:**\n${bullets(asList(value))}`;
+  const text = String(value == null ? '' : value).trim() || 'onbekend';
+  return alone ? text : `**${label}:** ${text}`;
+}
+
+/** The sections of one substep: a verdict gets a heading of its own with an
+ *  "**Oordeel:**" line (the page turns that into a badge); the other parts
+ *  go together under the substep's heading, in the order of the example. */
+function substepSections(substep, answer) {
+  const given = answer && typeof answer === 'object' ? answer : {};
+  const parts = Object.entries(substep.example);
+  const verdictSections = parts
+    .filter(([, example]) => isVerdict(example))
+    .map(([label]) => {
+      const value = isVerdict(given[label]) ? given[label] : {};
+      const explanation = String(value.toelichting || '').trim();
+      return section(label, `**Oordeel:** ${String(value.oordeel || 'onduidelijk')}` + (explanation ? `\n\n${explanation}` : ''));
+    });
+  const others = parts.filter(([, example]) => !isVerdict(example));
+  if (!others.length) return verdictSections;
+  return [...verdictSections, section(substep.title, others.map(([label, example]) => partText(label, example, given[label], others.length === 1)).join('\n\n'))];
+}
+
+function sourcesText(citations) {
+  if (!citations.length) return '- geen bronnen boven de relevantiedrempel';
+  return citations
+    .map((c, idx) => {
+      const score = Number(c && c.score);
+      const relevance = Number.isFinite(score) && score > 0 ? ` - relevantie ${score.toFixed(3)}` : '';
+      return `${idx + 1}. **${String((c && c.filename) || 'Onbekende bron')}**${relevance}`;
+    })
+    .join('\n');
+}
+
+function composeAnswerText(step, structured, citations) {
+  const s = structured && typeof structured === 'object' ? structured : {};
+  const answers = s.substeps && typeof s.substeps === 'object' ? s.substeps : {};
+  return [
+    `**Stap ${step.nr} · ${step.title}**`,
+    section('Samenvatting casus', String(s.case_summary || '').trim() || 'onbekend'),
+    ...step.substeps.flatMap((substep) => substepSections(substep, answers[substep.id])),
+    section('Redenering', String(s.reasoning || '').trim() || 'onbekend'),
+    section('Aannames en ontbrekende informatie', bullets(asList(s.assumptions_missing_info))),
+    section('Bronnen', sourcesText(Array.isArray(citations) ? citations : [])),
+    `---\n${DISCLAIMER}`,
+  ].join('\n\n');
 }
 
 // --- Running a step ---
 
-function buildUserPrompt({ question, caseText, citations }) {
-  const lines = [];
-  if (caseText) lines.push('Casus: ' + caseText);
-  // The first message of a case is the case description itself; then the
-  // question is the case and is not repeated.
-  if (question && question !== caseText) lines.push('Vraag: ' + question);
-
-  if (Array.isArray(citations) && citations.length) {
-    lines.push('Geraadpleegde beleidsbronnen:');
-    citations.forEach((c) => {
-      lines.push(`[bron ${c.rank}] ${c.filename}: "${c.preview}"`);
-    });
-  } else {
-    lines.push('Geen beleidsbronnen boven de relevantiedrempel gevonden voor deze casus.');
-  }
-
-  return lines.join('\n');
+/** What the model gets as the user's message: the findings of the earlier
+ *  steps when there are any, the question (at the first message of a case,
+ *  the case description itself), and the source passages found for it. */
+function buildUserPrompt({ question, findings, citations }) {
+  const found = Array.isArray(citations) ? citations : [];
+  const sources = found.length
+    ? ['Geraadpleegde beleidsbronnen:', ...found.map((c) => `[bron ${c.rank}] ${c.filename}: "${c.preview}"`)].join('\n')
+    : 'Geen beleidsbronnen boven de relevantiedrempel gevonden voor deze casus.';
+  return [findings && `Casus en bevindingen tot nu toe:\n${findings}`, `Vraag: ${question}`, sources].filter(Boolean).join('\n\n');
 }
 
 /** Reads the model's reply as JSON, also when it is wrapped in a markdown
- *  code block. When that fails, the step's `emptyStructured` gives the
- *  answer shape with the raw reply as the reasoning, and parse_warning is
- *  set. */
-function parseAgentJson(rawText, emptyStructured) {
+ *  code block. When that fails, the answer is the step's empty shape with
+ *  the raw reply as the reasoning, and parse_warning is set. */
+function parseAgentJson(rawText, step) {
   const text = String(rawText || '').trim();
   const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/i);
   const candidate = fenced ? fenced[1].trim() : text;
@@ -444,22 +620,20 @@ function parseAgentJson(rawText, emptyStructured) {
   } catch (_) {
     // fall through
   }
-  return { structured: emptyStructured(text), parse_warning: true };
+  return { structured: emptyStructured(step, text), parse_warning: true };
 }
 
 /** What the Code node of every step workflow runs.
  *
- *  `step` is the step's definition (see steps/): its id, its system prompt,
- *  the shape of an empty answer, its demo fallback and how it composes the
- *  answer text. `ctx.input` is the request as the main agent sends it
- *  (`$json`: body with question, case_text and sources, plus headers),
- *  `ctx.env` the settings from `$env`, `ctx.passages` the source passages to
- *  search, `ctx.sources` the names of the sources when the request names
- *  none, and the rest the means to send HTTP. In order: check the token,
- *  read the fields, find the relevant passages, ask the model (or fall back
- *  to the demo answer), compose the answer. */
+ *  `step` is the step's definition (see steps/): its id, number, title,
+ *  role sentence and substeps. `ctx.input` is the request as the main agent sends it
+ *  (`$json`: body with question and findings, plus headers), `ctx.env` the
+ *  settings from `$env`, `ctx.passages` the source passages to search, and
+ *  the rest the means to send HTTP. In order: check the token,
+ *  read the fields, find the relevant passages, ask the model, compose the
+ *  answer. */
 async function runStep(step, ctx) {
-  const { input, env, sources: defaultSources, passages, fetchImpl, httpModule, httpsModule, urlModule } = ctx;
+  const { input, env, passages, fetchImpl, httpModule, httpsModule, urlModule } = ctx;
   const raw = input || {};
   const body = raw.body || {};
   const headers = raw.headers || {};
@@ -474,62 +648,51 @@ async function runStep(step, ctx) {
   }
 
   const question = String(body.question || '').trim();
-  const caseText = String(body.case_text || '').trim();
-  // The names of the sources the page knows, when it sent them; otherwise
-  // the fixed list this workflow was generated with.
-  const sources = Array.isArray(body.sources) && body.sources.length ? body.sources : defaultSources;
+  const findings = String(body.findings || '').trim();
 
-  const queryBlob = [question, caseText].filter(Boolean).join(' ');
+  const queryBlob = [question, findings].filter(Boolean).join(' ');
   const ragSettings = { algorithm: 'needle', top_k: 3, min_score: 0.12 };
   const { citations, retrieval_trace } = selectSources(passages, queryBlob, ragSettings);
 
+  // No model, or a failing one, is answered with a message for the chat,
+  // never with a placeholder that could pass for an assessment.
   const litellmUrl = String((env && env.LITELLM_URL) || '').trim();
   const litellmApiKey = String((env && (env.LITELLM_API_KEY || env.OPENAI_API_KEY)) || '').trim();
-  const demoMode = !litellmUrl || !litellmApiKey;
-
-  let structured;
-  let mode;
-  let parseWarning = false;
-
-  if (demoMode) {
-    mode = 'demo_fallback';
-    structured = step.buildDemoFallbackStructured({ question, caseText, citations });
-  } else {
-    mode = 'llm';
-    const systemPrompt = step.buildSystemPrompt(sources);
-    const userPrompt = buildUserPrompt({ question, caseText, citations });
-    try {
-      const rawAnswer = await callLiteLLM({
-        baseUrl: litellmUrl,
-        apiKey: litellmApiKey,
-        model: (env && env.BELEIDSKOMPAS_MODEL) || 'govchat-default',
-        systemPrompt,
-        userPrompt,
-        timeoutMs: 60000,
-        fetchImpl,
-        httpModule,
-        httpsModule,
-        urlModule,
-      });
-      const parsed = parseAgentJson(rawAnswer, step.emptyStructured);
-      structured = parsed.structured;
-      parseWarning = parsed.parse_warning;
-    } catch (err) {
-      mode = 'demo_fallback';
-      structured = step.buildDemoFallbackStructured({ question, caseText, citations });
-      structured.reasoning =
-        `⚠️ DEMO-MODUS (LLM-aanroep mislukt: ${String((err && err.message) || err)}): ` + structured.reasoning;
-    }
+  if (!litellmUrl || !litellmApiKey) {
+    const text = 'Beleidskompas kan deze stap niet uitvoeren: er is geen taalmodel geconfigureerd (LITELLM_URL en LITELLM_API_KEY of OPENAI_API_KEY).';
+    return { ok: false, step_id: step.id, error: 'No language model configured', text, answer: text };
   }
 
+  let rawAnswer;
+  try {
+    rawAnswer = await callLiteLLM({
+      baseUrl: litellmUrl,
+      apiKey: litellmApiKey,
+      model: (env && env.BELEIDSKOMPAS_MODEL) || 'govchat-default',
+      systemPrompt: buildSystemPrompt(step),
+      userPrompt: buildUserPrompt({ question, findings, citations }),
+      timeoutMs: 60000,
+      fetchImpl,
+      httpModule,
+      httpsModule,
+      urlModule,
+    });
+  } catch (err) {
+    const text = `Beleidskompas kon het taalmodel niet bereiken (${String((err && err.message) || err)}). Probeer het later opnieuw.`;
+    return { ok: false, step_id: step.id, error: 'Language model call failed', text, answer: text };
+  }
+
+  const parsed = parseAgentJson(rawAnswer, step);
+  const structured = parsed.structured;
+  const missing = missingParts(step, structured);
+  if (missing.length) structured.assumptions_missing_info = [...asList(structured.assumptions_missing_info), ...missing];
   structured.disclaimer = DISCLAIMER;
-  const answer = step.composeAnswerText(structured, mode, citations);
+  const answer = composeAnswerText(step, structured, citations);
 
   return {
     ok: true,
     step_id: step.id,
-    mode,
-    parse_warning: parseWarning,
+    parse_warning: parsed.parse_warning,
     answer,
     // What the chat pipeline delivers: the bridge reads `text`, not
     // `answer`, so the citations and the retrieval trace travel along in the
@@ -560,6 +723,23 @@ module.exports = {
   buildFallbackTitle,
   extractConvoCaseText,
   buildTitleResponse,
+  readPrompt,
+  readSubstepPrompt,
+  SYSTEM_PROMPT_TEMPLATE,
+  COMMON_RULES,
+  isVerdict,
+  answerFormat,
+  buildSystemPrompt,
+  emptyValue,
+  emptyStructured,
+  missingParts,
+  asList,
+  bullets,
+  section,
+  partText,
+  substepSections,
+  sourcesText,
+  composeAnswerText,
   buildUserPrompt,
   parseAgentJson,
   runStep,

@@ -10,18 +10,15 @@ test("the step configuration wins over the app's config, which wins over the def
   const defaults = buildConfig(null, null);
   assert.equal(defaults.title, "");
   assert.ok(defaults.specialistTeam.length > 0);
-  assert.equal(defaults.sources.length, 5);
   assert.deepEqual(defaults.steps.map((s) => s.id), ["stap1", "stap2", "stap3", "stap4"]);
 
   const config = buildConfig(
-    { config: { title: " Uit apps.json ", specialist_team: "Team A", sources: ["Bron 1"] } },
-    { title: "Uit de stappenconfig", disclaimer: " Let op ", sources: [] },
+    { config: { title: " Uit apps.json ", specialist_team: "Team A" } },
+    { title: "Uit de stappenconfig", disclaimer: " Let op " },
   );
   assert.equal(config.title, "Uit de stappenconfig");
   assert.equal(config.disclaimer, "Let op");
   assert.equal(config.specialistTeam, "Team A");
-  // An empty source list means: use the defaults.
-  assert.deepEqual(config.sources, defaults.sources);
 });
 
 test("a configured step takes its texts and questions from the configuration, missing fields from the default at that position", () => {

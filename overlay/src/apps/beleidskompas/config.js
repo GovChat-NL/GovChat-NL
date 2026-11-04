@@ -5,14 +5,6 @@
 const DEFAULT_SPECIALIST_TEAM =
   "Schakel bij complexe juridische, financiële of politiek-bestuurlijke casussen een specialistenteam in.";
 
-const DEFAULT_SOURCES = [
-  "SiS 4.0 Strategisch kader",
-  "SiS 4.0 Uitvoeringskader",
-  "Provinciale Instrumentenkoffer",
-  "Coalitieakkoord en beleidskaders",
-  "Overzicht wettelijke taken Provincie",
-];
-
 const DEFAULT_STEPS = [
   {
     id: "stap1",
@@ -93,7 +85,6 @@ export function buildConfig(app, flowConfig) {
     title: String(cfg.title || "").trim(),
     disclaimer: String(cfg.disclaimer || "").trim(),
     specialistTeam: String(cfg.specialist_team || DEFAULT_SPECIALIST_TEAM).trim(),
-    sources: Array.isArray(cfg.sources) && cfg.sources.length ? cfg.sources : DEFAULT_SOURCES,
     steps: buildSteps(cfg),
   };
 }

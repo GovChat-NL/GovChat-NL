@@ -1,6 +1,6 @@
 {
-  "_comment": "Representative demo case for Beleidskompas step 1 (public/provincial interest). Fictional, for demo purposes only.",
+  "_comment": "Representative demo case for Beleidskompas step 1 (public/provincial interest), as the first message of a case: the case description is the question, there are no findings yet. Fictional, for demo purposes only.",
   "step_id": "stap1",
-  "question": "Is dit een vraagstuk waar de provincie een rol in zou moeten pakken?",
-  "case_text": "Drie Limburgse gemeenten in het buitengebied vragen de provincie gezamenlijk om een financiele bijdrage aan een regionaal laadnetwerk voor deelauto's en deelfietsen. Marktpartijen plaatsen laadpalen vrijwel alleen in de stedelijke kernen omdat het buitengebied onvoldoende rendement oplevert; inwoners van de betrokken gemeenten hebben daardoor beperkte toegang tot elektrische deelmobiliteit."
+  "question": "Drie Limburgse gemeenten in het buitengebied vragen de provincie gezamenlijk om een financiele bijdrage aan een regionaal laadnetwerk voor deelauto's en deelfietsen. Marktpartijen plaatsen laadpalen vrijwel alleen in de stedelijke kernen omdat het buitengebied onvoldoende rendement oplevert; inwoners van de betrokken gemeenten hebben daardoor beperkte toegang tot elektrische deelmobiliteit.",
+  "findings": ""
 }

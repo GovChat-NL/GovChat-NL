@@ -9,16 +9,16 @@ import { composePrompt, parseCitationsMetaBlock } from "../beleidskompas-api.js"
 
 const STEP = { id: "stap2", title: "Rolbepaling provincie" };
 
-test("composePrompt labels the step, the findings so far, the sources and the question, and leaves out what is empty", () => {
+test("composePrompt labels the step, the findings so far and the question, and leaves out what is empty", () => {
   assert.equal(
-    composePrompt({ step: STEP, priorReports: "Uit stap 1.", currentReport: "", sources: ["Kader A", "Kader B"], question: " Welke rol past? " }),
-    "Stap: stap2 (Rolbepaling provincie)\nCasus/eerdere bevindingen: Uit stap 1.\nBekende bronnen: Kader A; Kader B\nVraag: Welke rol past?",
+    composePrompt({ step: STEP, priorReports: "Uit stap 1.", currentReport: "", question: " Welke rol past? " }),
+    "Stap: stap2 (Rolbepaling provincie)\nCasus/eerdere bevindingen: Uit stap 1.\nVraag: Welke rol past?",
   );
   assert.equal(
-    composePrompt({ step: STEP, priorReports: "", currentReport: "Eerder in deze stap", sources: [], question: "q" }),
+    composePrompt({ step: STEP, priorReports: "", currentReport: "Eerder in deze stap", question: "q" }),
     "Stap: stap2 (Rolbepaling provincie)\nCasus/eerdere bevindingen: Eerder in deze stap\nVraag: q",
   );
-  assert.equal(composePrompt({ step: STEP, priorReports: "", currentReport: "  ", sources: [], question: "q" }), "Stap: stap2 (Rolbepaling provincie)\nVraag: q");
+  assert.equal(composePrompt({ step: STEP, priorReports: "", currentReport: "  ", question: "q" }), "Stap: stap2 (Rolbepaling provincie)\nVraag: q");
 });
 
 test("parseCitationsMetaBlock splits the trailing link definition off the answer", () => {

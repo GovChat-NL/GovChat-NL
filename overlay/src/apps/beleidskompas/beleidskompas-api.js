@@ -100,13 +100,12 @@ export async function sendBeleidskompasFeedback({ rating, comment, stepId }) {
 }
 
 /** The only channel to the backend is the chat message's plain text, so the
- *  context of a question (the step, what was found so far and the known
- *  sources) is composed into one labeled text. */
-export function composePrompt({ step, priorReports, currentReport, sources, question }) {
+ *  context of a question (the step and what was found so far) is composed
+ *  into one labeled text. */
+export function composePrompt({ step, priorReports, currentReport, question }) {
   const lines = [`Stap: ${step.id} (${step.title})`];
   const findings = String(priorReports || currentReport || "").trim();
   if (findings) lines.push(`Casus/eerdere bevindingen: ${findings}`);
-  if (sources.length) lines.push(`Bekende bronnen: ${sources.join("; ")}`);
   lines.push(`Vraag: ${String(question || "").trim()}`);
   return lines.join("\n");
 }

@@ -25,20 +25,15 @@ const path = require('node:path');
 const shared = require('./shared');
 const mainAgent = require('./main-agent');
 const step1 = require('./steps/step1');
+const step2 = require('./steps/step2');
+const step3 = require('./steps/step3');
+const step4 = require('./steps/step4');
 
 const WORKFLOWS_DIR = path.join(__dirname, '..', 'n8n', 'workflows', 'beleidskompas');
 
 const passages = JSON.parse(
   fs.readFileSync(path.join(__dirname, 'fixtures', 'source-passages.json'), 'utf-8'),
 ).passages;
-
-const DEFAULT_SOURCES = [
-  'SiS 4.0 Strategisch kader',
-  'SiS 4.0 Uitvoeringskader',
-  'Provinciale Instrumentenkoffer',
-  'Coalitieakkoord en beleidskaders',
-  'Overzicht wettelijke taken Provincie',
-];
 
 /** The source text of the named functions, one after another, each taken
  *  from the first of `modules` that exports it. */
@@ -179,6 +174,19 @@ const STEP_SHARED_FUNCTIONS = [
   'extractSuppliedToken',
   'tokenizePolicyText',
   'selectSources',
+  'isVerdict',
+  'answerFormat',
+  'buildSystemPrompt',
+  'emptyValue',
+  'emptyStructured',
+  'missingParts',
+  'asList',
+  'bullets',
+  'section',
+  'partText',
+  'substepSections',
+  'sourcesText',
+  'composeAnswerText',
   'buildUserPrompt',
   'parseAgentJson',
   'appendCitationsMetaBlock',
@@ -187,45 +195,23 @@ const STEP_SHARED_FUNCTIONS = [
   'runStep',
 ];
 
-// One row per step workflow: the step's definition (its module's STEP) and
-// how the workflow is named in n8n.
-const STEP_WORKFLOWS = [
-  {
-    step: step1.STEP,
-    file: 'beleidskompas-step-stap1.json',
-    id: 'govchat-beleidskompas-step-stap1',
-    name: 'Beleidskompas Specialist - Stap 1',
-    webhookPath: 'beleidskompas-step-stap1',
-    nodeNames: { webhook: 'Webhook Step 1', code: 'Build Step 1 Answer', respond: 'Respond Step 1' },
-  },
-];
-
-/** The text of `const STEP = { ... }` for a Code node: the step's functions
- *  by name (they are copied into the node above it), the other values as
- *  JSON. */
-function stepDefinitionLiteral(step) {
-  const entries = Object.keys(step).map((key) => {
-    const value = step[key];
-    return typeof value === 'function' ? `  ${key}: ${value.name},` : `  ${key}: ${JSON.stringify(value)},`;
-  });
-  return ['const STEP = {', ...entries, '};'].join('\n');
-}
+// The step workflows: one per step definition in steps/.
+const steps = [step1.STEP, step2.STEP, step3.STEP, step4.STEP];
 
 function buildStepJsCode(step) {
-  const stepFunctions = Object.values(step).filter((value) => typeof value === 'function');
   return [
     `const DISCLAIMER = ${JSON.stringify(shared.DISCLAIMER)};`,
     `const CITATIONS_META_MARKER = ${JSON.stringify(shared.CITATIONS_META_MARKER)};`,
     `const CITATIONS_META_LABEL = ${JSON.stringify(shared.CITATIONS_META_LABEL)};`,
+    `const SYSTEM_PROMPT_TEMPLATE = ${JSON.stringify(shared.SYSTEM_PROMPT_TEMPLATE)};`,
+    `const COMMON_RULES = ${JSON.stringify(shared.COMMON_RULES)};`,
     '',
     inlineFunctions([shared], STEP_SHARED_FUNCTIONS),
     '',
-    stepFunctions.map((fn) => fn.toString()).join('\n\n'),
-    '',
-    stepDefinitionLiteral(step),
+    // The step definition is data, so it goes in as JSON.
+    `const STEP = ${JSON.stringify(step, null, 2)};`,
     '',
     `const PASSAGES = ${JSON.stringify(passages)};`,
-    `const SOURCES = ${JSON.stringify(DEFAULT_SOURCES)};`,
     '',
     ...HTTP_MODULES,
     '',
@@ -239,7 +225,6 @@ function buildStepJsCode(step) {
       'OPENAI_API_KEY',
       'BELEIDSKOMPAS_MODEL',
     ])},`,
-    '  sources: SOURCES,',
     '  passages: PASSAGES,',
     ...HTTP_ARGS,
     '});',
@@ -248,13 +233,17 @@ function buildStepJsCode(step) {
   ].join('\n');
 }
 
-function buildStepWorkflow(row) {
+function buildStepWorkflow(step) {
   return buildWorkflow({
-    id: row.id,
-    name: row.name,
-    webhookPath: row.webhookPath,
-    nodeNames: row.nodeNames,
-    jsCode: buildStepJsCode(row.step),
+    id: `govchat-beleidskompas-step-${step.id}`,
+    name: `Beleidskompas Specialist - Stap ${step.nr}`,
+    webhookPath: `beleidskompas-step-${step.id}`,
+    nodeNames: {
+      webhook: `Webhook Step ${step.nr}`,
+      code: `Build Step ${step.nr} Answer`,
+      respond: `Respond Step ${step.nr}`,
+    },
+    jsCode: buildStepJsCode(step),
   });
 }
 
@@ -266,7 +255,7 @@ function writeWorkflow(fileName, workflow) {
 
 function main() {
   writeWorkflow('beleidskompas-hoofdagent.json', buildMainAgentWorkflow());
-  for (const row of STEP_WORKFLOWS) writeWorkflow(row.file, buildStepWorkflow(row));
+  for (const step of steps) writeWorkflow(`beleidskompas-step-${step.id}.json`, buildStepWorkflow(step));
 }
 
 main();

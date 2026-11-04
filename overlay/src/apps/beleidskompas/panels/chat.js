@@ -109,7 +109,7 @@ function messageHTML(m, idx) {
     </div>`;
 }
 
-export function setupChat(store, { sources }) {
+export function setupChat(store) {
   const { state, steps } = store;
   const chatLogEl = requireElement("gc-bk-chat-log");
   const chatInputEl = requireElement("gc-bk-chat-input");
@@ -140,7 +140,6 @@ export function setupChat(store, { sources }) {
         .filter(Boolean)
         .join("\n\n"),
       currentReport: store.stepResult(step.id).report_text,
-      sources,
       question: userText,
     });
 

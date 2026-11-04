@@ -6,8 +6,8 @@
  * Every chat message for the Beleidskompas endpoint arrives here first,
  * through the n8n-openai-bridge. The main agent does not answer anything
  * about a case itself: it checks the caller's token, takes the message apart
- * into the parts the page composed it from (step, findings so far, sources,
- * question) and sends those as fields to that step's workflow, whose answer
+ * into the parts the page composed it from (step, findings so far, question)
+ * and sends those as fields to that step's workflow, whose answer
  * it returns unchanged. A message that names no known step is refused with a
  * message for the chat, never sent to a default step. The one request it does
  * answer itself is LibreChat's request for a conversation title, which
@@ -49,16 +49,13 @@ function determineStep(parts, routes) {
 }
 
 /** What a step workflow receives: the parts of the message as fields, plus
- *  who is asking. `case_text` is what is known about the case so far: the
- *  findings of the earlier steps, or the question itself when there are
- *  none yet (the first message of a case is the case description). */
+ *  who is asking. */
 function buildStepRequest(stepId, parts, body) {
   const b = body && typeof body === 'object' ? body : {};
   return {
     step_id: stepId,
     question: parts.question,
-    case_text: parts.findings || parts.question,
-    sources: parts.sources,
+    findings: parts.findings,
     sessionId: b.sessionId || null,
     userId: b.userId || null,
   };
@@ -152,8 +149,7 @@ async function runMainAgent(ctx) {
   if (isTitleRequest(message) || isTitleRequest(String(body.systemPrompt || ''))) {
     // The title is made from the case itself, not from the labels around it.
     const caseText = parsePageMessage(extractConvoCaseText(message)).question;
-    const title = await buildTitleResponse({ titleSource: caseText || message, env, fetchImpl, httpModule, httpsModule, urlModule });
-    return Object.assign({}, title, { step_id: null });
+    return buildTitleResponse({ titleSource: caseText || message, env, fetchImpl, httpModule, httpsModule, urlModule });
   }
 
   const parts = parsePageMessage(message);
