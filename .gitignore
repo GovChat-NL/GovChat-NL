@@ -3,6 +3,10 @@
 /.env.*
 !/.env.example
 
+# Organization-specific branding assets; retain the usage guide in Git.
+/custom-branding/*
+!/custom-branding/README.md
+
 # Accidental local artifacts
 /n.type
 /{console.error(e)
