@@ -88,7 +88,7 @@
         "authentication": "genericCredentialType", "genericAuthType": "httpBasicAuth",
         "sendQuery": true,
         "queryParameters": { "parameters": [
-          { "name": "page_size", "value": "={{ $('1. Configuration (edit after import)').first().json.pageSize }}" },
+          { "name": "page_size", "value": "={{ String($('1. Configuration (edit after import)').first().json.pageSize) }}" },
           { "name": "query", "value": "={{ $('1. Configuration (edit after import)').first().json.rootQuery }}" },
           { "name": "fields", "value": "={{ $('1. Configuration (edit after import)').first().json.fields }}" }
         ] },
