@@ -51,6 +51,21 @@ const runIngestConfig = new Function('$input', ingestConfigCode);
 const defaultIngestConfig = runIngestConfig({ first: () => ({ json: {} }) })[0].json;
 assert(defaultIngestConfig.rootQuery === "parent.number=='KI 0975'", 'TOPdesk default query must select children by parent item number');
 assert(defaultIngestConfig.vectorSize === 3072 && defaultIngestConfig.vectorDistance === 'Cosine', 'Qdrant collection defaults must match the embedding dimensions and distance');
+for (const nodeName of ['4a. Prepare article text', '6a. Build article point', '8b. Prepare attachment text', '10b. Build attachment point']) {
+  assert(nodeByName(ingest, nodeName).parameters.mode === 'runOnceForEachItem', `${nodeName} must process every incoming item independently`);
+}
+const attachmentNormalizer = nodeByName(ingest, '5b. Normalize attachments');
+const normalizeAttachments = new Function('$input', '$', attachmentNormalizer.parameters.jsCode);
+const fakeParents = [
+  { json: { id: 'parent-1', _govchat: { includeAttachments: true } } },
+  { json: { id: 'parent-2', _govchat: { includeAttachments: true } } },
+];
+const normalizedAttachments = normalizeAttachments(
+  { all: () => [{ json: { item: [{ id: 'attachment-1' }] } }, { json: { item: [{ id: 'attachment-2' }] } }] },
+  () => ({ all: () => fakeParents }),
+);
+assert(normalizedAttachments.length === 2, 'Attachment normalizer must fan out attachments for every parent item');
+assert(normalizedAttachments[1].json.knowledgeItemId === 'parent-2', 'Attachment normalizer must preserve parent-to-attachment pairing');
 const collectionDecisionCode = nodeByName(ingest, '1c. Validate or create collection').parameters.jsCode;
 const runCollectionDecision = new Function('$', '$json', collectionDecisionCode);
 const decisionContext = () => ({ first: () => ({ json: defaultIngestConfig }) });
