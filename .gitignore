@@ -10,4 +10,5 @@
 /testdata/openbesluitvorming/
 **/__pycache__/
 *.py[cod]
-dev_notes/*
+GLOSSARY.md
+DEFERRED_FIXES.md
