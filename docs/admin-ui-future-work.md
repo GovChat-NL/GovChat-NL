@@ -1,6 +1,6 @@
 # Beleidskompas admin UI: future work
 
-The admin UI (US 11296) is built in `services/admin-overlay/admin/views/beleidskompas-admin/`. All of its data access is in `api.js`. Each function there is marked `WIRED` (it calls `server.js`) or `MOCK #n`, where `n` refers to a section below. Terms are defined in [GLOSSARY.md](../GLOSSARY.md).
+The admin UI (US 11296) is built in `services/admin-overlay/admin/views/beleidskompas-admin/`. All of its data access is in `api.js`. Each function there is marked `WIRED` (it calls `server.js`) or `MOCK #n`, where `n` refers to a section below.
 
 ## 1. Several templates
 
