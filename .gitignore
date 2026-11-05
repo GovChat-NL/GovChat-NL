@@ -3,6 +3,11 @@
 /.env.*
 !/.env.example
 
+# Private deployment overrides and ingress trust lists.
+/*.local.yml
+/nginx/*.local.conf
+/nginx/*.local.geo
+
 # Organization-specific branding assets; retain the usage guide in Git.
 /custom-branding/*
 !/custom-branding/README.md

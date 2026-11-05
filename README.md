@@ -67,6 +67,15 @@ De drie configureerbare huisstijlopties en het plaatsen van eigen logo's staan i
 
 De LibreChat-overrides en de instelbare Nederlandse vertalingen staan in het [overzicht van overrides](docs/OVERRIDES.md) en [Nederlandse vertalingen](docs/TRANSLATIONS.md). De vertaaloverride staat standaard aan en kan met [`LIBRECHAT_NL_TRANSLATIONS_ENABLED`](.env.example:11) op `false` worden uitgezet.
 
+### Eigen deployment zonder broncode-afwijkingen
+
+Ingress-hostnamen en bindadres, vertrouwde proxies, dataroot, bestaand Docker-netwerk,
+database-image, bridge-buildcontext, SSO/adminrolmapping en beheer-subpaden zijn
+configureerbaar. Optionele Compose-bestanden voegen SSO-only beleid en
+localhost-beheeradapters toe zonder installatiegegevens in de repo op te nemen.
+Zie [deploymentconfiguratie](docs/deployment-configuration.md) voor opties, veilige
+defaults, migratie van lokale overrides en de bijbehorende tests.
+
 ## Documentatie en bijdragen
 
 - [GovChat-NL-documentatie](https://govchat-nl.github.io/)
