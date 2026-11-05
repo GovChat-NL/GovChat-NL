@@ -69,7 +69,7 @@
       "parameters": {
         "method": "PUT", "url": "={{ $json.qdrantUrl.replace(/\\/$/,'') + '/collections/' + encodeURIComponent($json.collection) }}",
         "sendHeaders": true, "headerParameters": { "parameters": [ { "name": "Content-Type", "value": "application/json" } ] },
-        "sendBody": true, "specifyBody": "json", "jsonBody": "={{ JSON.stringify({vectors:{size:$json.vectorSize,distance:$json.vectorDistance}}) }}",
+        "sendBody": true, "specifyBody": "json", "jsonBody": "={{ JSON.stringify({ vectors: { size: $json.vectorSize, distance: $json.vectorDistance } }) }}",
         "options": { "timeout": 30000 }
       },
       "type": "n8n-nodes-base.httpRequest", "typeVersion": 4.2,

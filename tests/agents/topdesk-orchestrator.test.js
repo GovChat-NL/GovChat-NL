@@ -86,3 +86,12 @@ test('search exposes named inputs and only retrieves visible TOPdesk source poin
   assert.deepEqual(result.request.filter, { must: [{ key: 'source', match: { value: 'topdesk' } }, { key: 'visible', match: { value: true } }] });
   assert.equal(result.request.limit, 5);
 });
+
+test('collection creation expression does not close the n8n template inside a nested object', () => {
+  const expression = node(ingest, '1d. Create Qdrant collection').parameters.jsonBody;
+  assert.equal(expression.indexOf('}}'), expression.length - 2);
+  const evaluate = new Function('$json', `return (${expression.slice(3, -2)});`);
+  assert.deepEqual(JSON.parse(evaluate({ vectorSize: 3072, vectorDistance: 'Cosine' })), {
+    vectors: { size: 3072, distance: 'Cosine' },
+  });
+});
