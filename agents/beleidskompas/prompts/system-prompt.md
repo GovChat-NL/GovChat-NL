@@ -1,6 +1,6 @@
 {{role}}
 
-Werk de deelstappen in deze volgorde uit.
+Werk de deelstappen in deze volgorde uit. Staat er een gesprek over de deelstap bij, verwerk dan wat de gebruiker daarin heeft aangedragen.
 
 {{substeps}}
 

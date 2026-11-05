@@ -176,7 +176,9 @@ const STEP_SHARED_FUNCTIONS = [
   'selectSources',
   'isVerdict',
   'answerFormat',
+  'fillTemplate',
   'buildSystemPrompt',
+  'buildConversationPrompt',
   'emptyValue',
   'emptyStructured',
   'missingParts',
@@ -186,6 +188,7 @@ const STEP_SHARED_FUNCTIONS = [
   'partText',
   'substepSections',
   'sourcesText',
+  'askedStep',
   'composeAnswerText',
   'buildUserPrompt',
   'parseAgentJson',
@@ -204,6 +207,7 @@ function buildStepJsCode(step) {
     `const CITATIONS_META_MARKER = ${JSON.stringify(shared.CITATIONS_META_MARKER)};`,
     `const CITATIONS_META_LABEL = ${JSON.stringify(shared.CITATIONS_META_LABEL)};`,
     `const SYSTEM_PROMPT_TEMPLATE = ${JSON.stringify(shared.SYSTEM_PROMPT_TEMPLATE)};`,
+    `const CONVERSATION_PROMPT_TEMPLATE = ${JSON.stringify(shared.CONVERSATION_PROMPT_TEMPLATE)};`,
     `const COMMON_RULES = ${JSON.stringify(shared.COMMON_RULES)};`,
     '',
     inlineFunctions([shared], STEP_SHARED_FUNCTIONS),
@@ -247,15 +251,35 @@ function buildStepWorkflow(step) {
   });
 }
 
-function writeWorkflow(fileName, workflow) {
-  const outPath = path.join(WORKFLOWS_DIR, fileName);
-  fs.writeFileSync(outPath, JSON.stringify(workflow, null, 2) + '\n', 'utf-8');
+// What the Beleidskompas page needs to know about the steps: ids, numbers,
+// titles and substeps, without the prompt texts. Written next to the page,
+// so the page and the workflows share one list of steps.
+//
+// TODO: once the admin environment holds the prompts, it should serve this
+// list itself (same shape, from the same source as the prompts), and this
+// file goes.
+const PAGE_STEPS_FILE = path.join(__dirname, '..', '..', 'overlay', 'src', 'apps', 'beleidskompas', 'steps.json');
+
+function pageSteps(stepDefinitions) {
+  return {
+    steps: stepDefinitions.map((step) => ({
+      id: step.id,
+      nr: step.nr,
+      title: step.title,
+      substeps: step.substeps.map((substep) => ({ id: substep.id, title: substep.title })),
+    })),
+  };
+}
+
+function writeJson(outPath, data) {
+  fs.writeFileSync(outPath, JSON.stringify(data, null, 2) + '\n', 'utf-8');
   console.log(`Wrote ${path.relative(process.cwd(), outPath)}`);
 }
 
 function main() {
-  writeWorkflow('beleidskompas-hoofdagent.json', buildMainAgentWorkflow());
-  for (const step of steps) writeWorkflow(`beleidskompas-step-${step.id}.json`, buildStepWorkflow(step));
+  writeJson(path.join(WORKFLOWS_DIR, 'beleidskompas-hoofdagent.json'), buildMainAgentWorkflow());
+  for (const step of steps) writeJson(path.join(WORKFLOWS_DIR, `beleidskompas-step-${step.id}.json`), buildStepWorkflow(step));
+  writeJson(PAGE_STEPS_FILE, pageSteps(steps));
 }
 
 main();

@@ -29,7 +29,7 @@ export function citationLabel(citation) {
 }
 
 /** Beleidskompas returns plain text with "## heading" lines and **bold**.
- *  That light markup is converted, so the elaboration reads as text instead
+ *  That light markup is converted, so the report reads as text instead
  *  of raw markdown.
  *
  *  The model's line breaks must be kept, but the whitespace of the
@@ -42,7 +42,7 @@ export function formatRichText(text) {
   return `<span class="gc-bk-pre">${formatted}</span>`;
 }
 
-/** The elaboration has a fixed structure (composeAnswerText in
+/** A report has a fixed structure (composeAnswerText in
  *  agents/beleidskompas/shared.js): an optional demo warning, then "## "
  *  sections, of which public and provincial interest start with
  *  "Oordeel: ...", and after a "---" line the disclaimer. It is taken apart

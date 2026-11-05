@@ -5,7 +5,40 @@
 import { escapeAttr, escapeHTML } from "../../../shared/html.js";
 import { requireElement } from "../../../shared/dom.js";
 import { fetchBeleidskompasHistory, listRecentBeleidskompasConversations } from "../beleidskompas-api.js";
-import { formatRelativeCaseDate } from "../format.js";
+import { formatRelativeCaseDate, parseAdvice } from "../format.js";
+
+/** Puts a reopened case back together from its history.
+ *
+ *  The history alternates: a user message, then the answer to it. The
+ *  user message says which substep it was about and whether the user
+ *  typed a message (conversation) or asked for the report of the substep.
+ *  The answer after it gets the same substep and the same kind.
+ *
+ *  Only the answer to a request for a report is a report, and goes to the
+ *  card of its substep. When a report was asked for more than once, the
+ *  last answer is kept. */
+export function readHistory(history) {
+  const messages = [];
+  const results = {};
+  let askedFor = "";
+  let conversing = false;
+  let last = "";
+  let caseText = "";
+  for (const m of history) {
+    if (m.role === "user") {
+      askedFor = String(m.substepId || "");
+      conversing = Boolean(m.conversation);
+      if (m.caseText) caseText = m.caseText;
+      messages.push({ ...m, substepId: askedFor, conversation: conversing });
+      continue;
+    }
+    messages.push({ ...m, substepId: askedFor, conversation: conversing });
+    if (!askedFor || conversing || !parseAdvice(m.text)) continue;
+    results[askedFor] = { report_text: m.text, citations: m.citations, retrieval_trace: m.retrieval_trace, updated_at: m.ts };
+    last = askedFor;
+  }
+  return { messages, results, last, caseText };
+}
 
 export function setupCases(store) {
   const { state } = store;
@@ -13,22 +46,20 @@ export function setupCases(store) {
   const convoTitleEl = requireElement("gc-bk-convo-title");
 
   /** Loads a case's full history into the current view - shared by the
-   *  "resume on reopen" path and clicking an entry in "Eerdere casussen". */
+   *  "resume on reopen" path and clicking an entry in "Eerdere casussen".
+   *  The reports go back to their substeps, and the last substep with a
+   *  report becomes the active one, so the case continues where it was left. */
   async function resumeConversation(conversationId) {
     const history = await fetchBeleidskompasHistory(conversationId);
+    const { messages, results, last, caseText } = readHistory(history);
     store.setConversationId(conversationId);
-    store.replaceMessages(history);
+    store.replaceMessages(messages);
     const lastUser = history.filter((m) => m.role === "user").slice(-1)[0];
     const lastAssistant = history.filter((m) => m.role === "assistant").slice(-1)[0];
     store.setLastMessageId((lastAssistant || lastUser || {}).messageId || null);
-    if (lastAssistant) {
-      store.setStepResult(store.activeStep().id, {
-        report_text: lastAssistant.text,
-        citations: lastAssistant.citations,
-        retrieval_trace: lastAssistant.retrieval_trace,
-        updated_at: lastAssistant.ts,
-      });
-    }
+    store.setCaseText(caseText);
+    if (last) store.setActiveSubstep(store.substeps.findIndex((s) => s.id === last));
+    store.replaceResults(results);
   }
 
   /** The heading of the chat card: the case title LibreChat generates, once

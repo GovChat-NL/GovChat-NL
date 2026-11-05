@@ -230,14 +230,14 @@ test('runStep returns a clear ok:false error for a wrong webhook token (never th
   assert.match(result.error, /Unauthorized webhook token/);
 });
 
-test('runStep accepts the request the main agent sends (question, findings, Authorization bearer)', async () => {
+test('runStep accepts the request the main agent sends (case_text, findings, Authorization bearer)', async () => {
   await withModelReply(modelReply(), async (baseUrl) => {
   const result = await runStep(STEP, {
     input: {
       body: {
         step_id: 'stap1',
-        question: 'Welke rol past hier bij de provincie?',
-        findings: '**Stap 1 · Publiek en provinciaal belang**\n\n### Samenvatting casus\n' + sampleCase.question,
+        case_text: sampleCase.case_text,
+        findings: '**Stap 1 · Publiek en provinciaal belang · 1.1 Probleemdefinitie**\n\n### Samenvatting casus\n' + sampleCase.case_text,
         sessionId: 'conv-123',
         userId: 'user-456',
       },

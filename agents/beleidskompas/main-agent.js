@@ -6,7 +6,8 @@
  * Every chat message for the Beleidskompas endpoint arrives here first,
  * through the n8n-openai-bridge. The main agent does not answer anything
  * about a case itself: it checks the caller's token, takes the message apart
- * into the parts the page composed it from (step, findings so far, question)
+ * into the parts the page composed it from (step or substep, case, findings
+ * so far, conversation, message)
  * and sends those as fields to that step's workflow, whose answer
  * it returns unchanged. A message that names no known step is refused with a
  * message for the chat, never sent to a default step. The one request it does
@@ -54,8 +55,11 @@ function buildStepRequest(stepId, parts, body) {
   const b = body && typeof body === 'object' ? body : {};
   return {
     step_id: stepId,
-    question: parts.question,
+    substep_id: parts.substepId || null,
+    case_text: parts.caseText,
     findings: parts.findings,
+    conversation: parts.conversation,
+    message: parts.message,
     sessionId: b.sessionId || null,
     userId: b.userId || null,
   };
@@ -148,7 +152,7 @@ async function runMainAgent(ctx) {
   const message = incomingMessage(body);
   if (isTitleRequest(message) || isTitleRequest(String(body.systemPrompt || ''))) {
     // The title is made from the case itself, not from the labels around it.
-    const caseText = parsePageMessage(extractConvoCaseText(message)).question;
+    const caseText = parsePageMessage(extractConvoCaseText(message)).caseText;
     return buildTitleResponse({ titleSource: caseText || message, env, fetchImpl, httpModule, httpsModule, urlModule });
   }
 

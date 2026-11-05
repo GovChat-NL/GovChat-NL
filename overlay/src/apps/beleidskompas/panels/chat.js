@@ -1,44 +1,13 @@
 // The chat panel: the conversation with Beleidskompas, the feedback under an
-// answer and the composer. Redraws itself when the messages change.
+// answer and the composer. Every request to Beleidskompas goes through here.
+// That is the case and the messages the user types, and the reports the step
+// card asks for (requestReport). Redraws itself when the messages change.
 
 import { escapeHTML } from "../../../shared/html.js";
 import { requireElement } from "../../../shared/dom.js";
 import { composePrompt, sendBeleidskompasChatMessage, sendBeleidskompasFeedback } from "../beleidskompas-api.js";
 import { formatRichText, formatTime, normalizeCitations, parseAdvice, verdictClass } from "../format.js";
 import { citationButtonHTML, openCitationFromClick } from "../popups.js";
-
-/** Reveals `fullText` progressively over ~`durationMs`, calling
- *  `onTick(partialText)` each frame - a client-side typewriter effect,
- *  since the backend delivers the whole answer in one delta (see
- *  extractDeltaText) rather than true token-by-token streaming. Returns a
- *  controller so a caller can jump straight to the full text (`finish()`)
- *  once the authoritative `final` SSE event arrives. */
-function typewriterReveal(fullText, onTick, durationMs) {
-  const frameMs = 30;
-  const frames = Math.max(1, Math.round((durationMs || 700) / frameMs));
-  const step = Math.max(1, Math.ceil(fullText.length / frames));
-  let shown = 0;
-  let done = false;
-  let timer = null;
-
-  function tick() {
-    if (done) return;
-    shown = Math.min(fullText.length, shown + step);
-    onTick(fullText.slice(0, shown));
-    if (shown < fullText.length) timer = setTimeout(tick, frameMs);
-    else done = true;
-  }
-  timer = setTimeout(tick, frameMs);
-
-  return {
-    finish() {
-      if (done) return;
-      done = true;
-      if (timer) clearTimeout(timer);
-      onTick(fullText);
-    },
-  };
-}
 
 /** A rating per answer, sent anonymously (no user or case id) to the
  *  admin overlay, where administrators can see it. A comment is optional
@@ -60,7 +29,7 @@ function feedbackHTML(message, index) {
     </div>`;
 }
 
-/** The full elaboration is shown in the step card on the right, so the
+/** The full report is shown in the step card on the right, so the
  *  chat keeps only the summary and puts the rest behind a disclosure.
  *  Otherwise the same block of text would appear twice side by side. */
 function messageBodyHTML(message) {
@@ -110,7 +79,7 @@ function messageHTML(m, idx) {
 }
 
 export function setupChat(store) {
-  const { state, steps } = store;
+  const { state } = store;
   const chatLogEl = requireElement("gc-bk-chat-log");
   const chatInputEl = requireElement("gc-bk-chat-input");
   const sendBtn = requireElement("gc-bk-send");
@@ -130,24 +99,13 @@ export function setupChat(store) {
     }
   }
 
-  async function requestHoofdagent(userText, onDelta) {
-    const step = store.activeStep();
-    const text = composePrompt({
-      step,
-      priorReports: steps
-        .slice(0, state.activeStep)
-        .map((s) => String(store.stepResult(s.id).report_text || "").trim())
-        .filter(Boolean)
-        .join("\n\n"),
-      currentReport: store.stepResult(step.id).report_text,
-      question: userText,
-    });
-
+  /** Sends one composed message to the main agent and waits for the
+   *  answer. */
+  async function requestHoofdagent(text) {
     const result = await sendBeleidskompasChatMessage({
       text,
       conversationId: state.conversationId,
       parentMessageId: state.lastMessageId,
-      onDelta,
     });
 
     if (!result.text) throw new Error("Beleidskompas gaf geen antwoord terug");
@@ -162,54 +120,93 @@ export function setupChat(store) {
     chatInputEl.disabled = disabled;
   }
 
-  async function sendUserMessage() {
-    const text = chatInputEl.value.trim();
-    if (!text || sendBtn.disabled) return;
-    store.addMessage("user", text);
-    chatInputEl.value = "";
+  /** The text field is for the case at the start, and for the conversation
+   *  about the substep shown after that. */
+  function renderComposer() {
+    chatInputEl.placeholder = store.caseStarted()
+      ? `Stel een vraag of reageer op deelstap ${store.activeSubstep().id}`
+      : "Beschrijf je casus";
+  }
+
+  /** Sends a request about `substep` to Beleidskompas.
+   *
+   *  If the user typed a `message`, Beleidskompas answers it in the chat.
+   *  The card stays as it was. If there is no message, Beleidskompas writes
+   *  the report of the substep. The report appears in the chat and on the
+   *  card of that substep, even if the user has gone to another substep in
+   *  the meantime. If the answer has no headings, it is an error message.
+   *  The error message appears in the chat but not on the card, so the user
+   *  can try again.
+   *
+   *  `caseDescription` is only passed with the first message, which is the
+   *  case. The user's bubble then shows the case. Otherwise the bubble
+   *  shows the message, or the name of the substep when the user clicked a
+   *  button. While a request is under way, a new one is not sent. */
+  async function ask(substep, message, caseDescription) {
+    if (state.asking) return;
+    const conversing = Boolean(message);
+    // Composed before the user's message is added, so the conversation so
+    // far does not already contain it.
+    const text = composePrompt({
+      substep,
+      caseText: state.caseText,
+      findings: store.findingsFor(substep.id),
+      conversation: store.conversationFor(substep.id),
+      message,
+    });
+    store.addMessage("user", caseDescription || message || `Deelstap ${substep.id}: ${substep.title}`, { substepId: substep.id, conversation: conversing });
     setComposerDisabled(true);
+    store.setAsking(substep.id);
 
-    // Typing dots at once; the typewriter fills the bubble as soon as the
-    // answer text arrives, ahead of the final event.
-    const pendingMessage = store.addMessage("assistant", "", { pending: true });
-
-    // An on_message_delta event carries either the full text so far or a
-    // small fragment, so a delta that extends what is shown replaces it and
-    // any other delta is appended.
-    let reveal = null;
-    let accumulatedDeltaText = "";
-    const onDelta = (deltaText) => {
-      accumulatedDeltaText = deltaText.startsWith(accumulatedDeltaText) ? deltaText : accumulatedDeltaText + deltaText;
-      if (reveal) reveal.finish();
-      reveal = typewriterReveal(accumulatedDeltaText, (shownText) => store.updateMessage(pendingMessage, { text: shownText }));
-    };
+    // An empty answer bubble. Without text, the bubble shows typing dots
+    // until the answer arrives.
+    const pendingMessage = store.addMessage("assistant", "", { pending: true, substepId: substep.id, conversation: conversing });
 
     const conversationIdBeforeRequest = state.conversationId;
     try {
-      const result = await requestHoofdagent(text, onDelta);
-      if (reveal) reveal.finish();
+      const result = await requestHoofdagent(text);
       store.updateMessage(pendingMessage, {
         pending: false,
         text: String(result.answer || "").trim(),
         citations: normalizeCitations(result.citations),
         retrieval_trace: result.retrieval_trace || null,
       });
-      store.setStepResult(store.activeStep().id, {
-        report_text: pendingMessage.text,
-        citations: pendingMessage.citations,
-        retrieval_trace: pendingMessage.retrieval_trace,
-        updated_at: new Date().toISOString(),
-      });
+      if (!conversing && parseAdvice(pendingMessage.text)) {
+        store.setSubstepResult(substep.id, {
+          report_text: pendingMessage.text,
+          citations: pendingMessage.citations,
+          retrieval_trace: pendingMessage.retrieval_trace,
+          updated_at: new Date().toISOString(),
+        });
+      }
       if (state.conversationId === conversationIdBeforeRequest) store.changed("conversation");
     } catch (err) {
-      if (reveal) reveal.finish();
       store.updateMessage(pendingMessage, {
         pending: false,
         text: `Beleidskompas niet bereikbaar of fout: ${String(err?.message || err)}. Probeer het opnieuw of open een nieuwe chat.`,
       });
     } finally {
+      store.setAsking("");
       setComposerDisabled(false);
       chatInputEl.focus();
+    }
+  }
+
+  /** What the user types first is the case. The case is stored, and
+   *  Beleidskompas writes the report of the active substep. Everything typed
+   *  after that is a message about the active substep. */
+  function sendUserMessage() {
+    const text = chatInputEl.value.trim();
+    if (!text || state.asking) return;
+    chatInputEl.value = "";
+    if (store.caseStarted()) {
+      // A message about the active substep.
+      ask(store.activeSubstep(), text);
+    } else {
+      // The first text is the case. Sending it asks for the report of the
+      // active substep. The user's bubble shows the case.
+      store.setCaseText(text);
+      ask(store.activeSubstep(), "", text);
     }
   }
 
@@ -237,4 +234,9 @@ export function setupChat(store) {
   });
 
   store.subscribe("chat", renderChat);
+  store.subscribe("steps", renderComposer);
+
+  /** The buttons in step-card.js call this to ask for the report of a
+   *  substep. */
+  return { requestReport: (substep) => ask(substep, "") };
 }

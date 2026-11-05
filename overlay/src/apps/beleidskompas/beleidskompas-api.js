@@ -71,22 +71,6 @@ export function parseCitationsMetaBlock(text) {
   }
 }
 
-/** Extracts the text of an `on_message_delta` SSE event, if any. This
- *  workflow does one blocking LLM call (no true token-by-token streaming),
- *  so in practice there is exactly one such event, carrying the complete
- *  answer - but it arrives before the `final` event, which is otherwise
- *  the first sign of life the UI gets after a ~1-20s wait. */
-function extractDeltaText(payload) {
-  if (!payload || payload.event !== "on_message_delta") return null;
-  const parts = payload.data?.delta?.content;
-  if (!Array.isArray(parts)) return null;
-  const text = parts
-    .filter((p) => p && p.type === "text" && typeof p.text === "string")
-    .map((p) => p.text)
-    .join("");
-  return text || null;
-}
-
 /** Sends a rating for an answer to the admin, which stores it anonymously:
  *  no user or conversation id, only the rating, an optional comment and
  *  the step it is about. */
@@ -99,22 +83,70 @@ export async function sendBeleidskompasFeedback({ rating, comment, stepId }) {
   if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
 }
 
-/** The only channel to the backend is the chat message's plain text, so the
- *  context of a question (the step and what was found so far) is composed
- *  into one labeled text. */
-export function composePrompt({ step, priorReports, currentReport, question }) {
-  const lines = [`Stap: ${step.id} (${step.title})`];
-  const findings = String(priorReports || currentReport || "").trim();
-  if (findings) lines.push(`Casus/eerdere bevindingen: ${findings}`);
-  lines.push(`Vraag: ${String(question || "").trim()}`);
+/** The only channel to the backend is the chat message's plain text, so
+ *  everything a request needs is composed into one labeled text: the
+ *  substep, the case, the reports so far, the conversation about the
+ *  substep and the message the user typed (each only when there is one).
+ *  The main agent takes it apart on these labels. A typed message means a
+ *  conversation turn. Without one, Beleidskompas writes the report of the
+ *  substep. */
+export function composePrompt({ substep, caseText, findings, conversation, message }) {
+  const lines = [`Deelstap: ${substep.id} (${substep.title})`];
+  const part = (label, value) => {
+    const text = String(value || "").trim();
+    if (text) lines.push(`${label} ${text}`);
+  };
+  part("Casus:", caseText);
+  part("Eerdere bevindingen:", findings);
+  part("Gesprek:", conversation);
+  part("Bericht:", message);
   return lines.join("\n");
 }
 
+/** The counterpart of composePrompt, for a message read back from the
+ *  history: takes the composed text apart again. The reports and the
+ *  conversation are not needed back (they are rebuilt from the messages),
+ *  so only the substep, the case and the typed message are returned. */
+export function parseComposedPrompt(text) {
+  const lines = String(text || "").split("\n");
+  // The first line is what composePrompt wrote, "Deelstap: 1.3 (Stakeholderanalyse)".
+  // The pattern, piece by piece, with the part of that line each one matches:
+  //   ^Deelstap:         "Deelstap:"            the label, at the start of the line
+  //   \s*                " "                    spaces, as many as there are (also none)
+  //   (\d+\.\d+)          "1.3"                  the substep id: digits, a dot, digits -> head[1]
+  //   \s*                " "                    spaces again
+  //   (?:\((.*)\))?      "(Stakeholderanalyse)" the title inside the round brackets,
+  //                                             kept without the brackets -> head[2];
+  //                                             this piece may be missing altogether
+  //   \s*$               ""                     spaces, then the end of the line
+  // A first line of any other form gives null: then there is no substep.
+  const head = /^Deelstap:\s*(\d+\.\d+)\s*(?:\((.*)\))?\s*$/.exec(lines[0] || "");
+  // Every other part starts with its label at the start of a line and runs
+  // until the next label.
+  const labels = ["Casus:", "Eerdere bevindingen:", "Gesprek:", "Bericht:"];
+  const parts = {};
+  let current = "";
+  for (const line of lines.slice(1)) {
+    const label = labels.find((l) => line.startsWith(l));
+    if (label) {
+      current = label;
+      parts[label] = line.slice(label.length);
+    } else if (current) {
+      parts[current] += "\n" + line;
+    }
+  }
+  return {
+    substepId: head ? head[1] : "",
+    substepTitle: head ? String(head[2] || "").trim() : "",
+    caseText: String(parts["Casus:"] || "").trim(),
+    message: String(parts["Bericht:"] || "").trim(),
+  };
+}
+
 /** Sends one message to the Beleidskompas custom endpoint and waits for
- *  the full reply via SSE. Returns { conversationId, messageId, text }.
- *  `onDelta(displayText)` fires as soon as the answer text is available,
- *  ahead of the final (persisted) event, for a typewriter-reveal effect. */
-export async function sendBeleidskompasChatMessage({ text, conversationId, parentMessageId, onDelta }) {
+ *  the full reply via SSE. Returns { conversationId, messageId, text,
+ *  citations, retrieval_trace }. */
+export async function sendBeleidskompasChatMessage({ text, conversationId, parentMessageId }) {
   const messageId = newClientMessageId();
   const startResp = await librechatFetch("/api/agents/chat/" + BELEIDSKOMPAS_ENDPOINT, {
     method: "POST",
@@ -188,9 +220,6 @@ export async function sendBeleidskompasChatMessage({ text, conversationId, paren
       }
       if (payload?.final) {
         finalPayload = payload;
-      } else if (typeof onDelta === "function") {
-        const deltaText = extractDeltaText(payload);
-        if (deltaText) onDelta(parseCitationsMetaBlock(deltaText).displayText);
       }
     }
     if (finalPayload) break;
@@ -227,7 +256,11 @@ export async function fetchBeleidskompasHistory(conversationId) {
     .sort((a, b) => new Date(a.createdAt || 0) - new Date(b.createdAt || 0))
     .map((m) => {
       if (m.isCreatedByUser) {
-        return { messageId: m.messageId, role: "user", text: String(m.text || "").trim(), citations: [], retrieval_trace: null, ts: m.createdAt || new Date().toISOString() };
+        // The message holds what the page composed (see composePrompt); the
+        // chat shows what the user typed, or the substep that was asked for.
+        const { substepId, substepTitle, caseText, message } = parseComposedPrompt(m.text);
+        const text = message || (substepId ? `Deelstap ${substepId}: ${substepTitle}` : String(m.text || "").trim());
+        return { messageId: m.messageId, role: "user", text, substepId, caseText, conversation: Boolean(message), citations: [], retrieval_trace: null, ts: m.createdAt || new Date().toISOString() };
       }
       const { displayText, citations, retrieval_trace } = parseCitationsMetaBlock(extractMessageText(m));
       return { messageId: m.messageId, role: "assistant", text: displayText, citations, retrieval_trace, ts: m.createdAt || new Date().toISOString() };

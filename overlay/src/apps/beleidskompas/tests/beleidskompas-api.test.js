@@ -5,20 +5,23 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { composePrompt, parseCitationsMetaBlock } from "../beleidskompas-api.js";
+import { composePrompt, parseComposedPrompt, parseCitationsMetaBlock } from "../beleidskompas-api.js";
 
-const STEP = { id: "stap2", title: "Rolbepaling provincie" };
+const SUBSTEP = { id: "2.1", title: "Rolbepaling" };
 
-test("composePrompt labels the step, the findings so far and the question, and leaves out what is empty", () => {
+test("composePrompt labels the substep, the case, the findings, the conversation and the message, and leaves out what is empty", () => {
   assert.equal(
-    composePrompt({ step: STEP, priorReports: "Uit stap 1.", currentReport: "", question: " Welke rol past? " }),
-    "Stap: stap2 (Rolbepaling provincie)\nCasus/eerdere bevindingen: Uit stap 1.\nVraag: Welke rol past?",
+    composePrompt({ substep: SUBSTEP, caseText: "De casus.", findings: "Uit stap 1.", conversation: "Gebruiker: hoezo?", message: " Waarom niet regisseren? " }),
+    "Deelstap: 2.1 (Rolbepaling)\nCasus: De casus.\nEerdere bevindingen: Uit stap 1.\nGesprek: Gebruiker: hoezo?\nBericht: Waarom niet regisseren?",
   );
-  assert.equal(
-    composePrompt({ step: STEP, priorReports: "", currentReport: "Eerder in deze stap", question: "q" }),
-    "Stap: stap2 (Rolbepaling provincie)\nCasus/eerdere bevindingen: Eerder in deze stap\nVraag: q",
-  );
-  assert.equal(composePrompt({ step: STEP, priorReports: "", currentReport: "  ", question: "q" }), "Stap: stap2 (Rolbepaling provincie)\nVraag: q");
+  assert.equal(composePrompt({ substep: SUBSTEP, caseText: "De casus.", findings: "  " }), "Deelstap: 2.1 (Rolbepaling)\nCasus: De casus.");
+});
+
+test("parseComposedPrompt takes a composed message apart again", () => {
+  const composed = composePrompt({ substep: SUBSTEP, caseText: "De casus.\nTweede regel.", findings: "Uit stap 1.", message: "Waarom niet\nregisseren?" });
+  assert.deepEqual(parseComposedPrompt(composed), { substepId: "2.1", substepTitle: "Rolbepaling", caseText: "De casus.\nTweede regel.", message: "Waarom niet\nregisseren?" });
+  assert.deepEqual(parseComposedPrompt(composePrompt({ substep: SUBSTEP, caseText: "De casus." })), { substepId: "2.1", substepTitle: "Rolbepaling", caseText: "De casus.", message: "" });
+  assert.deepEqual(parseComposedPrompt("Gewoon een casus."), { substepId: "", substepTitle: "", caseText: "", message: "" });
 });
 
 test("parseCitationsMetaBlock splits the trailing link definition off the answer", () => {

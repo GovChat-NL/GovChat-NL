@@ -46,6 +46,7 @@ function readSubstepPrompt(relativePath) {
 }
 
 const SYSTEM_PROMPT_TEMPLATE = readPrompt('system-prompt.md');
+const CONVERSATION_PROMPT_TEMPLATE = readPrompt('conversation-prompt.md');
 
 // One rule per line in rules.md.
 const COMMON_RULES = readPrompt('rules.md')
@@ -77,20 +78,28 @@ function extractSuppliedToken(headers) {
 
 // The page can only send text, so it puts everything a step needs in one
 // message with a label at the start of each part (composePrompt in
-// overlay/src/apps/beleidskompas/beleidskompas-api.js writes these).
+// overlay/src/apps/beleidskompas/beleidskompas-api.js writes these): the
+// step or substep, the case as the user described it, the reports so far,
+// the conversation about this substep, and the message the user typed just
+// now. A message that was typed means a conversation turn. Without a
+// message, the step writes the report of the substep.
 const PAGE_MESSAGE_LABELS = {
   step: 'Stap:',
-  findings: 'Casus/eerdere bevindingen:',
-  question: 'Vraag:',
+  substep: 'Deelstap:',
+  caseText: 'Casus:',
+  findings: 'Eerdere bevindingen:',
+  conversation: 'Gesprek:',
+  message: 'Bericht:',
 };
 
-/** Splits a message from the page into its parts: the step id, the findings
- *  of the earlier steps (which span many lines) and the question. A part
- *  whose label is missing is ''. A message without any label is returned
- *  whole as the question, so a direct webhook call with a plain case text
- *  keeps working. */
+/** Splits a message from the page into its parts (see PAGE_MESSAGE_LABELS;
+ *  every part but the first two can span many lines). A substep id also
+ *  names its step: 1.3 is a substep of stap1, so a message with only a
+ *  substep still gets its step id. A part whose label is missing is ''. A
+ *  message without any label is returned whole as the case text, so a direct
+ *  webhook call with a plain case description keeps working. */
 function parsePageMessage(text) {
-  const parts = { stepId: '', findings: '', question: '' };
+  const parts = { stepId: '', substepId: '', caseText: '', findings: '', conversation: '', message: '' };
   const unlabeled = [];
   let current = null;
 
@@ -106,10 +115,13 @@ function parsePageMessage(text) {
     }
   }
 
-  if (!current) parts.question = unlabeled.join('\n');
+  if (!current) parts.caseText = unlabeled.join('\n');
+  const substepMatch = /^(\d+)\.\d+/.exec(parts.substep || '');
+  parts.substepId = substepMatch ? substepMatch[0] : '';
   const stepMatch = /^([A-Za-z0-9_-]+)/.exec(parts.step || '');
-  parts.stepId = stepMatch ? stepMatch[1].toLowerCase() : '';
+  parts.stepId = stepMatch ? stepMatch[1].toLowerCase() : substepMatch ? `stap${substepMatch[1]}` : '';
   delete parts.step;
+  delete parts.substep;
   for (const key of Object.keys(parts)) parts[key] = String(parts[key] || '').trim();
   return parts;
 }
@@ -479,15 +491,27 @@ function answerFormat(step) {
   );
 }
 
-/** Fills the system prompt template (prompts/system-prompt.md) for a step. */
-function buildSystemPrompt(step) {
+/** Fills a prompt template with what a step provides: its role, its
+ *  substeps with their instructions, the rules, and the answer format. */
+function fillTemplate(template, step) {
   const values = {
     role: step.role,
     substeps: step.substeps.map((substep) => `Deelstap ${substep.id}: ${substep.title}\n${substep.instruction}`).join('\n\n'),
     rules: COMMON_RULES.map((rule) => '- ' + rule).join('\n'),
     answer_format: answerFormat(step),
   };
-  return SYSTEM_PROMPT_TEMPLATE.replace(/\{\{(\w+)\}\}/g, (match, key) => (key in values ? values[key] : match));
+  return template.replace(/\{\{(\w+)\}\}/g, (match, key) => (key in values ? values[key] : match));
+}
+
+/** The system prompt for writing the report of a step (prompts/system-prompt.md). */
+function buildSystemPrompt(step) {
+  return fillTemplate(SYSTEM_PROMPT_TEMPLATE, step);
+}
+
+/** The system prompt for answering a message about a step's report
+ *  (prompts/conversation-prompt.md). */
+function buildConversationPrompt(step) {
+  return fillTemplate(CONVERSATION_PROMPT_TEMPLATE, step);
 }
 
 /** The value of a part of the answer when nothing can be said about it,
@@ -580,11 +604,21 @@ function sourcesText(citations) {
     .join('\n');
 }
 
+/** The step as it is asked: all its substeps, or only the one named by
+ *  `substepId` (then `substep` is that one, for the heading of the answer).
+ *  Null when the step has no such substep. */
+function askedStep(step, substepId) {
+  if (!substepId) return step;
+  const substep = step.substeps.find((s) => s.id === substepId);
+  return substep ? { ...step, substeps: [substep], substep } : null;
+}
+
 function composeAnswerText(step, structured, citations) {
   const s = structured && typeof structured === 'object' ? structured : {};
   const answers = s.substeps && typeof s.substeps === 'object' ? s.substeps : {};
+  const substep = step.substep ? ` · ${step.substep.id} ${step.substep.title}` : '';
   return [
-    `**Stap ${step.nr} · ${step.title}**`,
+    `**Stap ${step.nr} · ${step.title}${substep}**`,
     section('Samenvatting casus', String(s.case_summary || '').trim() || 'onbekend'),
     ...step.substeps.flatMap((substep) => substepSections(substep, answers[substep.id])),
     section('Redenering', String(s.reasoning || '').trim() || 'onbekend'),
@@ -596,15 +630,23 @@ function composeAnswerText(step, structured, citations) {
 
 // --- Running a step ---
 
-/** What the model gets as the user's message: the findings of the earlier
- *  steps when there are any, the question (at the first message of a case,
- *  the case description itself), and the source passages found for it. */
-function buildUserPrompt({ question, findings, citations }) {
+/** What the model gets as the user's message: the case, the findings so
+ *  far, the conversation about this substep and the message typed just now
+ *  (each only when there is one), and the source passages found. */
+function buildUserPrompt({ caseText, findings, conversation, message, citations }) {
   const found = Array.isArray(citations) ? citations : [];
   const sources = found.length
     ? ['Geraadpleegde beleidsbronnen:', ...found.map((c) => `[bron ${c.rank}] ${c.filename}: "${c.preview}"`)].join('\n')
     : 'Geen beleidsbronnen boven de relevantiedrempel gevonden voor deze casus.';
-  return [findings && `Casus en bevindingen tot nu toe:\n${findings}`, `Vraag: ${question}`, sources].filter(Boolean).join('\n\n');
+  return [
+    caseText && `Casus:\n${caseText}`,
+    findings && `Bevindingen tot nu toe:\n${findings}`,
+    conversation && `Gesprek over deze deelstap tot nu toe:\n${conversation}`,
+    message && `Bericht van de gebruiker:\n${message}`,
+    sources,
+  ]
+    .filter(Boolean)
+    .join('\n\n');
 }
 
 /** Reads the model's reply as JSON, also when it is wrapped in a markdown
@@ -626,12 +668,14 @@ function parseAgentJson(rawText, step) {
 /** What the Code node of every step workflow runs.
  *
  *  `step` is the step's definition (see steps/): its id, number, title,
- *  role sentence and substeps. `ctx.input` is the request as the main agent sends it
- *  (`$json`: body with question and findings, plus headers), `ctx.env` the
- *  settings from `$env`, `ctx.passages` the source passages to search, and
- *  the rest the means to send HTTP. In order: check the token,
- *  read the fields, find the relevant passages, ask the model, compose the
- *  answer. */
+ *  role sentence and substeps. `ctx.input` is the request as the main agent
+ *  sends it (`$json`: body with case_text, findings, conversation, message
+ *  and, when one substep is asked for, substep_id, plus headers), `ctx.env`
+ *  the settings from `$env`, `ctx.passages` the source passages to search,
+ *  and the rest the means to send HTTP. In order: check the token, read the
+ *  fields, find the relevant passages, ask the model, and then either
+ *  return its answer to the message as it is, or compose the report
+ *  from its JSON. */
 async function runStep(step, ctx) {
   const { input, env, passages, fetchImpl, httpModule, httpsModule, urlModule } = ctx;
   const raw = input || {};
@@ -647,10 +691,18 @@ async function runStep(step, ctx) {
     return { ok: false, step_id: step.id, error: 'Unauthorized webhook token', text: '' };
   }
 
-  const question = String(body.question || '').trim();
+  const caseText = String(body.case_text || '').trim();
   const findings = String(body.findings || '').trim();
+  const conversation = String(body.conversation || '').trim();
+  const message = String(body.message || '').trim();
+  const substepId = String(body.substep_id || '').trim();
+  const asked = askedStep(step, substepId);
+  if (!asked) {
+    const text = `Beleidskompas kent deelstap ${substepId} niet in stap ${step.nr}.`;
+    return { ok: false, step_id: step.id, substep_id: substepId, error: 'Unknown substep', text, answer: text };
+  }
 
-  const queryBlob = [question, findings].filter(Boolean).join(' ');
+  const queryBlob = [message, caseText, findings].filter(Boolean).join(' ');
   const ragSettings = { algorithm: 'needle', top_k: 3, min_score: 0.12 };
   const { citations, retrieval_trace } = selectSources(passages, queryBlob, ragSettings);
 
@@ -663,14 +715,18 @@ async function runStep(step, ctx) {
     return { ok: false, step_id: step.id, error: 'No language model configured', text, answer: text };
   }
 
+  // A typed message is a conversation turn about the report. Without a
+  // message, the step writes the report.
+  const conversing = Boolean(message);
+
   let rawAnswer;
   try {
     rawAnswer = await callLiteLLM({
       baseUrl: litellmUrl,
       apiKey: litellmApiKey,
       model: (env && env.BELEIDSKOMPAS_MODEL) || 'govchat-default',
-      systemPrompt: buildSystemPrompt(step),
-      userPrompt: buildUserPrompt({ question, findings, citations }),
+      systemPrompt: conversing ? buildConversationPrompt(asked) : buildSystemPrompt(asked),
+      userPrompt: buildUserPrompt({ caseText, findings, conversation, message, citations }),
       timeoutMs: 60000,
       fetchImpl,
       httpModule,
@@ -682,16 +738,32 @@ async function runStep(step, ctx) {
     return { ok: false, step_id: step.id, error: 'Language model call failed', text, answer: text };
   }
 
-  const parsed = parseAgentJson(rawAnswer, step);
+  if (conversing) {
+    const answer = String(rawAnswer || '').trim() || 'Beleidskompas kreeg geen antwoord van het taalmodel. Probeer het opnieuw.';
+    return {
+      ok: true,
+      step_id: step.id,
+      substep_id: substepId || null,
+      mode: 'conversation',
+      answer,
+      text: appendCitationsMetaBlock(answer, citations, retrieval_trace),
+      citations,
+      retrieval_trace,
+    };
+  }
+
+  const parsed = parseAgentJson(rawAnswer, asked);
   const structured = parsed.structured;
-  const missing = missingParts(step, structured);
+  const missing = missingParts(asked, structured);
   if (missing.length) structured.assumptions_missing_info = [...asList(structured.assumptions_missing_info), ...missing];
   structured.disclaimer = DISCLAIMER;
-  const answer = composeAnswerText(step, structured, citations);
+  const answer = composeAnswerText(asked, structured, citations);
 
   return {
     ok: true,
     step_id: step.id,
+    substep_id: substepId || null,
+    mode: 'report',
     parse_warning: parsed.parse_warning,
     answer,
     // What the chat pipeline delivers: the bridge reads `text`, not
@@ -726,10 +798,13 @@ module.exports = {
   readPrompt,
   readSubstepPrompt,
   SYSTEM_PROMPT_TEMPLATE,
+  CONVERSATION_PROMPT_TEMPLATE,
   COMMON_RULES,
   isVerdict,
   answerFormat,
+  fillTemplate,
   buildSystemPrompt,
+  buildConversationPrompt,
   emptyValue,
   emptyStructured,
   missingParts,
@@ -739,6 +814,7 @@ module.exports = {
   partText,
   substepSections,
   sourcesText,
+  askedStep,
   composeAnswerText,
   buildUserPrompt,
   parseAgentJson,

@@ -55,7 +55,7 @@
   color: #2563eb;
 }
 
-/* Steps on the left, then the chat, then the elaboration: the same reading
+/* Steps on the left, then the chat, then the report: the same reading
    order as the previous Beleidskompas assistant. */
 .gc-bk-grid {
   display: grid;
@@ -549,21 +549,7 @@
   border-top: 1px solid #e5e7eb;
 }
 
-#gc-bk-save-step {
-  padding: 8px 12px;
-  font-size: 12px;
-  color: #0f172a;
-  background: #e2e8f0;
-  border: none;
-  border-radius: 8px;
-  cursor: pointer;
-}
-
-#gc-bk-save-step:hover {
-  background: #cbd5e1;
-}
-
-#gc-bk-next-step {
+#gc-bk-request-report {
   flex: 1;
   padding: 8px 12px;
   font-size: 12px;
@@ -575,13 +561,41 @@
   cursor: pointer;
 }
 
-#gc-bk-next-step:hover:not(:disabled) {
+#gc-bk-request-report:hover:not(:disabled) {
   background: #166534;
 }
 
-#gc-bk-next-step:disabled {
+#gc-bk-request-report:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+
+#gc-bk-redo {
+  padding: 8px 12px;
+  font-size: 12px;
+  color: #0f172a;
+  background: #e2e8f0;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+#gc-bk-redo:hover:not(:disabled) {
+  background: #cbd5e1;
+}
+
+#gc-bk-redo:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.gc-bk-step-stale {
+  margin-bottom: 8px;
+  padding: 6px 10px;
+  font-size: 12px;
+  color: #92400e;
+  background: #fef3c7;
+  border-radius: 8px;
 }
 
 /* --- Stepper (left column) ---------------------------------------------- */
@@ -681,6 +695,20 @@
   color: #2563eb;
 }
 
+.gc-bk-step-link.is-substep.is-active {
+  color: #2563eb;
+  font-weight: 600;
+}
+
+.gc-bk-step-link.is-substep.is-done {
+  color: #15803d;
+}
+
+.gc-bk-startup-error {
+  margin: 24px;
+  color: #b91c1c;
+}
+
 .gc-bk-recent-cases {
   flex-shrink: 0;
   padding-top: 8px;
@@ -743,7 +771,7 @@
   margin-top: 8px;
 }
 
-/* "## heading" lines from the Beleidskompas elaboration (see formatRichText). */
+/* "## heading" lines from the Beleidskompas report (see formatRichText). */
 .gc-bk-rich-h {
   font-weight: 700;
   color: #0f172a;
@@ -753,7 +781,7 @@
   color: #f9fafb;
 }
 
-/* --- Elaboration per step: sections with a verdict (see parseAdvice) ---- */
+/* --- Report per step: sections with a verdict (see parseAdvice) -------- */
 
 .gc-bk-advice {
   display: flex;
@@ -942,7 +970,7 @@
   background: #1f2937;
 }
 
-/* The full elaboration behind a disclosure in the chat. */
+/* The full report behind a disclosure in the chat. */
 .gc-bk-msg-more {
   margin-top: 8px;
 }
@@ -1197,6 +1225,20 @@
 }
 
 .dark .gc-bk-chat-compose,
+.dark #gc-bk-redo {
+  color: #f9fafb;
+  background: #374151;
+}
+
+.dark #gc-bk-redo:hover:not(:disabled) {
+  background: #4b5563;
+}
+
+.dark .gc-bk-step-stale {
+  color: #fde68a;
+  background: #451a03;
+}
+
 .dark .gc-bk-step-foot {
   border-top-color: #374151;
 }
@@ -1225,15 +1267,6 @@
   color: #d1d5db;
 }
 
-.dark #gc-bk-save-step {
-  color: #f9fafb;
-  background: #374151;
-}
-
-.dark #gc-bk-save-step:hover {
-  background: #4b5563;
-}
-
 .dark .gc-bk-step-group-head:hover {
   background: #1f2937;
 }
@@ -1259,6 +1292,14 @@
 
 .dark .gc-bk-step-link.is-title {
   color: #e5e7eb;
+}
+
+.dark .gc-bk-step-link.is-substep.is-active {
+  color: #93c5fd;
+}
+
+.dark .gc-bk-step-link.is-substep.is-done {
+  color: #4ade80;
 }
 
 .dark .gc-bk-recent-cases {
