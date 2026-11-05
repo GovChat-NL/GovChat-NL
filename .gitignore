@@ -10,3 +10,4 @@
 /testdata/openbesluitvorming/
 **/__pycache__/
 *.py[cod]
+dev_notes/*
