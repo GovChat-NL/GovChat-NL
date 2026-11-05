@@ -31,7 +31,7 @@ async function startRetentionWorker({
   runtime = loadLibreChatRuntime(),
   startPolicy = startGovChatRetentionPolicy,
   processRef = process,
-}) {
+} = {}) {
   const { connectDb, db, getAppConfig, initializeFileStorage, logger, mongoose, runAsSystem } = runtime;
   let stopPolicy;
   try {
