@@ -1,0 +1,251 @@
+{
+  "id": "3d74c6d5-0475-4b79-9f11-2a876fd1c001",
+  "name": "TOPdesk - Ingest Knowledge Items",
+  "description": "Configurable TOPdesk Knowledge Base child-item and attachment ingestion into Qdrant.",
+  "active": false,
+  "settings": { "executionOrder": "v1", "availableInMCP": false },
+  "nodes": [
+    {
+      "parameters": {}, "type": "n8n-nodes-base.manualTrigger", "typeVersion": 1,
+      "position": [-1000, -120], "id": "tdki-ingest-manual", "name": "Manual run"
+    },
+    {
+      "parameters": { "rule": { "interval": [{ "field": "weeks", "weeksInterval": 1 }] } },
+      "type": "n8n-nodes-base.scheduleTrigger", "typeVersion": 1.2,
+      "position": [-1000, 80], "id": "tdki-ingest-schedule", "name": "Weekly schedule"
+    },
+    {
+      "parameters": { "workflowInputs": { "values": [ { "name": "root_knowledge_item_id" }, { "name": "root_knowledge_item_number" }, { "name": "include_attachments", "type": "boolean" } ] } },
+      "type": "n8n-nodes-base.executeWorkflowTrigger", "typeVersion": 1.1,
+      "position": [-1000, 280], "id": "tdki-ingest-subworkflow-trigger", "name": "Run with parameters"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict", "version": 2 },
+          "conditions": [ { "leftValue": "={{ $json._govchat.includeAttachments }}", "rightValue": true, "operator": { "type": "boolean", "operation": "true", "singleValue": true } } ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if", "typeVersion": 2.2,
+      "position": [20, 0], "id": "tdki-ingest-attachments-enabled", "name": "Attachments enabled?"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Set the collection vector configuration together with the other non-secret deployment defaults. Runtime root/attachment inputs override their defaults.\nconst configuredRootKnowledgeItemId='';const configuredRootKnowledgeItemNumber='KI 0975';const configuredIncludeAttachments=true;const input=$input.first()?.json||{};const rootKnowledgeItemId=String(input.root_knowledge_item_id||input.rootKnowledgeItemId||configuredRootKnowledgeItemId).trim();const rootKnowledgeItemNumber=String(input.root_knowledge_item_number||input.rootKnowledgeItemNumber||configuredRootKnowledgeItemNumber).trim();if(!rootKnowledgeItemId&&!rootKnowledgeItemNumber)throw new Error('Provide root_knowledge_item_id or root_knowledge_item_number');const rootQueryField=rootKnowledgeItemId?'parent.id':'parent.number';const rootQueryValue=rootKnowledgeItemId||rootKnowledgeItemNumber;if(rootQueryValue.includes(\"'\"))throw new Error('Root item selector cannot contain a single quote');const rootQuery=rootQueryField+\"=='\"+rootQueryValue+\"'\";const rawAttachments=input.include_attachments??input.includeAttachments;const includeAttachments=rawAttachments===undefined?configuredIncludeAttachments:(rawAttachments===true||String(rawAttachments).toLowerCase()==='true');return [{json:{topdeskBaseUrl:'__TOPDESK_BASE_URL__',rootKnowledgeItemId,rootKnowledgeItemNumber,rootQuery,pageSize:500,fields:'content,title,status,visibility,description,keywords,creationDate,modificationDate',publicKnowledgeItemUrl:'__TOPDESK_PUBLIC_BASE_URL__',includeAttachments,tikaUrl:'http://tika:9998/tika',embeddingUrl:'http://litellm:4000/embeddings',embeddingModel:'govchat-embedding',qdrantUrl:'http://qdrant:6333',collection:'topdesk_knowledge_items',vectorSize:3072,vectorDistance:'Cosine',visibleOnly:true}}];"
+      },
+      "type": "n8n-nodes-base.code", "typeVersion": 2,
+      "position": [-760, 0], "id": "tdki-ingest-config", "name": "1. Configuration (edit after import)"
+    },
+    {
+      "parameters": {
+        "url": "={{ $('1. Configuration (edit after import)').first().json.qdrantUrl.replace(/\\/$/,'') + '/collections/' + encodeURIComponent($('1. Configuration (edit after import)').first().json.collection) }}",
+        "options": { "timeout": 15000, "response": { "response": { "responseFormat": "json", "fullResponse": true, "neverError": true } } }
+      },
+      "type": "n8n-nodes-base.httpRequest", "typeVersion": 4.2,
+      "position": [-520, -180], "id": "tdki-qdrant-check", "name": "1b. Check Qdrant collection"
+    },
+    {
+      "parameters": {
+        "jsCode": "const cfg=$('1. Configuration (edit after import)').first().json;const response=$json;const status=Number(response.statusCode||0);if(status===404)return [{json:{...cfg,createCollection:true}}];if(status<200||status>=300)throw new Error('Qdrant collection check failed with HTTP '+status);const body=response.body||response;const vectors=body.result?.config?.params?.vectors;if(!vectors||typeof vectors.size!=='number')throw new Error('Existing Qdrant collection uses named vectors or has an unsupported vector configuration; expected a single unnamed vector');if(Number(vectors.size)!==Number(cfg.vectorSize)||String(vectors.distance)!==String(cfg.vectorDistance))throw new Error('Existing Qdrant collection vector config mismatch: expected '+cfg.vectorSize+' '+cfg.vectorDistance+', got '+vectors.size+' '+vectors.distance);return [{json:{...cfg,createCollection:false}}];"
+      },
+      "type": "n8n-nodes-base.code", "typeVersion": 2,
+      "position": [-280, -180], "id": "tdki-qdrant-decision", "name": "1c. Validate or create collection"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict", "version": 2 },
+          "conditions": [ { "leftValue": "={{ $json.createCollection }}", "rightValue": true, "operator": { "type": "boolean", "operation": "true", "singleValue": true } } ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if", "typeVersion": 2.2,
+      "position": [-40, -180], "id": "tdki-qdrant-if-missing", "name": "Collection missing?"
+    },
+    {
+      "parameters": {
+        "method": "PUT", "url": "={{ $json.qdrantUrl.replace(/\\/$/,'') + '/collections/' + encodeURIComponent($json.collection) }}",
+        "sendHeaders": true, "headerParameters": { "parameters": [ { "name": "Content-Type", "value": "application/json" } ] },
+        "sendBody": true, "specifyBody": "json", "jsonBody": "={{ JSON.stringify({vectors:{size:$json.vectorSize,distance:$json.vectorDistance}}) }}",
+        "options": { "timeout": 30000 }
+      },
+      "type": "n8n-nodes-base.httpRequest", "typeVersion": 4.2,
+      "position": [200, -280], "id": "tdki-qdrant-create", "name": "1d. Create Qdrant collection"
+    },
+    {
+      "parameters": {
+        "jsCode": "const cfg=$('1. Configuration (edit after import)').first().json;const response=$json;if(response.error||response.status==='error')throw new Error('Qdrant collection creation failed: '+JSON.stringify(response));return [{json:cfg}];"
+      },
+      "type": "n8n-nodes-base.code", "typeVersion": 2,
+      "position": [440, -280], "id": "tdki-qdrant-created", "name": "1e. Continue after collection create"
+    },
+    {
+      "parameters": {
+        "url": "={{ $('1. Configuration (edit after import)').first().json.topdeskBaseUrl.replace(/\\/$/,'') + '/services/knowledge-base-v1/knowledgeItems' }}",
+        "authentication": "genericCredentialType", "genericAuthType": "httpBasicAuth",
+        "sendQuery": true,
+        "queryParameters": { "parameters": [
+          { "name": "page_size", "value": "={{ String($('1. Configuration (edit after import)').first().json.pageSize) }}" },
+          { "name": "query", "value": "={{ $('1. Configuration (edit after import)').first().json.rootQuery }}" },
+          { "name": "fields", "value": "={{ $('1. Configuration (edit after import)').first().json.fields }}" }
+        ] },
+        "sendHeaders": true,
+        "headerParameters": { "parameters": [ { "name": "Accept", "value": "application/json" }, { "name": "Content-Type", "value": "application/json" } ] },
+        "options": { "response": { "response": { "responseFormat": "json" } } }
+      },
+      "type": "n8n-nodes-base.httpRequest", "typeVersion": 4.2,
+      "position": [-500, 0], "id": "tdki-ingest-list", "name": "2. Fetch child knowledge items",
+      "credentials": { "httpBasicAuth": { "id": "00000000-0000-4000-8000-000000000222", "name": "TOPdesk API - Knowledge Items" } }
+    },
+    {
+      "parameters": {
+        "jsCode": "const cfg=$('1. Configuration (edit after import)').first().json;const inputs=$input.all();const records=[];for(const entry of inputs){const body=entry.json||{};const rows=Array.isArray(body)?body:(Array.isArray(body.item)?body.item:(Array.isArray(body.items)?body.items:(Array.isArray(body.result)?body.result:[body])));for(const row of rows){if(!row||!row.id)continue;const visible=row.visibility?.sspVisibility==='VISIBLE';if(cfg.visibleOnly&&!visible)continue;records.push({json:{...row,_govchat:{visible,topdeskBaseUrl:cfg.topdeskBaseUrl,publicKnowledgeItemUrl:cfg.publicKnowledgeItemUrl,includeAttachments:cfg.includeAttachments,tikaUrl:cfg.tikaUrl,embeddingUrl:cfg.embeddingUrl,embeddingModel:cfg.embeddingModel,qdrantUrl:cfg.qdrantUrl,collection:cfg.collection,vectorSize:cfg.vectorSize}}});}}return records;"
+      },
+      "type": "n8n-nodes-base.code", "typeVersion": 2,
+      "position": [-240, 0], "id": "tdki-ingest-normalize", "name": "3. Normalize knowledge items"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "const x=$json,c=x._govchat||{};const t=x.translation?.content||{};const title=String(t.title||x.title||'').trim();const body=String(t.content||x.content||'').trim();const description=String(t.description||x.description||'').trim();const keywords=t.keywords||x.keywords||[];const url=c.publicKnowledgeItemUrl?c.publicKnowledgeItemUrl.replace(/\\/$/,'')+'?unid='+encodeURIComponent(x.id):null;const payload={source:'topdesk',source_id:String(x.id),knowledge_item_id:String(x.id),number:x.number||null,title,description,content:[title,description,body,Array.isArray(keywords)?keywords.join(', '):String(keywords)].filter(Boolean).join('\\n\\n'),keywords,visible:Boolean(c.visible),creation_date:x.creationDate||null,modification_date:x.modificationDate||null,url};return {json:{...c,pointId:String(x.id),payload,embeddingText:payload.content}};"
+      },
+      "type": "n8n-nodes-base.code", "typeVersion": 2,
+      "position": [20, -180], "id": "tdki-ingest-article", "name": "4a. Prepare article text"
+    },
+    {
+      "parameters": {
+        "method": "POST", "url": "={{ $json.embeddingUrl }}",
+        "authentication": "genericCredentialType", "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true, "headerParameters": { "parameters": [ { "name": "Content-Type", "value": "application/json" } ] },
+        "sendBody": true, "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({model:$json.embeddingModel,input:[$json.embeddingText]}) }}",
+        "options": { "timeout": 60000 }
+      },
+      "type": "n8n-nodes-base.httpRequest", "typeVersion": 4.2,
+      "position": [280, -180], "id": "tdki-ingest-article-embed", "name": "5a. Embed article",
+      "credentials": { "httpHeaderAuth": { "id": "00000000-0000-4000-8000-000000000333", "name": "LiteLLM Embeddings Header Auth" } }
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "const source=$('4a. Prepare article text').item.json;const vector=$json.data?.[0]?.embedding;if(!Array.isArray(vector)||vector.length!==Number(source.vectorSize))throw new Error('Embedding dimension mismatch: expected '+source.vectorSize+', received '+(Array.isArray(vector)?vector.length:'no vector'));return {json:{...source,point:{id:source.pointId,vector,payload:source.payload}}};"
+      },
+      "type": "n8n-nodes-base.code", "typeVersion": 2,
+      "position": [540, -180], "id": "tdki-ingest-article-point", "name": "6a. Build article point"
+    },
+    {
+      "parameters": {
+        "method": "PUT", "url": "={{ $json.qdrantUrl.replace(/\\/$/,'') + '/collections/' + encodeURIComponent($json.collection) + '/points?wait=true' }}",
+        "sendHeaders": true, "headerParameters": { "parameters": [ { "name": "Content-Type", "value": "application/json" } ] },
+        "sendBody": true, "specifyBody": "json", "jsonBody": "={{ JSON.stringify({points:[$json.point]}) }}",
+        "options": { "timeout": 60000 }
+      },
+      "type": "n8n-nodes-base.httpRequest", "typeVersion": 4.2,
+      "position": [800, -180], "id": "tdki-ingest-article-upsert", "name": "7a. Upsert article in Qdrant"
+    },
+    {
+      "parameters": {
+        "url": "={{ $json._govchat.topdeskBaseUrl.replace(/\\/$/,'') + '/services/knowledge-base-v1/knowledgeItems/' + encodeURIComponent($json.id) + '/attachments' }}",
+        "authentication": "genericCredentialType", "genericAuthType": "httpBasicAuth",
+        "sendHeaders": true, "headerParameters": { "parameters": [ { "name": "Accept", "value": "application/x.topdesk-kb-attachment-list-v1+json" } ] },
+        "options": { "response": { "response": { "responseFormat": "json" } }, "timeout": 60000 }
+      },
+      "type": "n8n-nodes-base.httpRequest", "typeVersion": 4.2,
+      "position": [20, 180], "id": "tdki-ingest-attachments", "name": "4b. List attachments",
+      "credentials": { "httpBasicAuth": { "id": "00000000-0000-4000-8000-000000000222", "name": "TOPdesk API - Knowledge Items" } },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const responses=$input.all();const parents=$('3. Normalize knowledge items').all();const output=[];for(let index=0;index<responses.length;index++){const parent=parents[index]?.json;const data=responses[index]?.json||{};if(!parent)continue;const files=Array.isArray(data)?data:(Array.isArray(data.item)?data.item:(Array.isArray(data.attachments)?data.attachments:[]));for(const file of files){if(file?.id)output.push({json:{...file,knowledgeItemId:parent.id,knowledgeItem:parent,_govchat:parent._govchat}});}}return output;"
+      },
+      "type": "n8n-nodes-base.code", "typeVersion": 2,
+      "position": [280, 180], "id": "tdki-ingest-attachment-normalize", "name": "5b. Normalize attachments"
+    },
+    {
+      "parameters": {
+        "url": "={{ $json._govchat.topdeskBaseUrl.replace(/\\/$/,'') + '/services/knowledge-base-v1/knowledgeItems/' + encodeURIComponent($json.knowledgeItemId) + '/attachments/' + encodeURIComponent($json.id) + '/download' }}",
+        "authentication": "genericCredentialType", "genericAuthType": "httpBasicAuth",
+        "options": { "response": { "response": { "responseFormat": "file" } }, "timeout": 120000 }
+      },
+      "type": "n8n-nodes-base.httpRequest", "typeVersion": 4.2,
+      "position": [540, 180], "id": "tdki-ingest-attachment-download", "name": "6b. Download attachment",
+      "credentials": { "httpBasicAuth": { "id": "00000000-0000-4000-8000-000000000222", "name": "TOPdesk API - Knowledge Items" } }
+    },
+    {
+      "parameters": {
+        "method": "PUT", "url": "={{ $('5b. Normalize attachments').item.json._govchat.tikaUrl }}",
+        "sendHeaders": true, "headerParameters": { "parameters": [ { "name": "Accept", "value": "text/plain" } ] },
+        "sendBody": true, "contentType": "binaryData", "inputDataFieldName": "data",
+        "options": { "timeout": 120000 }
+      },
+      "type": "n8n-nodes-base.httpRequest", "typeVersion": 4.2,
+      "position": [800, 180], "id": "tdki-ingest-tika", "name": "7b. Extract attachment text (Apache Tika)"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "const attachment=$('5b. Normalize attachments').item.json;const parent=attachment.knowledgeItem;const c=attachment._govchat;const t=parent.translation?.content||{};const title=String(t.title||parent.title||'');const attachmentName=String(attachment.filename||attachment.name||'attachment');const extracted=String($json.data||$json.body||$json.text||'').trim();const payload={source:'topdesk',source_id:String(parent.id)+':'+String(attachment.id),knowledge_item_id:String(parent.id),attachment_id:String(attachment.id),attachment_name:attachmentName,number:parent.number||null,title:title+' - '+attachmentName,content:[title,attachmentName,extracted].filter(Boolean).join('\\n\\n'),visible:parent.visibility?.sspVisibility==='VISIBLE',url:c.publicKnowledgeItemUrl?c.publicKnowledgeItemUrl.replace(/\\/$/,'')+'?unid='+encodeURIComponent(parent.id):null};const stableUuid=s=>{let h1=0x811c9dc5,h2=0x9e3779b9;for(let i=0;i<s.length;i++){h1=Math.imul(h1^s.charCodeAt(i),0x01000193);h2=Math.imul(h2+s.charCodeAt(i),0x85ebca6b);}const hex=(n)=>('00000000'+(n>>>0).toString(16)).slice(-8);const raw=(hex(h1)+hex(h2)+hex(Math.imul(h1^h2,0xc2b2ae35))+hex(Math.imul(h2^h1,0x27d4eb2f))).split('');raw[12]='5';raw[16]=((parseInt(raw[16],16)&3)|8).toString(16);const v=raw.join('');return v.slice(0,8)+'-'+v.slice(8,12)+'-'+v.slice(12,16)+'-'+v.slice(16,20)+'-'+v.slice(20);};return {json:{...c,pointId:stableUuid(String(parent.id)+':'+String(attachment.id)),payload,embeddingText:payload.content}};"
+      },
+      "type": "n8n-nodes-base.code", "typeVersion": 2,
+      "position": [1060, 180], "id": "tdki-ingest-attachment-text", "name": "8b. Prepare attachment text"
+    },
+    {
+      "parameters": {
+        "method": "POST", "url": "={{ $json.embeddingUrl }}",
+        "authentication": "genericCredentialType", "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true, "headerParameters": { "parameters": [ { "name": "Content-Type", "value": "application/json" } ] },
+        "sendBody": true, "specifyBody": "json", "jsonBody": "={{ JSON.stringify({model:$json.embeddingModel,input:[$json.embeddingText]}) }}",
+        "options": { "timeout": 60000 }
+      },
+      "type": "n8n-nodes-base.httpRequest", "typeVersion": 4.2,
+      "position": [1320, 180], "id": "tdki-ingest-attachment-embed", "name": "9b. Embed attachment",
+      "credentials": { "httpHeaderAuth": { "id": "00000000-0000-4000-8000-000000000333", "name": "LiteLLM Embeddings Header Auth" } }
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "const source=$('8b. Prepare attachment text').item.json;const vector=$json.data?.[0]?.embedding;if(!Array.isArray(vector)||vector.length!==Number(source.vectorSize))throw new Error('Embedding dimension mismatch: expected '+source.vectorSize+', received '+(Array.isArray(vector)?vector.length:'no vector'));return {json:{...source,point:{id:source.pointId,vector,payload:source.payload}}};"
+      },
+      "type": "n8n-nodes-base.code", "typeVersion": 2,
+      "position": [1580, 180], "id": "tdki-ingest-attachment-point", "name": "10b. Build attachment point"
+    },
+    {
+      "parameters": {
+        "method": "PUT", "url": "={{ $json.qdrantUrl.replace(/\\/$/,'') + '/collections/' + encodeURIComponent($json.collection) + '/points?wait=true' }}",
+        "sendHeaders": true, "headerParameters": { "parameters": [ { "name": "Content-Type", "value": "application/json" } ] },
+        "sendBody": true, "specifyBody": "json", "jsonBody": "={{ JSON.stringify({points:[$json.point]}) }}",
+        "options": { "timeout": 60000 }
+      },
+      "type": "n8n-nodes-base.httpRequest", "typeVersion": 4.2,
+      "position": [1840, 180], "id": "tdki-ingest-attachment-upsert", "name": "11b. Upsert attachment in Qdrant"
+    }
+  ],
+  "connections": {
+    "Manual run": { "main": [[{ "node": "1. Configuration (edit after import)", "type": "main", "index": 0 }]] },
+    "Weekly schedule": { "main": [[{ "node": "1. Configuration (edit after import)", "type": "main", "index": 0 }]] },
+    "Run with parameters": { "main": [[{ "node": "1. Configuration (edit after import)", "type": "main", "index": 0 }]] },
+    "1. Configuration (edit after import)": { "main": [[{ "node": "1b. Check Qdrant collection", "type": "main", "index": 0 }]] },
+    "1b. Check Qdrant collection": { "main": [[{ "node": "1c. Validate or create collection", "type": "main", "index": 0 }]] },
+    "1c. Validate or create collection": { "main": [[{ "node": "Collection missing?", "type": "main", "index": 0 }]] },
+    "Collection missing?": { "main": [[{ "node": "1d. Create Qdrant collection", "type": "main", "index": 0 }], [{ "node": "2. Fetch child knowledge items", "type": "main", "index": 0 }]] },
+    "1d. Create Qdrant collection": { "main": [[{ "node": "1e. Continue after collection create", "type": "main", "index": 0 }]] },
+    "1e. Continue after collection create": { "main": [[{ "node": "2. Fetch child knowledge items", "type": "main", "index": 0 }]] },
+    "2. Fetch child knowledge items": { "main": [[{ "node": "3. Normalize knowledge items", "type": "main", "index": 0 }]] },
+    "3. Normalize knowledge items": { "main": [[{ "node": "4a. Prepare article text", "type": "main", "index": 0 }, { "node": "Attachments enabled?", "type": "main", "index": 0 }]] },
+    "Attachments enabled?": { "main": [[{ "node": "4b. List attachments", "type": "main", "index": 0 }], []] },
+    "4a. Prepare article text": { "main": [[{ "node": "5a. Embed article", "type": "main", "index": 0 }]] },
+    "5a. Embed article": { "main": [[{ "node": "6a. Build article point", "type": "main", "index": 0 }]] },
+    "6a. Build article point": { "main": [[{ "node": "7a. Upsert article in Qdrant", "type": "main", "index": 0 }]] },
+    "4b. List attachments": { "main": [[{ "node": "5b. Normalize attachments", "type": "main", "index": 0 }]] },
+    "5b. Normalize attachments": { "main": [[{ "node": "6b. Download attachment", "type": "main", "index": 0 }]] },
+    "6b. Download attachment": { "main": [[{ "node": "7b. Extract attachment text (Apache Tika)", "type": "main", "index": 0 }]] },
+    "7b. Extract attachment text (Apache Tika)": { "main": [[{ "node": "8b. Prepare attachment text", "type": "main", "index": 0 }]] },
+    "8b. Prepare attachment text": { "main": [[{ "node": "9b. Embed attachment", "type": "main", "index": 0 }]] },
+    "9b. Embed attachment": { "main": [[{ "node": "10b. Build attachment point", "type": "main", "index": 0 }]] },
+    "10b. Build attachment point": { "main": [[{ "node": "11b. Upsert attachment in Qdrant", "type": "main", "index": 0 }]] }
+  }
+}

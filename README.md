@@ -31,6 +31,7 @@ De architectuur en controlepunten staan in de uitleg over [live aanroepen van hu
 | [n8n](https://n8n.io/) | Voert agenten, hulpmiddelen en andere geautomatiseerde workflows uit. De meegeleverde workflows worden bij het starten ingeladen. |
 | [LiteLLM](https://github.com/BerriAI/litellm) | Verbindt GovChat-NL en n8n met de gekozen taalmodellen. |
 | [OpenBesluitvorming](https://github.com/ontola/openbesluitvorming) · [website](https://openbesluitvorming.nl/) | Project voor het ontsluiten en doorzoeken van openbare besluitvormingsinformatie; GovChat-workflows kunnen hierop aansluiten. |
+| [TOPdesk Knowledge Base](https://www.topdesk.com/) | Generieke workflows om directe kinderen van een gekozen hoofdkennisitem in Qdrant te indexeren en semantisch te bevragen. Zie de [configuratiehandleiding](docs/topdesk-knowledge-items.md). |
 | Microsoft Entra ID | Optionele SSO-koppeling; vereist inrichting voor de eigen organisatie. |
 
 ## Apps en workflows
@@ -41,6 +42,7 @@ De installatie bevat onder andere workflows voor:
 - **Live transcriptie** — zet audio om naar tekst via de geconfigureerde spraak- en modeldiensten.
 - **Afbeeldingsgeneratie** — optioneel in te schakelen.
 - **OpenBesluitvorming** — workflows voor zoeken en werken met besluitvormingsinformatie; de organisatie configureert zelf de gegevensbron en toegang.
+- **TOPdesk Knowledge Base** — optionele workflows voor ingest en semantisch zoeken van kennisitems; met `N8N_ENABLE_TOPDESK_SEARCH=true` koppelt bootstrap de zoekworkflow automatisch als tool aan de orchestrator. Hoofditem, credentials, endpoints en bijlageverwerking configureert de organisatie zelf. Zie [TOPdesk-kennisitems instellen](docs/topdesk-knowledge-items.md).
 
 ## Snel starten
 

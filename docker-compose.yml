@@ -655,6 +655,12 @@ services:
       N8N_OWNER_ENFORCE: ${N8N_OWNER_ENFORCE:-true}
       LITELLM_URL: ${LITELLM_URL}
       LITELLM_API_KEY: ${LITELLM_API_KEY}
+      TOPDESK_TENANT: ${TOPDESK_TENANT:-}
+      TOPDESK_BASE_DOMAIN: ${TOPDESK_BASE_DOMAIN:-topdesk.net}
+      TOPDESK_PUBLIC_BASE_URL: ${TOPDESK_PUBLIC_BASE_URL:-}
+      TOPDESK_API_USERNAME: ${TOPDESK_API_USERNAME:-}
+      TOPDESK_API_PASSWORD: ${TOPDESK_API_PASSWORD:-}
+      N8N_ENABLE_TOPDESK_SEARCH: ${N8N_ENABLE_TOPDESK_SEARCH:-false}
       AGENTS_LOCAL_WORKFLOWS_DIR: /workspace/agents/n8n/workflows
       AGENTS_BOOTSTRAP_FORCE: ${AGENTS_BOOTSTRAP_FORCE:-false}
     volumes:
@@ -700,6 +706,19 @@ services:
       timeout: 5s
       retries: 3
       start_period: 15s
+    networks:
+      - librechat-net
+
+  # ---------------------------------------------------------------------------
+  #  Apache Tika - optioneel documenttekst uit TOPdesk-bijlagen halen.
+  #  Alleen intern bereikbaar; n8n gebruikt http://tika:9998/tika.
+  # ---------------------------------------------------------------------------
+  tika:
+    image: apache/tika:${TIKA_VERSION:-3.2.3.0-full}
+    container_name: librechat-tika
+    restart: unless-stopped
+    expose:
+      - "9998"
     networks:
       - librechat-net
 
