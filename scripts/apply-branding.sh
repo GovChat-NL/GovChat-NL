@@ -72,6 +72,15 @@ translations_script=${LIBRECHAT_NL_TRANSLATIONS_SCRIPT:-/app/govchat-overlay/app
 command -v node >/dev/null 2>&1 || fail 'Node.js ontbreekt; kan de Nederlandse vertaaloverride niet toepassen'
 node "$translations_script"
 
+# Select a runtime-only minimal config; never overwrite the mounted source YAML.
+minimal_script=${GOVCHAT_MINIMAL_UI_SCRIPT:-/app/govchat-overlay/apply-minimal-ui.js}
+CONFIG_PATH=$(node "$minimal_script")
+export CONFIG_PATH
+if [ "${GOVCHAT_MINIMAL_UI:-false}" = true ]; then
+  ENDPOINTS=custom
+  export ENDPOINTS
+fi
+
 # With no arguments, retain the current official LibreChat image CMD.
 if [ "$#" -eq 0 ]; then
   set -- npm run backend

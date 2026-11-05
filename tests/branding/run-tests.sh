@@ -1,6 +1,7 @@
 #!/bin/sh
 
 set -eu
+export GOVCHAT_MINIMAL_UI_SCRIPT="$(dirname "$0")/../../scripts/apply-minimal-ui.js"
 
 repo_root=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
 wrapper="$repo_root/scripts/apply-branding.sh"

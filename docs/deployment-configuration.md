@@ -95,6 +95,42 @@ Configureer beide OpenID-callbacks in de providerregistratie:
 app-URL. Roltoewijzing, consent, MFA en interactieve login moeten lokaal worden
 getest; proxytests bewijzen die providerstappen niet.
 
+## Optionele minimalistische chatinterface
+
+`GOVCHAT_MINIMAL_UI=false` is de standaard: de bestaande LibreChat-configuratie,
+modelselectie, Agents en GovChat-launcher/help-overlay blijven ongewijzigd.
+Zet `GOVCHAT_MINIMAL_UI=true` in je eigen `.env` voor één vaste
+`govchat-orchestrator`-backend, zonder model-/parameterkeuze, Agents, extra tools,
+spraakbediening of launcher/helpmodal. Chatgeschiedenis, accounttoegang,
+promptbibliotheek, uploads en bestandsbeheer blijven beschikbaar.
+
+Gebruik altijd zowel `docker-compose.yml` als `docker-compose.override.yml`;
+de override bevat het opstartscript dat de backendconfiguratie schakelt.
+Dezelfde instelling wordt aan LibreChat en de proxy doorgegeven. Alleen de
+stylesheet wijzigen is niet voldoende. Na een wijziging:
+
+```sh
+docker compose up -d --no-deps librechat librechat-proxy
+```
+
+Bij expliciete `-f`-selectie moet je ook de override en je overige deploymentfiles
+opnemen. Gebruik je bestaande Compose-project en deploymentselectie.
+De bronconfiguratie (`LIBRECHAT_CONFIG_PATH`) wordt niet overschreven: het script
+maakt een privé tijdelijke YAML-variant in de container. Die behoudt je
+endpointcredentials, headers en uploadlimieten en vereist een custom endpoint
+met de naam `govchat-orchestrator`. In minimale modus worden eventuele andere
+custom endpoints niet aangeboden. Ongeldige waarden worden geweigerd bij opstart.
+Terug naar `false` en dezelfde services opnieuw aanmaken herstelt de normale
+configuratie. Branding en Nederlandse vertalingen zijn onafhankelijke opties.
+
+Dit is een deploymentbrede UI-/featurekeuze, geen autorisatiegrens: verborgen
+knoppen vervangen geen backendrechten of SSO-/ingressbeleid. De selectors zijn
+gericht op de gepinde LibreChat v0.8.7; controleer beide modi bij upgrades.
+De optionele browsertest `scripts/test-minimal-chat.py` vereist lokale Docker,
+Playwright/Chromium en een bestaande admin. Gebruik uitsluitend een vertrouwde
+eigen test-URL: de test gebruikt tijdelijk diens toegangstoken in het geheugen.
+Er worden geen accounts, sessies of gesprekken aangemaakt en geen tokens bewaard.
+
 ## Beheerinterfaces achter een geauthenticeerde hostproxy
 
 `docker-compose.management.yml` is optioneel. Het voegt HTTP-adapters voor n8n,

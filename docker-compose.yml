@@ -309,8 +309,10 @@ services:
       PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-http://localhost:3080}
       GOVCHAT_SERVER_NAMES: ${GOVCHAT_SERVER_NAMES:-}
       GOVCHAT_BLOCK_PASSWORD_AUTH: ${GOVCHAT_BLOCK_PASSWORD_AUTH:-false}
+      GOVCHAT_MINIMAL_UI: "${GOVCHAT_MINIMAL_UI:-false}"
       GOVCHAT_PROXY_CONFIG: librechat
     volumes:
+      - ./overlay/minimal.css:/opt/govchat/minimal.css:ro
       - ./nginx/librechat-overlay.conf:/opt/govchat/nginx/librechat-overlay.conf:ro
       - ./scripts/render-proxy-config.sh:/docker-entrypoint.d/40-govchat-config.sh:ro
       - ${NGINX_TRUSTED_PROXIES_CONF_PATH:-./nginx/trusted-proxies.conf}:/etc/nginx/trusted-proxies.conf:ro

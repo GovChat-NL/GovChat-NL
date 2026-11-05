@@ -68,6 +68,19 @@ class ComposeConfigurationTests(unittest.TestCase):
         trust = [v for v in services["librechat-proxy"]["volumes"] if v["target"].startswith("/etc/nginx/trusted")]
         self.assertTrue(all("ingress.local." in v["source"] and v["read_only"] for v in trust))
 
+    def test_minimal_ui_is_opt_in_and_passed_to_app_and_proxy(self):
+        for enabled in ("false", "true"):
+            services = self.config("docker-compose.override.yml", GOVCHAT_MINIMAL_UI=enabled,
+                                   ENDPOINTS="custom,agents")["services"]
+            for name in ("librechat", "librechat-proxy"):
+                self.assertEqual(services[name]["environment"]["GOVCHAT_MINIMAL_UI"], enabled)
+            # Endpoint restriction belongs to runtime startup, not an unconditional override.
+            self.assertEqual(services["librechat"]["environment"]["ENDPOINTS"], "custom,agents")
+            mounts = {v["target"]: v for v in services["librechat-proxy"]["volumes"]}
+            self.assertTrue(mounts["/opt/govchat/minimal.css"]["read_only"])
+        defaults = self.config("docker-compose.override.yml")["services"]
+        self.assertEqual(defaults["librechat"]["environment"]["GOVCHAT_MINIMAL_UI"], "false")
+
     def test_sso_policy_is_coherent_even_with_dev_seeder_enabled(self):
         config = self.config("docker-compose.override.yml", "docker-compose.sso-only.yml",
                              DEV_SEED_ADMIN_ENABLED="true", ALLOW_EMAIL_LOGIN="true",
@@ -193,6 +206,7 @@ class ProxyIntegrationTests(unittest.TestCase):
             ("nginx/management-proxy.conf", "/opt/govchat/nginx/management-proxy.conf"),
             ("nginx/trusted-proxies.conf", "/etc/nginx/trusted-proxies.conf"),
             ("nginx/trusted-proxies.geo", "/etc/nginx/trusted-proxies.geo"),
+            ("overlay/minimal.css", "/opt/govchat/minimal.css"),
         ):
             source_path = ROOT / source
             if trust_directory and source.startswith("nginx/trusted-proxies."):
@@ -222,6 +236,8 @@ class ProxyIntegrationTests(unittest.TestCase):
         self.assertIn("$http_upgrade", config)
         self.assertIn("$govchat_admin_upstream", config)
         self.assertNotIn("${GOVCHAT_SERVER_NAMES}", config)
+        self.assertIn('/govchat-overlay/loader.js', config)
+        self.assertNotIn('${GOVCHAT_UI_HEAD}', config)
         self.assertEqual(self.request(proxy, "/api/auth/login")[0], 200)
         self.assertEqual(self.request(proxy, host="chat.example.org")[0], 200)
         self.assertIsNone(self.request(proxy, host="unknown.example.org")[0])
@@ -272,11 +288,24 @@ class ProxyIntegrationTests(unittest.TestCase):
         self.assertEqual(status, 200)
         self.assertEqual(body, "websocket|upgrade")
 
+    def test_minimal_ui_replaces_launcher_and_serves_styles(self):
+        proxy = self.proxy(GOVCHAT_MINIMAL_UI="true")
+        config = command("docker", "exec", proxy, "cat", "/etc/nginx/conf.d/default.conf").stdout
+        self.assertIn('minimal.css?v=1', config)
+        self.assertNotIn('/govchat-overlay/loader.js', config)
+        self.assertNotIn('${GOVCHAT_UI_HEAD}', config)
+        status, css = self.request(proxy, '/govchat-overlay/minimal.css')
+        self.assertEqual(status, 200)
+        self.assertIn('#tools-dropdown-button', css)
+        command("docker", "exec", proxy, "nginx", "-t")
+
     def test_invalid_values_fail_closed_without_config_injection(self):
         for mode, settings in (
             ("librechat", {"GOVCHAT_SERVER_NAMES": "example.org; return 200;"}),
             ("librechat", {"GOVCHAT_SERVER_NAMES": "*"}),
             ("librechat", {"GOVCHAT_BLOCK_PASSWORD_AUTH": "yes"}),
+            ("librechat", {"GOVCHAT_MINIMAL_UI": "yes"}),
+            ("librechat", {"GOVCHAT_MINIMAL_UI": "true; return 200;"}),
             ("librechat", {"PUBLIC_BASE_URL": "https://user:password@example.org"}),
             ("management", {"N8N_MANAGEMENT_PATH": "/bad;path/"}),
             ("management", {"MANAGEMENT_FORWARDED_PROTO": "https;"}),

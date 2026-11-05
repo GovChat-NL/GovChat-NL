@@ -7,6 +7,10 @@ case "${GOVCHAT_BLOCK_PASSWORD_AUTH:-false}" in
   true|false) ;;
   *) fail 'GOVCHAT_BLOCK_PASSWORD_AUTH must be true or false' ;;
 esac
+case "${GOVCHAT_MINIMAL_UI:-false}" in
+  true|false) ;;
+  *) fail 'GOVCHAT_MINIMAL_UI must be true or false' ;;
+esac
 
 case "${GOVCHAT_PROXY_CONFIG:-librechat}" in
   librechat)
@@ -40,7 +44,13 @@ location ~* ^/api/auth/(login|register|requestPasswordReset|resetPassword)(/|$) 
 location ~* ^/api/admin/login/local(/|$) { return 403; }
 EOF
     fi
-    envsubst '${GOVCHAT_SERVER_NAMES}' < /opt/govchat/nginx/librechat-overlay.conf > /etc/nginx/conf.d/default.conf
+    if [ "${GOVCHAT_MINIMAL_UI:-false}" = true ]; then
+      GOVCHAT_UI_HEAD='<link rel="stylesheet" href="/govchat-overlay/minimal.css?v=1"/>'
+    else
+      GOVCHAT_UI_HEAD='<link rel="stylesheet" href="/govchat-overlay/custom.css?v=20261028-security1"/><script defer src="/govchat-overlay/loader.js?v=20261028-security1"></script>'
+    fi
+    export GOVCHAT_UI_HEAD
+    envsubst '${GOVCHAT_SERVER_NAMES} ${GOVCHAT_UI_HEAD}' < /opt/govchat/nginx/librechat-overlay.conf > /etc/nginx/conf.d/default.conf
     ;;
   management)
     N8N_MANAGEMENT_PATH=${N8N_MANAGEMENT_PATH:-/}
