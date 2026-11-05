@@ -425,6 +425,7 @@ function normalizeStepRagSettings(input, fallbackStep = {}) {
   const tagFilterMode = modeRaw === "all" ? "all" : "any";
   const requiredTags = normalizeTags(src.required_tags || fallback.required_tags || []);
   return {
+    enabled: src.enabled !== false,
     algorithm,
     top_k: topK,
     min_score: minScore,
@@ -2670,6 +2671,16 @@ app.get("/beleidskompas-editor", requireAuth, (req, res) => {
     jsonData: JSON.stringify(readBeleidskompasState()),
   });
 });
+
+// New Beleidskompas admin UI: a shell page plus its ES modules and CSS.
+app.get("/beleidskompas-admin", requireAuth, (req, res) => {
+  sendView(res, "beleidskompas-admin.html");
+});
+app.use(
+  "/beleidskompas-admin/assets",
+  requireAuth,
+  express.static(path.join(__dirname, "views", "beleidskompas-admin"), { maxAge: 0 }),
+);
 
 // ── Admin API endpoints (auth required) ────────────────────────────
 app.post("/api/config/help-content", requireAuth, (req, res) => {
