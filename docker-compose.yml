@@ -32,9 +32,9 @@ services:
       - "host.docker.internal:host-gateway"
     volumes:
       - ${LIBRECHAT_CONFIG_PATH:-./librechat.yaml}:/app/librechat.yaml:ro
-      - /opt/librechat/uploads:/app/uploads
-      - /opt/librechat/logs:/app/api/logs
-      - /opt/librechat/images:/app/client/public/images
+      - ${GOVCHAT_DATA_ROOT:-/opt/librechat}/uploads:/app/uploads
+      - ${GOVCHAT_DATA_ROOT:-/opt/librechat}/logs:/app/api/logs
+      - ${GOVCHAT_DATA_ROOT:-/opt/librechat}/images:/app/client/public/images
       - ./scripts/librechat-tool-event-overlay.js:/app/govchat-overlay/librechat-tool-event-overlay.js:ro
       - ./scripts/librechat-tool-event-protocol.js:/app/govchat-overlay/librechat-tool-event-protocol.js:ro
       - ./scripts/librechat-tool-event-preload.js:/app/govchat-overlay/librechat-tool-event-preload.js:ro
@@ -69,10 +69,11 @@ services:
       SESSION_SECRET: ${SESSION_SECRET}
 
       # --- Registratie en login ---
-      ALLOW_REGISTRATION: ${DEV_SEED_ADMIN_ENABLED}
-      ALLOW_EMAIL_LOGIN: ${DEV_SEED_ADMIN_ENABLED}
-      ALLOW_SOCIAL_LOGIN: "true"
-      ALLOW_SOCIAL_REGISTRATION: "true"
+      ALLOW_REGISTRATION: ${ALLOW_REGISTRATION:-${DEV_SEED_ADMIN_ENABLED:-false}}
+      ALLOW_EMAIL_LOGIN: ${ALLOW_EMAIL_LOGIN:-${DEV_SEED_ADMIN_ENABLED:-false}}
+      ALLOW_SOCIAL_LOGIN: ${ALLOW_SOCIAL_LOGIN:-true}
+      ALLOW_SOCIAL_REGISTRATION: ${ALLOW_SOCIAL_REGISTRATION:-true}
+      ALLOW_PASSWORD_RESET: ${ALLOW_PASSWORD_RESET:-true}
       ALLOW_UNVERIFIED_EMAIL_LOGIN: "false"
 
       # --- Entra ID SSO (OpenID Connect) ---
@@ -80,7 +81,7 @@ services:
       OPENID_CLIENT_SECRET: ${OPENID_CLIENT_SECRET}
       OPENID_ISSUER: https://login.microsoftonline.com/${ENTRA_TENANT_ID}/v2.0/
       OPENID_SESSION_SECRET: ${OPENID_SESSION_SECRET}
-      OPENID_SCOPE: openid profile email offline_access
+      OPENID_SCOPE: ${OPENID_SCOPE:-openid profile email offline_access}
       OPENID_CALLBACK_URL: /oauth/openid/callback
       OPENID_BUTTON_LABEL: Inloggen met Microsoft
       OPENID_USE_END_SESSION_ENDPOINT: "true"
@@ -89,26 +90,30 @@ services:
 
 
       # --- Token reuse (verplicht voor Entra ID groepssync) ---
-      OPENID_REUSE_TOKENS: "true"
+      OPENID_REUSE_TOKENS: ${OPENID_REUSE_TOKENS:-true}
 
       # --- Toegangsbeperking via Entra ID app-rol ---
       OPENID_REQUIRED_ROLE_TOKEN_KIND: id
       OPENID_REQUIRED_ROLE_PARAMETER_PATH: roles
       OPENID_REQUIRED_ROLE: ${OPENID_REQUIRED_ROLE}
+      # Empty admin role preserves upstream behavior; opt in to claim mapping.
+      OPENID_ADMIN_ROLE: ${OPENID_ADMIN_ROLE:-}
+      OPENID_ADMIN_ROLE_TOKEN_KIND: ${OPENID_ADMIN_ROLE_TOKEN_KIND:-id}
+      OPENID_ADMIN_ROLE_PARAMETER_PATH: ${OPENID_ADMIN_ROLE_PARAMETER_PATH:-roles}
 
       # Caching Configuration
       OPENID_JWKS_URL_CACHE_ENABLED: "true"
       OPENID_JWKS_URL_CACHE_TIME: "600000"  # 10 minutes in milliseconds
  
       # Azure-specific Configuration
-      OPENID_ON_BEHALF_FLOW_FOR_USERINFO_REQUIRED: "true"
+      OPENID_ON_BEHALF_FLOW_FOR_USERINFO_REQUIRED: ${OPENID_ON_BEHALF_FLOW_FOR_USERINFO_REQUIRED:-true}
       OPENID_ON_BEHALF_FLOW_USERINFO_SCOPE: "user.read"
 
 
       # --- Microsoft Graph API (groepssync + people search) ---
-      USE_ENTRA_ID_FOR_PEOPLE_SEARCH: "true"
+      USE_ENTRA_ID_FOR_PEOPLE_SEARCH: ${USE_ENTRA_ID_FOR_PEOPLE_SEARCH:-true}
       ENTRA_ID_INCLUDE_OWNERS_AS_MEMBERS: "true"
-      OPENID_GRAPH_SCOPES: "User.Read,GroupMember.Read.All,People.Read,User.ReadBasic.All offline_access"
+      OPENID_GRAPH_SCOPES: ${OPENID_GRAPH_SCOPES-User.Read,GroupMember.Read.All,People.Read,User.ReadBasic.All offline_access}
 
       # --- MeiliSearch ---
       SEARCH: "true"
@@ -153,8 +158,8 @@ services:
         condition: service_healthy
     volumes:
       - ${LIBRECHAT_CONFIG_PATH:-./librechat.yaml}:/app/librechat.yaml:ro
-      - /opt/librechat/uploads:/app/uploads
-      - /opt/librechat/images:/app/client/public/images
+      - ${GOVCHAT_DATA_ROOT:-/opt/librechat}/uploads:/app/uploads
+      - ${GOVCHAT_DATA_ROOT:-/opt/librechat}/images:/app/client/public/images
       - ./scripts/govchat-retention-policy.js:/app/govchat-overlay/govchat-retention-policy.js:ro
       - ./scripts/govchat-retention-worker.js:/app/govchat-overlay/govchat-retention-worker.js:ro
     environment:
@@ -193,9 +198,9 @@ services:
         chmod -R u+rwX,g+rwX /app/uploads /app/images /app/n8n-logs
       "
     volumes:
-      - /opt/librechat/logs/n8n:/app/n8n-logs
-      - /opt/librechat/uploads:/app/uploads
-      - /opt/librechat/images:/app/images
+      - ${GOVCHAT_DATA_ROOT:-/opt/librechat}/logs/n8n:/app/n8n-logs
+      - ${GOVCHAT_DATA_ROOT:-/opt/librechat}/uploads:/app/uploads
+      - ${GOVCHAT_DATA_ROOT:-/opt/librechat}/images:/app/images
     networks:
       - librechat-net
 
@@ -294,16 +299,23 @@ services:
     tmpfs:
       - /var/cache/nginx
       - /var/run
+      - /etc/nginx/conf.d
     depends_on:
       librechat:
         condition: service_started
     ports:
-      - "${LC_PORT:-3080}:3080"
+      - "${LC_BIND_IP:-0.0.0.0}:${LC_PORT:-3080}:3080"
+    environment:
+      PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-http://localhost:3080}
+      GOVCHAT_SERVER_NAMES: ${GOVCHAT_SERVER_NAMES:-}
+      GOVCHAT_BLOCK_PASSWORD_AUTH: ${GOVCHAT_BLOCK_PASSWORD_AUTH:-false}
+      GOVCHAT_PROXY_CONFIG: librechat
     volumes:
-      - ./nginx/librechat-overlay.conf:/etc/nginx/conf.d/default.conf:ro
-      - ./nginx/trusted-proxies.conf:/etc/nginx/trusted-proxies.conf:ro
-      - ./nginx/trusted-proxies.geo:/etc/nginx/trusted-proxies.geo:ro
-      - /opt/librechat/overlay/publish:/opt/librechat/overlay/publish:ro
+      - ./nginx/librechat-overlay.conf:/opt/govchat/nginx/librechat-overlay.conf:ro
+      - ./scripts/render-proxy-config.sh:/docker-entrypoint.d/40-govchat-config.sh:ro
+      - ${NGINX_TRUSTED_PROXIES_CONF_PATH:-./nginx/trusted-proxies.conf}:/etc/nginx/trusted-proxies.conf:ro
+      - ${NGINX_TRUSTED_PROXIES_GEO_PATH:-./nginx/trusted-proxies.geo}:/etc/nginx/trusted-proxies.geo:ro
+      - ${GOVCHAT_DATA_ROOT:-/opt/librechat}/overlay/publish:/opt/librechat/overlay/publish:ro
     networks:
       - librechat-net
 
@@ -314,13 +326,13 @@ services:
   #  als remote MongoDB-toegang expliciet noodzakelijk is.
   # ---------------------------------------------------------------------------
   mongodb:
-    image: mongo:8.0.20
+    image: ${MONGO_IMAGE:-mongo:8.0.20}
     container_name: librechat-mongodb
     restart: unless-stopped
     ports:
       - "${MONGO_BIND_IP:-127.0.0.1}:${MONGO_PORT:-27017}:27017"
     volumes:
-      - /opt/librechat/data/mongodb:/data/db
+      - ${GOVCHAT_DATA_ROOT:-/opt/librechat}/data/mongodb:/data/db
     environment:
       MONGO_INITDB_ROOT_USERNAME: ${MONGO_ROOT_USER}
       MONGO_INITDB_ROOT_PASSWORD: ${MONGO_ROOT_PASS}
@@ -343,7 +355,7 @@ services:
     container_name: librechat-redis
     restart: unless-stopped
     volumes:
-      - /opt/librechat/data/redis:/data
+      - ${GOVCHAT_DATA_ROOT:-/opt/librechat}/data/redis:/data
     command: redis-server --save 60 1 --loglevel warning
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
@@ -363,7 +375,7 @@ services:
     container_name: librechat-meilisearch
     restart: unless-stopped
     volumes:
-      - /opt/librechat/data/meilisearch:/meili_data
+      - ${GOVCHAT_DATA_ROOT:-/opt/librechat}/data/meilisearch:/meili_data
     environment:
       MEILI_MASTER_KEY: ${MEILI_MASTER_KEY}
       MEILI_NO_ANALYTICS: "true"
@@ -383,7 +395,7 @@ services:
       POSTGRES_USER: litellm
       POSTGRES_PASSWORD: ${LITELLM_POSTGRES_PASSWORD}
     volumes:
-      - /opt/librechat/data/litellm-postgres:/var/lib/postgresql/data
+      - ${GOVCHAT_DATA_ROOT:-/opt/librechat}/data/litellm-postgres:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U litellm"]
       interval: 10s
@@ -510,9 +522,11 @@ services:
       N8N_PORT: "5678"
       N8N_PROTOCOL: http
       N8N_HOST: localhost
-      N8N_PATH: /
-      N8N_EDITOR_BASE_URL: http://localhost:5678
-      WEBHOOK_URL: http://localhost:5678
+      N8N_PATH: ${N8N_PATH:-/}
+      N8N_EDITOR_BASE_URL: ${N8N_EDITOR_BASE_URL:-http://localhost:5678}
+      WEBHOOK_URL: ${N8N_WEBHOOK_URL:-http://localhost:5678}
+      N8N_PROXY_HOPS: ${N8N_PROXY_HOPS:-0}
+      N8N_SECURE_COOKIE: ${N8N_SECURE_COOKIE:-true}
       GENERIC_TIMEZONE: ${TZ:-Europe/Amsterdam}
       TZ: ${TZ:-Europe/Amsterdam}
       N8N_LOG_LEVEL: error
@@ -556,8 +570,8 @@ services:
       CRAWLER_INTERNAL_TOKEN: ${CRAWLER_INTERNAL_TOKEN:-${N8N_WEBHOOK_TOKEN}}
     volumes:
       - n8n-data:/home/node/.n8n
-      - /opt/librechat/logs/n8n:/var/log/n8n
-      - /opt/librechat/images:/shared-images
+      - ${GOVCHAT_DATA_ROOT:-/opt/librechat}/logs/n8n:/var/log/n8n
+      - ${GOVCHAT_DATA_ROOT:-/opt/librechat}/images:/shared-images
       - ./scripts/n8n-createAgentSequence.patched.js:/usr/local/lib/node_modules/n8n/node_modules/.pnpm/@n8n+n8n-nodes-langchain@file+packages+@n8n+nodes-langchain_8bf81e0cdf1fe65cc684d3daaa3ca5c1/node_modules/@n8n/n8n-nodes-langchain/dist/nodes/agents/Agent/agents/ToolsAgent/V3/helpers/createAgentSequence.js:ro
       - ./scripts/n8n-processEventStream.patched.js:/usr/local/lib/node_modules/n8n/node_modules/.pnpm/@n8n+n8n-nodes-langchain@file+packages+@n8n+nodes-langchain_8bf81e0cdf1fe65cc684d3daaa3ca5c1/node_modules/@n8n/n8n-nodes-langchain/dist/utils/agent-execution/processEventStream.js:ro
     healthcheck:
@@ -588,7 +602,7 @@ services:
       N8N_LOG_RETENTION_DAYS: ${N8N_LOG_RETENTION_DAYS:-30}
       N8N_LOG_PRUNE_INTERVAL_SECONDS: ${N8N_LOG_PRUNE_INTERVAL_SECONDS:-3600}
     volumes:
-      - /opt/librechat/logs/n8n:/var/log/n8n
+      - ${GOVCHAT_DATA_ROOT:-/opt/librechat}/logs/n8n:/var/log/n8n
     networks:
       - librechat-net
 
@@ -622,7 +636,7 @@ services:
       N8N_RUNNERS_TASK_TIMEOUT: "180"
       N8N_RUNNERS_LAUNCHER_LOG_LEVEL: warn
     volumes:
-      - /opt/librechat/images:/shared-images
+      - ${GOVCHAT_DATA_ROOT:-/opt/librechat}/images:/shared-images
       - ./n8n/task-runners.json:/etc/n8n-task-runners.json:ro
     networks:
       - librechat-net
@@ -676,7 +690,7 @@ services:
     # It emits the sideband used by the LibreChat and n8n runtime overlays.
     image: govchat-nl/n8n-openai-bridge:main
     build:
-      context: ../n8n-openai-bridge-main
+      context: ${N8N_OPENAI_BRIDGE_BUILD_CONTEXT:-../n8n-openai-bridge-main}
       dockerfile: docker/Dockerfile.build
     container_name: n8n-openai-bridge
     restart: unless-stopped
@@ -779,7 +793,7 @@ services:
     container_name: librechat-pgvector
     restart: unless-stopped
     volumes:
-      - /opt/librechat/data/pgvector:/var/lib/postgresql/data
+      - ${GOVCHAT_DATA_ROOT:-/opt/librechat}/data/pgvector:/var/lib/postgresql/data
     environment:
       POSTGRES_DB: ${POSTGRES_DB}
       POSTGRES_USER: ${POSTGRES_USER}
@@ -809,7 +823,7 @@ services:
       pgvector:
         condition: service_healthy
     volumes:
-      - /opt/librechat/uploads:/uploads
+      - ${GOVCHAT_DATA_ROOT:-/opt/librechat}/uploads:/uploads
     environment:
       # PostgreSQL verbinding
       DB_HOST: pgvector
@@ -842,7 +856,7 @@ services:
   #  VITE_API_BASE_URL moet de publieke URL zijn (browser moet het bereiken)
   # ---------------------------------------------------------------------------
   admin-panel:
-    image: ghcr.io/clickhouse/librechat-admin-panel:latest
+    image: ${ADMIN_PANEL_IMAGE:-ghcr.io/clickhouse/librechat-admin-panel:latest}
     container_name: librechat-admin-panel
     restart: unless-stopped
     ports:
@@ -854,7 +868,7 @@ services:
     environment:
       SESSION_SECRET: ${ADMIN_SESSION_SECRET}
       VITE_API_BASE_URL: ${PUBLIC_BASE_URL}
-      API_SERVER_URL: http://librechat:3080
+      API_SERVER_URL: ${ADMIN_PANEL_API_SERVER_URL:-http://librechat-proxy:3080}
       ADMIN_SSO_ONLY: "${ADMIN_SSO_ONLY:-false}"
       PORT: "3000"
     networks:
@@ -905,8 +919,8 @@ services:
       - JWT_REFRESH_SECRET=${JWT_REFRESH_SECRET:-}
       - JWT_SECRET=${JWT_SECRET:-}
     volumes:
-      - /opt/librechat/overlay/data:/data
-      - /opt/librechat/overlay/publish:/publish
+      - ${GOVCHAT_DATA_ROOT:-/opt/librechat}/overlay/data:/data
+      - ${GOVCHAT_DATA_ROOT:-/opt/librechat}/overlay/publish:/publish
       - ./overlay/defaults:/app/defaults:ro
     profiles:
       - admin-overlay
@@ -928,7 +942,7 @@ services:
       PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_DEFAULT_PASSWORD}
       PGADMIN_CONFIG_SERVER_MODE: "False"
     volumes:
-      - /opt/librechat/data/pgadmin:/var/lib/pgadmin
+      - ${GOVCHAT_DATA_ROOT:-/opt/librechat}/data/pgadmin:/var/lib/pgadmin
     depends_on:
       pgvector:
         condition: service_healthy
@@ -939,8 +953,8 @@ services:
 
 networks:
   librechat-net:
-    name: librechat-net
-    driver: bridge
+    name: ${GOVCHAT_NETWORK_NAME:-librechat-net}
+    external: ${GOVCHAT_NETWORK_EXTERNAL:-false}
 
 volumes:
   n8n-data:

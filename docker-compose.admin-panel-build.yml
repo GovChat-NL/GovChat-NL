@@ -1,0 +1,10 @@
+# Vite's base path is a build-time setting; runtime environment alone is not enough.
+services:
+  admin-panel:
+    image: ${ADMIN_PANEL_BUILD_IMAGE:-govchat-admin-panel:subpath}
+    build:
+      context: ${ADMIN_PANEL_BUILD_CONTEXT:-https://github.com/ClickHouse/librechat-admin-panel.git#fce9596f823e78f991c7ef60bb97d0ce15d72934}
+      args:
+        VITE_BASE_PATH: ${ADMIN_PANEL_BASE_PATH:-/}
+    environment:
+      VITE_BASE_PATH: ${ADMIN_PANEL_BASE_PATH:-/}
