@@ -77,9 +77,5 @@ export const MOCK_TEMPLATES = [
 
 // MOCK #5: the answer a user reacted to is not stored with the feedback.
 export function mockAnswerText(stepId) {
-  return (
-    `Voorbeeldantwoord (mock) voor stap ${stepId || "onbekend"}. ` +
-    "Op basis van de beleidskaders lijkt hier een provinciaal belang te spelen; " +
-    "de provincie kan een regisserende rol nemen. Bronnen: SiS 4.0 Strategisch kader, p. 12."
-  );
+  return `MOCK: voorbeeldantwoord voor stap ${stepId || "onbekend"}.`;
 }

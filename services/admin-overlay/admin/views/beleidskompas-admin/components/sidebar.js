@@ -1,6 +1,6 @@
 import { h, icon } from "../dom.js";
 
-// Left pane: macOS sidebar with the admin pages and links to the other GovChat editors.
+// Left pane: sidebar with the admin pages and links to the other GovChat editors.
 const PAGES = [
   { route: "general", label: "Algemeen", icon: "gear" },
   { route: "editor", label: "Editor", icon: "pencil" },
@@ -32,7 +32,6 @@ export function sidebar(currentRoute) {
   const link = (l) => h("a", { href: l.href, class: "side-item" }, icon(l.icon), h("span", {}, l.label));
 
   return [
-    h("div", { class: "traffic", "aria-hidden": "true" }, h("span"), h("span"), h("span")),
     h("div", { class: "side-title" }, "Beleidskompas"),
     h("nav", { class: "side-group", "aria-label": "Beleidskompas" }, PAGES.map(item)),
     h("div", { class: "side-heading" }, "GovChat-beheer"),

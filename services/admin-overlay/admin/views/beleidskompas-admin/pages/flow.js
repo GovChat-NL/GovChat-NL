@@ -22,7 +22,8 @@ export function renderFlow({ store, render, markDirty }) {
     { class: "notice notice-info" },
     icon("info", 14),
     "Titels, beschrijvingen en substappen verschijnen na publiceren op de Beleidskompas-pagina. " +
-      "Prompts, zoekinstellingen en stapdocumenten worden opgeslagen in het template, maar de assistent leest ze nog niet.",
+      "Prompts en zoekinstellingen worden opgeslagen in het template, maar de assistent leest ze nog niet. " +
+      "De documentkeuze per stap wordt nog niet opgeslagen: die geldt alleen in dit tabblad.",
   );
 
   const list = flowList({
@@ -96,7 +97,7 @@ function stepEditor(step, { tpl, store, markDirty, render }) {
             checked: docIds.has(d.id),
             disabled: step.rag.enabled === false,
             label: d.filename,
-            onChange: (v) => { api.setStepDocument(tpl.id, step.id, d.id, v); markDirty(); },
+            onChange: (v) => api.setStepDocument(tpl.id, step.id, d.id, v),
           }),
         )
       : h("p", { class: "muted" }, "Geen actieve documenten in de bibliotheek van dit template."),

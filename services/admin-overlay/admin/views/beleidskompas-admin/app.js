@@ -103,30 +103,13 @@ async function saveAsNewTemplate() {
   toast(`Template “${name}” aangemaakt`, "success");
 }
 
-// ── Routing with our own back/forward history ─────────────────────
-const history = { stack: [], pos: -1, moving: false };
+// ── Routing (hash routes, so the browser's back button works) ─────
 const currentRoute = () => {
   const r = location.hash.replace(/^#\/?/, "");
   return ROUTES[r] ? r : DEFAULT_ROUTE;
 };
-const go = (delta) => {
-  const next = history.pos + delta;
-  if (next < 0 || next >= history.stack.length) return;
-  history.pos = next;
-  history.moving = true;
-  location.hash = `#/${history.stack[next]}`;
-};
 
-window.addEventListener("hashchange", () => {
-  const route = currentRoute();
-  if (!history.moving && history.stack[history.pos] !== route) {
-    history.stack = history.stack.slice(0, history.pos + 1);
-    history.stack.push(route);
-    history.pos = history.stack.length - 1;
-  }
-  history.moving = false;
-  render();
-});
+window.addEventListener("hashchange", render);
 
 window.addEventListener("beforeunload", (e) => {
   if (store.dirty) e.preventDefault();
@@ -165,14 +148,7 @@ export function render() {
       ]
     : [];
   document.getElementById("toolbar").replaceChildren(
-    ...toolbar({
-      crumbs: crumbsFor(route),
-      canBack: history.pos > 0,
-      canForward: history.pos < history.stack.length - 1,
-      onBack: () => go(-1),
-      onForward: () => go(1),
-      actions,
-    }),
+    ...toolbar({ crumbs: crumbsFor(route), actions }),
   );
 
   const { controls, content, subtitle } = def.page({ store, render, markDirty, selectTemplate, saveAsNewTemplate, reload });
@@ -188,8 +164,6 @@ async function init() {
     document.getElementById("body").replaceChildren(h("p", { class: "error" }, `Laden mislukt: ${err.message}`));
     return;
   }
-  history.stack = [currentRoute()];
-  history.pos = 0;
   render();
 }
 
