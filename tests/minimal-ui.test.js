@@ -27,6 +27,7 @@ test('minimal mode preserves auth, headers, upload limits and source config whil
   const before = structuredClone(source);
   const config = minimalConfig(source);
   assert.deepEqual(source, before);
+  assert.equal(Object.hasOwn(config.interface, 'customWelcome'), false);
   assert.equal(config.interface.prompts, true);
   for (const feature of ['agents', 'modelSelect', 'parameters', 'presets', 'multiConvo', 'skills', 'webSearch', 'sharedLinks']) {
     assert.equal(config.interface[feature], false);
@@ -41,6 +42,27 @@ test('minimal mode preserves auth, headers, upload limits and source config whil
   assert.throws(() => minimalConfig({ endpoints: {} }), /requires the govchat-orchestrator/);
 });
 
+test('minimal mode and rendered config preserve an explicitly configured welcome message', () => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'govchat-welcome-test-'));
+  const sourcePath = path.join(directory, 'librechat.yaml');
+  const source = yaml.load(fs.readFileSync(path.join(root, 'librechat.yaml'), 'utf8'));
+  source.interface.customWelcome = 'Welkom bij onze chatassistent';
+  const before = structuredClone(source);
+  let output;
+  try {
+    assert.equal(minimalConfig(source).interface.customWelcome, source.interface.customWelcome);
+    assert.deepEqual(source, before);
+    fs.writeFileSync(sourcePath, yaml.dump(source));
+    const original = fs.readFileSync(sourcePath, 'utf8');
+    output = render({ GOVCHAT_MINIMAL_UI: 'true', CONFIG_PATH: sourcePath });
+    assert.equal(yaml.load(fs.readFileSync(output, 'utf8')).interface.customWelcome, source.interface.customWelcome);
+    assert.equal(fs.readFileSync(sourcePath, 'utf8'), original);
+  } finally {
+    if (output) fs.rmSync(path.dirname(output), { recursive: true });
+    fs.rmSync(directory, { recursive: true });
+  }
+});
+
 test('enabled rendering writes a private temporary config and disabling restores original behavior', () => {
   const sourcePath = path.join(root, 'librechat.yaml');
   const before = fs.readFileSync(sourcePath, 'utf8');
@@ -49,6 +71,7 @@ test('enabled rendering writes a private temporary config and disabling restores
     assert.notEqual(output, sourcePath);
     assert.equal(fs.statSync(output).mode & 0o777, 0o600);
     assert.equal(yaml.load(fs.readFileSync(output, 'utf8')).interface.agents, false);
+    assert.equal(Object.hasOwn(yaml.load(fs.readFileSync(output, 'utf8')).interface, 'customWelcome'), false);
     assert.equal(fs.readFileSync(sourcePath, 'utf8'), before);
     assert.equal(render({ GOVCHAT_MINIMAL_UI: 'false', CONFIG_PATH: sourcePath }), sourcePath);
     assert.equal(yaml.load(before).interface.agents, true);
