@@ -41,5 +41,5 @@ test-beleidskompas: ## Run the Beleidskompas unit tests: step 1 logic and the pa
 	cd agents/beleidskompas && node --test
 	cd overlay/src/apps/beleidskompas && node --test
 
-generate-workflows: ## Regenerate the Beleidskompas workflows (hoofdagent and stap 1) from agents/beleidskompas
+generate-workflows: ## Regenerate the Beleidskompas workflows (orchestrator and the steps) from agents/beleidskompas
 	cd agents/beleidskompas && node generate-workflow.js

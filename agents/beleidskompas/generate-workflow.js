@@ -5,7 +5,7 @@
  * Writes the Beleidskompas workflows in n8n/workflows/beleidskompas/ from
  * the source files in this folder:
  *
- * - beleidskompas-hoofdagent.json from main-agent.js
+ * - beleidskompas-orchestrator.json from orchestrator.js
  * - beleidskompas-step-stapN.json from steps/stepN.js and the fixtures
  *
  * All of them also get the functions they use from shared.js.
@@ -23,7 +23,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const shared = require('./shared');
-const mainAgent = require('./main-agent');
+const orchestrator = require('./orchestrator');
 const step1 = require('./steps/step1');
 const step2 = require('./steps/step2');
 const step3 = require('./steps/step3');
@@ -110,10 +110,10 @@ function buildWorkflow({ id, name, webhookPath, nodeNames, jsCode }) {
   ];
 }
 
-// --- Hoofdagent ---
+// --- Orchestrator ---
 
-// The functions main-agent.js uses from shared.js, and the ones those use.
-const MAIN_AGENT_SHARED_FUNCTIONS = [
+// The functions orchestrator.js uses from shared.js, and the ones those use.
+const ORCHESTRATOR_SHARED_FUNCTIONS = [
   'extractSuppliedToken',
   'parsePageMessage',
   'requestRaw',
@@ -124,22 +124,22 @@ const MAIN_AGENT_SHARED_FUNCTIONS = [
   'buildTitleResponse',
 ];
 
-const MAIN_AGENT_FUNCTIONS = ['incomingMessage', 'determineStep', 'buildStepRequest', 'forwardToStep', 'runMainAgent'];
+const ORCHESTRATOR_FUNCTIONS = ['incomingMessage', 'determineStep', 'buildStepRequest', 'forwardToStep', 'runOrchestrator'];
 
-function buildMainAgentJsCode() {
+function buildOrchestratorJsCode() {
   return [
     ...TITLE_CONSTANTS,
     `const PAGE_MESSAGE_LABELS = ${JSON.stringify(shared.PAGE_MESSAGE_LABELS)};`,
-    `const STEP_ROUTES = ${JSON.stringify(mainAgent.STEP_ROUTES)};`,
-    `const UNKNOWN_STEP_TEXT = ${JSON.stringify(mainAgent.UNKNOWN_STEP_TEXT)};`,
+    `const STEP_ROUTES = ${JSON.stringify(orchestrator.STEP_ROUTES)};`,
+    `const UNKNOWN_STEP_TEXT = ${JSON.stringify(orchestrator.UNKNOWN_STEP_TEXT)};`,
     '',
-    inlineFunctions([shared], MAIN_AGENT_SHARED_FUNCTIONS),
+    inlineFunctions([shared], ORCHESTRATOR_SHARED_FUNCTIONS),
     '',
-    inlineFunctions([mainAgent], MAIN_AGENT_FUNCTIONS),
+    inlineFunctions([orchestrator], ORCHESTRATOR_FUNCTIONS),
     '',
     ...HTTP_MODULES,
     '',
-    'const result = await runMainAgent({',
+    'const result = await runOrchestrator({',
     '  input: $json,',
     `  env: ${envLiteral([
       'N8N_WEBHOOK_TOKEN',
@@ -157,13 +157,13 @@ function buildMainAgentJsCode() {
   ].join('\n');
 }
 
-function buildMainAgentWorkflow() {
+function buildOrchestratorWorkflow() {
   return buildWorkflow({
-    id: 'govchat-beleidskompas-hoofdagent',
-    name: 'Beleidskompas Hoofdagent',
-    webhookPath: 'beleidskompas-hoofdagent',
-    nodeNames: { webhook: 'Webhook Hoofdagent', code: 'Route To Step', respond: 'Respond Hoofdagent' },
-    jsCode: buildMainAgentJsCode(),
+    id: 'govchat-beleidskompas-orchestrator',
+    name: 'Beleidskompas Orchestrator',
+    webhookPath: 'beleidskompas-orchestrator',
+    nodeNames: { webhook: 'Webhook Orchestrator', code: 'Route To Step', respond: 'Respond Orchestrator' },
+    jsCode: buildOrchestratorJsCode(),
   });
 }
 
@@ -277,7 +277,7 @@ function writeJson(outPath, data) {
 }
 
 function main() {
-  writeJson(path.join(WORKFLOWS_DIR, 'beleidskompas-hoofdagent.json'), buildMainAgentWorkflow());
+  writeJson(path.join(WORKFLOWS_DIR, 'beleidskompas-orchestrator.json'), buildOrchestratorWorkflow());
   for (const step of steps) writeJson(path.join(WORKFLOWS_DIR, `beleidskompas-step-${step.id}.json`), buildStepWorkflow(step));
   writeJson(PAGE_STEPS_FILE, pageSteps(steps));
 }

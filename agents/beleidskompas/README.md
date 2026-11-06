@@ -1,11 +1,11 @@
 # Beleidskompas
 
-Deze map bevat de broncode van de n8n-workflows van Beleidskompas: de hoofdagent, die elk bericht ontvangt en doorstuurt, en de stappen, die de inhoud leveren.
+Deze map bevat de broncode van de n8n-workflows van Beleidskompas: de orchestrator, die elk bericht ontvangt en doorstuurt, en de stappen, die de inhoud leveren.
 
 | Bestand | Wat erin staat |
 |---|---|
-| `main-agent.js` | De hoofdagent: controleert het token, beantwoordt het titelverzoek van LibreChat, haalt het bericht van de pagina uit elkaar en stuurt het naar de juiste stap. |
-| `shared.js` | Wat de hoofdagent en de stappen delen: het token lezen, HTTP-verzoeken, de aanroep van het taalmodel, bronnen scoren, het bronnenblok in een chatbericht, het titelverzoek, en `runStep`, dat een stap uitvoert. |
+| `orchestrator.js` | De orchestrator: controleert het token, beantwoordt het titelverzoek van LibreChat, haalt het bericht van de pagina uit elkaar en stuurt het naar de juiste stap. |
+| `shared.js` | Wat de orchestrator en de stappen delen: het token lezen, HTTP-verzoeken, de aanroep van het taalmodel, bronnen scoren, het bronnenblok in een chatbericht, het titelverzoek, en `runStep`, dat een stap uitvoert. |
 | `steps/step1.js` … `steps/step4.js` | De structuur van een stap: welke deelstappen er zijn en welk promptbestand bij elke deelstap hoort. |
 | `prompts/` | De teksten voor het taalmodel, als gewone tekstbestanden: het sjabloon van de systeemprompt voor het uitwerken (`system-prompt.md`) en voor een gesprek over een deelstap (`conversation-prompt.md`), de regels die voor elke stap gelden (`rules.md`), en per stap een map met de rol van het model (`role.md`) en één bestand per deelstap. |
 | `fixtures/` | Een voorbeeldcasus en de bronfragmenten die een stap doorzoekt. |
@@ -17,22 +17,22 @@ n8n leest alleen workflow-bestanden (JSON), met de code als tekst in een Code no
 
 | Workflow | Gemaakt uit |
 |---|---|
-| `beleidskompas-hoofdagent.json` | `main-agent.js`, plus wat het gebruikt uit `shared.js` |
+| `beleidskompas-orchestrator.json` | `orchestrator.js`, plus wat het gebruikt uit `shared.js` |
 | `beleidskompas-step-stap1.json`, `-stap2.json`, … | Eén workflow per bestand in `steps/`: de stapdefinitie met de teksten uit `prompts/`, plus wat die gebruikt uit `shared.js` en de bestanden in `fixtures/` |
 | `overlay/src/apps/beleidskompas/steps.json` | De lijst van stappen en deelstappen (id, nummer, titel) voor de Beleidskompas-pagina, uit dezelfde stapdefinities |
 
 Wijzig die workflow-bestanden niet met de hand en niet in n8n: het script maakt ze bij elke uitvoering volledig opnieuw aan, waardoor zulke wijzigingen verloren gaan. Een wijziging hoort in de broncode in deze map.
 
-## De hoofdagent
+## De orchestrator
 
-De hoofdagent is de webhook achter het Beleidskompas-endpoint van LibreChat. Elk bericht van de Beleidskompas-pagina komt daar binnen. In volgorde:
+De orchestrator is de webhook achter het Beleidskompas-endpoint van LibreChat. Elk bericht van de Beleidskompas-pagina komt daar binnen. In volgorde:
 
 1. **Token.** Het token van de aanroeper wordt vergeleken met `BELEIDSKOMPAS_N8N_WEBHOOK_TOKEN` (of `N8N_WEBHOOK_TOKEN`). Klopt het niet, dan komt er `ok: false` terug en gebeurt er verder niets.
-2. **Titelverzoek.** LibreChat vraagt via hetzelfde endpoint om een korte gesprekstitel; dat verzoek is te herkennen aan de markering in `titlePrompt` in `librechat.yaml`. De hoofdagent maakt die titel zelf, zonder een stap aan te roepen.
-3. **Bericht uit elkaar halen.** De pagina kan alleen tekst sturen en zet daarom alles in één bericht, met een label aan het begin van elk deel: `Deelstap:` (of `Stap:` voor een hele stap), `Casus:` (de casus zoals de gebruiker die beschreef), `Eerdere bevindingen:` (de uitwerkingen tot nu toe), `Gesprek:` (het gesprek over deze deelstap) en `Bericht:` (wat de gebruiker zojuist typte). De hoofdagent knipt het bericht op die labels in losse delen. Een deelstap noemt ook haar stap: `1.3` hoort bij `stap1`.
+2. **Titelverzoek.** LibreChat vraagt via hetzelfde endpoint om een korte gesprekstitel; dat verzoek is te herkennen aan de markering in `titlePrompt` in `librechat.yaml`. De orchestrator maakt die titel zelf, zonder een stap aan te roepen.
+3. **Bericht uit elkaar halen.** De pagina kan alleen tekst sturen en zet daarom alles in één bericht, met een label aan het begin van elk deel: `Deelstap:` (of `Stap:` voor een hele stap), `Casus:` (de casus zoals de gebruiker die beschreef), `Eerdere bevindingen:` (de uitwerkingen tot nu toe), `Gesprek:` (het gesprek over deze deelstap) en `Bericht:` (wat de gebruiker zojuist typte). De orchestrator knipt het bericht op die labels in losse delen. Een deelstap noemt ook haar stap: `1.3` hoort bij `stap1`.
 4. **Doorsturen.** De delen gaan als velden (`step_id`, `substep_id`, `case_text`, `findings`, `conversation`, `message`) naar de webhook van de stap (`beleidskompas-step-<stap>`), met het token van de aanroeper. Het antwoord van de stap gaat ongewijzigd terug. De stappen hoeven zo niets te weten van hoe de pagina haar bericht opmaakt.
 
-Wordt er geen stap herkend (alleen `stap1` tot en met `stap4` gelden), dan wordt het bericht niet beantwoord: de hoofdagent geeft `ok: false` terug met een leesbare melding in het tekstveld, zodat die in de chat verschijnt. Er is bewust geen standaardstap. Een antwoord van de verkeerde stap zou op de pagina ongemerkt onder de actieve stap terechtkomen.
+Wordt er geen stap herkend (alleen `stap1` tot en met `stap4` gelden), dan wordt het bericht niet beantwoord: de orchestrator geeft `ok: false` terug met een leesbare melding in het tekstveld, zodat die in de chat verschijnt. Er is bewust geen standaardstap. Een antwoord van de verkeerde stap zou op de pagina ongemerkt onder de actieve stap terechtkomen.
 
 ## Een stap
 

@@ -87,7 +87,7 @@ export async function sendBeleidskompasFeedback({ rating, comment, stepId }) {
  *  everything a request needs is composed into one labeled text: the
  *  substep, the case, the reports so far, the conversation about the
  *  substep and the message the user typed (each only when there is one).
- *  The main agent takes it apart on these labels. A typed message means a
+ *  The orchestrator takes it apart on these labels. A typed message means a
  *  conversation turn. Without one, Beleidskompas writes the report of the
  *  substep. */
 export function composePrompt({ substep, caseText, findings, conversation, message }) {

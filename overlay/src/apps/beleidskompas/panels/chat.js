@@ -99,9 +99,9 @@ export function setupChat(store) {
     }
   }
 
-  /** Sends one composed message to the main agent and waits for the
+  /** Sends one composed message to the orchestrator and waits for the
    *  answer. */
-  async function requestHoofdagent(text) {
+  async function requestOrchestrator(text) {
     const result = await sendBeleidskompasChatMessage({
       text,
       conversationId: state.conversationId,
@@ -164,7 +164,7 @@ export function setupChat(store) {
 
     const conversationIdBeforeRequest = state.conversationId;
     try {
-      const result = await requestHoofdagent(text);
+      const result = await requestOrchestrator(text);
       store.updateMessage(pendingMessage, {
         pending: false,
         text: String(result.answer || "").trim(),

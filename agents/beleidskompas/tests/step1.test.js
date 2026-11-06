@@ -209,7 +209,7 @@ test('runStep text field carries the same citations as the structured citations 
     const parsed = parseCitationsMetaBlock(result.text);
     assert.deepEqual(parsed.citations, result.citations);
     assert.deepEqual(parsed.retrieval_trace, result.retrieval_trace);
-    // The clean `answer` field (used by direct/hoofdagent JSON consumers)
+    // The clean `answer` field (used by direct/orchestrator JSON consumers)
     // never carries the meta block.
     assert.equal(result.answer, parsed.displayText);
   });
@@ -230,7 +230,7 @@ test('runStep returns a clear ok:false error for a wrong webhook token (never th
   assert.match(result.error, /Unauthorized webhook token/);
 });
 
-test('runStep accepts the request the main agent sends (case_text, findings, Authorization bearer)', async () => {
+test('runStep accepts the request the orchestrator sends (case_text, findings, Authorization bearer)', async () => {
   await withModelReply(modelReply(), async (baseUrl) => {
   const result = await runStep(STEP, {
     input: {

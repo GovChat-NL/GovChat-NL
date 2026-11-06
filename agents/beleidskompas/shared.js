@@ -5,7 +5,7 @@
  * sending HTTP requests and calling the language model through LiteLLM,
  * scoring the source passages, the citations block that travels with a
  * chat message, and LibreChat's conversation-title request. The step
- * definitions in steps/ and main-agent.js build on these; generate-workflow.js
+ * definitions in steps/ and orchestrator.js build on these; generate-workflow.js
  * copies the functions a workflow needs into its Code node.
  */
 
@@ -199,7 +199,7 @@ function selectSources(passages, queryBlob, ragSettings) {
 // (beleidskompas-api.js in the overlay has a matching parser) for the
 // citation-preview UI. The `answer`/`structured`/`citations` fields
 // returned by runStep1 stay clean (used as-is by direct webhook callers
-// and the hoofdagent JSON response).
+// and the orchestrator JSON response).
 
 const CITATIONS_META_MARKER = 'BELEIDSKOMPAS-META';
 const CITATIONS_META_LABEL = 'beleidskompas-meta';
@@ -668,7 +668,7 @@ function parseAgentJson(rawText, step) {
 /** What the Code node of every step workflow runs.
  *
  *  `step` is the step's definition (see steps/): its id, number, title,
- *  role sentence and substeps. `ctx.input` is the request as the main agent
+ *  role sentence and substeps. `ctx.input` is the request as the orchestrator
  *  sends it (`$json`: body with case_text, findings, conversation, message
  *  and, when one substep is asked for, substep_id, plus headers), `ctx.env`
  *  the settings from `$env`, `ctx.passages` the source passages to search,

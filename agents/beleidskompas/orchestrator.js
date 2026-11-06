@@ -1,10 +1,10 @@
 'use strict';
 
 /**
- * The Beleidskompas main agent (the "hoofdagent" workflow in n8n).
+ * The Beleidskompas orchestrator (the "orchestrator" workflow in n8n).
  *
  * Every chat message for the Beleidskompas endpoint arrives here first,
- * through the n8n-openai-bridge. The main agent does not answer anything
+ * through the n8n-openai-bridge. The orchestrator does not answer anything
  * about a case itself: it checks the caller's token, takes the message apart
  * into the parts the page composed it from (step or substep, case, findings
  * so far, conversation, message)
@@ -15,7 +15,7 @@
  * belongs to no step.
  *
  * generate-workflow.js copies these functions, with the ones they use from
- * shared.js, into the Code node of beleidskompas-hoofdagent.json, so the
+ * shared.js, into the Code node of beleidskompas-orchestrator.json, so the
  * code that runs in n8n is this code.
  */
 
@@ -122,7 +122,7 @@ async function forwardToStep({ baseUrl, path, stepId, body, callerToken, timeout
   });
 }
 
-/** What the Code node of the hoofdagent workflow runs, from start to end.
+/** What the Code node of the orchestrator workflow runs, from start to end.
  *
  *  `input` is the incoming request as n8n hands it over (`$json`: the
  *  request's `body` and `headers`), `env` holds the settings read from
@@ -130,7 +130,7 @@ async function forwardToStep({ baseUrl, path, stepId, body, callerToken, timeout
  *  the token, answer a title request, take the message apart and read the
  *  step from it, send the parts to that step. The returned object is what
  *  the workflow responds with. */
-async function runMainAgent(ctx) {
+async function runOrchestrator(ctx) {
   const { input, env, fetchImpl, httpModule, httpsModule, urlModule } = ctx;
   const raw = input || {};
   const body = raw.body || {};
@@ -183,5 +183,5 @@ module.exports = {
   determineStep,
   buildStepRequest,
   forwardToStep,
-  runMainAgent,
+  runOrchestrator,
 };
