@@ -1,0 +1,129 @@
+[
+  {
+    "id": "govchat-utility-holidays",
+    "name": "GovChat holidays utility",
+    "active": true,
+    "nodes": [
+      {
+        "id": "trigger",
+        "name": "Utility Input",
+        "type": "n8n-nodes-base.executeWorkflowTrigger",
+        "typeVersion": 1.1,
+        "position": [
+          0,
+          0
+        ],
+        "parameters": {
+          "inputSource": "workflowInputs",
+          "workflowInputs": {
+            "values": [
+              {
+                "name": "request",
+                "type": "string"
+              }
+            ]
+          }
+        }
+      },
+      {
+        "id": "prepare",
+        "name": "Prepare Utility Request",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          220,
+          0
+        ],
+        "parameters": {
+          "jsCode": "const input = $json || {};\nconst raw = input.request;\nif (typeof raw !== 'string' || Buffer.byteLength(raw, 'utf8') > 16384) throw new Error('request moet een JSON-string van maximaal 16 KiB zijn');\nlet request;\ntry { request = JSON.parse(raw); } catch { throw new Error('request bevat ongeldige JSON'); }\nif (!request || typeof request !== 'object' || Array.isArray(request)) throw new Error('request moet een JSON-object bevatten');\nconst token = String($env.CRAWLER_INTERNAL_TOKEN || $env.N8N_WEBHOOK_TOKEN || '').trim();\nif (!token) throw new Error('Interne utility-tool authenticatie ontbreekt');\nconst base = String($env.CRAWLER_ADMIN_BASE_URL || 'http://govchat-overlay-admin:3002').replace(/\\/$/, '');\nreturn [{json:{request,token,url:base + '/api/orchestrator/tools/holidays'}}];"
+        }
+      },
+      {
+        "id": "http",
+        "name": "Call Internal Utility",
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.2,
+        "position": [
+          440,
+          0
+        ],
+        "parameters": {
+          "method": "POST",
+          "url": "={{ $json.url }}",
+          "sendHeaders": true,
+          "headerParameters": {
+            "parameters": [
+              {
+                "name": "Authorization",
+                "value": "={{ 'Bearer ' + $json.token }}"
+              }
+            ]
+          },
+          "sendBody": true,
+          "specifyBody": "json",
+          "jsonBody": "={{ JSON.stringify($json.request) }}",
+          "options": {
+            "timeout": 50000,
+            "response": {
+              "response": {
+                "responseFormat": "json",
+                "neverError": true
+              }
+            }
+          }
+        }
+      },
+      {
+        "id": "response",
+        "name": "Return Utility Result",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          660,
+          0
+        ],
+        "parameters": {
+          "jsCode": "if (!$json || typeof $json.ok !== 'boolean') throw new Error('Utility-backend gaf een ongeldig antwoord');\nreturn [{json:{response:JSON.stringify($json)}}];"
+        }
+      }
+    ],
+    "connections": {
+      "Utility Input": {
+        "main": [
+          [
+            {
+              "node": "Prepare Utility Request",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Prepare Utility Request": {
+        "main": [
+          [
+            {
+              "node": "Call Internal Utility",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Call Internal Utility": {
+        "main": [
+          [
+            {
+              "node": "Return Utility Result",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      }
+    },
+    "settings": {
+      "executionOrder": "v1"
+    }
+  }
+]

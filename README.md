@@ -22,6 +22,12 @@ Wanneer een n8n-agent tijdens een gesprek een hulpmiddel gebruikt, toont LibreCh
 
 De architectuur en controlepunten staan in de uitleg over [live aanroepen van hulpmiddelen](docs/live-tool-calling.md).
 
+De standaard orkestrator heeft ook vijf afzonderlijk configureerbare hulpmiddelen:
+de standaard n8n-rekenmachine, NOS- en L1-nieuws per RSS-categorie, feestdagen via
+OpenHolidays API en tijd-/datumrekenen met tijdzones en zomer-/wintertijd.
+Ze staan standaard aan en worden beheerd via de Orchestrator-pagina van het
+beheerportaal. Zie [configuratie, ingebruikname en tests](docs/orchestrator-utility-tools.md).
+
 ## Verbonden systemen
 
 | Systeem | Rol binnen GovChat-NL |

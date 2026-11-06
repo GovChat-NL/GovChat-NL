@@ -570,10 +570,15 @@ services:
       PUBLIC_BASE_URL: ${PUBLIC_BASE_URL}
       CRAWLER_ADMIN_BASE_URL: ${CRAWLER_ADMIN_BASE_URL:-http://govchat-overlay-admin:3002}
       CRAWLER_INTERNAL_TOKEN: ${CRAWLER_INTERNAL_TOKEN:-${N8N_WEBHOOK_TOKEN}}
+      N8N_ORCHESTRATOR_POLICY_FILE: /govchat-config/orchestrator-config.json
     volumes:
       - n8n-data:/home/node/.n8n
       - ${GOVCHAT_DATA_ROOT:-/opt/librechat}/logs/n8n:/var/log/n8n
       - ${GOVCHAT_DATA_ROOT:-/opt/librechat}/images:/shared-images
+      # Directory mount is necessary: the admin atomically renames its policy file.
+      - ${GOVCHAT_DATA_ROOT:-/opt/librechat}/overlay/publish:/govchat-config:ro
+      - ./scripts/n8n-orchestrator-tool-policy.js:/opt/govchat/n8n-orchestrator-tool-policy.js:ro
+      - ./scripts/n8n-toolCalculator.patched.js:/usr/local/lib/node_modules/n8n/node_modules/.pnpm/@n8n+n8n-nodes-langchain@file+packages+@n8n+nodes-langchain_8bf81e0cdf1fe65cc684d3daaa3ca5c1/node_modules/@n8n/n8n-nodes-langchain/dist/nodes/tools/ToolCalculator/ToolCalculator.node.js:ro
       - ./scripts/n8n-createAgentSequence.patched.js:/usr/local/lib/node_modules/n8n/node_modules/.pnpm/@n8n+n8n-nodes-langchain@file+packages+@n8n+nodes-langchain_8bf81e0cdf1fe65cc684d3daaa3ca5c1/node_modules/@n8n/n8n-nodes-langchain/dist/nodes/agents/Agent/agents/ToolsAgent/V3/helpers/createAgentSequence.js:ro
       - ./scripts/n8n-processEventStream.patched.js:/usr/local/lib/node_modules/n8n/node_modules/.pnpm/@n8n+n8n-nodes-langchain@file+packages+@n8n+nodes-langchain_8bf81e0cdf1fe65cc684d3daaa3ca5c1/node_modules/@n8n/n8n-nodes-langchain/dist/utils/agent-execution/processEventStream.js:ro
     healthcheck:
@@ -623,6 +628,8 @@ services:
       N8N_RUNNERS_AUTH_TOKEN: ${N8N_RUNNERS_AUTH_TOKEN}
       # Nodig voor Code node gebruik van $env.* in runner context
       N8N_BLOCK_ENV_ACCESS_IN_NODE: "false"
+      CRAWLER_ADMIN_BASE_URL: ${CRAWLER_ADMIN_BASE_URL:-http://govchat-overlay-admin:3002}
+      CRAWLER_INTERNAL_TOKEN: ${CRAWLER_INTERNAL_TOKEN:-${N8N_WEBHOOK_TOKEN}}
       NODE_FUNCTION_ALLOW_BUILTIN: fs,path,crypto,http,https,url
       LITELLM_URL: ${LITELLM_URL}
       LITELLM_API_KEY: ${LITELLM_API_KEY}
@@ -907,6 +914,12 @@ services:
       - CRAWLER_N8N_WEBHOOK_URL=${CRAWLER_N8N_WEBHOOK_URL:-http://n8n:5678/webhook/govcrawler-run}
       - CRAWLER_N8N_WEBHOOK_TOKEN=${CRAWLER_N8N_WEBHOOK_TOKEN:-${N8N_WEBHOOK_TOKEN}}
       - CRAWLER_INTERNAL_TOKEN=${CRAWLER_INTERNAL_TOKEN:-${N8N_WEBHOOK_TOKEN}}
+      - N8N_ORCHESTRATOR_ENABLE_CALCULATOR=${N8N_ORCHESTRATOR_ENABLE_CALCULATOR:-true}
+      - N8N_ORCHESTRATOR_ENABLE_NOS_NEWS=${N8N_ORCHESTRATOR_ENABLE_NOS_NEWS:-true}
+      - N8N_ORCHESTRATOR_ENABLE_L1_NEWS=${N8N_ORCHESTRATOR_ENABLE_L1_NEWS:-true}
+      - N8N_ORCHESTRATOR_ENABLE_HOLIDAYS=${N8N_ORCHESTRATOR_ENABLE_HOLIDAYS:-true}
+      - N8N_ORCHESTRATOR_ENABLE_TIME=${N8N_ORCHESTRATOR_ENABLE_TIME:-true}
+      - N8N_ORCHESTRATOR_DEFAULT_TIMEZONE=${N8N_ORCHESTRATOR_DEFAULT_TIMEZONE:-Europe/Amsterdam}
       - CRAWLER_RUNS_LIMIT=${CRAWLER_RUNS_LIMIT:-200}
       - CRAWLER_EMBEDDING_MODEL=${CRAWLER_EMBEDDING_MODEL:-govchat-embedding}
       - REALTIME_STT_TOKEN=${REALTIME_STT_TOKEN:-${N8N_WEBHOOK_TOKEN}}

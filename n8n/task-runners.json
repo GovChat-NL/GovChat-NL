@@ -24,6 +24,8 @@
         "DEPLOYMENT_NAME",
         "HOME",
         "N8N_WEBHOOK_TOKEN",
+        "CRAWLER_ADMIN_BASE_URL",
+        "CRAWLER_INTERNAL_TOKEN",
         "LITELLM_URL",
         "LITELLM_API_KEY"
       ],
