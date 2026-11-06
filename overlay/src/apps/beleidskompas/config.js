@@ -108,7 +108,7 @@ function buildSteps(cfg) {
           nr: idx + 1,
           title: String(step?.title || fb.title || `Stap ${idx + 1}`).trim(),
           short: String(step?.description || fb.short || "").trim() || fb.short,
-          info: String(step?.prompt || step?.description || fb.info || "").trim() || fb.info,
+          info: String(step?.description || fb.info || "").trim() || fb.info,
           help: substeps.length
             ? substeps.map((s) => String(s?.title || "").trim()).filter(Boolean)
             : fb.help,

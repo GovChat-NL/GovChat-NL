@@ -60,8 +60,8 @@ export function openStepInfo(step) {
         <button type="button" class="gc-bk-doc-close" aria-label="Sluiten">✕</button>
       </div>
       <div class="gc-bk-doc-body is-rich">
-        <h5>Waar gaat deze stap over?</h5>
-        <p>${escapeHTML(step.info || "-")}</p>
+        ${step.info === step.short ? "" : `<h5>Waar gaat deze stap over?</h5>
+        <p>${escapeHTML(step.info || "-")}</p>`}
         <h5>Checkvragen</h5>
         ${list(step.help)}
         <h5>Diepere vragen</h5>
