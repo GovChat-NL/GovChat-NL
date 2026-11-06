@@ -3,7 +3,7 @@
 
 COMPOSE := docker compose
 
-.PHONY: help env up up-n8n down logs reload-workflows rebuild-admin check test-beleidskompas generate-workflows
+.PHONY: help env up up-n8n down logs reload-workflows rebuild rebuild-admin check test-beleidskompas generate-workflows
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z0-9_-]+:.*## ' $(MAKEFILE_LIST) | sed -E 's/:.*## /: /' | sort
@@ -27,6 +27,13 @@ reload-workflows: ## Re-import and publish the workflows from agents/n8n/workflo
 	AGENTS_BOOTSTRAP_FORCE=true $(COMPOSE) up -d --force-recreate n8n-bootstrap
 	$(COMPOSE) wait n8n-bootstrap
 	$(COMPOSE) restart n8n
+
+rebuild: generate-workflows ## Regenerate the workflows, rebuild the images and restart the whole stack with the workflows re-imported (keeps the data)
+	$(COMPOSE) down
+	AGENTS_BOOTSTRAP_FORCE=true $(COMPOSE) up -d --build
+	$(COMPOSE) wait n8n-bootstrap
+	$(COMPOSE) restart n8n
+	$(COMPOSE) ps
 
 rebuild-admin: ## Rebuild and restart the overlay admin
 	$(COMPOSE) up -d --build govchat-overlay-admin
