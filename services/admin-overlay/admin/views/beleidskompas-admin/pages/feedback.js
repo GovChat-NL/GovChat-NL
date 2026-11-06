@@ -18,7 +18,7 @@ export function renderFeedback({ store, render }) {
   if (!store.feedback) {
     api
       .listFeedback(store.templates)
-      .then((items) => { store.feedback = items; render(); })
+      .then((items) => { store.feedback = items; store.feedbackError = null; render(); })
       .catch((err) => { store.feedback = []; store.feedbackError = err.message; render(); });
     return { subtitle: "Alle templates", content: h("p", { class: "muted" }, "Feedback laden…") };
   }
