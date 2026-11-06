@@ -1,4 +1,0 @@
-/* Preserve the disabled state even when upstream styles set display. */
-[data-govchat-disclaimer][hidden] {
-  display: none !important;
-}

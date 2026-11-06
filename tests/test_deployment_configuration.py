@@ -81,6 +81,22 @@ class ComposeConfigurationTests(unittest.TestCase):
         defaults = self.config("docker-compose.override.yml")["services"]
         self.assertEqual(defaults["librechat"]["environment"]["GOVCHAT_MINIMAL_UI"], "false")
 
+    def test_native_footer_default_override_empty_and_minimal_ui(self):
+        warning = "GovChat-NL kan fouten maken. Controleer belangrijke informatie."
+        for minimal in ("false", "true"):
+            defaults = self.config("docker-compose.override.yml", GOVCHAT_MINIMAL_UI=minimal)
+            self.assertEqual(defaults["services"]["librechat"]["environment"]["CUSTOM_FOOTER"], warning)
+        cases = [
+            ({"APP_TITLE": "Voorbeeld Chat"}, "Voorbeeld Chat kan fouten maken. Controleer belangrijke informatie."),
+            ({"CUSTOM_FOOTER": "Eigen waarschuwing | Controleer bronnen"}, "Eigen waarschuwing | Controleer bronnen"),
+            ({"CUSTOM_FOOTER": ""}, ""),
+            ({"CUSTOM_FOOTER": "<b>letterlijk</b>\nTweede regel"}, "<b>letterlijk</b>\nTweede regel"),
+        ]
+        for settings, expected in cases:
+            with self.subTest(settings=settings):
+                config = self.config(**settings)
+                self.assertEqual(config["services"]["librechat"]["environment"]["CUSTOM_FOOTER"], expected)
+
     def test_sso_policy_is_coherent_even_with_dev_seeder_enabled(self):
         config = self.config("docker-compose.override.yml", "docker-compose.sso-only.yml",
                              DEV_SEED_ADMIN_ENABLED="true", ALLOW_EMAIL_LOGIN="true",
@@ -207,7 +223,6 @@ class ProxyIntegrationTests(unittest.TestCase):
             ("nginx/trusted-proxies.conf", "/etc/nginx/trusted-proxies.conf"),
             ("nginx/trusted-proxies.geo", "/etc/nginx/trusted-proxies.geo"),
             ("overlay/minimal.css", "/opt/govchat/minimal.css"),
-            ("overlay/defaults", "/opt/librechat/overlay/publish"),
         ):
             source_path = ROOT / source
             if trust_directory and source.startswith("nginx/trusted-proxies."):
@@ -238,8 +253,6 @@ class ProxyIntegrationTests(unittest.TestCase):
         self.assertIn("$govchat_admin_upstream", config)
         self.assertNotIn("${GOVCHAT_SERVER_NAMES}", config)
         self.assertIn('/govchat-overlay/loader.js', config)
-        self.assertIn('/govchat-overlay/chat-disclaimer.js', config)
-        self.assertIn('/govchat-overlay/chat-disclaimer.css', config)
         self.assertNotIn('${GOVCHAT_UI_HEAD}', config)
         self.assertEqual(self.request(proxy, "/api/auth/login")[0], 200)
         self.assertEqual(self.request(proxy, host="chat.example.org")[0], 200)
@@ -316,16 +329,10 @@ class ProxyIntegrationTests(unittest.TestCase):
         config = command("docker", "exec", proxy, "cat", "/etc/nginx/conf.d/default.conf").stdout
         self.assertIn('minimal.css?v=1', config)
         self.assertNotIn('/govchat-overlay/loader.js', config)
-        self.assertIn('/govchat-overlay/chat-disclaimer.js', config)
-        self.assertIn('/govchat-overlay/chat-disclaimer.css', config)
         self.assertNotIn('${GOVCHAT_UI_HEAD}', config)
         status, css = self.request(proxy, '/govchat-overlay/minimal.css')
         self.assertEqual(status, 200)
         self.assertIn('#tools-dropdown-button', css)
-        status, script = self.request(proxy, '/govchat-overlay/chat-disclaimer.js')
-        self.assertEqual(status, 200)
-        self.assertIn('kan fouten maken. Controleer belangrijke informatie.', script)
-        self.assertNotIn('createButtons', script)
         command("docker", "exec", proxy, "nginx", "-t")
 
     def test_invalid_values_fail_closed_without_config_injection(self):

@@ -327,7 +327,7 @@ function ensureDataDir() {
 
 function initDefaults() {
   ensureDataDir();
-  const jsonDefaults = ["help-content.json", "apps.json", "crawler-config.json", "orchestrator-config.json", "ui-config.json"];
+  const jsonDefaults = ["help-content.json", "apps.json", "crawler-config.json", "orchestrator-config.json"];
   for (const file of jsonDefaults) {
     const target = path.join(DATA_DIR, file);
     if (!fs.existsSync(target)) {
@@ -350,7 +350,7 @@ function initDefaults() {
 
   // Keep runtime assets in sync with repository defaults on each start.
   // This prevents stale loader/custom.css from old named volumes.
-  const runtimeAssets = ["loader.js", "custom.css", "chat-disclaimer.js", "chat-disclaimer.css"];
+  const runtimeAssets = ["loader.js", "custom.css"];
   for (const file of runtimeAssets) {
     const source = path.join(__dirname, "defaults", file);
     const target = path.join(DATA_DIR, file);
@@ -1130,7 +1130,6 @@ function publishOrchestratorConfig() {
 function publishAll() {
   // This shared policy must always be complete and replaced atomically, never copied raw.
   publishOrchestratorConfig();
-  atomicWriteJSON(PUBLISH_DIR, "ui-config.json", readUIConfig());
   const jsonFiles = ["help-content.json", "apps.json"];
   for (const file of jsonFiles) {
     const data = readJSON(file);
@@ -1138,14 +1137,10 @@ function publishAll() {
   }
   const bkState = readBeleidskompasState();
   publishBeleidskompasLiveConfig(bkState.live || bkState.draft || defaultBeleidskompasFlow());
-  const rawFiles = ["loader.js", "custom.css", "chat-disclaimer.js", "chat-disclaimer.css"];
+  const rawFiles = ["loader.js", "custom.css"];
   for (const file of rawFiles) {
     publishFileRaw(file);
   }
-}
-
-function readUIConfig() {
-  return { showChatDisclaimer: readJSON("ui-config.json")?.showChatDisclaimer !== false };
 }
 
 function readCrawlerConfig() {
@@ -2467,11 +2462,6 @@ function sendView(res, name, vars = {}) {
 }
 
 // ── Public API endpoints (no auth) ────────────────────────────────
-app.get("/api/config/ui", (req, res) => {
-  res.set("Cache-Control", "no-store");
-  res.json(readUIConfig());
-});
-
 registerNameRoutes(app, {
   store: createNameStore({ dataDir: DATA_DIR, publishDir: PUBLISH_DIR }),
   isAuthenticated,
@@ -2672,7 +2662,6 @@ app.get("/dashboard", requireAuth, (req, res) => {
     ? beleidskompasState.documents.length
     : 0;
   sendView(res, "dashboard.html", {
-    chatDisclaimerChecked: readUIConfig().showChatDisclaimer ? "checked" : "",
     helpSections: String(helpSections),
     appCount: String(appCount),
     crawlerSources: String(crawlerConfig?.sources?.filter((s) => s?.enabled !== false).length || 0),
@@ -2720,20 +2709,6 @@ app.get("/beleidskompas-editor", requireAuth, (req, res) => {
 });
 
 // ── Admin API endpoints (auth required) ────────────────────────────
-app.post("/api/config/ui", requireAuth, (req, res) => {
-  if (typeof req.body?.showChatDisclaimer !== "boolean") {
-    return res.status(400).json({ error: "showChatDisclaimer moet een boolean zijn" });
-  }
-  try {
-    const config = { showChatDisclaimer: req.body.showChatDisclaimer };
-    atomicWriteJSON(DATA_DIR, "ui-config.json", config);
-    atomicWriteJSON(PUBLISH_DIR, "ui-config.json", config);
-    return res.json({ ok: true, config });
-  } catch (err) {
-    return res.status(500).json({ error: err.message });
-  }
-});
-
 app.post("/api/config/help-content", requireAuth, (req, res) => {
   try {
     writeJSON("help-content.json", req.body);
@@ -3455,7 +3430,6 @@ realtimeWss.on("connection", (clientWs, req) => {
 initDefaults();
 // Publish policy before accepting requests (publishAll refreshes it again after startup).
 publishOrchestratorConfig();
-atomicWriteJSON(PUBLISH_DIR, "ui-config.json", readUIConfig());
 loadPersistedImageJobs();
 setInterval(cleanupImageJobs, 10 * 60 * 1000);
 setImmediate(pumpImageJobs);
