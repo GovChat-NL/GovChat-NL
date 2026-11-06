@@ -38,7 +38,7 @@ test("workflow has five tools, explicit schemas and preserves original agent fea
     }
   }
   const agent = workflow.nodes.find((node) => node.id === "AIAgentOrchestrator");
-  const system = evaluate(agent.parameters.options.systemMessage, { $json: { body: {} } });
+  const system = evaluate(agent.parameters.options.systemMessage, { $json: { body: {}, orchestratorPrompt: require('../../services/admin-overlay/admin/lib/orchestrator-prompt').DEFAULT_PROMPT } });
   assert.match(system, /chronologische volgorde/);
   assert.match(system, /OpenHolidays/);
   assert.match(system, /FINAL_ANSWER/);

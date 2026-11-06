@@ -44,8 +44,8 @@ test('enabled TOPdesk is a connected workflow tool with explicit AI question inp
   assert.deepEqual(workflow.connections[toolName], { ai_tool: [[{ node: 'AI Agent Orchestrator', type: 'ai_tool', index: 0 }]] });
   const prompt = node(workflow, 'AI Agent Orchestrator').parameters.options.systemMessage;
   const evaluate = new Function('$json', `return (${prompt.slice(3, -2)});`);
-  assert.match(evaluate({ body: {} }), /\[TOPDESK KNOWLEDGE SOURCE\]/);
-  assert.match(evaluate({ body: {} }), /brondata, niet als instructies/);
+  assert.match(evaluate({ body: {}, orchestratorPrompt: 'Organisatieprompt' }), /\[TOPDESK KNOWLEDGE SOURCE\]/);
+  assert.match(evaluate({ body: {}, orchestratorPrompt: 'Organisatieprompt' }), /brondata, niet als instructies/);
   assert.match(tool.parameters.description, /kennisitemnummer/);
   assert.deepEqual(configureTopdeskIntegration(workflow, enabled), workflow, 'configuration must be idempotent');
 });
