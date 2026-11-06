@@ -136,11 +136,8 @@ function stepEditor(step, { tpl, store, markDirty, render }) {
     h(
       "div",
       { class: "form-grid" },
-      // Read-only: workflow name, webhook path and feedback hang on this id. Renaming steps safely
-      // needs a fixed internal id first, with the name as a separate editable field.
-      field("Stap-id", bound(step, "id", { readOnly: true })),
-      field("Workflow-id", bound(step, "workflow_id", { onInput: markDirty })),
-      field("Webhook-pad", bound(step, "webhook_path", { onInput: markDirty })),
+      // Step id, workflow id and webhook path are not shown: they link the step to n8n and feedback.
+      // Editing them safely needs a fixed internal id first (private notes, ADMIN_UI_FUTURE_WORK.md §9).
       field("Aantal passages (top_k)", bound(step.rag, "top_k", { type: "number", onInput: markDirty })),
       field("Minimale score (0–1)", bound(step.rag, "min_score", { type: "number", onInput: markDirty })),
     ),
