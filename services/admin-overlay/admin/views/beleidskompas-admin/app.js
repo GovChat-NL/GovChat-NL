@@ -28,7 +28,7 @@ export const store = {
   dirty: false,
   documents: [],
   feedback: null,
-  ui: { folder: "__all", docId: null, stepId: null, fbTemplate: "all", fbPeriod: "30", fbFrom: "", fbTo: "" },
+  ui: { docId: null, stepId: null, fbTemplate: "all", fbPeriod: "30", fbFrom: "", fbTo: "" },
 };
 
 export const template = () => store.templates.find((t) => t.id === store.templateId) || store.templates[0];
