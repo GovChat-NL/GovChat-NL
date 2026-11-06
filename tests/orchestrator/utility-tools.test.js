@@ -302,14 +302,15 @@ test("authenticated handler rejects missing/bad token, disabled policy and calcu
   assert.equal(safeTokenEqual("secret-more", "secret"), false);
 });
 
-test("editor renders/persists all five booleans and timezone without losing image settings", () => {
+test("editor renders/persists all five booleans and timezone without losing image settings", async () => {
   const html = fs.readFileSync(path.join(__dirname, "../../services/admin-overlay/admin/views/orchestrator-editor.html"), "utf8");
   const elements = new Map();
-  for (const id of ["orchestrator-seed", "orchestratorImageDataUrlMaxChars", "orchestratorImageMaxResolutionPx", "orchestratorDefaultTimezone", ...Object.keys(config.tools).map((tool) => "tool-" + tool)]) elements.set(id, { value: "", checked: false, textContent: id === "orchestrator-seed" ? JSON.stringify({ ...config, tools: { ...config.tools, time: false } }) : "" });
+  for (const id of ["displayName", "nameSave", "nameReset", "nameStatus", "masterPrompt", "promptSave", "promptReset", "promptPreview", "promptStatus", "masterPromptPreview", "orchestrator-seed", "orchestratorImageDataUrlMaxChars", "orchestratorImageMaxResolutionPx", "orchestratorDefaultTimezone", ...Object.keys(config.tools).map((tool) => "tool-" + tool)]) elements.set(id, { value: "", checked: false, textContent: id === "orchestrator-seed" ? JSON.stringify({ ...config, tools: { ...config.tools, time: false } }) : "" });
   const document = { getElementById: (id) => elements.get(id) };
   const scripts = [...html.matchAll(/<script>([\s\S]*?)<\/script>/g)].map((match) => match[1]).join("\n");
-  const context = vm.createContext({ document });
+  const context = vm.createContext({ document, fetch: async url => ({ ok: true, json: async () => url.endsWith('/name') ? { display_name: 'Testnaam', source: 'default' } : ({ prompt: "Testprompt", source: "default" }) }) });
   vm.runInContext(scripts, context);
+  await vm.runInContext("loadPrompt()", context);
   assert.equal(elements.get("tool-time").checked, false);
   assert.equal(elements.get("tool-calculator").checked, true);
   elements.get("tool-nos_news").checked = false;

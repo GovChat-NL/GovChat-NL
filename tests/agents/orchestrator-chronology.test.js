@@ -5,10 +5,11 @@ const fs = require('node:fs');
 const path = require('node:path');
 const workflow = JSON.parse(fs.readFileSync(path.join(__dirname, '../../agents/n8n/workflows/orchestrator-litellm.json'), 'utf8'))[0];
 const expression = workflow.nodes.find(node => node.name === 'AI Agent Orchestrator').parameters.options.systemMessage;
+const { DEFAULT_PROMPT } = require('../../services/admin-overlay/admin/lib/orchestrator-prompt');
 
 function prompt(input) {
   assert.ok(expression.startsWith('={{ ') && expression.endsWith(' }}'));
-  return new Function('$json', 'return ' + expression.slice(3, -2))(input);
+  return new Function('$json', 'return ' + expression.slice(3, -2))({ ...input, orchestratorPrompt: DEFAULT_PROMPT });
 }
 
 test('prompt specifies chronology, yearly grouping, date provenance and unknown dates', () => {

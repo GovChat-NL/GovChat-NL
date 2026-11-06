@@ -55,9 +55,37 @@
   </div>
 </nav>
 
-<div class="breadcrumb"><a href="/dashboard">Dashboard</a> / Orchestrator multimodaal</div>
+<div class="breadcrumb"><a href="/dashboard">Dashboard</a> / Orchestrator</div>
 
 <div class="container">
+  <div class="card">
+    <h2>Chatweergavenaam</h2>
+    <p class="muted">Alleen een publiek label, geen model- of versieclaim. Model-ID en masterprompt blijven ongewijzigd.
+      Voorrang: beheerdersoverride → N8N_ORCHESTRATOR_DISPLAY_NAME → GovChat-standaard.
+      Opslaan werkt vanaf het volgende configuratieverzoek; herlaad de chatpagina. Reset verwijdert de override.</p>
+    <p id="nameStatus" role="status">Naam laden…</p>
+    <label for="displayName">Weergavenaam (maximaal 100 tekens platte tekst)</label>
+    <input id="displayName" type="text" maxlength="100" autocomplete="off" disabled>
+    <p>
+      <button id="nameSave" class="btn btn-primary" onclick="changeName('POST')" disabled>Naam opslaan</button>
+      <button id="nameReset" class="btn" onclick="changeName('DELETE')" disabled>Naamoverride verwijderen</button>
+    </p>
+  </div>
+  <div class="card">
+    <h2>Inhoudelijke masterprompt</h2>
+    <p class="muted">Voorrang: opgeslagen beheerdersoverride → omgevingsvariabele → GovChat-standaard.
+      Opslaan werkt vanaf het volgende verzoek. Omgevingswijzigingen vereisen hercreatie van de admin-container.
+      Reset verwijdert uitsluitend de override. Technische instructies en integraties blijven afzonderlijk behouden.</p>
+    <p id="promptStatus" role="status">Masterprompt laden…</p>
+    <label for="masterPrompt">Organisatie-instructies (maximaal 32.000 tekens)</label>
+    <textarea id="masterPrompt" rows="16" maxlength="32000" style="width:100%;box-sizing:border-box" disabled></textarea>
+    <p>
+      <button id="promptSave" class="btn btn-primary" onclick="changePrompt('POST')" disabled>Masterprompt opslaan</button>
+      <button id="promptReset" class="btn" onclick="changePrompt('DELETE')" disabled>Override verwijderen</button>
+      <button id="promptPreview" class="btn" onclick="previewPrompt()" disabled>Preview concept</button>
+    </p>
+    <pre id="masterPromptPreview" style="white-space:pre-wrap;overflow-wrap:anywhere" hidden></pre>
+  </div>
   <div class="card">
     <div class="top-bar">
       <h2>Multimodale invoerlimieten</h2>
@@ -98,6 +126,106 @@
 <script id="orchestrator-seed" type="application/json">{{orchestratorData}}</script>
 <script>
 let orchestratorData = {};
+let nameConfig;
+let nameBusy = false;
+function setNameBusy(busy) {
+  nameBusy = busy;
+  for (const id of ['displayName', 'nameSave', 'nameReset']) document.getElementById(id).disabled = busy || !nameConfig;
+}
+function renderName(config) {
+  nameConfig = config;
+  document.getElementById('displayName').value = config.display_name;
+  const sources = { admin: 'opgeslagen beheerdersoverride', environment: 'omgevingsvariabele', default: 'GovChat-standaard' };
+  document.getElementById('nameStatus').textContent = 'Actieve bron: ' + sources[config.source];
+}
+async function nameRequest(method, body) {
+  const response = await fetch('/api/orchestrator/name', {
+    method, cache: 'no-store', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' },
+    ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+  });
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error || 'Naamverzoek mislukt');
+  if (typeof data.display_name !== 'string' || !['admin', 'environment', 'default'].includes(data.source)) throw new Error('Ongeldige naamconfiguratie');
+  return data;
+}
+async function loadName() {
+  setNameBusy(true);
+  try { renderName(await nameRequest('GET')); }
+  catch (error) { document.getElementById('nameStatus').textContent = error.message; }
+  finally { setNameBusy(false); document.getElementById('nameReset').disabled = false; }
+}
+async function changeName(method) {
+  if (nameBusy) return;
+  if (method === 'DELETE' && !confirm('Naamoverride verwijderen en omgeving/GovChat-standaard gebruiken?')) return;
+  const display_name = document.getElementById('displayName').value;
+  if (method === 'POST' && (!display_name.trim() || display_name.length > 100 || /[\p{Cc}\p{Cf}\p{Cs}\p{Zl}\p{Zp}<>]/u.test(display_name))) {
+    return toast('Vul een geldige naam van maximaal 100 tekens platte tekst in', 'error');
+  }
+  setNameBusy(true);
+  try {
+    renderName(await nameRequest(method, method === 'POST' ? { display_name } : undefined));
+    toast(method === 'POST' ? 'Naam opgeslagen; herlaad de chatpagina' : 'Naamoverride verwijderd', 'success');
+  } catch (error) { toast(error.message, 'error'); }
+  finally { setNameBusy(false); document.getElementById('nameReset').disabled = false; }
+}
+let promptConfig;
+let promptBusy = false;
+function setPromptBusy(busy) {
+  promptBusy = busy;
+  for (const id of ['masterPrompt', 'promptSave', 'promptReset', 'promptPreview']) {
+    document.getElementById(id).disabled = busy || !promptConfig;
+  }
+}
+function renderPrompt(config) {
+  promptConfig = config;
+  document.getElementById('masterPrompt').value = config.prompt;
+  const sources = { admin: 'opgeslagen beheerdersoverride', environment: 'omgevingsvariabele', default: 'huidige GovChat-standaard' };
+  document.getElementById('promptStatus').textContent = 'Actieve bron: ' + sources[config.source];
+  document.getElementById('masterPromptPreview').hidden = true;
+}
+async function promptRequest(method, body) {
+  const response = await fetch('/api/orchestrator/prompt', {
+    method, cache: 'no-store', credentials: 'same-origin',
+    headers: { 'Content-Type': 'application/json' },
+    ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+  });
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error || 'Masterpromptverzoek mislukt');
+  if (typeof data.prompt !== 'string' || !['admin', 'environment', 'default'].includes(data.source)) {
+    throw new Error('Ongeldige masterpromptconfiguratie');
+  }
+  return data;
+}
+async function loadPrompt() {
+  setPromptBusy(true);
+  try { renderPrompt(await promptRequest('GET')); }
+  catch (error) {
+    document.getElementById('promptStatus').textContent = error.message + '. Geen vervangende prompt geladen.';
+    // Allow an explicit reset to repair corrupt private storage; do not silently substitute.
+    document.getElementById('promptReset').disabled = false;
+  }
+  finally {
+    setPromptBusy(false);
+    document.getElementById('promptReset').disabled = false;
+  }
+}
+async function changePrompt(method) {
+  if (promptBusy) return;
+  if (method === 'DELETE' && !confirm('Opgeslagen override verwijderen en de omgeving/GovChat-standaard gebruiken?')) return;
+  const text = document.getElementById('masterPrompt').value;
+  if (method === 'POST' && (!text.trim() || text.length > 32000)) return toast('Vul een niet-lege masterprompt van maximaal 32.000 tekens in', 'error');
+  setPromptBusy(true);
+  try {
+    renderPrompt(await promptRequest(method, method === 'POST' ? { prompt: text } : undefined));
+    toast(method === 'POST' ? 'Masterprompt opgeslagen; actief vanaf volgend verzoek' : 'Override verwijderd', 'success');
+  } catch (error) { toast(error.message, 'error'); }
+  finally { setPromptBusy(false); document.getElementById('promptReset').disabled = false; }
+}
+function previewPrompt() {
+  const preview = document.getElementById('masterPromptPreview');
+  preview.textContent = 'Concept (niet opgeslagen; technische instructies worden apart toegevoegd):\n\n' + document.getElementById('masterPrompt').value;
+  preview.hidden = false;
+}
 try {
   orchestratorData = JSON.parse(document.getElementById('orchestrator-seed')?.textContent || '{}');
 } catch {
@@ -152,6 +280,8 @@ function toast(msg, type) {
 }
 
 render();
+loadName();
+loadPrompt();
 </script>
 </body>
 </html>
