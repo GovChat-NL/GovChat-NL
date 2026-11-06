@@ -10,3 +10,7 @@
 /testdata/openbesluitvorming/
 **/__pycache__/
 *.py[cod]
+GLOSSARY.md
+DEFERRED_FIXES.md
+ADMIN_UI_FUTURE_WORK.md
+.DS_Store
