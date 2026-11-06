@@ -2,7 +2,7 @@
 // Each function is marked:
 //   WIRED: calls the admin server (server.js), the data is real.
 //   MOCK:  no backend yet; sample or in-memory data. The number points to
-//          docs/admin-ui-future-work.md, which says what is missing and which ADO item covers it.
+//          ADMIN_UI_FUTURE_WORK.md (local notes at the repo root), which says what is missing and which ADO item covers it.
 
 import { MOCK_TEMPLATES, REAL_TEMPLATE, mockAnswerText } from "./mock-data.js";
 
@@ -41,9 +41,6 @@ export const saveSettings = (settings) => request("POST", `${BASE}/settings`, se
 
 // WIRED: POST /api/beleidskompas/publish. Saves the flow and publishes it as a new version in one call.
 export const publishVersion = (flow, note) => request("POST", `${BASE}/publish`, { flow, note });
-
-// WIRED: POST /api/beleidskompas/rollback/:id
-export const rollback = (versionId) => request("POST", `${BASE}/rollback/${encodeURIComponent(versionId)}`);
 
 // WIRED: GET /api/beleidskompas/export (the whole state as JSON)
 export const exportUrl = () => `${BASE}/export`;
@@ -85,7 +82,7 @@ export function saveAsNewTemplate(name, flow) {
 export const listDocuments = () => request("GET", `${BASE}/documents`).then((d) => d.documents || []);
 
 // WIRED: POST /api/beleidskompas/documents (file sent as base64)
-export async function uploadDocument(file, tags = []) {
+export async function uploadDocument(file) {
   const contentBase64 = await new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = () => resolve(String(reader.result).split(",")[1] || "");
@@ -96,11 +93,10 @@ export async function uploadDocument(file, tags = []) {
     filename: file.name,
     mime_type: file.type || "application/octet-stream",
     content_base64: contentBase64,
-    tags,
   });
 }
 
-// WIRED: PATCH /api/beleidskompas/documents/:id (rename, retag)
+// WIRED: PATCH /api/beleidskompas/documents/:id (rename)
 export const updateDocument = (id, patch) => request("PATCH", `${BASE}/documents/${encodeURIComponent(id)}`, patch);
 
 // WIRED: DELETE /api/beleidskompas/documents/:id

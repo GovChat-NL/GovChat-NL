@@ -72,18 +72,20 @@ export function renderEditor({ store, render, markDirty, selectTemplate, saveAsN
                       class: "btn btn-small btn-secondary",
                       disabled: tpl.mock,
                       onClick: async () => {
-                        if (!confirm(`${versionLabel(tpl, v.id)} weer live zetten? Niet-gepubliceerde wijzigingen gaan verloren.`)) return;
+                        const label = versionLabel(tpl, v.id);
+                        if (!confirm(`${label} herstellen als nieuwe versie? Niet-gepubliceerde wijzigingen gaan verloren.`)) return;
                         try {
-                          await api.rollback(v.id);
+                          // Restoring publishes the old content as a new version, so the history only grows.
+                          const { version } = await api.publishVersion(v.snapshot, `Hersteld van ${label}`);
                           await reload();
-                          toast(`${versionLabel(template(), v.id)} staat weer live`, "success");
+                          toast(`${label} hersteld als ${versionLabel(template(), version.id)}`, "success");
                           render();
                         } catch (err) {
-                          toast(`Terugzetten mislukt: ${err.message}`, "error");
+                          toast(`Herstellen mislukt: ${err.message}`, "error");
                         }
                       },
                     },
-                    "Terugzetten",
+                    "Herstellen als nieuwe versie",
                   ),
             ),
           ),

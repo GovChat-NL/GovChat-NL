@@ -1,5 +1,5 @@
 // Sample data for the parts of the admin UI that have no backend yet.
-// Only api.js imports this file; see docs/admin-ui-future-work.md.
+// Only api.js imports this file; see ADMIN_UI_FUTURE_WORK.md.
 
 const daysAgo = (n) => new Date(Date.now() - n * 86400000).toISOString();
 

@@ -96,7 +96,6 @@ function stepEditor(step, { tpl, store, markDirty, render }) {
             checked: docIds.has(d.id),
             disabled: step.rag.enabled === false,
             label: d.filename,
-            hint: (d.tags || []).join(", "),
             onChange: (v) => { api.setStepDocument(tpl.id, step.id, d.id, v); markDirty(); },
           }),
         )
