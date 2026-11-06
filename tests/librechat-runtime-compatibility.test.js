@@ -6,6 +6,9 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { createRequire } = require('node:module');
 const { loadLibreChatRuntime } = require('../scripts/govchat-retention-worker');
+const { readReleasePin } = require('../scripts/librechat-release-pin');
+
+const expectedRelease = readReleasePin();
 
 const root = process.env.GOVCHAT_TEST_LIBRECHAT_ROOT || '/app';
 const apiRoot = path.join(root, 'api');
@@ -16,7 +19,7 @@ if (available) process.chdir(apiRoot);
 
 test('official image is the intended LibreChat release', { skip: !available }, () => {
   const version = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8')).version;
-  assert.equal(version, 'v0.8.8');
+  assert.equal(version, expectedRelease.tag);
 });
 
 test('real config exports remain compatible with the request-time name overlay', { skip: !available }, () => {

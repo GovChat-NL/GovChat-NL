@@ -1,5 +1,10 @@
 # LibreChat v0.8.8 upgradekandidaat
 
+Dit rapport beschrijft de eerste geïsoleerde testfase. De daarna expliciet
+geautoriseerde tijdelijke omschakeling staat in het
+[rollout- en mergebesluitrapport](librechat-v0.8.8-rollout.md), inclusief de
+actuele integratieresultaten en nog open vrijgavevoorwaarden.
+
 ## Status en scope
 
 Gecontroleerd op 6 november 2026 in een afzonderlijke werkboom en op branch

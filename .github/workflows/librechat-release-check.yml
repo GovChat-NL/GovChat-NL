@@ -1,0 +1,28 @@
+name: LibreChat release availability (report only)
+
+on:
+  schedule:
+    - cron: '23 8 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  availability:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Discover only published stable GitHub releases and verify official image
+        run: |
+          python3 scripts/librechat_release.py > "$RUNNER_TEMP/librechat-release.json"
+          cat "$RUNNER_TEMP/librechat-release.json"
+          {
+            echo '## Official LibreChat release availability (no changes made)'
+            echo '```json'
+            cat "$RUNNER_TEMP/librechat-release.json"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"

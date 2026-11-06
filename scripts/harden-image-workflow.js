@@ -151,9 +151,11 @@ const quality = isDalle2
 const generateUrl = isAzure
   ? apiBase + '/images/generations?api-version=' + encodeURIComponent(apiVersion)
   : apiBase + '/v1/images/generations';
+// GPT Image always returns base64 and rejects DALL-E's response_format option.
+const responseFormat = modelLower.startsWith('gpt-image-') ? {} : { response_format: 'b64_json' };
 const requestBody = isAzure
-  ? { prompt, size, ...(isDalle2 ? {} : { quality }), response_format: 'b64_json' }
-  : { model, prompt, size, ...(isDalle2 ? {} : { quality }), response_format: 'b64_json' };
+  ? { prompt, size, ...(isDalle2 ? {} : { quality }), ...responseFormat }
+  : { model, prompt, size, ...(isDalle2 ? {} : { quality }), ...responseFormat };
 
 return [{ json: { userId, prompt, size, quality, model, apiKey, isAzure, isAzureDeploymentPath: isAzure, generateUrl, requestBody } }];`;
 

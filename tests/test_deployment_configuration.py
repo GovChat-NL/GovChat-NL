@@ -12,6 +12,8 @@ import unittest
 import uuid
 from pathlib import Path
 
+from scripts.librechat_release import read_pins
+
 
 ROOT = Path(__file__).resolve().parents[1]
 IMAGE = os.environ.get("GOVCHAT_TEST_NGINX_IMAGE", "nginx:1.28-alpine")
@@ -48,7 +50,7 @@ class ComposeConfigurationTests(unittest.TestCase):
 
     def test_librechat_and_retention_use_the_same_official_release(self):
         services = self.config("docker-compose.override.yml")["services"]
-        image = "registry.librechat.ai/librechat-ai/librechat:v0.8.8"
+        image, _ = read_pins((ROOT / "docker-compose.yml").read_text())
         self.assertEqual(services["librechat"]["image"], image)
         self.assertEqual(services["govchat-retention"]["image"], image)
 
