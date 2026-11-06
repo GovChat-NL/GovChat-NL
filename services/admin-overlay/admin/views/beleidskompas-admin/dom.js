@@ -93,10 +93,10 @@ export function field(label, control, hint) {
 }
 
 // Text input or textarea bound to obj[key]; calls onInput after each change.
-export function bound(obj, key, { multiline = false, rows = 3, type = "text", onInput, readOnly } = {}) {
+export function bound(obj, key, { multiline = false, rows = 3, type = "text", onInput } = {}) {
   const el = multiline
-    ? h("textarea", { class: "input", rows, readonly: readOnly })
-    : h("input", { class: "input", type, readonly: readOnly, step: type === "number" ? "any" : undefined });
+    ? h("textarea", { class: "input", rows })
+    : h("input", { class: "input", type, step: type === "number" ? "any" : undefined });
   el.value = obj[key] ?? "";
   el.addEventListener("input", () => {
     obj[key] = type === "number" ? Number(el.value) : el.value;
