@@ -11,7 +11,7 @@ const cp = require("node:child_process");
 const { setTimeout: delay } = require("node:timers/promises");
 
 const root = path.resolve(__dirname, "..");
-const loader = fs.readFileSync(path.join(root, "overlay/defaults/loader.js"), "utf8");
+const loader = fs.readFileSync(path.join(root, "overlay/defaults/chat-disclaimer.js"), "utf8");
 
 function overlay({ appName = "LAICA", pathname = "/c/new", legacy = false } = {}) {
   const attributes = new Map();

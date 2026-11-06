@@ -94,11 +94,6 @@ body[data-theme="light"] #gc-launcher-btn {
   text-decoration: underline;
 }
 
-/* Keep the disabled chat disclaimer hidden even if upstream styles set display. */
-[data-govchat-disclaimer][hidden] {
-  display: none !important;
-}
-
 .gc-footer-brand:hover {
   opacity: 0.9;
 }

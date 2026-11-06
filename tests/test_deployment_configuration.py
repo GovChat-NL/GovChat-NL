@@ -207,6 +207,7 @@ class ProxyIntegrationTests(unittest.TestCase):
             ("nginx/trusted-proxies.conf", "/etc/nginx/trusted-proxies.conf"),
             ("nginx/trusted-proxies.geo", "/etc/nginx/trusted-proxies.geo"),
             ("overlay/minimal.css", "/opt/govchat/minimal.css"),
+            ("overlay/defaults", "/opt/librechat/overlay/publish"),
         ):
             source_path = ROOT / source
             if trust_directory and source.startswith("nginx/trusted-proxies."):
@@ -237,6 +238,8 @@ class ProxyIntegrationTests(unittest.TestCase):
         self.assertIn("$govchat_admin_upstream", config)
         self.assertNotIn("${GOVCHAT_SERVER_NAMES}", config)
         self.assertIn('/govchat-overlay/loader.js', config)
+        self.assertIn('/govchat-overlay/chat-disclaimer.js', config)
+        self.assertIn('/govchat-overlay/chat-disclaimer.css', config)
         self.assertNotIn('${GOVCHAT_UI_HEAD}', config)
         self.assertEqual(self.request(proxy, "/api/auth/login")[0], 200)
         self.assertEqual(self.request(proxy, host="chat.example.org")[0], 200)
@@ -313,10 +316,16 @@ class ProxyIntegrationTests(unittest.TestCase):
         config = command("docker", "exec", proxy, "cat", "/etc/nginx/conf.d/default.conf").stdout
         self.assertIn('minimal.css?v=1', config)
         self.assertNotIn('/govchat-overlay/loader.js', config)
+        self.assertIn('/govchat-overlay/chat-disclaimer.js', config)
+        self.assertIn('/govchat-overlay/chat-disclaimer.css', config)
         self.assertNotIn('${GOVCHAT_UI_HEAD}', config)
         status, css = self.request(proxy, '/govchat-overlay/minimal.css')
         self.assertEqual(status, 200)
         self.assertIn('#tools-dropdown-button', css)
+        status, script = self.request(proxy, '/govchat-overlay/chat-disclaimer.js')
+        self.assertEqual(status, 200)
+        self.assertIn('kan fouten maken. Controleer belangrijke informatie.', script)
+        self.assertNotIn('createButtons', script)
         command("docker", "exec", proxy, "nginx", "-t")
 
     def test_invalid_values_fail_closed_without_config_injection(self):

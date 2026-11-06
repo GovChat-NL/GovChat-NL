@@ -9,7 +9,6 @@
     helpContentUrl: "/govchat-overlay/help-content.json",
     appsUrl: "/govchat-overlay/apps.json",
     beleidskompasConfigUrl: "/govchat-overlay/beleidskompas-config.json",
-    uiConfigUrl: "/govchat-overlay/ui-config.json",
     appName: window.GOVCHAT_BRANDING?.appName || document.title || "GovChat-NL",
     storageKey: "govchat_help_dont_show",
     helpFaqUrl: "https://govchat-nl.github.io/",
@@ -19,7 +18,6 @@
   let appsData = null;
   let beleidskompasFlowConfig = null;
   let overlayActive = false;
-  let showChatDisclaimer = true;
 
   if (document.readyState === "loading") {
     document.addEventListener("DOMContentLoaded", init);
@@ -29,23 +27,7 @@
 
   function init() {
     observeRouteChanges();
-    loadUIConfig();
-    setInterval(() => {
-      if (isMainAppRoute(window.location.pathname)) loadUIConfig();
-    }, 30000);
     refreshOverlayState();
-  }
-
-  async function loadUIConfig() {
-    try {
-      const response = await fetch(CONFIG.uiConfigUrl, { cache: "no-store" });
-      if (!response.ok) return;
-      const config = await response.json();
-      showChatDisclaimer = config?.showChatDisclaimer !== false;
-      applyFooterBranding();
-    } catch {
-      // Keep the default (enabled), or the last successfully loaded setting.
-    }
   }
 
   function isAuthRoute(pathname) {
@@ -75,7 +57,6 @@
   }
 
   function refreshOverlayState() {
-    applyFooterBranding();
     rewriteHelpFaqMenuLink();
 
     const shouldBeActive = shouldActivateOverlay();
@@ -121,25 +102,6 @@
         window.open(targetUrl, "_blank", "noopener,noreferrer");
       });
     });
-  }
-
-  function applyFooterBranding() {
-    if (!isMainAppRoute(window.location.pathname)) return;
-
-    // Re-find the original footer after React remounts it, and our marked span
-    // after replacing the upstream link. Never modify other contentinfo regions.
-    const span = document.querySelector('div[role="contentinfo"] span[data-govchat-disclaimer]') ||
-      document.querySelector('div[role="contentinfo"] span > a[href*="librechat.ai"]')?.closest("span") ||
-      document.querySelector('div[role="contentinfo"] span > a[data-govchat-brand="1"]')?.closest("span");
-    if (!span) return;
-
-    if (!span.hasAttribute("data-govchat-disclaimer")) {
-      span.setAttribute("data-govchat-disclaimer", "1");
-    }
-    const appName = window.GOVCHAT_BRANDING?.appName || CONFIG.appName;
-    const text = `${appName} kan fouten maken. Controleer belangrijke informatie.`;
-    if (span.textContent !== text) span.textContent = text;
-    if (span.hidden !== !showChatDisclaimer) span.hidden = !showChatDisclaimer;
   }
 
   function isLoginScreenVisible() {

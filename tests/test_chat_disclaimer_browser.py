@@ -7,8 +7,8 @@ import unittest
 from playwright.sync_api import sync_playwright
 
 ROOT = Path(__file__).resolve().parents[1]
-LOADER = (ROOT / "overlay/defaults/loader.js").read_text()
-CSS = (ROOT / "overlay/defaults/custom.css").read_text()
+LOADER = (ROOT / "overlay/defaults/chat-disclaimer.js").read_text()
+CSS = (ROOT / "overlay/defaults/chat-disclaimer.css").read_text()
 DASHBOARD = (ROOT / "services/admin-overlay/admin/views/dashboard.html").read_text()
 
 

@@ -33,9 +33,11 @@ een tijdelijke ophaalfout blijft de laatst geladen instelling actief.
 
 ## Ingebruikname
 
-Herbouw het overlay-beheerportaal en start het met de gebruikelijke
-deploymentconfiguratie. Het portaal synchroniseert bij het starten de nieuwe
-overlay-assets en publiceert de instelling. Er is geen LibreChat-fork of
+Herbouw het overlay-beheerportaal en herstart de LibreChat-proxy met de
+gebruikelijke deploymentconfiguratie. Het portaal synchroniseert bij het starten
+de nieuwe overlay-assets en publiceert de instelling. De proxy laadt de
+waarschuwing zowel in de gewone als in de minimale interface, zonder extra
+help- of appknoppen in de minimale interface. Er is geen LibreChat-fork of
 wijziging aan de database nodig. Vernieuw de chatpagina om de nieuwe loader op te
 halen; de bestaande proxycache voor overlay-assets heeft maximaal vijf minuten
 levensduur.

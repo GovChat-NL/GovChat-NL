@@ -329,7 +329,7 @@ function initDefaults() {
 
   // Keep runtime assets in sync with repository defaults on each start.
   // This prevents stale loader/custom.css from old named volumes.
-  const runtimeAssets = ["loader.js", "custom.css"];
+  const runtimeAssets = ["loader.js", "custom.css", "chat-disclaimer.js", "chat-disclaimer.css"];
   for (const file of runtimeAssets) {
     const source = path.join(__dirname, "defaults", file);
     const target = path.join(DATA_DIR, file);
@@ -1117,7 +1117,7 @@ function publishAll() {
   }
   const bkState = readBeleidskompasState();
   publishBeleidskompasLiveConfig(bkState.live || bkState.draft || defaultBeleidskompasFlow());
-  const rawFiles = ["loader.js", "custom.css"];
+  const rawFiles = ["loader.js", "custom.css", "chat-disclaimer.js", "chat-disclaimer.css"];
   for (const file of rawFiles) {
     publishFileRaw(file);
   }

@@ -47,8 +47,10 @@ EOF
     if [ "${GOVCHAT_MINIMAL_UI:-false}" = true ]; then
       GOVCHAT_UI_HEAD='<link rel="stylesheet" href="/govchat-overlay/minimal.css?v=1"/>'
     else
-      GOVCHAT_UI_HEAD='<link rel="stylesheet" href="/govchat-overlay/custom.css?v=20261028-security1"/><script defer src="/govchat-overlay/loader.js?v=20261028-security1"></script>'
+      GOVCHAT_UI_HEAD='<link rel="stylesheet" href="/govchat-overlay/custom.css?v=20261106-disclaimer1"/><script defer src="/govchat-overlay/loader.js?v=20261106-disclaimer1"></script>'
     fi
+    # The accuracy disclaimer also runs in minimal UI, without help/app controls.
+    GOVCHAT_UI_HEAD="${GOVCHAT_UI_HEAD}"'<link rel="stylesheet" href="/govchat-overlay/chat-disclaimer.css?v=20261106-disclaimer1"/><script defer src="/govchat-overlay/chat-disclaimer.js?v=20261106-disclaimer1"></script>'
     export GOVCHAT_UI_HEAD
     envsubst '${GOVCHAT_SERVER_NAMES} ${GOVCHAT_UI_HEAD}' < /opt/govchat/nginx/librechat-overlay.conf > /etc/nginx/conf.d/default.conf
     ;;
