@@ -8,7 +8,7 @@ and deploy the integration.
 ## Scope and design constraints
 
 - LibreChat continues to use the official
-  `registry.librechat.ai/danny-avila/librechat:v0.8.7` image. No forked or
+  `registry.librechat.ai/librechat-ai/librechat:v0.8.8` image. No forked or
   custom-built LibreChat image is needed.
 - n8n continues to use the official `docker.n8n.io/n8nio/n8n` image. n8n
   JavaScript patches are mounted as read-only overlays.
@@ -76,7 +76,7 @@ this branch; do not publish this work to the upstream project by accident.
 - `scripts/librechat-tool-event-preload.js` installs a CommonJS loader hook
   before the API starts.
 - `scripts/librechat-tool-event-overlay.js` patches the stock image's existing
-  agent callbacks in memory. It supports both the pinned v0.8.7 callback API
+  agent callbacks in memory. It supports both the previous v0.8.7 callback API
   and the newer source layout used by the overlay tests. The patch fails closed
   if its required source anchors change, rather than silently rendering
   sideband control data as user-visible text.

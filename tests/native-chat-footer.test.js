@@ -73,12 +73,28 @@ test("pinned native footer renders configured warning instead of upstream brandi
   const warning = "GovChat-NL kan fouten maken. Controleer belangrijke informatie.";
   const render = await loadNativeFooter({ customFooter: warning });
   const html = render();
-  assert.match(html, /role="contentinfo"/);
   assert.ok(html.includes(warning));
+  assert.equal(html.split(warning).length - 1, 1);
   assert.doesNotMatch(html, /test-version|librechat\.ai/);
-  const cssClasses = html.match(/class="([^"]*)" role="contentinfo"/)[1];
+  // v0.8.8 uses an absolutely positioned band, without the old contentinfo role.
+  const cssClasses = html.match(/class="([^"]*items-center[^"]*)"/)[1];
   assert.match(cssClasses, /hidden/);
   assert.match(cssClasses, /sm:flex/);
+});
+
+test("pinned conversation footer retains configured text but omits generic branding", { skip: !nativeAvailable }, async () => {
+  const render = await loadNativeFooter({ customFooter: "Controleer belangrijke informatie." });
+  assert.match(render({ configuredOnly: true }), /Controleer belangrijke informatie\./);
+  assert.doesNotMatch(render({ configuredOnly: true }), /test-version|librechat\.ai/);
+  const unconfigured = await loadNativeFooter({});
+  assert.equal(unconfigured({ configuredOnly: true }), "");
+});
+
+test("pinned footer accepts resolved startup configuration without replacing it", { skip: !nativeAvailable }, async () => {
+  const render = await loadNativeFooter({ customFooter: "Fetched fallback" });
+  const html = render({ startupConfig: { customFooter: "Resolved warning" }, configuredOnly: true });
+  assert.match(html, /Resolved warning/);
+  assert.doesNotMatch(html, /Fetched fallback/);
 });
 
 test("pinned native footer preserves empty override while retaining legal links", { skip: !nativeAvailable }, async () => {

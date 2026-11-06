@@ -10,7 +10,7 @@ services:
   #    Standaard configuratiebestand staat in deze repo: ./librechat.yaml
   # ---------------------------------------------------------------------------
   librechat:
-    image: registry.librechat.ai/danny-avila/librechat:v0.8.7
+    image: registry.librechat.ai/librechat-ai/librechat:v0.8.8
     container_name: librechat
     restart: unless-stopped
     expose:
@@ -156,7 +156,7 @@ services:
   #  Uses LibreChat's model and file-service deletion paths, not raw DB deletes.
   # ---------------------------------------------------------------------------
   govchat-retention:
-    image: registry.librechat.ai/danny-avila/librechat:v0.8.7
+    image: registry.librechat.ai/librechat-ai/librechat:v0.8.8
     container_name: govchat-retention
     restart: unless-stopped
     command: ["node", "/app/govchat-overlay/govchat-retention-worker.js"]

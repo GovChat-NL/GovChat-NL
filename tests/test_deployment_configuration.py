@@ -46,6 +46,12 @@ class ComposeConfigurationTests(unittest.TestCase):
         self.assertEqual(services["admin-panel"]["environment"]["API_SERVER_URL"], "http://librechat-proxy:3080")
         self.assertFalse(config["networks"]["librechat-net"].get("external", False))
 
+    def test_librechat_and_retention_use_the_same_official_release(self):
+        services = self.config("docker-compose.override.yml")["services"]
+        image = "registry.librechat.ai/librechat-ai/librechat:v0.8.8"
+        self.assertEqual(services["librechat"]["image"], image)
+        self.assertEqual(services["govchat-retention"]["image"], image)
+
     def test_portable_paths_network_image_and_context(self):
         config = self.config(GOVCHAT_DATA_ROOT="/srv/govchat-test", GOVCHAT_NETWORK_EXTERNAL="true",
                              GOVCHAT_NETWORK_NAME="review-network", MONGO_IMAGE="mongo:8.2",

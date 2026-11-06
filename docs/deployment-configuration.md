@@ -125,7 +125,7 @@ configuratie. Branding en Nederlandse vertalingen zijn onafhankelijke opties.
 
 Dit is een deploymentbrede UI-/featurekeuze, geen autorisatiegrens: verborgen
 knoppen vervangen geen backendrechten of SSO-/ingressbeleid. De selectors zijn
-gericht op de gepinde LibreChat v0.8.7; controleer beide modi bij upgrades.
+gericht op de gepinde LibreChat v0.8.8; controleer beide modi bij upgrades.
 De optionele browsertest `scripts/test-minimal-chat.py` vereist lokale Docker,
 Playwright/Chromium en een bestaande admin. Gebruik uitsluitend een vertrouwde
 eigen test-URL: de test gebruikt tijdelijk diens toegangstoken in het geheugen.
