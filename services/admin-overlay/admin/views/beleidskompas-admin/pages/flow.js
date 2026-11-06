@@ -49,7 +49,7 @@ export function renderFlow({ store, render, markDirty }) {
         description: "",
         prompt: "",
         doc_tags: [],
-        rag: { enabled: true, algorithm: "hybrid", top_k: 3, min_score: 0.08, tag_filter_mode: "any", required_tags: [] },
+        rag: { algorithm: "hybrid", top_k: 3, min_score: 0.08, tag_filter_mode: "any", required_tags: [] },
         substeps: [],
       });
       store.ui.stepId = id;
@@ -76,12 +76,10 @@ function stepEditor(step, { tpl, store, markDirty, render }) {
   const search = h(
     "div",
     { class: "inline-controls" },
-    toggle({ checked: step.rag.enabled !== false, label: "Gebruik documenten", onChange: (v) => { step.rag.enabled = v; markDirty(); render(); } }),
     dropdown({
       label: "Zoekmethode",
       value: step.rag.algorithm || "hybrid",
       options: SEARCH_METHODS,
-      disabled: step.rag.enabled === false,
       onChange: (v) => { step.rag.algorithm = v; markDirty(); },
     }),
   );
@@ -89,13 +87,12 @@ function stepEditor(step, { tpl, store, markDirty, render }) {
   const docs = store.documents.filter((d) => api.isDocumentActive(tpl.id, d.id));
   const docList = h(
     "div",
-    { class: `doc-checks${step.rag.enabled === false ? " is-disabled" : ""}` },
+    { class: "doc-checks" },
     docs.length
       ? docs.map((d) =>
           toggle({
             form: "check",
             checked: docIds.has(d.id),
-            disabled: step.rag.enabled === false,
             label: d.filename,
             onChange: (v) => api.setStepDocument(tpl.id, step.id, d.id, v),
           }),
@@ -139,7 +136,9 @@ function stepEditor(step, { tpl, store, markDirty, render }) {
     h(
       "div",
       { class: "form-grid" },
-      field("Stap-id", bound(step, "id", { onInput: () => { store.ui.stepId = step.id; markDirty(); } })),
+      // Read-only: workflow name, webhook path and feedback hang on this id. Renaming steps safely
+      // needs a fixed internal id first, with the name as a separate editable field.
+      field("Stap-id", bound(step, "id", { readOnly: true })),
       field("Workflow-id", bound(step, "workflow_id", { onInput: markDirty })),
       field("Webhook-pad", bound(step, "webhook_path", { onInput: markDirty })),
       field("Aantal passages (top_k)", bound(step.rag, "top_k", { type: "number", onInput: markDirty })),
