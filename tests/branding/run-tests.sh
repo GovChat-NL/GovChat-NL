@@ -2,6 +2,7 @@
 
 set -eu
 export GOVCHAT_MINIMAL_UI_SCRIPT="$(dirname "$0")/../../scripts/apply-minimal-ui.js"
+export BRANDING_METADATA_SCRIPT="$(dirname "$0")/../../scripts/apply-branding-metadata.js"
 
 repo_root=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
 wrapper="$repo_root/scripts/apply-branding.sh"
@@ -12,6 +13,8 @@ govchat="$temporary_root/govchat"
 custom="$temporary_root/custom"
 assets="$temporary_root/assets"
 mkdir -p "$govchat" "$custom" "$assets"
+printf '<html><head><title>LibreChat</title></head></html>' > "$temporary_root/index.html"
+printf '{"name":"LibreChat","short_name":"LibreChat","icons":[]}' > "$temporary_root/manifest.webmanifest"
 
 export BRANDING_GOVCHAT_DIR="$govchat"
 export BRANDING_CUSTOM_DIR="$custom"
@@ -36,7 +39,8 @@ assert_log_contains() {
   esac
 }
 
-for filename in logo.svg favicon-32x32.png favicon-16x16.png apple-touch-icon-180x180.png; do
+supported_files='logo.svg favicon-32x32.png favicon-16x16.png apple-touch-icon-180x180.png icon-192x192.png maskable-icon.png'
+for filename in $supported_files; do
   printf 'govchat:%s\n' "$filename" > "$govchat/$filename"
   printf 'librechat:%s\n' "$filename" > "$assets/$filename"
 done
@@ -45,7 +49,7 @@ done
 log=$(BRANDING_MODE= "$wrapper" sh -c 'printf "started:%s\n" "$*"' branding-test backend --flag)
 assert_log_contains "$log" 'Branding: GovChat-NL branding toegepast'
 assert_log_contains "$log" 'started:backend --flag'
-for filename in logo.svg favicon-32x32.png favicon-16x16.png apple-touch-icon-180x180.png; do
+for filename in $supported_files; do
   assert_file_content "$assets/$filename" "govchat:$filename"
 done
 
@@ -71,13 +75,15 @@ assert_file_content "$assets/logo.svg" 'custom-logo'
 assert_file_content "$assets/favicon-16x16.png" 'custom-favicon'
 assert_file_content "$assets/favicon-32x32.png" 'govchat:favicon-32x32.png'
 assert_file_content "$assets/apple-touch-icon-180x180.png" 'govchat:apple-touch-icon-180x180.png'
+assert_file_content "$assets/icon-192x192.png" 'govchat:icon-192x192.png'
+assert_file_content "$assets/maskable-icon.png" 'govchat:maskable-icon.png'
 
-# Supplying all four custom assets replaces the complete default set.
-for filename in logo.svg favicon-32x32.png favicon-16x16.png apple-touch-icon-180x180.png; do
+# Supplying all supported custom assets replaces the complete default set.
+for filename in $supported_files; do
   printf 'full-custom:%s\n' "$filename" > "$custom/$filename"
 done
 log=$(BRANDING_MODE=custom "$wrapper" true)
-for filename in logo.svg favicon-32x32.png favicon-16x16.png apple-touch-icon-180x180.png; do
+for filename in $supported_files; do
   assert_file_content "$assets/$filename" "full-custom:$filename"
 done
 
@@ -98,13 +104,13 @@ assert_log_contains "$log" 'ontbreekt of is geen gewoon bestand; overgeslagen: f
 assert_file_content "$assets/logo.svg" 'govchat:logo.svg'
 
 # LibreChat mode must leave all original assets untouched.
-for filename in logo.svg favicon-32x32.png favicon-16x16.png apple-touch-icon-180x180.png; do
+for filename in $supported_files; do
   printf 'original:%s\n' "$filename" > "$assets/$filename"
 done
 log=$(BRANDING_MODE=librechat "$wrapper" sh -c 'printf "original-cmd:%s\n" "$1"' branding-test npm-run-backend)
 assert_log_contains "$log" 'Branding: Originele LibreChat branding actief'
 assert_log_contains "$log" 'original-cmd:npm-run-backend'
-for filename in logo.svg favicon-32x32.png favicon-16x16.png apple-touch-icon-180x180.png; do
+for filename in $supported_files; do
   assert_file_content "$assets/$filename" "original:$filename"
 done
 

@@ -11,6 +11,7 @@ services:
       - ./branding:/opt/branding/govchat:ro
       - ./custom-branding:/opt/branding/custom:ro
       - ./scripts/apply-branding.sh:/app/govchat-overlay/apply-branding.sh:ro
+      - ./scripts/apply-branding-metadata.js:/app/govchat-overlay/apply-branding-metadata.js:ro
       - ./scripts/apply-dutch-translations.js:/app/govchat-overlay/apply-dutch-translations.js:ro
       - ./scripts/apply-minimal-ui.js:/app/govchat-overlay/apply-minimal-ui.js:ro
       - ./overlay/locales/nl/translation.json:/app/govchat-overlay/translation.json:ro

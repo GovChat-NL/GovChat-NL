@@ -10,7 +10,6 @@ function minimalConfig(source) {
   if (!endpoint) throw new Error('Minimal UI requires the govchat-orchestrator custom endpoint');
   config.interface = {
     ...config.interface,
-    customWelcome: 'Waar kan ik je mee helpen?',
     modelSelect: false, parameters: false, presets: false, multiConvo: false,
     bookmarks: false, memories: false, prompts: true, agents: false,
     temporaryChat: false, autoSubmitFromUrl: false, runCode: false,

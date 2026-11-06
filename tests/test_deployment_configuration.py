@@ -270,6 +270,26 @@ class ProxyIntegrationTests(unittest.TestCase):
         self.assertEqual(status, 200)
         self.assertIn("v1|https|192.0.2.100", body)
 
+    def test_branding_revalidates_cache_and_preserves_security_and_forwarding(self):
+        proxy = self.proxy()
+        for path in ("/assets/govchat-branding.js", "/assets/logo.svg",
+                     "/assets/favicon-16x16.png", "/assets/apple-touch-icon-180x180.png",
+                     "/assets/icon-192x192.png", "/assets/maskable-icon.png",
+                     "/manifest.webmanifest"):
+            with self.subTest(path=path):
+                response = self.request_raw(proxy, path, headers=(
+                    "X-Forwarded-Proto: https", "X-Forwarded-For: 192.0.2.100"))
+                self.assertEqual(response.returncode, 0, response.stderr)
+                for header in (
+                    "Cache-Control: no-cache, must-revalidate, max-age=0",
+                    "X-Content-Type-Options: nosniff", "X-Frame-Options: SAMEORIGIN",
+                    "Referrer-Policy: strict-origin-when-cross-origin",
+                    "Permissions-Policy: camera=(), geolocation=(), payment=(), usb=(), microphone=(self)",
+                ):
+                    self.assertIn(header, response.stderr)
+                self.assertIn("v1|http|", response.stdout)
+                self.assertNotIn("192.0.2.100", response.stdout)
+
     def test_management_starts_and_renders_custom_paths(self):
         proxy = self.proxy("management", N8N_MANAGEMENT_PATH="/editor/", QDRANT_MANAGEMENT_PATH="/vectors/")
         config = command("docker", "exec", proxy, "cat", "/etc/nginx/conf.d/default.conf").stdout
