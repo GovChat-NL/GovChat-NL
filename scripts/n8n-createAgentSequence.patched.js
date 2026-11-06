@@ -4,6 +4,7 @@ exports.createAgentSequence = createAgentSequence;
 const runnables_1 = require("@langchain/core/runnables");
 const agents_1 = require("@langchain/classic/agents");
 const common_1 = require("../../common");
+const govchatPolicy = require("/opt/govchat/n8n-orchestrator-tool-policy.js");
 function createAgentSequence(model, tools, prompt, _options, outputParser, memory, fallbackModel) {
     const agent = (0, agents_1.createToolCallingAgent)({
         llm: model,
@@ -32,6 +33,6 @@ function createAgentSequence(model, tools, prompt, _options, outputParser, memor
 function getAllTools(model, tools) {
     const modelTools = model.metadata?.tools ?? [];
     const allTools = [...tools, ...modelTools];
-    return allTools;
+    return govchatPolicy.selectTools(allTools);
 }
 //# sourceMappingURL=createAgentSequence.js.map

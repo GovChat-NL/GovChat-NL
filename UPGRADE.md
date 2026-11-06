@@ -43,6 +43,11 @@ Dit document is bedoeld voor beheerders die GovChat-NL installeren en bijwerken.
    docker run --rm --volumes-from librechat-mongodb -v /opt/librechat/data/mongodb:/from:ro alpine sh -c 'cp -a /from/. /data/db/'
    ```
 
+   Gebruik in dit commando de werkelijke oude datamap: als `GOVCHAT_DATA_ROOT`
+   eerder was aangepast, vervang `/opt/librechat/data/mongodb` door die locatie.
+   Dat geldt ook voor de overlaypaden verderop in deze handleiding. De nieuwe
+   Mongo-opslag is een named volume en volgt `GOVCHAT_DATA_ROOT` niet.
+
    Hernoem daarna de map van de repository niet. Docker zet die naam voor de naam van het volume, en met een andere naam start Mongo met een leeg volume.
 5. Start de stack: `docker compose up -d --build`.
 6. Laad de workflows opnieuw in n8n met `make reload-workflows`. Heb je geen `make`, gebruik dan in plaats daarvan deze drie commando's:

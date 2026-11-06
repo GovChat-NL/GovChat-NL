@@ -77,6 +77,21 @@
         <div class="muted">Afbeeldingen boven deze limiet worden verkleind vóór de vision-call.</div>
       </div>
     </div>
+    <h2>Utility-tools</h2>
+    <div class="row">
+      <div class="group">
+        <label><input id="tool-calculator" type="checkbox"> Calculator (n8n)</label>
+        <label><input id="tool-nos_news" type="checkbox"> NOS nieuws</label>
+        <label><input id="tool-l1_news" type="checkbox"> L1 nieuws</label>
+        <label><input id="tool-holidays" type="checkbox"> Officiële feestdagen</label>
+        <label><input id="tool-time" type="checkbox"> Tijd en datum</label>
+      </div>
+      <div class="group">
+        <label for="orchestratorDefaultTimezone">Standaardtijdzone (IANA)</label>
+        <input id="orchestratorDefaultTimezone" type="text" maxlength="100" placeholder="Europe/Amsterdam">
+        <div class="muted">Wordt gebruikt voor de huidige datum, het standaardjaar en lokale tijdstippen. Feestdagen geven niet automatisch recht op verlof.</div>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -92,11 +107,20 @@ try {
 function render() {
   document.getElementById('orchestratorImageDataUrlMaxChars').value = Number(orchestratorData.image_data_url_max_chars || 450000);
   document.getElementById('orchestratorImageMaxResolutionPx').value = Number(orchestratorData.image_max_resolution_px || 1568);
+  for (const tool of ['calculator', 'nos_news', 'l1_news', 'holidays', 'time']) {
+    document.getElementById('tool-' + tool).checked = orchestratorData.tools?.[tool] === true;
+  }
+  document.getElementById('orchestratorDefaultTimezone').value = orchestratorData.default_timezone || 'Europe/Amsterdam';
 }
 
 function readForm() {
   orchestratorData.image_data_url_max_chars = Number(document.getElementById('orchestratorImageDataUrlMaxChars').value || 450000);
   orchestratorData.image_max_resolution_px = Number(document.getElementById('orchestratorImageMaxResolutionPx').value || 1568);
+  orchestratorData.tools = {};
+  for (const tool of ['calculator', 'nos_news', 'l1_news', 'holidays', 'time']) {
+    orchestratorData.tools[tool] = document.getElementById('tool-' + tool).checked;
+  }
+  orchestratorData.default_timezone = document.getElementById('orchestratorDefaultTimezone').value.trim();
 }
 
 async function save() {

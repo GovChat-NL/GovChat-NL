@@ -319,6 +319,14 @@ agent.parameters.options.systemMessage = originalSystem.includes('[FINAL_ANSWER]
   ? originalSystem
   : (originalSystem ? originalSystem + ' ' + finalRule : finalRule);
 
+const utilityBuilder = require('./orchestrator-utility-workflow');
+utilityBuilder.applyUtilityTools(wf);
+// Utility exports added on dev remain at the workflow root. Do not regenerate
+// duplicates in algemeen merely because the orchestrator moved there on PR13.
+const utilityWorkflowsDir = require('path').resolve(__dirname, '../agents/n8n/workflows');
+for (const definition of utilityBuilder.definitions) {
+  const utility = utilityBuilder.utilityWorkflow(definition);
+  fs.writeFileSync(require('path').join(utilityWorkflowsDir, utility.id + '.json'), JSON.stringify([utility], null, 2) + '\n');
+}
 fs.writeFileSync(workflowPath, JSON.stringify(data, null, 2));
 console.log('Updated orchestrator workflow detect node + passthrough prompt');
-

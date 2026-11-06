@@ -12,9 +12,9 @@ import { fetchHelpContent, openHelpModal as showHelpModal, closeHelpModal } from
   const CONFIG = {
     helpContentUrl: "/govchat-overlay/help-content.json",
     appsUrl: "/govchat-overlay/apps.json",
-    appName: document.title || "LibreChat",
+    appName: window.GOVCHAT_BRANDING?.appName || document.title || "GovChat-NL",
     storageKey: "govchat_help_dont_show",
-    footerBrandText: "GovChat-NL v0.0.1",
+    footerBrandText: window.GOVCHAT_BRANDING?.appName || "GovChat-NL v0.0.1",
     footerBrandUrl: "https://govchat-nl.github.io/",
     helpFaqUrl: "https://govchat-nl.github.io/",
     // sessionStorage key for the app requested via the URL
@@ -2508,4 +2508,3 @@ import { fetchHelpContent, openHelpModal as showHelpModal, closeHelpModal } from
     renderSegments();
   }
 })();
-

@@ -1,0 +1,22 @@
+/* LibreChat v0.8.7: retain chat, history, account access, prompts and files.
+ * Optional features are disabled in librechat.yaml. These selectors cover the
+ * speech controls enabled by old user preferences.
+ * Never hide generic buttons, dialogs, or prompt-library controls.
+ */
+button[aria-label="Microfoon gebruiken"],
+button[aria-label="Use microphone"],
+button[aria-label="Read aloud"],
+button[aria-label="Voorlezen"] {
+  display: none !important;
+}
+
+/* Artifacts falls back to LibreChat's built-in capabilities even with Agents
+ * disabled. Hide the whole badge wrapper, including its mode dropdown, and
+ * the tools menu that would otherwise offer Artifacts again.
+ */
+div.flex:has(> button[aria-label="Artefacten"]),
+div.flex:has(> button[aria-label="Artifacts"]),
+#tools-dropdown-button,
+button[aria-label="Tools Options"] {
+  display: none !important;
+}

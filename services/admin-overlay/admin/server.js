@@ -6,6 +6,8 @@ const http = require("http");
 const path = require("path");
 const sharp = require("sharp");
 const { WebSocket, WebSocketServer } = require("ws");
+const { environmentDefaults, normalizeConfig, mergeConfig, atomicWriteJSON } = require("./lib/orchestrator-config");
+const { createUtilityHandler } = require("./lib/utility-tools");
 
 const app = express();
 const PORT = process.env.PORT || 3002;
@@ -259,6 +261,14 @@ function extractTranscriptFromRealtimeEvent(evt) {
 }
 
 // ── Middleware ──────────────────────────────────────────────────────
+app.use("/api/orchestrator/tools", express.json({ limit: "16kb", strict: false }));
+app.use("/api/orchestrator/tools", (err, req, res, next) => {
+  if (!err) return next();
+  return res.status(err.status === 413 ? 413 : 400).json({
+    ok: false,
+    error: { code: err.status === 413 ? "INPUT_TOO_LARGE" : "INVALID_JSON", message: "Invalid or oversized JSON request body" },
+  });
+});
 app.use(express.json({ limit: "20mb" }));
 app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
@@ -1068,8 +1078,21 @@ function publishFile(filename, data) {
   }
 }
 
+function publishOrchestratorConfig() {
+  try {
+    atomicWriteJSON(PUBLISH_DIR, "orchestrator-config.json", readOrchestratorConfig());
+  } catch (error) {
+    // Never leave an obsolete enabled policy after a failed update/startup.
+    try { fs.rmSync(path.join(PUBLISH_DIR, "orchestrator-config.json"), { force: true }); }
+    catch (cleanupError) { console.error(`[publish] Cannot invalidate orchestrator policy: ${cleanupError.message}`); }
+    throw error;
+  }
+}
+
 function publishAll() {
-  const jsonFiles = ["help-content.json", "apps.json", "orchestrator-config.json"];
+  // This shared policy must always be complete and replaced atomically, never copied raw.
+  publishOrchestratorConfig();
+  const jsonFiles = ["help-content.json", "apps.json"];
   for (const file of jsonFiles) {
     const data = readJSON(file);
     if (data) publishFile(file, data);
@@ -1105,51 +1128,12 @@ function readCrawlerConfig() {
 }
 
 function readOrchestratorConfig() {
-  const fallback = {
-    image_data_url_max_chars: ORCHESTRATOR_IMAGE_DATA_URL_MAX_CHARS_DEFAULT,
-    image_max_resolution_px: ORCHESTRATOR_IMAGE_MAX_RESOLUTION_PX_DEFAULT,
-  };
   const stored = readJSON("orchestrator-config.json");
-  if (!stored || typeof stored !== "object") return fallback;
-  const maxChars = Math.max(
-    50000,
-    Number.parseInt(String(stored.image_data_url_max_chars || fallback.image_data_url_max_chars), 10) ||
-      fallback.image_data_url_max_chars,
-  );
-  const maxResolutionPx = Math.max(
-    512,
-    Number.parseInt(String(stored.image_max_resolution_px || fallback.image_max_resolution_px), 10) ||
-      fallback.image_max_resolution_px,
-  );
-  return {
-    image_data_url_max_chars: maxChars,
-    image_max_resolution_px: maxResolutionPx,
-  };
+  return normalizeConfig(stored === null && !fs.existsSync(path.join(DATA_DIR, "orchestrator-config.json")) ? {} : stored, environmentDefaults());
 }
 
 function validateOrchestratorConfig(input) {
-  if (!input || typeof input !== "object") {
-    throw new Error("Orchestrator-configuratie ontbreekt of is ongeldig");
-  }
-
-  const imageDataUrlMaxChars = Math.max(
-    50000,
-    Number.parseInt(String(input.image_data_url_max_chars || ORCHESTRATOR_IMAGE_DATA_URL_MAX_CHARS_DEFAULT), 10) ||
-      ORCHESTRATOR_IMAGE_DATA_URL_MAX_CHARS_DEFAULT,
-  );
-
-  const imageMaxResolutionPx = Math.max(
-    512,
-    Number.parseInt(
-      String(input.image_max_resolution_px || ORCHESTRATOR_IMAGE_MAX_RESOLUTION_PX_DEFAULT),
-      10,
-    ) || ORCHESTRATOR_IMAGE_MAX_RESOLUTION_PX_DEFAULT,
-  );
-
-  return {
-    image_data_url_max_chars: imageDataUrlMaxChars,
-    image_max_resolution_px: imageMaxResolutionPx,
-  };
+  return mergeConfig(input, readOrchestratorConfig(), environmentDefaults());
 }
 
 function decodeDataUrlImage(dataUrl) {
@@ -3142,10 +3126,18 @@ app.get("/api/orchestrator/config", requireAuth, (req, res) => {
   res.json(readOrchestratorConfig());
 });
 
+app.post("/api/orchestrator/tools/:tool", createUtilityHandler({
+  readConfig: readOrchestratorConfig,
+  token: CRAWLER_INTERNAL_TOKEN,
+  extractToken,
+}));
+
 app.post("/api/orchestrator/config", requireAuth, (req, res) => {
   try {
-    const next = validateOrchestratorConfig(req.body || {});
-    writeJSON("orchestrator-config.json", next);
+    const next = validateOrchestratorConfig(req.body);
+    atomicWriteJSON(DATA_DIR, "orchestrator-config.json", next);
+    try { publishOrchestratorConfig(); }
+    catch { return res.status(503).json({ ok: false, error: "Orchestrator-policy kon niet worden gepubliceerd" }); }
     return res.json({ ok: true, config: next });
   } catch (err) {
     return res.status(400).json({ error: err.message || String(err) });
@@ -3425,6 +3417,8 @@ realtimeWss.on("connection", (clientWs, req) => {
 
 // ── Start ──────────────────────────────────────────────────────────
 initDefaults();
+// Publish policy before accepting requests (publishAll refreshes it again after startup).
+publishOrchestratorConfig();
 loadPersistedImageJobs();
 setInterval(cleanupImageJobs, 10 * 60 * 1000);
 setImmediate(pumpImageJobs);

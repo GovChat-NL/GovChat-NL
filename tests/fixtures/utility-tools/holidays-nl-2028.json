@@ -1,0 +1,167 @@
+[
+  {
+    "id": "c0109b6c-a273-4950-bb5a-e474ec0ee61f",
+    "startDate": "2028-01-01",
+    "endDate": "2028-01-01",
+    "type": "Public",
+    "name": [
+      {
+        "language": "NL",
+        "text": "Nieuwjaarsdag"
+      }
+    ],
+    "regionalScope": "National",
+    "temporalScope": "FullDay",
+    "nationwide": true
+  },
+  {
+    "id": "dd14af71-c83c-4337-b232-9355bfdd3f67",
+    "startDate": "2028-04-14",
+    "endDate": "2028-04-14",
+    "type": "Public",
+    "name": [
+      {
+        "language": "NL",
+        "text": "Goede vrijdag"
+      }
+    ],
+    "regionalScope": "National",
+    "temporalScope": "FullDay",
+    "nationwide": true
+  },
+  {
+    "id": "4b95ae8e-9560-4946-be4a-4d9439eea979",
+    "startDate": "2028-04-16",
+    "endDate": "2028-04-16",
+    "type": "Public",
+    "name": [
+      {
+        "language": "NL",
+        "text": "Eerste paasdag"
+      }
+    ],
+    "regionalScope": "National",
+    "temporalScope": "FullDay",
+    "nationwide": true
+  },
+  {
+    "id": "1b8cdd4b-12a6-471a-8012-4ccdb1228bba",
+    "startDate": "2028-04-17",
+    "endDate": "2028-04-17",
+    "type": "Public",
+    "name": [
+      {
+        "language": "NL",
+        "text": "Tweede paasdag"
+      }
+    ],
+    "regionalScope": "National",
+    "temporalScope": "FullDay",
+    "nationwide": true
+  },
+  {
+    "id": "ccb1e999-65d4-4494-958e-cb0e2ccdea5c",
+    "startDate": "2028-04-27",
+    "endDate": "2028-04-27",
+    "type": "Public",
+    "name": [
+      {
+        "language": "NL",
+        "text": "Koningsdag"
+      }
+    ],
+    "regionalScope": "National",
+    "temporalScope": "FullDay",
+    "nationwide": true
+  },
+  {
+    "id": "5a7e82ab-ea1d-439f-bcb5-0fe8f5bfe8b6",
+    "startDate": "2028-05-05",
+    "endDate": "2028-05-05",
+    "type": "Public",
+    "name": [
+      {
+        "language": "NL",
+        "text": "Bevrijdingsdag"
+      }
+    ],
+    "regionalScope": "National",
+    "temporalScope": "FullDay",
+    "nationwide": true
+  },
+  {
+    "id": "a9cf8aae-56b8-4d4d-950f-497cbcfe57fa",
+    "startDate": "2028-05-25",
+    "endDate": "2028-05-25",
+    "type": "Public",
+    "name": [
+      {
+        "language": "NL",
+        "text": "Hemelvaartsdag"
+      }
+    ],
+    "regionalScope": "National",
+    "temporalScope": "FullDay",
+    "nationwide": true
+  },
+  {
+    "id": "33fed9e3-e87a-4786-ba8f-3061daf2d863",
+    "startDate": "2028-06-04",
+    "endDate": "2028-06-04",
+    "type": "Public",
+    "name": [
+      {
+        "language": "NL",
+        "text": "Eerste pinksterdag"
+      }
+    ],
+    "regionalScope": "National",
+    "temporalScope": "FullDay",
+    "nationwide": true
+  },
+  {
+    "id": "4d8b2caf-819b-441e-a16d-482214e65df9",
+    "startDate": "2028-06-05",
+    "endDate": "2028-06-05",
+    "type": "Public",
+    "name": [
+      {
+        "language": "NL",
+        "text": "Tweede pinksterdag"
+      }
+    ],
+    "regionalScope": "National",
+    "temporalScope": "FullDay",
+    "nationwide": true
+  },
+  {
+    "id": "f5e6ab91-0dbd-4b77-b01e-10ab0ca23a30",
+    "startDate": "2028-12-25",
+    "endDate": "2028-12-25",
+    "type": "Public",
+    "name": [
+      {
+        "language": "NL",
+        "text": "Eerste kerstdag"
+      }
+    ],
+    "regionalScope": "National",
+    "temporalScope": "FullDay",
+    "nationwide": true
+  },
+  {
+    "id": "cc01cce8-88ba-47cb-8c07-18f8172c624a",
+    "startDate": "2028-12-26",
+    "endDate": "2028-12-26",
+    "type": "Public",
+    "name": [
+      {
+        "language": "NL",
+        "text": "Tweede kerstdag"
+      }
+    ],
+    "regionalScope": "National",
+    "temporalScope": "FullDay",
+    "nationwide": true
+  }
+]
