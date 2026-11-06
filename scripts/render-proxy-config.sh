@@ -47,7 +47,7 @@ EOF
     if [ "${GOVCHAT_MINIMAL_UI:-false}" = true ]; then
       GOVCHAT_UI_HEAD='<link rel="stylesheet" href="/govchat-overlay/minimal.css?v=1"/>'
     else
-      GOVCHAT_UI_HEAD='<link rel="stylesheet" href="/govchat-overlay/custom.css?v=20261028-security1"/><script defer src="/govchat-overlay/loader.js?v=20261028-security1"></script>'
+      GOVCHAT_UI_HEAD='<link rel="stylesheet" href="/govchat-overlay/src/custom.css"/><script type="module" src="/govchat-overlay/src/overlay.js"></script>'
     fi
     export GOVCHAT_UI_HEAD
     envsubst '${GOVCHAT_SERVER_NAMES} ${GOVCHAT_UI_HEAD}' < /opt/govchat/nginx/librechat-overlay.conf > /etc/nginx/conf.d/default.conf

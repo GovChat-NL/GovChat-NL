@@ -15,7 +15,7 @@ De zelfvoorzienende helper staat in `scripts/openbesluitvorming-public-links.js`
 Na wijzigingen kun je beide workflowexports opnieuw genereren met Node.js 22+:
 
 ```sh
-node scripts/openbesluitvorming-public-links.js --render-workflows agents/n8n/workflows
+node scripts/openbesluitvorming-public-links.js --render-workflows agents/n8n/workflows/openbesluitvorming
 node --test tests/agents/openbesluitvorming-public-links.test.js
 ```
 

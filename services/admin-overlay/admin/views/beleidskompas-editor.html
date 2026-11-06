@@ -144,6 +144,15 @@
 
   <div class="card">
     <div class="top-bar">
+      <h2>Gebruikersfeedback</h2>
+      <button class="btn btn-secondary" type="button" onclick="loadFeedback()">Vernieuwen</button>
+    </div>
+    <div id="feedback-totals" class="muted">Nog niet geladen.</div>
+    <div id="feedback-list" class="versions-list"></div>
+  </div>
+
+  <div class="card">
+    <div class="top-bar">
       <h2>Instellingen</h2>
       <button class="btn btn-primary" onclick="saveSettings()">Instellingen opslaan</button>
     </div>
@@ -553,8 +562,32 @@ async function importJson(input) {
   input.value = '';
 }
 
+// Anonymous user feedback collected in the Beleidskompas app.
+async function loadFeedback() {
+  const totalsEl = document.getElementById('feedback-totals');
+  const listEl = document.getElementById('feedback-list');
+  try {
+    const data = await api('/api/beleidskompas-feedback');
+    const totals = data.totals || { total: 0, up: 0, down: 0 };
+    totalsEl.textContent = `${totals.total} reacties · ${totals.up} positief · ${totals.down} negatief`;
+    const items = Array.isArray(data.items) ? data.items : [];
+    listEl.innerHTML = items.length
+      ? items
+          .map((i) => {
+            const when = i.created_at ? new Date(i.created_at).toLocaleString('nl-NL') : '';
+            return `<div class="group"><strong>${i.rating === 'up' ? '👍' : '👎'}</strong> <span class="muted">${esc(when)}${i.step_id ? ' · ' + esc(i.step_id) : ''}</span><div>${esc(i.comment) || '<span class="muted">geen toelichting</span>'}</div></div>`;
+          })
+          .join('')
+      : '<div class="muted">Nog geen feedback ontvangen.</div>';
+  } catch (err) {
+    totalsEl.textContent = `Kon feedback niet laden: ${err.message}`;
+    listEl.innerHTML = '';
+  }
+}
+
 renderAll();
 refreshState().catch(() => {});
+loadFeedback().catch(() => {});
 document.getElementById('doc-preview-close')?.addEventListener('click', closePreviewModal);
 document.getElementById('doc-preview-modal')?.addEventListener('click', (e) => {
   if (e.target === e.currentTarget) closePreviewModal();

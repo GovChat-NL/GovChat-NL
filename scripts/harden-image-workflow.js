@@ -1,7 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 
-const workflowPath = path.resolve(__dirname, '../agents/n8n/workflows/image-generator-litellm.json');
+const workflowPath = path.resolve(__dirname, '../agents/n8n/workflows/algemeen/image-generator-litellm.json');
 const fileContents = JSON.parse(fs.readFileSync(workflowPath, 'utf8'));
 const workflow = Array.isArray(fileContents) ? fileContents[0] : fileContents;
 const findNode = (name) => workflow.nodes.find((node) => node.name === name);

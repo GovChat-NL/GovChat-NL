@@ -24,7 +24,7 @@
       },
       {
         "parameters": {
-          "jsCode": "const raw = $json || {};\nconst body = raw.body || {};\nconst headers = raw.headers || {};\nconst suppliedToken = String(headers['x-govchat-token'] || headers['X-Govchat-Token'] || '').trim();\nconst expectedToken = String($env.BELEIDSKOMPAS_N8N_WEBHOOK_TOKEN || $env.N8N_WEBHOOK_TOKEN || '').trim();\nif (expectedToken && suppliedToken !== expectedToken) throw new Error('Unauthorized webhook token');\n\nconst stepId = String(body.step_id || '').trim();\nconst routeMap = {\n  'stap1': 'beleidskompas-step-stap1',\n  'stap2': 'beleidskompas-step-stap2',\n  'stap3': 'beleidskompas-step-stap3',\n  'stap4': 'beleidskompas-step-stap4'\n};\nconst path = routeMap[stepId] || routeMap.stap1;\nreturn [{ json: { route_path: path, payload: body } }];"
+          "jsCode": "const raw = $json || {};\nconst body = raw.body || {};\nconst headers = raw.headers || {};\n// The n8n-openai-bridge (LibreChat's real custom-endpoint chat pipeline) sends\n// the shared webhook secret as `Authorization: Bearer <token>`, not the\n// `x-govchat-token` header used by direct/manual webhook calls. Accept either.\nconst directToken = String(headers['x-govchat-token'] || headers['X-Govchat-Token'] || '').trim();\nconst authHeader = String(headers['authorization'] || headers['Authorization'] || '').trim();\nconst bearerToken = /^Bearer\\s/i.test(authHeader) ? authHeader.slice(authHeader.indexOf(' ') + 1).trim() : '';\nconst callerToken = directToken || bearerToken;\n\nconst stepId = String(body.step_id || '').trim();\nconst routeMap = {\n  'stap1': 'beleidskompas-step-stap1',\n  'stap2': 'beleidskompas-step-stap2',\n  'stap3': 'beleidskompas-step-stap3',\n  'stap4': 'beleidskompas-step-stap4'\n};\nconst path = routeMap[stepId] || routeMap.stap1;\n// Forward the CALLER's own token, not the internal env token: each step\n// workflow validates it against BELEIDSKOMPAS_N8N_WEBHOOK_TOKEN/N8N_WEBHOOK_TOKEN\n// itself and returns a clear ok:false (never throws) on mismatch, so an\n// unauthenticated caller cannot get a real answer just by reaching this router.\nreturn [{ json: { route_path: path, payload: body, caller_token: callerToken } }];"
         },
         "id": "RouteStep",
         "name": "Route Step",
@@ -48,7 +48,7 @@
               },
               {
                 "name": "x-govchat-token",
-                "value": "={{ String($env.BELEIDSKOMPAS_N8N_WEBHOOK_TOKEN || $env.N8N_WEBHOOK_TOKEN || '') }}"
+                "value": "={{ String($json.caller_token || '') }}"
               }
             ]
           },
@@ -71,7 +71,7 @@
       {
         "parameters": {
           "respondWith": "json",
-          "responseBody": "={{ JSON.stringify({ ok: true, answer: $json.answer || $json.text || '' }) }}",
+          "responseBody": "={{ JSON.stringify(Object.assign({ ok: true }, $json, { answer: $json.answer || $json.text || '' })) }}",
           "options": {}
         },
         "id": "RespondHoofdagent",

@@ -42,7 +42,11 @@ test('initialize overlay provides message content parts for native run-step inde
   const original = fs.readFileSync(target, 'utf8');
   const patched = patchInitializeSource(original);
 
-  assert.match(patched, /res,\s+contentParts,\s+stepMap,/);
+  const options = patched.match(/const eventHandlers = getDefaultHandlers\(\{([\s\S]*?)\n  \}\);/);
+  assert.ok(options, 'Default handler options must remain present');
+  assert.match(options[1], /\bres,/);
+  assert.match(options[1], /\baggregateContent,/);
+  assert.match(options[1], /\bcontentParts,/);
   assert.equal(patchInitializeSource(patched), patched);
 });
 

@@ -6,7 +6,7 @@ services:
   #  Registry: registry.librechat.ai (officieel, ghcr.io is verouderd)
   #
   #  Vereist op host (via SSH, eenmalig):
-  #    mkdir -p /opt/librechat/{data/mongodb,data/meilisearch,data/pgvector,data/redis,uploads,logs,images,overlay/data,overlay/publish}
+  #    mkdir -p /opt/librechat/{data/meilisearch,data/pgvector,data/redis,uploads,logs,images,overlay/data,overlay/publish}
   #    Standaard configuratiebestand staat in deze repo: ./librechat.yaml
   # ---------------------------------------------------------------------------
   librechat:
@@ -318,6 +318,7 @@ services:
       - ${NGINX_TRUSTED_PROXIES_CONF_PATH:-./nginx/trusted-proxies.conf}:/etc/nginx/trusted-proxies.conf:ro
       - ${NGINX_TRUSTED_PROXIES_GEO_PATH:-./nginx/trusted-proxies.geo}:/etc/nginx/trusted-proxies.geo:ro
       - ${GOVCHAT_DATA_ROOT:-/opt/librechat}/overlay/publish:/opt/librechat/overlay/publish:ro
+      - ./overlay/src:/opt/librechat/overlay/src:ro
     networks:
       - librechat-net
 
@@ -334,7 +335,7 @@ services:
     ports:
       - "${MONGO_BIND_IP:-127.0.0.1}:${MONGO_PORT:-27017}:27017"
     volumes:
-      - ${GOVCHAT_DATA_ROOT:-/opt/librechat}/data/mongodb:/data/db
+      - mongodb-data:/data/db
     environment:
       MONGO_INITDB_ROOT_USERNAME: ${MONGO_ROOT_USER}
       MONGO_INITDB_ROOT_PASSWORD: ${MONGO_ROOT_PASS}
@@ -427,6 +428,7 @@ services:
       AZURE_OPENAI_API_BASE: ${AZURE_OPENAI_API_BASE}
       AZURE_OPENAI_API_VERSION: ${AZURE_OPENAI_API_VERSION}
       AZURE_OPENAI_API_KEY: ${AZURE_OPENAI_API_KEY}
+      AZURE_OPENAI_CHAT_MODEL: ${AZURE_OPENAI_CHAT_MODEL}
       AZURE_OPENAI_STT_API_BASE: ${AZURE_OPENAI_STT_API_BASE}
       AZURE_OPENAI_STT_API_VERSION: ${AZURE_OPENAI_STT_API_VERSION}
       AZURE_OPENAI_STT_API_KEY: ${AZURE_OPENAI_STT_API_KEY}
@@ -684,7 +686,6 @@ services:
       TOPDESK_API_USERNAME: ${TOPDESK_API_USERNAME:-}
       TOPDESK_API_PASSWORD: ${TOPDESK_API_PASSWORD:-}
       N8N_ENABLE_TOPDESK_SEARCH: ${N8N_ENABLE_TOPDESK_SEARCH:-false}
-      AGENTS_LOCAL_WORKFLOWS_DIR: /workspace/agents/n8n/workflows
       AGENTS_BOOTSTRAP_FORCE: ${AGENTS_BOOTSTRAP_FORCE:-false}
     volumes:
       - n8n-data:/home/node/.n8n
@@ -885,7 +886,7 @@ services:
 
   # ---------------------------------------------------------------------------
   #  GovChat Overlay Admin
-  #  Publiceert help/apps/loader/css naar gedeelde overlay-map.
+  #  Publiceert help/apps-configuratie naar gedeelde overlay-map.
   #  WIP; opt-in met --profile admin-overlay. Standaard uitgeschakeld.
   #  Gebruikt LibreChat-specifieke defaults via bind mount.
   # ---------------------------------------------------------------------------
@@ -972,6 +973,7 @@ networks:
     external: ${GOVCHAT_NETWORK_EXTERNAL:-false}
 
 volumes:
+  mongodb-data:
   n8n-data:
   n8n-postgres-data:
   qdrant-storage:

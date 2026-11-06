@@ -1,6 +1,6 @@
 const fs = require('fs');
 
-const workflowPath = require('path').resolve(__dirname, '../agents/n8n/workflows/orchestrator-litellm.json');
+const workflowPath = require('path').resolve(__dirname, '../agents/n8n/workflows/algemeen/orchestrator-litellm.json');
 const data = JSON.parse(fs.readFileSync(workflowPath, 'utf8'));
 const wf = Array.isArray(data) ? data[0] : data;
 
@@ -214,7 +214,7 @@ if (imageParts > 0) {
   try {
     const base = String($env.LITELLM_URL || 'http://litellm:4000').replace(/\\\/$/, '') + '/v1/chat/completions';
     const apiKey = String($env.LITELLM_API_KEY || $env.N8N_LITELLM_IMAGE_API_KEY || '').trim();
-    const model = String($env.N8N_ORCHESTRATOR_VISION_MODEL || 'gpt-5.4').trim() || 'gpt-5.4';
+    const model = String($env.N8N_ORCHESTRATOR_VISION_MODEL || 'govchat-default').trim() || 'govchat-default';
 
     if (!apiKey) {
       visionCallStatus = 'no_api_key';
@@ -226,7 +226,7 @@ if (imageParts > 0) {
           'content-type': 'application/json',
           authorization: 'Bearer ' + apiKey,
         },
-        body: JSON.stringify({ model, messages: normalizedMessages, temperature: 0.2 }),
+        body: JSON.stringify({ model, messages: normalizedMessages }),
       });
 
       if (r.ok) {
@@ -321,9 +321,12 @@ agent.parameters.options.systemMessage = originalSystem.includes('[FINAL_ANSWER]
 
 const utilityBuilder = require('./orchestrator-utility-workflow');
 utilityBuilder.applyUtilityTools(wf);
+// Utility exports added on dev remain at the workflow root. Do not regenerate
+// duplicates in algemeen merely because the orchestrator moved there on PR13.
+const utilityWorkflowsDir = require('path').resolve(__dirname, '../agents/n8n/workflows');
 for (const definition of utilityBuilder.definitions) {
   const utility = utilityBuilder.utilityWorkflow(definition);
-  fs.writeFileSync(require('path').join(require('path').dirname(workflowPath), utility.id + '.json'), JSON.stringify([utility], null, 2) + '\n');
+  fs.writeFileSync(require('path').join(utilityWorkflowsDir, utility.id + '.json'), JSON.stringify([utility], null, 2) + '\n');
 }
 fs.writeFileSync(workflowPath, JSON.stringify(data, null, 2));
 console.log('Updated orchestrator workflow detect node + passthrough prompt');

@@ -8,7 +8,7 @@ const path = require("node:path");
 const vm = require("node:vm");
 const policy = require("../../scripts/n8n-orchestrator-tool-policy");
 const builder = require("../../scripts/orchestrator-utility-workflow");
-const workflow = JSON.parse(fs.readFileSync(path.join(__dirname, "../../agents/n8n/workflows/orchestrator-litellm.json")))[0];
+const workflow = JSON.parse(fs.readFileSync(path.join(__dirname, "../../agents/n8n/workflows/algemeen/orchestrator-litellm.json")))[0];
 
 function writePolicy(directory, enabled = true) {
   const data = { default_timezone: "Europe/Amsterdam", tools: Object.fromEntries(Object.values(policy.TOOL_KEYS).map((key) => [key, enabled])) };

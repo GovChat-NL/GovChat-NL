@@ -1,0 +1,1301 @@
+/* ---------------------------------------------------------------------------
+ *  The Beleidskompas page (/beleidskompas/)
+ *
+ *  The layout follows the previous Beleidskompas assistant (the Open WebUI
+ *  version in GovChat-NL, src/module/n8n_engine/frontend/beleidskompas.html):
+ *  the stepper with the process steps on the left, the chat in the middle
+ *  and the step card on the right. The styling follows the overlay
+ *  (custom.css, which the page also loads: the same head, card and button
+ *  styles as the mini apps) instead of the Tailwind style of that old page.
+ * ------------------------------------------------------------------------- */
+
+#gc-bk {
+  position: fixed;
+  inset: 0;
+  z-index: 10000;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: #fff;
+}
+
+/* The head bar shares its styling with the other mini apps (.gc-vs-head). */
+.gc-bk-head {
+  flex-shrink: 0;
+}
+
+/* The overview and the workspace switch via [hidden], which loses to an
+   element's own display value (grid/flex), so it is set explicitly here. */
+#gc-bk [hidden] {
+  display: none !important;
+}
+
+/* The page starts hidden until the screen has been filled in. */
+#gc-bk[hidden] {
+  display: none;
+}
+
+/* The disclaimer line (non-functional requirement: a supporting tool, not
+   automated decision-making). */
+.gc-bk-note {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+  padding: 8px 12px;
+  font-size: 12px;
+  color: #6b7280;
+  border-bottom: 1px solid #f1f5f9;
+}
+
+.gc-bk-note svg {
+  width: 15px;
+  height: 15px;
+  flex-shrink: 0;
+  color: #2563eb;
+}
+
+/* Steps on the left, then the chat, then the elaboration: the same reading
+   order as the previous Beleidskompas assistant. */
+.gc-bk-grid {
+  display: grid;
+  grid-template-columns: 210px minmax(300px, 1fr) minmax(320px, 1.25fr);
+  gap: 12px;
+  flex: 1;
+  min-height: 0;
+  padding: 12px;
+  background: #f3f7fb;
+}
+
+@media (max-width: 1200px) {
+  .gc-bk-grid {
+    grid-template-columns: 180px minmax(260px, 1fr) minmax(280px, 1.2fr);
+    gap: 10px;
+  }
+}
+
+/* --- Overview of the four steps ----------------------------------------- */
+
+.gc-bk-overview {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 20px;
+  background: #f3f7fb;
+}
+
+.gc-bk-overview-intro h3 {
+  margin: 0 0 4px;
+  font-size: 15px;
+}
+
+.gc-bk-overview-intro p {
+  margin: 0 0 16px;
+  font-size: 12px;
+  color: #4b5563;
+}
+
+.gc-bk-overview-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+  gap: 12px;
+}
+
+.gc-bk-overview-card {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 14px;
+  text-align: left;
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  cursor: pointer;
+}
+
+.gc-bk-overview-card:hover {
+  border-color: #bfd4ff;
+  background: #f8fbff;
+}
+
+.gc-bk-overview-card.is-active {
+  border-color: #2563eb;
+}
+
+.gc-bk-overview-card.is-done {
+  border-color: #86efac;
+}
+
+.gc-bk-overview-nr {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: #6b7280;
+}
+
+.gc-bk-overview-title {
+  font-size: 14px;
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.gc-bk-overview-short {
+  font-size: 12px;
+  line-height: 1.45;
+  color: #4b5563;
+}
+
+.gc-bk-overview-status {
+  align-self: flex-start;
+  margin-top: 6px;
+  padding: 2px 8px;
+  font-size: 11px;
+  font-weight: 700;
+  color: #4b5563;
+  background: #f3f4f6;
+  border-radius: 999px;
+}
+
+.gc-bk-overview-status.is-active {
+  color: #92400e;
+  background: #fef3c7;
+}
+
+.gc-bk-overview-status.is-done {
+  color: #166534;
+  background: #dcfce7;
+}
+
+.dark .gc-bk-overview {
+  background: #0b1220;
+}
+
+.dark .gc-bk-overview-intro p,
+.dark .gc-bk-overview-short {
+  color: #9ca3af;
+}
+
+.dark .gc-bk-overview-card {
+  background: #111827;
+  border-color: #374151;
+}
+
+.dark .gc-bk-overview-card:hover {
+  border-color: #1d4ed8;
+  background: #1f2937;
+}
+
+.dark .gc-bk-overview-title {
+  color: #f9fafb;
+}
+
+.dark .gc-bk-overview-status {
+  color: #d1d5db;
+  background: #374151;
+}
+
+.dark .gc-bk-overview-status.is-active {
+  color: #fde68a;
+  background: rgba(146, 64, 14, 0.4);
+}
+
+.dark .gc-bk-overview-status.is-done {
+  color: #bbf7d0;
+  background: rgba(22, 101, 52, 0.4);
+}
+
+/* --- Cards --------------------------------------------------------------- */
+
+.gc-bk-card {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.gc-bk-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-shrink: 0;
+  padding: 10px 12px;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.gc-bk-card-head h2 {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 700;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.gc-bk-head-btn {
+  display: inline-flex;
+  padding: 4px;
+  color: #6b7280;
+  background: transparent;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.gc-bk-head-btn:hover {
+  color: #111827;
+  background: #f3f4f6;
+}
+
+.gc-bk-head-btn svg {
+  width: 17px;
+  height: 17px;
+}
+
+/* --- Chat ---------------------------------------------------------------- */
+
+.gc-bk-chat-log {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 12px;
+}
+
+.gc-bk-msg-row {
+  display: flex;
+}
+
+.gc-bk-msg-row.is-assistant {
+  justify-content: flex-start;
+}
+
+.gc-bk-msg-row.is-user {
+  justify-content: flex-end;
+}
+
+.gc-bk-msg-col {
+  max-width: 88%;
+  min-width: 0;
+}
+
+.gc-bk-msg {
+  padding: 9px 11px;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+}
+
+.gc-bk-msg-row.is-assistant .gc-bk-msg {
+  background: #f8fafc;
+}
+
+.gc-bk-msg-row.is-user .gc-bk-msg {
+  background: #e0ecff;
+  border-color: #bfd4ff;
+}
+
+.gc-bk-msg-author {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+
+.gc-bk-msg-avatar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+  color: #fff;
+  background: #2563eb;
+  border-radius: 999px;
+}
+
+.gc-bk-msg-avatar svg {
+  width: 12px;
+  height: 12px;
+}
+
+.gc-bk-msg-name {
+  font-size: 12px;
+  font-weight: 600;
+  color: #374151;
+}
+
+.gc-bk-msg-text {
+  font-size: 13px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.gc-bk-pre {
+  display: block;
+  white-space: pre-wrap;
+}
+
+.gc-bk-msg-time {
+  margin-top: 3px;
+  font-size: 10px;
+  color: #6b7280;
+}
+
+.gc-bk-msg-row.is-assistant .gc-bk-msg-time {
+  margin-left: 26px;
+}
+
+.gc-bk-msg-row.is-user .gc-bk-msg-time {
+  text-align: right;
+}
+
+.gc-bk-typing-dots {
+  display: inline-flex;
+  gap: 3px;
+  padding: 2px 0;
+}
+
+.gc-bk-typing-dots span {
+  width: 5px;
+  height: 5px;
+  border-radius: 999px;
+  background: #6b7280;
+  animation: gc-bk-typing-bounce 1.2s infinite ease-in-out;
+}
+
+.gc-bk-typing-dots span:nth-child(2) {
+  animation-delay: 0.15s;
+}
+
+.gc-bk-typing-dots span:nth-child(3) {
+  animation-delay: 0.3s;
+}
+
+@keyframes gc-bk-typing-bounce {
+  0%, 60%, 100% {
+    transform: translateY(0);
+    opacity: 0.5;
+  }
+  30% {
+    transform: translateY(-4px);
+    opacity: 1;
+  }
+}
+
+.gc-bk-chat-compose {
+  flex-shrink: 0;
+  padding: 8px;
+  border-top: 1px solid #e5e7eb;
+}
+
+.gc-bk-compose-field {
+  position: relative;
+}
+
+.gc-bk-compose-field input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 9px 42px 9px 11px;
+  font-size: 12px;
+  color: #111827;
+  background: #fff;
+  border: 1px solid #d1d5db;
+  border-radius: 999px;
+}
+
+.gc-bk-compose-field input:focus {
+  outline: none;
+  border-color: #2563eb;
+}
+
+.gc-bk-compose-field button {
+  position: absolute;
+  top: 50%;
+  right: 5px;
+  transform: translateY(-50%);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  color: #fff;
+  background: #2563eb;
+  border: none;
+  border-radius: 999px;
+  cursor: pointer;
+}
+
+.gc-bk-compose-field button:hover:not(:disabled) {
+  background: #1d4ed8;
+}
+
+.gc-bk-compose-field button svg {
+  width: 15px;
+  height: 15px;
+}
+
+.gc-bk-chat-compose input:disabled,
+.gc-bk-chat-compose button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+/* --- Step card ----------------------------------------------------------- */
+
+.gc-bk-step-nav {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.gc-bk-step-nav button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  color: #374151;
+  background: #fff;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.gc-bk-step-nav button:hover:not(:disabled) {
+  background: #f3f4f6;
+}
+
+.gc-bk-step-nav button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.gc-bk-step-nav svg {
+  width: 14px;
+  height: 14px;
+}
+
+.gc-bk-info-badge {
+  width: 22px !important;
+  height: 22px !important;
+  font-size: 11px;
+  font-weight: 700;
+  color: #374151;
+  background: #e5e7eb !important;
+  border: none !important;
+  border-radius: 999px !important;
+}
+
+.gc-bk-info-badge:hover:not(:disabled) {
+  color: #111827;
+  background: #d1d5db !important;
+}
+
+.gc-bk-step-body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 12px;
+}
+
+.gc-bk-form-short {
+  font-size: 12px;
+  line-height: 1.45;
+  color: #4b5563;
+}
+
+.gc-bk-step-status {
+  font-size: 11px;
+  color: #6b7280;
+}
+
+.gc-bk-step-text {
+  margin: 0;
+  font-family: inherit;
+  font-size: 13px;
+  line-height: 1.5;
+  color: #0f172a;
+  overflow-wrap: anywhere;
+}
+
+.gc-bk-step-text.is-placeholder {
+  color: #6b7280;
+}
+
+.gc-bk-step-meta {
+  font-size: 11px;
+  color: #6b7280;
+}
+
+/* Empty lines must not take up space (flex gap) in the empty state. */
+.gc-bk-step-body > :empty {
+  display: none;
+}
+
+.gc-bk-step-foot {
+  display: flex;
+  gap: 8px;
+  flex-shrink: 0;
+  padding: 8px 12px;
+  border-top: 1px solid #e5e7eb;
+}
+
+#gc-bk-save-step {
+  padding: 8px 12px;
+  font-size: 12px;
+  color: #0f172a;
+  background: #e2e8f0;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+#gc-bk-save-step:hover {
+  background: #cbd5e1;
+}
+
+#gc-bk-next-step {
+  flex: 1;
+  padding: 8px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #fff;
+  background: #15803d;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+#gc-bk-next-step:hover:not(:disabled) {
+  background: #166534;
+}
+
+#gc-bk-next-step:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* --- Stepper (left column) ---------------------------------------------- */
+
+.gc-bk-stepper {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-height: 0;
+  padding: 12px 10px;
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+}
+
+.gc-bk-step-groups {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-height: 0;
+  overflow: auto;
+}
+
+.gc-bk-step-group-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  width: 100%;
+  padding: 5px 6px;
+  font-size: 12px;
+  font-weight: 700;
+  text-align: left;
+  color: inherit;
+  background: transparent;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.gc-bk-step-group-head:hover {
+  background: #f3f7fb;
+}
+
+.gc-bk-step-group-head svg {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+  transition: transform 150ms ease;
+}
+
+.gc-bk-step-group.is-open .gc-bk-step-group-head svg {
+  transform: rotate(180deg);
+}
+
+/* The same signals as the previous version: active step amber, done green. */
+.gc-bk-step-group.is-active .gc-bk-step-group-head {
+  color: #b45309;
+}
+
+.gc-bk-step-group.is-done .gc-bk-step-group-head {
+  color: #15803d;
+}
+
+.gc-bk-step-group-items {
+  display: none;
+  flex-direction: column;
+  gap: 4px;
+  margin: 4px 0 2px 12px;
+}
+
+.gc-bk-step-group.is-open .gc-bk-step-group-items {
+  display: flex;
+}
+
+.gc-bk-step-link {
+  padding: 2px 0;
+  font-size: 11px;
+  line-height: 1.4;
+  text-align: left;
+  color: #4b5563;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+}
+
+.gc-bk-step-link:hover {
+  color: #2563eb;
+}
+
+.gc-bk-step-link.is-title {
+  font-weight: 600;
+  color: #111827;
+}
+
+.gc-bk-step-link.is-title:hover {
+  color: #2563eb;
+}
+
+.gc-bk-recent-cases {
+  flex-shrink: 0;
+  padding-top: 8px;
+  border-top: 1px solid #e5e7eb;
+}
+
+.gc-bk-recent-cases h4 {
+  margin: 0 0 6px;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: #6b7280;
+}
+
+.gc-bk-recent-cases-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: 150px;
+  overflow: auto;
+}
+
+.gc-bk-recent-case-link {
+  padding: 4px 6px;
+  font-size: 11px;
+  line-height: 1.35;
+  text-align: left;
+  color: #4b5563;
+  background: transparent;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.gc-bk-recent-case-link:hover {
+  color: #111827;
+  background: #f3f4f6;
+}
+
+.gc-bk-recent-case-link.is-active {
+  font-weight: 600;
+  color: #1e3a8a;
+  background: #eff6ff;
+}
+
+.gc-bk-recent-cases-empty {
+  font-size: 11px;
+  color: #6b7280;
+}
+
+/* --- Sources ------------------------------------------------------------- */
+
+.gc-bk-citations {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+/* "## heading" lines from the Beleidskompas elaboration (see formatRichText). */
+.gc-bk-rich-h {
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.dark .gc-bk-rich-h {
+  color: #f9fafb;
+}
+
+/* --- Elaboration per step: sections with a verdict (see parseAdvice) ---- */
+
+.gc-bk-advice {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.gc-bk-advice-block {
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  background: #fff;
+}
+
+.gc-bk-advice-block > summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  cursor: pointer;
+  list-style: none;
+}
+
+.gc-bk-advice-block > summary::-webkit-details-marker {
+  display: none;
+}
+
+.gc-bk-advice-block > summary::after {
+  content: "›";
+  margin-left: auto;
+  font-size: 15px;
+  line-height: 1;
+  color: #6b7280;
+  transition: transform 150ms ease;
+}
+
+.gc-bk-advice-block[open] > summary::after {
+  transform: rotate(90deg);
+}
+
+.gc-bk-advice-heading {
+  font-size: 12px;
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.gc-bk-advice-text {
+  padding: 0 10px 10px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: #1f2937;
+  overflow-wrap: anywhere;
+}
+
+.gc-bk-msg-more-head {
+  margin: 10px 0 2px;
+}
+
+.gc-bk-verdict {
+  padding: 1px 8px;
+  font-size: 11px;
+  font-weight: 700;
+  border-radius: 999px;
+  border: 1px solid transparent;
+}
+
+.gc-bk-verdict.is-yes {
+  color: #166534;
+  background: #dcfce7;
+  border-color: #86efac;
+}
+
+.gc-bk-verdict.is-no {
+  color: #991b1b;
+  background: #fee2e2;
+  border-color: #fca5a5;
+}
+
+.gc-bk-verdict.is-unclear {
+  color: #92400e;
+  background: #fef3c7;
+  border-color: #fcd34d;
+}
+
+.gc-bk-advice-disclaimer {
+  margin: 4px 0 0;
+  font-size: 11px;
+  line-height: 1.45;
+  color: #6b7280;
+}
+
+.gc-bk-advice-demo {
+  padding: 6px 10px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #92400e;
+  background: #fef3c7;
+  border: 1px solid #fcd34d;
+  border-radius: 8px;
+}
+
+/* Referral to the specialist team. */
+.gc-bk-specialist {
+  padding: 8px 10px;
+  font-size: 12px;
+  line-height: 1.45;
+  color: #1e3a8a;
+  background: #eff6ff;
+  border: 1px solid #bfdbfe;
+  border-radius: 8px;
+}
+
+/* Anonymous rating per answer. */
+.gc-bk-feedback {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid #e5e7eb;
+  font-size: 11px;
+  color: #6b7280;
+}
+
+.gc-bk-feedback.is-sent {
+  color: #166534;
+}
+
+.gc-bk-feedback-btn {
+  padding: 2px 6px;
+  font-size: 13px;
+  line-height: 1;
+  background: transparent;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.gc-bk-feedback-btn:hover,
+.gc-bk-feedback-btn.is-chosen {
+  border-color: #2563eb;
+  background: #eff6ff;
+}
+
+.gc-bk-feedback-comment {
+  flex: 1;
+  min-width: 140px;
+  padding: 4px 8px;
+  font-size: 11px;
+  color: #111827;
+  background: #fff;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+}
+
+.gc-bk-feedback-send {
+  padding: 4px 8px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #fff;
+  background: #2563eb;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.dark .gc-bk-feedback {
+  border-top-color: #374151;
+  color: #9ca3af;
+}
+
+.dark .gc-bk-feedback.is-sent {
+  color: #4ade80;
+}
+
+.dark .gc-bk-feedback-btn,
+.dark .gc-bk-feedback-comment {
+  color: #f9fafb;
+  background: #111827;
+  border-color: #4b5563;
+}
+
+.dark .gc-bk-feedback-btn:hover,
+.dark .gc-bk-feedback-btn.is-chosen {
+  border-color: #1d4ed8;
+  background: #1f2937;
+}
+
+/* The full elaboration behind a disclosure in the chat. */
+.gc-bk-msg-more {
+  margin-top: 8px;
+}
+
+.gc-bk-msg-more > summary {
+  font-size: 12px;
+  font-weight: 600;
+  color: #1d4ed8;
+  cursor: pointer;
+}
+
+.gc-bk-msg-more > div {
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px solid #e5e7eb;
+}
+
+.dark .gc-bk-advice-block {
+  background: #1f2937;
+  border-color: #374151;
+}
+
+.dark .gc-bk-advice-heading {
+  color: #f9fafb;
+}
+
+.dark .gc-bk-advice-text {
+  color: #e5e7eb;
+}
+
+.dark .gc-bk-verdict.is-yes {
+  color: #bbf7d0;
+  background: rgba(22, 101, 52, 0.35);
+  border-color: #166534;
+}
+
+.dark .gc-bk-verdict.is-no {
+  color: #fecaca;
+  background: rgba(153, 27, 27, 0.35);
+  border-color: #991b1b;
+}
+
+.dark .gc-bk-verdict.is-unclear {
+  color: #fde68a;
+  background: rgba(146, 64, 14, 0.35);
+  border-color: #92400e;
+}
+
+.dark .gc-bk-advice-demo {
+  color: #fde68a;
+  background: rgba(146, 64, 14, 0.3);
+  border-color: #92400e;
+}
+
+.dark .gc-bk-specialist {
+  color: #bfdbfe;
+  background: rgba(30, 58, 138, 0.35);
+  border-color: #1e40af;
+}
+
+.dark .gc-bk-msg-more > summary {
+  color: #93c5fd;
+}
+
+.dark .gc-bk-msg-more > div {
+  border-top-color: #374151;
+}
+
+/* Visible focus for keyboard navigation. */
+#gc-bk button:focus-visible,
+#gc-bk input:focus-visible,
+#gc-bk summary:focus-visible,
+.gc-bk-doc-modal button:focus-visible {
+  outline: 2px solid #2563eb;
+  outline-offset: 2px;
+}
+
+.gc-bk-citation-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  /* A chip stays on one line but must never run outside the card: long
+     document titles are cut off with an ellipsis (the full title is in the
+     title attribute and in the source preview). */
+  max-width: 100%;
+  min-width: 0;
+  white-space: nowrap;
+  padding: 4px 9px;
+  font-size: 11px;
+  color: #1e3a8a;
+  background: #eff6ff;
+  border: 1px solid #bfdbfe;
+  border-radius: 999px;
+  cursor: pointer;
+}
+
+.gc-bk-citation-btn:hover {
+  background: #dbeafe;
+}
+
+.gc-bk-citation-file {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-weight: 700;
+}
+
+.gc-bk-citation-meta {
+  flex-shrink: 0;
+  opacity: 0.9;
+}
+
+/* --- Modals (source preview and step explanation) ----------------------- */
+
+.gc-bk-doc-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 10040;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 18px;
+  background: rgba(15, 23, 42, 0.45);
+}
+
+.gc-bk-doc-dialog {
+  display: flex;
+  flex-direction: column;
+  width: min(680px, 92vw);
+  max-height: 86vh;
+  overflow: hidden;
+  background: #fff;
+  border: 1px solid #dbeafe;
+  border-radius: 12px;
+  box-shadow: 0 16px 50px rgba(15, 23, 42, 0.35);
+}
+
+.gc-bk-doc-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.gc-bk-doc-title {
+  font-size: 14px;
+  font-weight: 800;
+  color: #0f172a;
+}
+
+.gc-bk-doc-meta {
+  margin-top: 2px;
+  font-size: 11px;
+  color: #64748b;
+}
+
+.gc-bk-doc-close {
+  border: none;
+  background: transparent;
+  font-size: 18px;
+  line-height: 1;
+  color: #334155;
+  cursor: pointer;
+}
+
+.gc-bk-doc-body {
+  margin: 0;
+  padding: 12px;
+  overflow: auto;
+  font-family: inherit;
+  font-size: 12px;
+  line-height: 1.45;
+  color: #0f172a;
+  white-space: pre-wrap;
+}
+
+/* The step explanation modal holds formatted HTML instead of raw source text. */
+.gc-bk-doc-body.is-rich {
+  white-space: normal;
+}
+
+.gc-bk-doc-body.is-rich p {
+  margin: 0 0 4px;
+}
+
+.gc-bk-doc-body h5 {
+  margin: 12px 0 4px;
+  font-size: 12px;
+}
+
+.gc-bk-doc-body h5:first-child {
+  margin-top: 0;
+}
+
+.gc-bk-doc-body ul {
+  margin: 0;
+  padding-left: 18px;
+}
+
+/* --- Dark mode ---------------------------------------------------------- */
+
+.dark #gc-bk {
+  background: #0b1220;
+  color: #f9fafb;
+}
+
+.dark .gc-bk-note {
+  color: #9ca3af;
+  border-bottom-color: #1f2937;
+}
+
+.dark .gc-bk-grid {
+  background: #0b1220;
+}
+
+.dark .gc-bk-card,
+.dark .gc-bk-stepper {
+  background: #111827;
+  border-color: #374151;
+}
+
+.dark .gc-bk-card-head {
+  border-bottom-color: #374151;
+}
+
+.dark .gc-bk-head-btn {
+  color: #9ca3af;
+}
+
+.dark .gc-bk-head-btn:hover {
+  color: #f9fafb;
+  background: #1f2937;
+}
+
+.dark .gc-bk-msg {
+  border-color: #374151;
+}
+
+.dark .gc-bk-msg-row.is-assistant .gc-bk-msg {
+  background: #1f2937;
+}
+
+.dark .gc-bk-msg-row.is-user .gc-bk-msg {
+  background: #1e3a8a;
+  border-color: #1d4ed8;
+}
+
+.dark .gc-bk-msg-name {
+  color: #e5e7eb;
+}
+
+.dark .gc-bk-chat-compose,
+.dark .gc-bk-step-foot {
+  border-top-color: #374151;
+}
+
+.dark .gc-bk-compose-field input,
+.dark .gc-bk-step-nav button {
+  color: #f9fafb;
+  background: #111827;
+  border-color: #4b5563;
+}
+
+.dark .gc-bk-step-nav button:hover:not(:disabled) {
+  background: #1f2937;
+}
+
+.dark .gc-bk-info-badge {
+  color: #f9fafb;
+  background: #374151 !important;
+}
+
+.dark .gc-bk-step-text {
+  color: #e5e7eb;
+}
+
+.dark .gc-bk-form-short {
+  color: #d1d5db;
+}
+
+.dark #gc-bk-save-step {
+  color: #f9fafb;
+  background: #374151;
+}
+
+.dark #gc-bk-save-step:hover {
+  background: #4b5563;
+}
+
+.dark .gc-bk-step-group-head:hover {
+  background: #1f2937;
+}
+
+.dark .gc-bk-step-group.is-active .gc-bk-step-group-head {
+  color: #fbbf24;
+}
+
+.dark .gc-bk-step-group.is-done .gc-bk-step-group-head {
+  color: #4ade80;
+}
+
+.dark .gc-bk-step-link,
+.dark .gc-bk-recent-case-link {
+  color: #9ca3af;
+}
+
+.dark .gc-bk-step-link:hover,
+.dark .gc-bk-recent-case-link:hover {
+  color: #93c5fd;
+  background: transparent;
+}
+
+.dark .gc-bk-step-link.is-title {
+  color: #e5e7eb;
+}
+
+.dark .gc-bk-recent-cases {
+  border-top-color: #374151;
+}
+
+.dark .gc-bk-recent-case-link.is-active {
+  color: #bfdbfe;
+  background: #1f2937;
+}
+
+.dark .gc-bk-citation-btn {
+  color: #bfdbfe;
+  background: #1f2937;
+  border-color: #1e40af;
+}
+
+.dark .gc-bk-doc-dialog {
+  background: #111827;
+  border-color: #374151;
+}
+
+.dark .gc-bk-doc-head {
+  border-bottom-color: #374151;
+}
+
+.dark .gc-bk-doc-title {
+  color: #f9fafb;
+}
+
+.dark .gc-bk-doc-close,
+.dark .gc-bk-doc-body {
+  color: #e5e7eb;
+}
+
+@media (max-width: 768px) {
+  .gc-bk-grid {
+    grid-template-columns: 1fr;
+  }
+}

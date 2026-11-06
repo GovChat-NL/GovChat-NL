@@ -6,10 +6,8 @@ const fs = require('fs');
 const path = require('path');
 
 const N8N_URL = 'http://n8n:5678';
-const WORKFLOWS_DIR = String(
-  process.env.AGENTS_LOCAL_WORKFLOWS_DIR || '/workspace/agents/n8n/workflows',
-).trim();
-const MARKER_FILE = '/home/node/.n8n/.govchat-seeded-v7';
+const WORKFLOWS_DIR = '/workspace/agents/n8n/workflows';
+const MARKER_FILE = '/home/node/.n8n/.govchat-seeded-v8';
 const ORCHESTRATOR_ID = 'govchat-orchestrator-litellm';
 const TOPDESK_SEARCH_ID = '3d74c6d5-0475-4b79-9f11-2a876fd1c002';
 const TOPDESK_TOOL_NAME = 'topdesk_knowledge_search_tool';
@@ -60,7 +58,7 @@ function getWorkflowImportPlan(workflows, markerContent, force = false, env = pr
   } catch {
     marker = null;
   }
-  if (force || !marker || marker.version !== 7) return workflows;
+  if (force || !marker || marker.version !== 8) return workflows;
   if (marker.topdeskSearchEnabled === enabled) return [];
   // Only update this feature's workflows on a flag change; leave other
   // deployed workflows and the ingest schedule untouched.
@@ -224,13 +222,19 @@ function importEmbeddingHeaderCredential() {
   console.log('[bootstrap] LiteLLM embeddings HTTP Header Auth credential geïmporteerd');
 }
 
+function listWorkflowFiles(dir) {
+  return fs.readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
+    const entryPath = path.join(dir, entry.name);
+    if (entry.isDirectory()) return listWorkflowFiles(entryPath);
+    return entry.isFile() && entry.name.toLowerCase().endsWith('.json') ? [entryPath] : [];
+  });
+}
+
 function discoverWorkflows(workflowsDir = WORKFLOWS_DIR, env = process.env) {
   if (!fs.existsSync(workflowsDir)) throw new Error(`Workflow directory ontbreekt: ${workflowsDir}`);
 
-  const files = fs
-    .readdirSync(workflowsDir, { withFileTypes: true })
-    .filter((entry) => entry.isFile() && entry.name.toLowerCase().endsWith('.json'))
-    .map((entry) => entry.name)
+  const files = listWorkflowFiles(workflowsDir)
+    .map((fullPath) => path.relative(workflowsDir, fullPath))
     .sort((a, b) => a.localeCompare(b));
 
   if (!files.length) throw new Error(`Geen workflow-JSON-bestanden gevonden in ${workflowsDir}`);
@@ -313,12 +317,12 @@ function renderWorkflowTemplate(content, env = process.env) {
   return `${JSON.stringify(replaceValues(template), null, 2)}\n`;
 }
 
-function writeRenderedWorkflow(workflow, env = process.env) {
+function writeRenderedWorkflow(workflow, env = process.env, outputDir = '/tmp/govchat-workflow-bootstrap') {
   const source = fs.readFileSync(workflow.fullPath, 'utf8');
   const rendered = renderWorkflowTemplate(source, env);
-  const outputDir = '/tmp/govchat-workflow-bootstrap';
   fs.mkdirSync(outputDir, { recursive: true, mode: 0o700 });
   const outputPath = path.join(outputDir, workflow.file);
+  fs.mkdirSync(path.dirname(outputPath), { recursive: true, mode: 0o700 });
   fs.writeFileSync(outputPath, rendered, { mode: 0o600 });
   return outputPath;
 }
@@ -359,7 +363,7 @@ function importVerifyAndPublish(workflows) {
   }
 
   fs.mkdirSync(path.dirname(MARKER_FILE), { recursive: true });
-  fs.writeFileSync(MARKER_FILE, JSON.stringify({ version: 7, seededAt: new Date().toISOString(), topdeskSearchEnabled: isTopdeskSearchEnabled() }), 'utf8');
+  fs.writeFileSync(MARKER_FILE, JSON.stringify({ version: 8, seededAt: new Date().toISOString(), topdeskSearchEnabled: isTopdeskSearchEnabled() }), 'utf8');
   console.log('[bootstrap] Workflow import/publish geverifieerd');
 }
 
@@ -383,6 +387,7 @@ module.exports = {
   getWorkflowImportPlan,
   isTopdeskSearchEnabled,
   renderWorkflowTemplate,
+  writeRenderedWorkflow,
 };
 
 if (require.main === module) {

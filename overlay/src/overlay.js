@@ -1,25 +1,38 @@
 /**
- * GovChat overlay loader for LibreChat (no fork)
- * Served via /govchat-overlay/loader.js by nginx reverse proxy.
+ * GovChat overlay for LibreChat (no fork).
+ * Injected into LibreChat's pages by nginx as an ES module, served as
+ * /govchat-overlay/src/overlay.js.
  */
+import { escapeHTML, escapeAttr } from "./shared/html.js";
+import { fetchHelpContent, openHelpModal as showHelpModal, closeHelpModal } from "./shared/help.js";
+
 (function () {
   "use strict";
 
   const CONFIG = {
     helpContentUrl: "/govchat-overlay/help-content.json",
     appsUrl: "/govchat-overlay/apps.json",
-    beleidskompasConfigUrl: "/govchat-overlay/beleidskompas-config.json",
     appName: window.GOVCHAT_BRANDING?.appName || document.title || "GovChat-NL",
     storageKey: "govchat_help_dont_show",
     footerBrandText: window.GOVCHAT_BRANDING?.appName || "GovChat-NL v0.0.1",
     footerBrandUrl: "https://govchat-nl.github.io/",
     helpFaqUrl: "https://govchat-nl.github.io/",
+    // sessionStorage key for the app requested via the URL
+    // (see rememberRequestedScreen).
+    requestedScreenStorageKey: "gc_requested_screen",
   };
 
   let helpData = null;
   let appsData = null;
-  let beleidskompasFlowConfig = null;
   let overlayActive = false;
+  // App id that the URL asked for, until the overlay is active and can
+  // open it.
+  let requestedScreenId = null;
+
+  // The start page, and its id as a requested screen (see
+  // requestScreenAfterLogin).
+  const START_PAGE_ID = "start";
+  const START_PAGE_URL = "/start/";
 
   if (document.readyState === "loading") {
     document.addEventListener("DOMContentLoaded", init);
@@ -28,9 +41,84 @@
   }
 
   function init() {
+    rememberRequestedScreen();
+    if (forwardToStartPage()) return;
     observeRouteChanges();
-
     refreshOverlayState();
+  }
+
+  // /c/new?app=<id> opens the app with that id, the way its tile says. The
+  // query cannot be read at the moment the overlay activates: when LibreChat
+  // sets up a new conversation it rewrites the address to a bare /c/new (see
+  // useNewConvo in its client), and that happens first. So the requested
+  // app is stored in sessionStorage on page load and on every in-page
+  // navigation while the overlay is inactive (including the navigation after
+  // a login), and read back once the overlay is active.
+  function rememberRequestedScreen() {
+    const id = new URLSearchParams(window.location.search).get("app");
+    if (!id) return;
+    try {
+      sessionStorage.setItem(CONFIG.requestedScreenStorageKey, id);
+    } catch {
+      // If the browser blocks storage, only the deep link stops working;
+      // the rest of the overlay is unaffected.
+    }
+  }
+
+  function takeRequestedScreen() {
+    try {
+      const id = sessionStorage.getItem(CONFIG.requestedScreenStorageKey);
+      sessionStorage.removeItem(CONFIG.requestedScreenStorageKey);
+      return id || null;
+    } catch {
+      return null;
+    }
+  }
+
+  // LibreChat opens the chat after a login, while users should land on the
+  // app their redirect asks for, or otherwise on the start page. The chat
+  // cannot tell that a login just happened, so the requested screen is
+  // stored while the login page is open. An app stored before the login
+  // takes precedence.
+  function requestScreenAfterLogin() {
+    if (!window.location.pathname.toLowerCase().startsWith("/login")) return;
+    try {
+      if (!sessionStorage.getItem(CONFIG.requestedScreenStorageKey)) {
+        sessionStorage.setItem(CONFIG.requestedScreenStorageKey, appInLoginRedirect() || START_PAGE_ID);
+      }
+    } catch {
+      // Without storage the user simply lands in the chat.
+    }
+  }
+
+  // The app in the address LibreChat opens after the login
+  // (redirect_to=/c/new?app=<id>). It has to be known before the login,
+  // because a single sign-on login returns to the root first and the
+  // start page would be opened from there.
+  function appInLoginRedirect() {
+    const redirectTo = new URLSearchParams(window.location.search).get("redirect_to");
+    if (!redirectTo) return null;
+    try {
+      return new URL(redirectTo, window.location.origin).searchParams.get("app");
+    } catch {
+      return null;
+    }
+  }
+
+  // Opens the start page without waiting for the chat to load. The root is
+  // included because a single sign-on login returns there. The start page
+  // verifies the login itself and redirects to the chat when it is disabled.
+  function forwardToStartPage() {
+    const path = window.location.pathname;
+    if (path !== "/" && !isMainAppRoute(path)) return false;
+    try {
+      if (sessionStorage.getItem(CONFIG.requestedScreenStorageKey) !== START_PAGE_ID) return false;
+    } catch {
+      return false;
+    }
+    takeRequestedScreen();
+    window.location.replace(startPageUrl());
+    return true;
   }
 
   function isAuthRoute(pathname) {
@@ -63,13 +151,18 @@
     applyFooterBranding();
     rewriteHelpFaqMenuLink();
 
+    requestScreenAfterLogin();
+
     const shouldBeActive = shouldActivateOverlay();
     if (shouldBeActive && !overlayActive) {
       overlayActive = true;
+      requestedScreenId = takeRequestedScreen();
       createButtons();
-      Promise.all([loadHelpContent(), loadAppsConfig()]).catch(() => {
-        // no-op
-      });
+      Promise.all([loadHelpContent(), loadAppsConfig()])
+        .then(openRequestedScreen)
+        .catch((err) => {
+          console.warn("GovChat overlay: could not load its configuration or open the requested screen.", err);
+        });
       return;
     }
     if (!shouldBeActive && overlayActive) {
@@ -164,10 +257,14 @@
 
     history.pushState = function () {
       _pushState.apply(this, arguments);
+      if (!overlayActive) rememberRequestedScreen();
+      if (forwardToStartPage()) return;
       refreshOverlayState();
     };
     history.replaceState = function () {
       _replaceState.apply(this, arguments);
+      if (!overlayActive) rememberRequestedScreen();
+      if (forwardToStartPage()) return;
       refreshOverlayState();
     };
 
@@ -184,7 +281,6 @@
       "gc-help-backdrop",
       "gc-app-backdrop",
       "gc-iframe",
-      "gc-bk",
       "gc-vs",
     ].forEach((id) => {
       const el = document.getElementById(id);
@@ -225,21 +321,20 @@
   }
 
   async function loadHelpContent() {
-    try {
-      const resp = await fetch(CONFIG.helpContentUrl, { cache: "no-store" });
-      helpData = resp.ok ? await resp.json() : getFallbackHelp();
-    } catch {
-      helpData = getFallbackHelp();
-    }
+    helpData = await fetchHelpContent(CONFIG.helpContentUrl);
 
+    // When the URL asks for an app, the user is about to be forwarded to
+    // it; the help modal would only flash. If no forward follows,
+    // openRequestedScreen shows it after all.
+    if (!requestedScreenId) scheduleHelpModal();
+  }
+
+  function scheduleHelpModal() {
     const dontShow = localStorage.getItem(CONFIG.storageKey) === "1";
-    if (!dontShow) {
-      setTimeout(() => {
-        if (overlayActive) {
-          openHelpModal();
-        }
-      }, 250);
-    }
+    if (dontShow) return;
+    setTimeout(() => {
+      if (overlayActive) openHelpModal();
+    }, 250);
   }
 
   async function loadAppsConfig() {
@@ -254,91 +349,19 @@
       const btn = document.getElementById("gc-launcher-btn");
       if (btn) btn.style.display = "none";
     }
-
-    try {
-      const resp = await fetch(CONFIG.beleidskompasConfigUrl, { cache: "no-store" });
-      if (resp.ok) {
-        const raw = await resp.json();
-        beleidskompasFlowConfig = raw && typeof raw === "object" ? raw : null;
-      } else {
-        beleidskompasFlowConfig = null;
-      }
-    } catch {
-      beleidskompasFlowConfig = null;
-    }
   }
 
-  function getFallbackHelp() {
-    return {
-      title: "Handleiding",
-      subtitle: "Welkom",
-      sections: [
-        {
-          id: "intro",
-          emoji: "📘",
-          title: "Welkom",
-          content: "<p>Help-content kon niet geladen worden.</p>",
-        },
-      ],
-    };
-  }
-
-  function r(text) {
-    return (text || "").replace(/\{\{APP_NAME\}\}/g, CONFIG.appName);
-  }
-
+  // Opens the shared help modal with the overlay's own settings, so the
+  // other callers in this file do not have to repeat them.
   function openHelpModal() {
-    if (!helpData || document.getElementById("gc-help-backdrop")) return;
-
-    const backdrop = document.createElement("div");
-    backdrop.id = "gc-help-backdrop";
-    backdrop.innerHTML = `
-      <div id="gc-help-modal">
-        <div class="gc-modal-head">
-          <h2>${escapeHTML(r(helpData.title || "Handleiding"))}</h2>
-          <button id="gc-help-close">✕</button>
-        </div>
-        <div class="gc-modal-sub">${escapeHTML(r(helpData.subtitle || ""))}</div>
-        <div class="gc-help-content">
-          ${(helpData.sections || [])
-            .map(
-              (s) =>
-                `<section><h3>${escapeHTML(s.emoji || "")} ${escapeHTML(r(s.title || ""))}</h3>${r(s.content || "")}</section>`
-            )
-            .join("")}
-        </div>
-        <label class="gc-dont-show"><input id="gc-help-dont-show" type="checkbox"/> Niet meer automatisch tonen</label>
-      </div>`;
-
-    backdrop.addEventListener("click", (e) => {
-      if (e.target === backdrop) closeHelpModal();
-    });
-    document.body.appendChild(backdrop);
-    document.body.style.overflow = "hidden";
-
-    const closeBtn = document.getElementById("gc-help-close");
-    if (closeBtn) closeBtn.addEventListener("click", closeHelpModal);
-
-    const checkbox = document.getElementById("gc-help-dont-show");
-    if (checkbox) {
-      checkbox.checked = localStorage.getItem(CONFIG.storageKey) === "1";
-      checkbox.addEventListener("change", () => {
-        if (checkbox.checked) localStorage.setItem(CONFIG.storageKey, "1");
-        else localStorage.removeItem(CONFIG.storageKey);
-      });
-    }
-  }
-
-  function closeHelpModal() {
-    const el = document.getElementById("gc-help-backdrop");
-    if (el) el.remove();
-    document.body.style.overflow = "";
+    showHelpModal(helpData, { appName: CONFIG.appName, storageKey: CONFIG.storageKey });
   }
 
   function openAppLauncher() {
     if (!appsData || !appsData.apps || document.getElementById("gc-app-backdrop")) return;
 
     const cards = appsData.apps
+      .filter((app) => app.id !== START_PAGE_ID || startPageEnabled())
       .map(
         (app) => `
       <button class="gc-app-card" data-id="${escapeAttr(app.id)}" data-url="${escapeAttr(app.url)}" data-target="${escapeAttr(app.target || "blank")}">
@@ -378,24 +401,79 @@
         const target = card.getAttribute("data-target");
         const app = (appsData.apps || []).find((a) => a.id === id) || { url, target };
         closeAppLauncher();
-
-        if (target === "versimpelaar") {
-          openVersimpelaar(app);
-        } else if (target === "beleidskompas") {
-          openBeleidskompas(app);
-        } else if (target === "imagegen") {
-          openImageGenerator(app);
-        } else if (target === "transcriptie") {
-          openTranscription(app);
-        } else if (target === "navigate") {
-          window.location.href = url;
-        } else if (target === "iframe") {
-          openIframe(url, app.name || "App");
-        } else {
-          window.open(url, "_blank", "noopener,noreferrer");
-        }
+        openApp(app);
       });
     });
+  }
+
+  // fromUrl is true when the app was opened because the page's address
+  // asked for it (a deep link) rather than by a click.
+  function openApp(app, { fromUrl = false } = {}) {
+    const target = app.target || "blank";
+    const url = app.url || "";
+
+    if (target === "versimpelaar") {
+      openVersimpelaar(app);
+    } else if (target === "imagegen") {
+      openImageGenerator(app);
+    } else if (target === "transcriptie") {
+      openTranscription(app);
+    } else if (target === "navigate") {
+      if (fromUrl) {
+        // Requested in the URL rather than chosen in the App Launcher. If the
+        // user is already on that page (they chose Chat on the start page),
+        // only the help modal, held back while a forward was possible, is
+        // still to be shown. Otherwise the current chat page is only a stop
+        // on the way to the app's page, so it is replaced in the history:
+        // with a normal navigation the back button would return to it, its
+        // ?app=<id> would forward again, and the user could never go back.
+        if (alreadyThere(url)) scheduleHelpModal();
+        else window.location.replace(url);
+      } else {
+        window.location.href = url;
+      }
+    } else if (target === "iframe") {
+      openIframe(url, app.name || "App");
+    } else {
+      window.open(url, "_blank", "noopener,noreferrer");
+    }
+  }
+
+  // Opens the app requested in the URL once the overlay is active. The start
+  // page is handled earlier, by forwardToStartPage.
+  function openRequestedScreen() {
+    const id = requestedScreenId;
+    requestedScreenId = null;
+    if (!id || !appsData) return;
+    const app = (Array.isArray(appsData.apps) ? appsData.apps : []).find((a) => a && a.id === id);
+    if (app) openApp(app, { fromUrl: true });
+  }
+
+  // The start page is switched on in apps.json and lists at least one app.
+  function startPageEnabled() {
+    const cfg = appsData.landing;
+    return Boolean(cfg) && cfg.enabled !== false && Array.isArray(cfg.apps) && cfg.apps.length > 0;
+  }
+
+  // The start page, told which conversation the user was in (if any), so
+  // its chat tile can take them back into it.
+  function startPageUrl() {
+    const path = window.location.pathname;
+    const inConversation = /^\/c\/(?!new$)[^/]+/i.test(path);
+    return inConversation ? `${START_PAGE_URL}?chat=${encodeURIComponent(path)}` : START_PAGE_URL;
+  }
+
+  // True when the link points at the page we are on: the same path, or both
+  // the chat (any conversation counts as the chat).
+  function alreadyThere(url) {
+    try {
+      const target = new URL(url, window.location.origin).pathname;
+      const here = window.location.pathname;
+      const isChat = (p) => /^\/c(\/|$)/i.test(p);
+      return target === here || (isChat(target) && isChat(here));
+    } catch {
+      return false;
+    }
   }
 
   function closeAppLauncher() {
@@ -427,550 +505,6 @@
     document.body.appendChild(container);
     document.getElementById("gc-iframe-back")?.addEventListener("click", () => openAppOverviewFromMiniApp(container));
     document.getElementById("gc-iframe-close")?.addEventListener("click", () => container.remove());
-  }
-
-  function openBeleidskompas(app) {
-    if (document.getElementById("gc-bk")) return;
-
-    const cfg = {
-      ...(app?.config && typeof app.config === "object" ? app.config : {}),
-      ...(beleidskompasFlowConfig && typeof beleidskompasFlowConfig === "object" ? beleidskompasFlowConfig : {}),
-    };
-    const orchestratorWebhookPath = String(cfg.orchestrator_webhook_path || "beleidskompas-hoofdagent").trim() || "beleidskompas-hoofdagent";
-    const orchestratorWebhookUrl = `${window.location.origin}/n8n/webhook/${orchestratorWebhookPath}`;
-    const webhookToken = String(cfg.webhook_token || "").trim();
-    const specialistTeam = String(
-      cfg.specialist_team ||
-        "Schakel bij complexe juridische, financiële of politiek-bestuurlijke casussen een specialistenteam in."
-    ).trim();
-    const defaultSources = Array.isArray(cfg.sources) && cfg.sources.length
-      ? cfg.sources
-      : [
-          "SiS 4.0 Strategisch kader",
-          "SiS 4.0 Uitvoeringskader",
-          "Provinciale Instrumentenkoffer",
-          "Coalitieakkoord en beleidskaders",
-          "Overzicht wettelijke taken Provincie",
-        ];
-
-    const fallbackSteps = [
-      {
-        id: "stap1",
-        nr: 1,
-        title: "Publiek en provinciaal belang",
-        short: "Bepaal probleem, publiek belang en provinciale legitimiteit.",
-        info:
-          "Toets of het vraagstuk publiek relevant is, binnen provinciale wettelijke taken valt en expliciet past binnen coalitieakkoord en beleidskaders.",
-        help: [
-          "Welk concreet maatschappelijk probleem wil je oplossen?",
-          "Wie ondervindt nadeel als de provincie niet handelt?",
-          "Welke wettelijke of bestuurlijke grondslag legitimeert provinciaal handelen?",
-        ],
-        deep: [
-          "Welke groepen hebben conflicterende belangen en waarom?",
-          "Welke juridische, financiële en organisatorische randvoorwaarden begrenzen het handelen?",
-        ],
-      },
-      {
-        id: "stap2",
-        nr: 2,
-        title: "Rolbepaling provincie",
-        short: "Kies passende rol(len): regulerend, regisserend, stimulerend, faciliterend.",
-        info:
-          "Onderbouw waarom een rol passend is bij doel, bevoegdheid, bestuurlijke context en uitvoerbaarheid. Combineer rollen alleen als dit uitlegbaar en bestuurbaar is.",
-        help: [
-          "Welke rol heeft de hoogste effectiviteit gegeven urgentie en mandaat?",
-          "Welke rol biedt de beste balans tussen impact, kosten en bestuurlijke haalbaarheid?",
-          "Is een rolcombinatie nodig of ontstaat dan juist complexiteit?",
-        ],
-        deep: [
-          "Welke governance-risico’s ontstaan bij deze rolkeuze?",
-          "Welke afhankelijkheden met ketenpartners zijn kritiek?",
-        ],
-      },
-      {
-        id: "stap3",
-        nr: 3,
-        title: "Instrumentkeuze",
-        short: "Weeg en vergelijk instrumenten met score en argumentatie.",
-        info:
-          "Gebruik de Provinciale Instrumentenkoffer en beoordeel instrumenten op effectiviteit, uitvoerbaarheid, juridische robuustheid, betaalbaarheid en maatschappelijke impact.",
-        help: [
-          "Welke instrumenten zijn realistisch beschikbaar binnen planning en capaciteit?",
-          "Wat is het voorkeursinstrument en waarom?",
-          "Welke twee alternatieven zijn serieus en bestuurlijk verdedigbaar?",
-        ],
-        deep: [
-          "Welke risico’s, neveneffecten en mitigerende maatregelen horen per optie?",
-          "Welke bron onderbouwt elke score of aanname?",
-        ],
-      },
-      {
-        id: "stap4",
-        nr: 4,
-        title: "Governance-inrichting",
-        short: "Adviseer sturing, toezicht, beheersing en verantwoording.",
-        info:
-          "Sluit aan op hoofdstuk 10 van SiS 4.0 en het uitvoeringskader: wie stuurt, wie houdt toezicht, welke KPI’s gelden en hoe wordt verantwoord.",
-        help: [
-          "Welke governance-structuur past bij het gekozen instrument?",
-          "Hoe richt je besluitvorming, escalatie en verantwoordingslijnen in?",
-          "Welke monitoring/KPI’s zijn nodig voor bestuurlijke bijsturing?",
-        ],
-        deep: [
-          "Welke governance-implicaties gelden voor alternatieve instrumenten?",
-          "Welke kwaliteitspoorten en validatiestappen voorkómen ongecontroleerde AI-output?",
-        ],
-      },
-    ];
-
-    const steps = Array.isArray(cfg.steps) && cfg.steps.length
-      ? cfg.steps.map((step, idx) => {
-          const fb = fallbackSteps[Math.min(idx, fallbackSteps.length - 1)] || fallbackSteps[0];
-          const substeps = Array.isArray(step?.substeps) ? step.substeps : [];
-          return {
-            id: String(step?.id || `stap${idx + 1}`).trim() || `stap${idx + 1}`,
-            nr: idx + 1,
-            title: String(step?.title || fb.title || `Stap ${idx + 1}`).trim(),
-            short: String(step?.description || fb.short || "").trim() || fb.short,
-            info: String(step?.prompt || step?.description || fb.info || "").trim() || fb.info,
-            help: substeps.length
-              ? substeps.map((s) => String(s?.title || "").trim()).filter(Boolean)
-              : fb.help,
-            deep: substeps.length
-              ? substeps
-                  .map((s) => String(s?.description || "").trim())
-                  .filter(Boolean)
-                  .slice(0, 4)
-              : fb.deep,
-          };
-        })
-      : fallbackSteps;
-
-    const initialStepState = () => ({
-      report_text: "",
-      citations: [],
-      retrieval_trace: null,
-      updated_at: "",
-    });
-
-    const state = {
-      activeStep: 0,
-      messages: [
-        {
-          role: "assistant",
-          text: "Hallo! Ik ben je beleidsassistent. Beschrijf je casus en ik help je stap voor stap.",
-          ts: new Date().toISOString(),
-          citations: [],
-          retrieval_trace: null,
-        },
-      ],
-      steps: {},
-    };
-
-    steps.forEach((s) => {
-      state.steps[s.id] = initialStepState();
-    });
-
-    const groupedSteps = [
-      { title: "Stap 1", items: steps.slice(0, 2) },
-      { title: "Stap 2", items: steps.slice(2, 4) },
-      { title: "Stap 3", items: steps.slice(4) },
-    ].filter((g) => g.items.length > 0);
-
-    const container = document.createElement("div");
-    container.id = "gc-bk";
-    container.innerHTML = `
-      <div class="gc-bk-shell">
-        <aside class="gc-bk-sidebar">
-          <div class="gc-bk-brand">
-            <div class="gc-bk-brand-logo">🧭</div>
-            <div>
-              <div class="gc-bk-brand-title">${escapeHTML(String(cfg.title || "Beleidskompas assistant"))}</div>
-              <div class="gc-bk-brand-sub">Provincie assistent</div>
-            </div>
-          </div>
-          <button id="gc-bk-new-chat" class="gc-bk-new-chat" type="button">✎ Nieuwe chat</button>
-          <div id="gc-bk-step-groups" class="gc-bk-step-groups"></div>
-        </aside>
-
-        <section class="gc-bk-chat">
-          <div class="gc-bk-chat-head">
-            <div class="gc-mini-head-left">
-              <button id="gc-bk-back" class="gc-mini-nav-btn" type="button">← Overzicht</button>
-              <strong>Beleidskompas</strong>
-            </div>
-            <button id="gc-bk-close" class="gc-bk-close" type="button">✕</button>
-          </div>
-          <div class="gc-bk-chat-note">${escapeHTML(String(cfg.disclaimer || "Ondersteunend hulpmiddel, geen automatische besluitvorming."))}</div>
-          <div id="gc-bk-chat-log" class="gc-bk-chat-log"></div>
-          <div class="gc-bk-chat-compose">
-            <input id="gc-bk-chat-input" type="text" placeholder="Stel een vraag..." />
-            <button id="gc-bk-send" type="button">➤</button>
-          </div>
-        </section>
-
-        <section class="gc-bk-form">
-          <div class="gc-bk-form-head">
-            <div>
-              <h3 id="gc-bk-form-title"></h3>
-              <div id="gc-bk-form-short" class="gc-bk-form-short"></div>
-            </div>
-            <div class="gc-bk-step-nav">
-              <button id="gc-bk-prev" type="button">‹</button>
-              <button id="gc-bk-next" type="button">›</button>
-            </div>
-          </div>
-
-          <div id="gc-bk-report-status" class="gc-bk-chat-note"></div>
-          <pre id="gc-bk-report-body" class="gc-bk-doc-body">Nog geen tussentijds rapport voor deze stap. Stel links in de chat je vraag om de analyse voor deze stap op te bouwen.</pre>
-          <div id="gc-bk-report-meta" class="gc-bk-form-short"></div>
-          <div id="gc-bk-report-sources" class="gc-bk-citations"></div>
-
-          <div class="gc-bk-form-actions">
-            <button id="gc-bk-save-step" type="button">Markeer stap gereed</button>
-            <button id="gc-bk-next-step" type="button">Volgende stap</button>
-          </div>
-        </section>
-      </div>`;
-
-    document.body.appendChild(container);
-
-    const closeBtn = document.getElementById("gc-bk-close");
-    const backBtn = document.getElementById("gc-bk-back");
-    const newChatBtn = document.getElementById("gc-bk-new-chat");
-    const stepGroupsEl = document.getElementById("gc-bk-step-groups");
-    const chatLogEl = document.getElementById("gc-bk-chat-log");
-    const chatInputEl = document.getElementById("gc-bk-chat-input");
-    const sendBtn = document.getElementById("gc-bk-send");
-    const formTitleEl = document.getElementById("gc-bk-form-title");
-    const formShortEl = document.getElementById("gc-bk-form-short");
-    const prevBtn = document.getElementById("gc-bk-prev");
-    const nextBtn = document.getElementById("gc-bk-next");
-    const saveStepBtn = document.getElementById("gc-bk-save-step");
-    const nextStepBtn = document.getElementById("gc-bk-next-step");
-    const reportStatusEl = document.getElementById("gc-bk-report-status");
-    const reportBodyEl = document.getElementById("gc-bk-report-body");
-    const reportMetaEl = document.getElementById("gc-bk-report-meta");
-    const reportSourcesEl = document.getElementById("gc-bk-report-sources");
-
-    function normalizeCitations(input) {
-      if (!Array.isArray(input)) return [];
-      return input
-        .map((c, idx) => ({
-          rank: Number(c?.rank || idx + 1),
-          id: String(c?.id || "").trim(),
-          filename: String(c?.filename || `Document ${idx + 1}`).trim() || `Document ${idx + 1}`,
-          score: Number(c?.score || 0),
-          tags: Array.isArray(c?.tags) ? c.tags.map((t) => String(t || "").trim()).filter(Boolean) : [],
-          preview: String(c?.preview || "").trim(),
-        }))
-        .filter((c) => c.id || c.filename);
-    }
-
-    function addMessage(role, text, meta = {}) {
-      state.messages.push({
-        role,
-        text: String(text || "").trim(),
-        ts: new Date().toISOString(),
-        citations: normalizeCitations(meta?.citations),
-        retrieval_trace: meta?.retrieval_trace || null,
-      });
-      renderChat();
-    }
-
-    function formatTime(ts) {
-      const d = new Date(ts);
-      return d.toLocaleTimeString("nl-NL", { hour: "2-digit", minute: "2-digit" });
-    }
-
-    function citationLabel(citation) {
-      const nr = Number(citation?.rank || 0) || 1;
-      const score = Number(citation?.score || 0);
-      return Number.isFinite(score) && score > 0 ? `#${nr} · score ${score.toFixed(3)}` : `#${nr}`;
-    }
-
-    function renderChat() {
-      if (!chatLogEl) return;
-      chatLogEl.innerHTML = state.messages
-        .map(
-          (m) => `
-            <div class="gc-bk-msg gc-bk-msg-${escapeAttr(m.role)}">
-              <div class="gc-bk-msg-text">${escapeHTML(m.text)}</div>
-              ${Array.isArray(m.citations) && m.citations.length
-                ? `<div class="gc-bk-citations">${m.citations
-                    .map(
-                      (c) =>
-                        `<button type="button" class="gc-bk-citation-btn" data-doc-id="${escapeAttr(c.id)}" data-doc-filename="${escapeAttr(c.filename)}" data-doc-score="${escapeAttr(String(c.score || 0))}" data-doc-tags="${escapeAttr((c.tags || []).join(", "))}" data-doc-preview="${escapeAttr(c.preview || "")}"><span class="gc-bk-citation-file">${escapeHTML(c.filename)}</span><span class="gc-bk-citation-meta">${escapeHTML(citationLabel(c))}</span></button>`
-                    )
-                    .join("")}</div>`
-                : ""}
-              <div class="gc-bk-msg-time">${escapeHTML(formatTime(m.ts))}</div>
-            </div>`
-        )
-        .join("");
-      chatLogEl.scrollTop = chatLogEl.scrollHeight;
-    }
-
-    function openCitationPreview(meta) {
-      const docId = String(meta?.id || "").trim();
-      const filename = String(meta?.filename || "Document").trim() || "Document";
-      const scoreVal = Number(meta?.score || 0);
-      const score = Number.isFinite(scoreVal) ? scoreVal.toFixed(4) : "-";
-      const tags = Array.isArray(meta?.tags) ? meta.tags.filter(Boolean) : [];
-      const preview = String(meta?.preview || "").trim() || "Geen preview beschikbaar voor deze bron.";
-      const tagsLabel = tags.length ? tags.join(", ") : "geen tags";
-
-      const existing = document.getElementById("gc-bk-doc-preview");
-      if (existing) existing.remove();
-
-      const modal = document.createElement("div");
-      modal.id = "gc-bk-doc-preview";
-      modal.className = "gc-bk-doc-modal";
-      modal.innerHTML = `
-        <div class="gc-bk-doc-dialog" role="dialog" aria-modal="true" aria-label="Bronpreview">
-          <div class="gc-bk-doc-head">
-            <div>
-              <div class="gc-bk-doc-title">${escapeHTML(filename)}</div>
-              <div class="gc-bk-doc-meta">ID: ${escapeHTML(docId || "-")} · score: ${escapeHTML(score)} · tags: ${escapeHTML(tagsLabel)}</div>
-            </div>
-            <button type="button" class="gc-bk-doc-close" aria-label="Sluiten">✕</button>
-          </div>
-          <pre class="gc-bk-doc-body">${escapeHTML(preview)}</pre>
-        </div>`;
-      document.body.appendChild(modal);
-
-      const close = () => modal.remove();
-      modal.querySelector(".gc-bk-doc-close")?.addEventListener("click", close);
-      modal.addEventListener("click", (e) => {
-        if (e.target === modal) close();
-      });
-    }
-
-    function renderStepGroups() {
-      if (!stepGroupsEl) return;
-      stepGroupsEl.innerHTML = groupedSteps
-        .map(
-          (group) => `
-            <section class="gc-bk-step-group">
-              <h4>${escapeHTML(group.title)}</h4>
-              ${group.items
-                .map((s) => {
-                  const idx = steps.findIndex((x) => x.id === s.id);
-                  const activeClass = idx === state.activeStep ? "is-active" : "";
-                  return `
-                    <button type="button" class="gc-bk-step-link ${activeClass}" data-step-index="${idx}">
-                      <span class="gc-bk-step-link-nr">${s.nr}</span>
-                      <span class="gc-bk-step-link-title">${escapeHTML(s.title)}</span>
-                    </button>`;
-                })
-                .join("")}
-            </section>`
-        )
-        .join("");
-
-      stepGroupsEl.querySelectorAll("[data-step-index]").forEach((btn) => {
-        btn.addEventListener("click", () => {
-          const idx = Number(btn.getAttribute("data-step-index"));
-          if (!Number.isFinite(idx)) return;
-          state.activeStep = Math.max(0, Math.min(steps.length - 1, idx));
-          renderStepGroups();
-          renderStepForm();
-        });
-      });
-    }
-
-    function activeStep() {
-      return steps[state.activeStep] || steps[0];
-    }
-
-    function renderStepForm() {
-      const step = activeStep();
-      const data = state.steps[step.id] || initialStepState();
-      if (formTitleEl) formTitleEl.textContent = `Stap ${step.nr} · ${step.title}`;
-      if (formShortEl) formShortEl.textContent = step.short || "";
-      if (reportStatusEl) {
-        reportStatusEl.textContent = data.report_text
-          ? `Tussentijds rapport beschikbaar voor stap ${step.nr}.`
-          : `Nog geen tussentijds rapport voor stap ${step.nr}. Stel links in de chat je vraag om de analyse op te bouwen.`;
-      }
-      if (reportBodyEl) {
-        reportBodyEl.textContent =
-          data.report_text ||
-          "Nog geen tussentijds rapport voor deze stap. Stel links in de chat je vraag om de analyse voor deze stap op te bouwen.";
-      }
-      if (reportMetaEl) {
-        const trace = data.retrieval_trace || null;
-        const traceText = trace
-          ? `RAG: ${String(trace.algorithm || "-")} · top_k: ${Number(trace.top_k || 0)} · matched_docs: ${Number(
-              trace.matched_docs || 0,
-            )}`
-          : "RAG: nog geen trace";
-        const tsText = data.updated_at ? ` · bijgewerkt: ${formatTime(data.updated_at)}` : "";
-        reportMetaEl.textContent = `${traceText}${tsText}`;
-      }
-      if (reportSourcesEl) {
-        const citations = normalizeCitations(data.citations);
-        reportSourcesEl.innerHTML = citations.length
-          ? citations
-              .map(
-                (c) =>
-                  `<button type="button" class="gc-bk-citation-btn" data-doc-id="${escapeAttr(c.id)}" data-doc-filename="${escapeAttr(
-                    c.filename,
-                  )}" data-doc-score="${escapeAttr(String(c.score || 0))}" data-doc-tags="${escapeAttr(
-                    (c.tags || []).join(", "),
-                  )}" data-doc-preview="${escapeAttr(c.preview || "")}"><span class="gc-bk-citation-file">${escapeHTML(
-                    c.filename,
-                  )}</span><span class="gc-bk-citation-meta">${escapeHTML(citationLabel(c))}</span></button>`,
-              )
-              .join("")
-          : '<span class="gc-bk-form-short">Nog geen bronverwijzingen voor deze stap.</span>';
-      }
-      if (prevBtn) prevBtn.disabled = state.activeStep <= 0;
-      if (nextBtn) nextBtn.disabled = state.activeStep >= steps.length - 1;
-      if (nextStepBtn) nextStepBtn.disabled = state.activeStep >= steps.length - 1;
-    }
-
-    function persistActiveStep() {
-      const step = activeStep();
-      if (!state.steps[step.id]) state.steps[step.id] = initialStepState();
-    }
-
-    async function requestHoofdagent(userText) {
-      const step = activeStep();
-      const d = state.steps[step.id] || initialStepState();
-      const priorReports = steps
-        .slice(0, state.activeStep)
-        .map((s) => String(state.steps[s.id]?.report_text || "").trim())
-        .filter(Boolean)
-        .join("\n\n");
-      const payload = {
-        step_id: String(step.id || "").trim(),
-        step_title: String(step.title || "").trim(),
-        question: String(userText || "").trim(),
-        case_text: String(priorReports || d.report_text || "").trim(),
-        step_fields: {
-          prior_step_reports: String(priorReports || "").trim(),
-          current_step_report: String(d.report_text || "").trim(),
-          references: defaultSources.join("; "),
-        },
-      };
-
-      const headers = {
-        "Content-Type": "application/json",
-        ...(webhookToken ? { "x-govchat-token": webhookToken } : {}),
-      };
-
-      const resp = await fetch(orchestratorWebhookUrl, {
-        method: "POST",
-        headers,
-        body: JSON.stringify(payload),
-      });
-      const data = await resp.json().catch(() => ({}));
-      if (!resp.ok) {
-        throw new Error(String(data?.error || `Hoofdagent gaf HTTP ${resp.status}`));
-      }
-      const answer = String(data?.answer || data?.text || "").trim();
-      if (!answer) throw new Error("Hoofdagent gaf geen antwoord terug");
-      return {
-        answer,
-        citations: normalizeCitations(data?.citations),
-        retrieval_trace: data?.retrieval_trace || null,
-      };
-    }
-
-    async function sendUserMessage() {
-      const text = String(chatInputEl?.value || "").trim();
-      if (!text) return;
-      addMessage("user", text);
-      if (chatInputEl) chatInputEl.value = "";
-      persistActiveStep();
-      try {
-        const result = await requestHoofdagent(text);
-        const step = activeStep();
-        state.steps[step.id] = {
-          report_text: String(result.answer || "").trim(),
-          citations: normalizeCitations(result.citations),
-          retrieval_trace: result.retrieval_trace || null,
-          updated_at: new Date().toISOString(),
-        };
-        addMessage("assistant", result.answer, { citations: result.citations, retrieval_trace: result.retrieval_trace });
-        renderStepForm();
-      } catch (err) {
-        addMessage(
-          "assistant",
-          `Hoofdagent niet bereikbaar of fout: ${String(err?.message || err)}. Controleer workflow-sync/token/webhook pad in Beleidskompas Admin.`,
-        );
-      }
-    }
-
-    closeBtn?.addEventListener("click", () => container.remove());
-    backBtn?.addEventListener("click", () => openAppOverviewFromMiniApp(container));
-    newChatBtn?.addEventListener("click", () => {
-      state.messages = [
-        {
-          role: "assistant",
-          text: "Nieuwe sessie gestart. Beschrijf je casus en we lopen de stappen samen door.",
-          ts: new Date().toISOString(),
-          citations: [],
-          retrieval_trace: null,
-        },
-      ];
-      renderChat();
-    });
-    sendBtn?.addEventListener("click", sendUserMessage);
-    chatInputEl?.addEventListener("keydown", (e) => {
-      if (e.key === "Enter") {
-        e.preventDefault();
-        sendUserMessage();
-      }
-    });
-    chatLogEl?.addEventListener("click", (e) => {
-      const target = e.target && typeof e.target.closest === "function" ? e.target.closest(".gc-bk-citation-btn") : null;
-      if (!target) return;
-      openCitationPreview({
-        id: target.getAttribute("data-doc-id") || "",
-        filename: target.getAttribute("data-doc-filename") || "Document",
-        score: Number(target.getAttribute("data-doc-score") || 0),
-        tags: String(target.getAttribute("data-doc-tags") || "")
-          .split(",")
-          .map((s) => s.trim())
-          .filter(Boolean),
-        preview: target.getAttribute("data-doc-preview") || "",
-      });
-    });
-
-    prevBtn?.addEventListener("click", () => {
-      persistActiveStep();
-      state.activeStep = Math.max(0, state.activeStep - 1);
-      renderStepGroups();
-      renderStepForm();
-    });
-    nextBtn?.addEventListener("click", () => {
-      persistActiveStep();
-      state.activeStep = Math.min(steps.length - 1, state.activeStep + 1);
-      renderStepGroups();
-      renderStepForm();
-    });
-
-    saveStepBtn?.addEventListener("click", () => {
-      persistActiveStep();
-      const step = activeStep();
-      addMessage("assistant", `Stap ${step.nr} opgeslagen. Wil je verder met de volgende stap?`);
-    });
-    nextStepBtn?.addEventListener("click", () => {
-      persistActiveStep();
-      if (state.activeStep < steps.length - 1) {
-        state.activeStep += 1;
-        renderStepGroups();
-        renderStepForm();
-        addMessage("assistant", `Doorgaan naar stap ${activeStep().nr}: ${activeStep().title}.`);
-      }
-    });
-
-    renderStepGroups();
-    renderChat();
-    renderStepForm();
   }
 
   function openVersimpelaar(app) {
@@ -2972,20 +2506,5 @@
     renderSessionHistory();
     refreshSessionHistoryFromServer();
     renderSegments();
-  }
-
-  function escapeHTML(str) {
-    const d = document.createElement("div");
-    d.textContent = str || "";
-    return d.innerHTML;
-  }
-
-  function escapeAttr(str) {
-    return (str || "")
-      .replace(/&/g, "&amp;")
-      .replace(/\"/g, "&quot;")
-      .replace(/'/g, "&#39;")
-      .replace(/</g, "&lt;")
-      .replace(/>/g, "&gt;");
   }
 })();
