@@ -28,6 +28,12 @@ OpenHolidays API en tijd-/datumrekenen met tijdzones en zomer-/wintertijd.
 Ze staan standaard aan en worden beheerd via de Orchestrator-pagina van het
 beheerportaal. Zie [configuratie, ingebruikname en tests](docs/orchestrator-utility-tools.md).
 
+### Waarschuwing onder de chatinvoer
+
+Onder de chatinvoer staat standaard: **&lt;appnaam&gt; kan fouten maken. Controleer
+belangrijke informatie.** Beheerders kunnen deze waarschuwing via het dashboard
+uitschakelen. Zie [de configuratie en tests](docs/chat-disclaimer.md).
+
 ## Verbonden systemen
 
 | Systeem | Rol binnen GovChat-NL |

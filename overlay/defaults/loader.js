@@ -11,8 +11,6 @@
     beleidskompasConfigUrl: "/govchat-overlay/beleidskompas-config.json",
     appName: window.GOVCHAT_BRANDING?.appName || document.title || "GovChat-NL",
     storageKey: "govchat_help_dont_show",
-    footerBrandText: window.GOVCHAT_BRANDING?.appName || "GovChat-NL v0.0.1",
-    footerBrandUrl: "https://govchat-nl.github.io/",
     helpFaqUrl: "https://govchat-nl.github.io/",
   };
 
@@ -29,7 +27,6 @@
 
   function init() {
     observeRouteChanges();
-
     refreshOverlayState();
   }
 
@@ -60,7 +57,6 @@
   }
 
   function refreshOverlayState() {
-    applyFooterBranding();
     rewriteHelpFaqMenuLink();
 
     const shouldBeActive = shouldActivateOverlay();
@@ -106,24 +102,6 @@
         window.open(targetUrl, "_blank", "noopener,noreferrer");
       });
     });
-  }
-
-  function applyFooterBranding() {
-    if (!isMainAppRoute(window.location.pathname)) return;
-
-    // Exact target as shared by user:
-    // <div role="contentinfo"><span><a href="https://librechat.ai">LibreChat</a> ...</span></div>
-    const libreChatLink = document.querySelector('div[role="contentinfo"] span > a[href*="librechat.ai"]');
-    if (!libreChatLink) return;
-
-    const span = libreChatLink.closest("span");
-    if (!span) return;
-
-    if (span.querySelector("a[data-govchat-brand='1']")) return;
-
-    span.innerHTML = `<a data-govchat-brand="1" class="gc-footer-brand" href="${escapeAttr(
-      CONFIG.footerBrandUrl
-    )}" target="_blank" rel="noopener noreferrer">${escapeHTML(CONFIG.footerBrandText)}</a>`;
   }
 
   function isLoginScreenVisible() {

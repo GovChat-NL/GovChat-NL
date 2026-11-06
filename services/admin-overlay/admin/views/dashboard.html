@@ -72,6 +72,18 @@
   </div>
   <div class="cards">
     <div class="card">
+      <h3>Chatwaarschuwing</h3>
+      <p>Toon onder de chatinvoer: &ldquo;&lt;appnaam&gt; kan fouten maken. Controleer belangrijke informatie.&rdquo; De ingestelde appnaam wordt automatisch gebruikt.</p>
+      <form id="ui-settings-form">
+        <label style="display:flex;gap:0.5rem;align-items:center;margin-bottom:1rem;font-size:0.8125rem;">
+          <input type="checkbox" id="show-chat-disclaimer" {{chatDisclaimerChecked}}>
+          Waarschuwing onder chatinvoer tonen
+        </label>
+        <button type="submit" class="btn">Opslaan</button>
+        <p id="ui-settings-status" role="status" style="margin-top:0.75rem;margin-bottom:0;"></p>
+      </form>
+    </div>
+    <div class="card">
       <div class="card-icon">
         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
           <path stroke-linecap="round" stroke-linejoin="round" d="M12 6.042A8.967 8.967 0 0 0 6 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 0 1 6 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 0 1 6-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0 0 18 18a8.967 8.967 0 0 0-6 2.292m0-14.25v14.25"/>
@@ -143,5 +155,27 @@
     </div>
   </div>
 </div>
+<script>
+document.getElementById("ui-settings-form").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const button = event.currentTarget.querySelector("button");
+  const status = document.getElementById("ui-settings-status");
+  button.disabled = true;
+  status.textContent = "Opslaan…";
+  try {
+    const response = await fetch("/api/config/ui", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ showChatDisclaimer: document.getElementById("show-chat-disclaimer").checked }),
+    });
+    if (!response.ok || response.redirected) throw new Error("Opslaan mislukt. Controleer of u nog bent ingelogd.");
+    status.textContent = "Opgeslagen. Open chats nemen de wijziging binnen 30 seconden over.";
+  } catch (error) {
+    status.textContent = error.message;
+  } finally {
+    button.disabled = false;
+  }
+});
+</script>
 </body>
 </html>
