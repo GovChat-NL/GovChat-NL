@@ -21,7 +21,7 @@ const omgevingsvisieFlow = {
       description: "Welke ruimtelijke opgave speelt er, en waarom is de provincie aan zet?",
       prompt: "Bepaal de ruimtelijke opgave en het provinciaal belang volgens de Omgevingsvisie.",
       doc_tags: ["Omgevingsvisie"],
-      rag: { enabled: true, algorithm: "hybrid", top_k: 3, min_score: 0.1, tag_filter_mode: "any", required_tags: [] },
+      rag: { algorithm: "hybrid", top_k: 3, min_score: 0.1, tag_filter_mode: "any", required_tags: [] },
       substeps: [{ id: "1.1", title: "Gebied", description: "Afbakening van het gebied." }],
     },
     {
@@ -30,7 +30,7 @@ const omgevingsvisieFlow = {
       description: "Welke rol neemt de provincie en welk instrument past?",
       prompt: "Kies rol en instrument; verwijs naar de Omgevingsverordening.",
       doc_tags: ["Verordening", "Instrumenten"],
-      rag: { enabled: true, algorithm: "needle", top_k: 4, min_score: 0.12, tag_filter_mode: "any", required_tags: [] },
+      rag: { algorithm: "needle", top_k: 4, min_score: 0.12, tag_filter_mode: "any", required_tags: [] },
       substeps: [],
     },
     {
@@ -39,7 +39,7 @@ const omgevingsvisieFlow = {
       description: "Wie beslist, wie voert uit en hoe wordt gemonitord?",
       prompt: "Beschrijf governance, besluitvorming en monitoring.",
       doc_tags: [],
-      rag: { enabled: false, algorithm: "hybrid", top_k: 3, min_score: 0.08, tag_filter_mode: "any", required_tags: [] },
+      rag: { algorithm: "hybrid", top_k: 3, min_score: 0.08, tag_filter_mode: "any", required_tags: [] },
       substeps: [],
     },
   ],

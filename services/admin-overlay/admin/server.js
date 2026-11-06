@@ -426,7 +426,6 @@ function normalizeStepRagSettings(input, fallbackStep = {}) {
   const tagFilterMode = modeRaw === "all" ? "all" : "any";
   const requiredTags = normalizeTags(src.required_tags || fallback.required_tags || []);
   return {
-    enabled: src.enabled !== false,
     algorithm,
     top_k: topK,
     min_score: minScore,
@@ -650,8 +649,9 @@ function normalizeBeleidskompasFlow(input) {
       workflow_id: workflowMeta.workflow_id,
       webhook_path: workflowMeta.webhook_path,
       title: String(step?.title || fb.title || `Stap ${idx + 1}`).trim() || `Stap ${idx + 1}`,
-      description: String(step?.description || fb.description || "").trim(),
-      prompt: String(step?.prompt || fb.prompt || "").trim(),
+      // An empty string is the admin's choice; defaults only fill fields that are missing.
+      description: String(step?.description ?? fb.description ?? "").trim(),
+      prompt: String(step?.prompt ?? fb.prompt ?? "").trim(),
       doc_tags: normalizeTags(step?.doc_tags || fb.doc_tags),
       rag: normalizeStepRagSettings(step?.rag || fb.rag || {}, step || fb),
       substeps: substepsRaw.map((sub, subIdx) => ({
@@ -672,7 +672,7 @@ function normalizeBeleidskompasFlow(input) {
       BELEIDSKOMPAS_ORCHESTRATOR_WEBHOOK_PATH_DEFAULT,
     webhook_token: String(src.webhook_token || fallback.webhook_token || "").trim(),
     disclaimer: String(src.disclaimer || fallback.disclaimer).trim() || fallback.disclaimer,
-    specialist_team: String(src.specialist_team || fallback.specialist_team).trim() || fallback.specialist_team,
+    specialist_team: String(src.specialist_team ?? fallback.specialist_team).trim(),
     sources: normalizeTags(src.sources || fallback.sources),
     steps,
   };
