@@ -67,6 +67,7 @@ test('startup selects minimal endpoints only when enabled and fails closed on in
         'console.log(JSON.stringify({config:process.env.CONFIG_PATH,endpoints:process.env.ENDPOINTS}))'], {
         encoding: 'utf8', env: { ...process.env, BRANDING_MODE: 'librechat',
           LIBRECHAT_NL_TRANSLATIONS_SCRIPT: translation,
+          BRANDING_METADATA_SCRIPT: translation,
           GOVCHAT_MINIMAL_UI_SCRIPT: path.join(root, 'scripts/apply-minimal-ui.js'),
           CONFIG_PATH: path.join(root, 'librechat.yaml'), ENDPOINTS: 'custom,agents', GOVCHAT_MINIMAL_UI: mode },
       });

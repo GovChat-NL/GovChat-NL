@@ -7,7 +7,7 @@ mode=${BRANDING_MODE:-govchat}
 govchat_dir=${BRANDING_GOVCHAT_DIR:-/opt/branding/govchat}
 custom_dir=${BRANDING_CUSTOM_DIR:-/opt/branding/custom}
 assets_dir=${BRANDING_ASSETS_DIR:-/app/client/dist/assets}
-supported_files='logo.svg favicon-32x32.png favicon-16x16.png apple-touch-icon-180x180.png'
+supported_files='logo.svg favicon-32x32.png favicon-16x16.png apple-touch-icon-180x180.png icon-192x192.png maskable-icon.png'
 
 fail() {
   printf 'Branding: ERROR: %s\n' "$*" >&2
@@ -71,6 +71,10 @@ esac
 translations_script=${LIBRECHAT_NL_TRANSLATIONS_SCRIPT:-/app/govchat-overlay/apply-dutch-translations.js}
 command -v node >/dev/null 2>&1 || fail 'Node.js ontbreekt; kan de Nederlandse vertaaloverride niet toepassen'
 node "$translations_script"
+
+# Keep HTML, installed-app metadata and overlay branding in sync with APP_TITLE.
+metadata_script=${BRANDING_METADATA_SCRIPT:-/app/govchat-overlay/apply-branding-metadata.js}
+node "$metadata_script"
 
 # Select a runtime-only minimal config; never overwrite the mounted source YAML.
 minimal_script=${GOVCHAT_MINIMAL_UI_SCRIPT:-/app/govchat-overlay/apply-minimal-ui.js}
