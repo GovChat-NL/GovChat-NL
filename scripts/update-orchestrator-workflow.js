@@ -319,6 +319,11 @@ agent.parameters.options.systemMessage = originalSystem.includes('[FINAL_ANSWER]
   ? originalSystem
   : (originalSystem ? originalSystem + ' ' + finalRule : finalRule);
 
+const utilityBuilder = require('./orchestrator-utility-workflow');
+utilityBuilder.applyUtilityTools(wf);
+for (const definition of utilityBuilder.definitions) {
+  const utility = utilityBuilder.utilityWorkflow(definition);
+  fs.writeFileSync(require('path').join(require('path').dirname(workflowPath), utility.id + '.json'), JSON.stringify([utility], null, 2) + '\n');
+}
 fs.writeFileSync(workflowPath, JSON.stringify(data, null, 2));
 console.log('Updated orchestrator workflow detect node + passthrough prompt');
-
