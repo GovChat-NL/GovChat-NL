@@ -46,6 +46,9 @@ services:
     environment:
       # --- Applicatie ---
       APP_TITLE: ${APP_TITLE:-GovChat-NL}
+      # Native LibreChat footer. Unset uses the generic warning; explicit empty
+      # disables its text. Keep '-' (not ':-') to preserve that empty override.
+      CUSTOM_FOOTER: "${CUSTOM_FOOTER-${APP_TITLE:-GovChat-NL} kan fouten maken. Controleer belangrijke informatie.}"
       HOST: 0.0.0.0
       PORT: "3080"
       NODE_ENV: production

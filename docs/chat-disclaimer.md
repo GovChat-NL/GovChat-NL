@@ -1,61 +1,58 @@
-# Waarschuwing onder de chatinvoer
+# Waarschuwing via de ingebouwde LibreChat-footer
 
-De LibreChat-versie en slogan onder de chatinvoer worden vervangen door:
+GovChat gebruikt de ingebouwde CUSTOM_FOOTER-instelling van de gepinde LibreChat-versie.
+De standaard is:
 
-> &lt;appnaam&gt; kan fouten maken. Controleer belangrijke informatie.
+> GovChat-NL kan fouten maken. Controleer belangrijke informatie.
 
-De appnaam komt uit de bestaande brandinginstelling. De tekst is gewone tekst,
-zonder link of versienummer. De waarschuwing staat **standaard aan**.
+De [Compose-configuratie](../docker-compose.yml) gebruikt de appnaam uit APP_TITLE bij
+het aanmaken van LibreChat. De standaard blijft generiek; organisatiekeuzes horen in
+de private omgeving, niet in de repository.
 
-## Aan- of uitzetten
+## Instellen en uitschakelen
 
-Open het beheerdashboard, wijzig onder **Chatwaarschuwing** de optie
-**Waarschuwing onder chatinvoer tonen** en kies **Opslaan**. Dit is een
-omgevingsbrede instelling, geen persoonlijke gebruikersvoorkeur.
+- Niet ingesteld: de waarschuwing met de ingestelde APP_TITLE wordt gebruikt.
+- Eigen tekst: stel CUSTOM_FOOTER in de private omgeving in op de gewenste tekst.
+- Uitschakelen: stel CUSTOM_FOOTER expliciet in op een lege waarde. De hoofdtekst
+  verdwijnt; eventueel geconfigureerde privacy- en voorwaardenlinks blijven bestaan.
 
-Open chats nemen de wijziging binnen 30 seconden over; na vernieuwen van de
-pagina wordt de instelling direct opgehaald. Uitgeschakeld verdwijnt de hele
-waarschuwing, inclusief de oorspronkelijke LibreChat-tekst.
+Het [omgevingsvoorbeeld](../.env.example) laat de instelling bewust uitgecommentarieerd.
+Een lege instelling is een bewuste override, geen verzoek om de standaard te gebruiken.
+De Compose-interpolatie bewaart daarom expliciet lege waarden.
 
-De instelling wordt opgeslagen in de overlay-configuratie en blijft behouden na
-een herstart. Zonder beheerportaal kan een beheerder de onderstaande configuratie
-in de gepubliceerde overlay-map plaatsen. Bij gebruik van het beheerportaal is de
-opgeslagen beheerconfiguratie leidend.
+LibreChat rendert de footer zelf, ook in de minimale interface. De normale upstream
+responsive zichtbaarheid blijft behouden: de standaard footer is verborgen op kleine
+schermen en zichtbaar vanaf de sm-breakpoint. Er wordt geen extra zichtbaarheid afgedwongen.
+De ingebouwde footer ondersteunt Markdown en gebruikt een verticale streep als
+sectiescheiding; dit is geen gegarandeerde platte-tekstweergave. Gebruik voor een
+eenvoudige waarschuwing gewone tekst. Raw HTML wordt niet als HTML uitgevoerd.
 
-```json
-{
-  "showChatDisclaimer": false
-}
-```
+## Migratie vanaf de overlay uit PR #26
 
-Bij een ontbrekende configuratie blijft de waarschuwing standaard zichtbaar. Bij
-een tijdelijke ophaalfout blijft de laatst geladen instelling actief.
+De aparte disclaimerloader, CSS, publieke UI-policy, admin-schakelaar en bijbehorende
+polling/DOM-vervanging vervallen. Een oude showChatDisclaimer-instelling wordt niet
+meer gelezen en wordt niet automatisch naar de omgeving gemigreerd. Stel bij een
+eerder uitgeschakelde waarschuwing expliciet een lege CUSTOM_FOOTER in.
 
-## Ingebruikname
+Na wijzigen van de omgeving moet LibreChat opnieuw worden aangemaakt via de werkelijk
+gebruikte Compose-entrypoint; een gewone herstart laadt geen nieuwe containeromgeving.
+Herlaad daarna de chatpagina. Voor het verwijderen van de oude overlay verwijzen
+de nieuwe proxyconfiguratie en admin-assets niet meer naar de disclaimerbestanden:
+laat de gebruikelijke releaseprocedure die aangepaste proxyconfiguratie en adminversie
+activeren. Oude bestanden in persistente overlayvolumes mogen blijven staan, maar
+worden niet meer geladen. Zorg dat private proxy-overrides geen oude disclaimerinjectie
+behouden. Deze PR voert geen uitrol, bestandsverwijdering in private volumes of
+containerhercreatie uit.
 
-Herbouw het overlay-beheerportaal en herstart de LibreChat-proxy met de
-gebruikelijke deploymentconfiguratie. Het portaal synchroniseert bij het starten
-de nieuwe overlay-assets en publiceert de instelling. De proxy laadt de
-waarschuwing zowel in de gewone als in de minimale interface, zonder extra
-help- of appknoppen in de minimale interface. Er is geen LibreChat-fork of
-wijziging aan de database nodig. Vernieuw de chatpagina om de nieuwe loader op te
-halen; de bestaande proxycache voor overlay-assets heeft maximaal vijf minuten
-levensduur.
+Er is geen directe admin-save/reset of automatische aanpassing bij runtimebranding
+meer: tekst/appnaamwijzigingen vereisen de genoemde containerhercreatie. Auth, help/app
+overlay, prompt-/naambeheer, tool-events en workflows worden niet gewijzigd.
 
 ## Tests
 
-De tests controleren de Nederlandse tekst, appnaam, standaardwaarde, aan/uit,
-routewisselingen, opnieuw renderen, tijdelijke ophaalfouten, toegangscontrole,
-validatie en behoud van de instelling na herstart.
-
-```sh
-NODE_PATH=services/admin-overlay/admin/node_modules node --test tests/chat-disclaimer.test.js
-```
-
-De geïsoleerde Chromium-test controleert ook de daadwerkelijke zichtbaarheid,
-routewisselingen, opnieuw renderen en veilige weergave van de appnaam. Hiervoor
-zijn Python, Playwright en Chromium nodig.
-
-```sh
-python tests/test_chat_disclaimer_browser.py
-```
+De [Compose-regressies](../tests/test_deployment_configuration.py) controleren standaard,
+eigen appnaam, override, lege waarde en de minimale interface. De
+[native footertests](../tests/native-chat-footer.test.js) controleren dat de oude laag
+verdwijnt en renderen de echte footerbron uit het gepinde LibreChat-image met React SSR,
+inclusief lege tekst, juridische links en veilige HTML-behandeling. Dit is geen volledige
+browser-/Entra-test en geen live deploymenttest.

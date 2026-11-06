@@ -26,17 +26,17 @@ Wanneer een n8n-agent tijdens een gesprek een hulpmiddel gebruikt, toont LibreCh
 
 De architectuur en controlepunten staan in de uitleg over [live aanroepen van hulpmiddelen](docs/live-tool-calling.md).
 
+### Waarschuwing onder de chatinvoer
+
+De ingebouwde LibreChat-footer toont standaard **GovChat-NL kan fouten maken. Controleer belangrijke informatie.**
+Configureer de tekst via CUSTOM_FOOTER; een expliciet lege waarde verbergt de hoofdtekst.
+Er is geen aparte DOM-overlay of admin-aan/uit-schakelaar nodig. Zie [footerconfiguratie en migratie](docs/chat-disclaimer.md).
+
 De standaard orkestrator heeft ook vijf afzonderlijk configureerbare hulpmiddelen:
 de standaard n8n-rekenmachine, NOS- en L1-nieuws per RSS-categorie, feestdagen via
 OpenHolidays API en tijd-/datumrekenen met tijdzones en zomer-/wintertijd.
 Ze staan standaard aan en worden beheerd via de Orchestrator-pagina van het
 beheerportaal. Zie [configuratie, ingebruikname en tests](docs/orchestrator-utility-tools.md).
-
-### Waarschuwing onder de chatinvoer
-
-Onder de chatinvoer staat standaard: **&lt;appnaam&gt; kan fouten maken. Controleer
-belangrijke informatie.** Beheerders kunnen deze waarschuwing via het dashboard
-uitschakelen. Zie [de configuratie en tests](docs/chat-disclaimer.md).
 
 ## Verbonden systemen
 
