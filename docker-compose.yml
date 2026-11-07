@@ -394,6 +394,31 @@ services:
       - librechat-net
 
   # ---------------------------------------------------------------------------
+  #  Beleidskompas PostgreSQL - de stand van elke casus: casustekst,
+  #  uitwerkingen per deelstap (met versies) en het gesprek.
+  #  Alleen govchat-overlay-admin praat ermee; n8n en de pagina gaan via
+  #  de HTTP-API van die service.
+  #  De data staat in een Docker-volume, net als die van MongoDB en n8n.
+  # ---------------------------------------------------------------------------
+  beleidskompas-postgres:
+    image: postgres:16-alpine
+    container_name: librechat-beleidskompas-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: beleidskompas
+      POSTGRES_USER: beleidskompas
+      POSTGRES_PASSWORD: ${BELEIDSKOMPAS_POSTGRES_PASSWORD}
+    volumes:
+      - beleidskompas-postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U beleidskompas -d beleidskompas"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - librechat-net
+
+  # ---------------------------------------------------------------------------
   #  LiteLLM - modelrouter/proxy
   #  Secrets/keys komen direct uit .env
   # ---------------------------------------------------------------------------
@@ -865,6 +890,9 @@ services:
       - PUBLISH_DIR=/publish
       - BELEIDSKOMPAS_N8N_BASE_URL=${BELEIDSKOMPAS_N8N_BASE_URL:-http://n8n:5678}
       - BELEIDSKOMPAS_N8N_WEBHOOK_TOKEN=${BELEIDSKOMPAS_N8N_WEBHOOK_TOKEN:-${N8N_WEBHOOK_TOKEN}}
+      - BELEIDSKOMPAS_DB_HOST=beleidskompas-postgres
+      - BELEIDSKOMPAS_DB_PASSWORD=${BELEIDSKOMPAS_POSTGRES_PASSWORD}
+      - BELEIDSKOMPAS_STORE_TOKEN=${BELEIDSKOMPAS_STORE_TOKEN}
       - IMAGE_JOBS_ENABLED=${IMAGE_JOBS_ENABLED:-false}
       - IMAGE_JOBS_WEBHOOK_URL=${IMAGE_JOBS_WEBHOOK_URL:-http://n8n:5678/webhook/image-generator}
       - IMAGE_JOBS_WEBHOOK_TOKEN=${IMAGE_JOBS_WEBHOOK_TOKEN:-${N8N_WEBHOOK_TOKEN}}
@@ -892,6 +920,9 @@ services:
       - ./overlay/defaults:/app/defaults:ro
     profiles:
       - admin-overlay
+    depends_on:
+      beleidskompas-postgres:
+        condition: service_healthy
     networks:
       - librechat-net
 
@@ -930,3 +961,4 @@ volumes:
   n8n-postgres-data:
   qdrant-storage:
   qdrant-snapshot-cache:
+  beleidskompas-postgres-data:

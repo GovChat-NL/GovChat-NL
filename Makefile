@@ -3,7 +3,7 @@
 
 COMPOSE := docker compose
 
-.PHONY: help env up up-n8n down logs reload-workflows rebuild rebuild-admin check test-beleidskompas generate-workflows
+.PHONY: help env up up-n8n down logs reload-workflows rebuild rebuild-admin check test-beleidskompas test-beleidskompas-db generate-workflows
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z0-9_-]+:.*## ' $(MAKEFILE_LIST) | sed -E 's/:.*## /: /' | sort
@@ -44,9 +44,13 @@ check: ## Validate the compose file, the workflow exports and the scripts (no ru
 	node --check n8n/bootstrap.js
 	node --check services/admin-overlay/admin/server.js
 
-test-beleidskompas: ## Run the Beleidskompas unit tests: step 1 logic and the page (no Docker needed)
+test-beleidskompas: ## Run the Beleidskompas unit tests: the workflows, the page and the store (no Docker needed)
 	cd agents/beleidskompas && node --test
 	cd overlay/src/apps/beleidskompas && node --test
+	cd services/admin-overlay/admin && node --test
+
+test-beleidskompas-db: ## Run the Beleidskompas store against the real database, inside the admin container (the stack must be running)
+	$(COMPOSE) run --rm --no-deps -e BELEIDSKOMPAS_DB_TEST=true -v ./services/admin-overlay/admin/tests:/app/tests:ro govchat-overlay-admin node --test tests/beleidskompas-db.test.js
 
 generate-workflows: ## Regenerate the Beleidskompas workflows (orchestrator and the steps) from agents/beleidskompas
 	cd agents/beleidskompas && node generate-workflow.js

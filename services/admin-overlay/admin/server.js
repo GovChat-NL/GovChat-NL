@@ -6,6 +6,7 @@ const http = require("http");
 const path = require("path");
 const sharp = require("sharp");
 const { WebSocket, WebSocketServer } = require("ws");
+const beleidskompas = require("./lib/beleidskompas");
 
 const app = express();
 const PORT = process.env.PORT || 3002;
@@ -3458,7 +3459,12 @@ server.on("upgrade", (req, socket, head) => {
   });
 });
 
-server.listen(PORT, "0.0.0.0", () => {
+// The service only listens once Beleidskompas has its database, so a
+// migration that fails stops the service instead of going unnoticed.
+beleidskompas.start(app).catch((err) => {
+  console.error(`[govchat-admin] Beleidskompas failed to start: ${err.message}`);
+  process.exit(1);
+}).then(() => server.listen(PORT, "0.0.0.0", () => {
   console.log(`[govchat-admin] Running on http://0.0.0.0:${PORT}`);
   console.log(`[govchat-admin] Data directory: ${DATA_DIR}`);
   console.log(`[govchat-admin] Publish directory: ${PUBLISH_DIR}`);
@@ -3473,4 +3479,4 @@ server.listen(PORT, "0.0.0.0", () => {
   console.log(
     `[govchat-admin] Realtime STT bridge: /api/realtime-stt (provider=${REALTIME_STT_PROVIDER_DEFAULT})`,
   );
-});
+}));
