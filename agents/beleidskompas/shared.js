@@ -45,8 +45,12 @@ function readSubstepPrompt(relativePath) {
   return { instruction, example };
 }
 
-const SYSTEM_PROMPT_TEMPLATE = readPrompt('system-prompt.md');
+const REPORT_PROMPT_TEMPLATE = readPrompt('report-prompt.md');
 const CONVERSATION_PROMPT_TEMPLATE = readPrompt('conversation-prompt.md');
+// The prompt the orchestrator uses to pick the step a message is about
+// (prompts/orchestrator-prompt.md): {{steps}} is the list of steps,
+// {{active_nr}} the number of the step the user is in.
+const ORCHESTRATOR_PROMPT_TEMPLATE = readPrompt('orchestrator-prompt.md');
 
 // One rule per line in rules.md.
 const COMMON_RULES = readPrompt('rules.md')
@@ -211,9 +215,13 @@ const CITATIONS_META_LABEL = 'beleidskompas-meta';
  *  stond er een blok JSON onder elk antwoord. Een linkdefinitie wordt door
  *  iedere CommonMark-renderer opgeslokt en levert geen uitvoer op, en de
  *  payload staat base64 zodat aanhalingstekens en accenten de regel niet
- *  kunnen breken. */
-function appendCitationsMetaBlock(text, citations, retrieval_trace) {
-  const payload = JSON.stringify({ citations: citations || [], retrieval_trace: retrieval_trace || null });
+ *  kunnen breken.
+ *
+ *  `meta` holds what else the page needs to know about the answer: `agent`,
+ *  the id of the step that answered, and `asked_from`, the substep the
+ *  user was in when asking (null when the page did not say). */
+function appendCitationsMetaBlock(text, citations, retrieval_trace, meta) {
+  const payload = JSON.stringify({ citations: citations || [], retrieval_trace: retrieval_trace || null, ...(meta || {}) });
   const encoded = Buffer.from(payload, 'utf8').toString('base64');
   return `${text}\n\n[${CITATIONS_META_LABEL}]: data:application/json;base64,${encoded}`;
 }
@@ -223,7 +231,7 @@ function appendCitationsMetaBlock(text, citations, retrieval_trace) {
  *  Safe to call on text that never had a meta block (returns it unchanged). */
 function parseCitationsMetaBlock(text) {
   const raw = String(text || '');
-  const empty = { displayText: raw.trim(), citations: [], retrieval_trace: null };
+  const empty = { displayText: raw.trim(), citations: [], retrieval_trace: null, agent: null, asked_from: null };
 
   const defMarker = `[${CITATIONS_META_LABEL}]: data:application/json;base64,`;
   const defIdx = raw.lastIndexOf(defMarker);
@@ -236,6 +244,8 @@ function parseCitationsMetaBlock(text) {
         displayText,
         citations: Array.isArray(parsed.citations) ? parsed.citations : [],
         retrieval_trace: parsed.retrieval_trace || null,
+        agent: parsed.agent ? String(parsed.agent) : null,
+        asked_from: parsed.asked_from ? String(parsed.asked_from) : null,
       };
     } catch (_) {
       // Onleesbare payload: liever de tekst tonen dan het bericht verliezen.
@@ -260,6 +270,8 @@ function parseCitationsMetaBlock(text) {
       displayText,
       citations: Array.isArray(parsed.citations) ? parsed.citations : [],
       retrieval_trace: parsed.retrieval_trace || null,
+      agent: null,
+      asked_from: null,
     };
   } catch (_) {
     // Zelfde afweging als hierboven: liever de tekst tonen dan het bericht
@@ -503,9 +515,9 @@ function fillTemplate(template, step) {
   return template.replace(/\{\{(\w+)\}\}/g, (match, key) => (key in values ? values[key] : match));
 }
 
-/** The system prompt for writing the report of a step (prompts/system-prompt.md). */
-function buildSystemPrompt(step) {
-  return fillTemplate(SYSTEM_PROMPT_TEMPLATE, step);
+/** The system prompt for writing the report of a step (prompts/report-prompt.md). */
+function buildReportPrompt(step) {
+  return fillTemplate(REPORT_PROMPT_TEMPLATE, step);
 }
 
 /** The system prompt for answering a message about a step's report
@@ -696,6 +708,10 @@ async function runStep(step, ctx) {
   const conversation = String(body.conversation || '').trim();
   const message = String(body.message || '').trim();
   const substepId = String(body.substep_id || '').trim();
+  // The substep the user was in when asking. The orchestrator passes it on;
+  // it can belong to another step when the orchestrator sent the message
+  // here because it is about this step.
+  const askedFrom = String(body.asked_from || '').trim() || null;
   const asked = askedStep(step, substepId);
   if (!asked) {
     const text = `Beleidskompas kent deelstap ${substepId} niet in stap ${step.nr}.`;
@@ -725,7 +741,7 @@ async function runStep(step, ctx) {
       baseUrl: litellmUrl,
       apiKey: litellmApiKey,
       model: (env && env.BELEIDSKOMPAS_MODEL) || 'govchat-default',
-      systemPrompt: conversing ? buildConversationPrompt(asked) : buildSystemPrompt(asked),
+      systemPrompt: conversing ? buildConversationPrompt(asked) : buildReportPrompt(asked),
       userPrompt: buildUserPrompt({ caseText, findings, conversation, message, citations }),
       timeoutMs: 60000,
       fetchImpl,
@@ -744,9 +760,10 @@ async function runStep(step, ctx) {
       ok: true,
       step_id: step.id,
       substep_id: substepId || null,
+      asked_from: askedFrom,
       mode: 'conversation',
       answer,
-      text: appendCitationsMetaBlock(answer, citations, retrieval_trace),
+      text: appendCitationsMetaBlock(answer, citations, retrieval_trace, { agent: step.id, asked_from: askedFrom }),
       citations,
       retrieval_trace,
     };
@@ -763,13 +780,14 @@ async function runStep(step, ctx) {
     ok: true,
     step_id: step.id,
     substep_id: substepId || null,
+    asked_from: askedFrom,
     mode: 'report',
     parse_warning: parsed.parse_warning,
     answer,
     // What the chat pipeline delivers: the bridge reads `text`, not
     // `answer`, so the citations and the retrieval trace travel along in the
     // invisible block appended here (see appendCitationsMetaBlock).
-    text: appendCitationsMetaBlock(answer, citations, retrieval_trace),
+    text: appendCitationsMetaBlock(answer, citations, retrieval_trace, { agent: step.id, asked_from: askedFrom }),
     structured,
     citations,
     retrieval_trace,
@@ -797,13 +815,14 @@ module.exports = {
   buildTitleResponse,
   readPrompt,
   readSubstepPrompt,
-  SYSTEM_PROMPT_TEMPLATE,
+  REPORT_PROMPT_TEMPLATE,
   CONVERSATION_PROMPT_TEMPLATE,
+  ORCHESTRATOR_PROMPT_TEMPLATE,
   COMMON_RULES,
   isVerdict,
   answerFormat,
   fillTemplate,
-  buildSystemPrompt,
+  buildReportPrompt,
   buildConversationPrompt,
   emptyValue,
   emptyStructured,

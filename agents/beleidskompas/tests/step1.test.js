@@ -9,7 +9,7 @@ const path = require('node:path');
 const {
   parseCitationsMetaBlock,
   parseAgentJson,
-  buildSystemPrompt,
+  buildReportPrompt,
   emptyStructured,
   missingParts,
   composeAnswerText,
@@ -119,8 +119,8 @@ test('missingParts names the parts of the answer the model left out', () => {
   assert.match(notes[0], /"Symptomen" \(deelstap 1\.1\)/);
 });
 
-test('buildSystemPrompt names every substep, every field and the answer format', () => {
-  const prompt = buildSystemPrompt(STEP);
+test('buildReportPrompt names every substep, every field and the answer format', () => {
+  const prompt = buildReportPrompt(STEP);
   for (const needle of ['Deelstap 1.1: Probleemdefinitie', 'Deelstap 1.5: Integrale afweging', '"oordeel": "ja | nee | onduidelijk"', '"case_summary"', 'geldig JSON-object']) {
     assert.ok(prompt.includes(needle), `expected the prompt to include "${needle}"`);
   }
@@ -238,6 +238,7 @@ test('runStep accepts the request the orchestrator sends (case_text, findings, A
         step_id: 'stap1',
         case_text: sampleCase.case_text,
         findings: '**Stap 1 · Publiek en provinciaal belang · 1.1 Probleemdefinitie**\n\n### Samenvatting casus\n' + sampleCase.case_text,
+        asked_from: '3.2',
         sessionId: 'conv-123',
         userId: 'user-456',
       },
@@ -253,7 +254,13 @@ test('runStep accepts the request the orchestrator sends (case_text, findings, A
   // the response to build the assistant's chat message; it carries the same
   // visible content as `answer` plus an invisible trailing citations block.
   assert.ok(result.text.length > 0);
-  assert.equal(parseCitationsMetaBlock(result.text).displayText, result.answer);
+  const meta = parseCitationsMetaBlock(result.text);
+  assert.equal(meta.displayText, result.answer);
+  // The page reads from the meta block which step answered and where the
+  // user asked from.
+  assert.equal(meta.agent, 'stap1');
+  assert.equal(meta.asked_from, '3.2');
+  assert.equal(result.asked_from, '3.2');
   });
 });
 

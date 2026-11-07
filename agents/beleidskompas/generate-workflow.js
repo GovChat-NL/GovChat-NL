@@ -112,6 +112,22 @@ function buildWorkflow({ id, name, webhookPath, nodeNames, jsCode }) {
 
 // --- Orchestrator ---
 
+// The step workflows: one per step definition in steps/.
+const steps = [step1.STEP, step2.STEP, step3.STEP, step4.STEP];
+
+/** What the orchestrator tells the model about a step when it has to pick
+ *  the step a message is about: number, title, role and substep titles. The
+ *  instructions of the substeps stay out; they are for the step itself. */
+function stepSummary(step) {
+  return {
+    id: step.id,
+    nr: step.nr,
+    title: step.title,
+    role: step.role,
+    substeps: step.substeps.map((substep) => substep.title),
+  };
+}
+
 // The functions orchestrator.js uses from shared.js, and the ones those use.
 const ORCHESTRATOR_SHARED_FUNCTIONS = [
   'extractSuppliedToken',
@@ -124,14 +140,17 @@ const ORCHESTRATOR_SHARED_FUNCTIONS = [
   'buildTitleResponse',
 ];
 
-const ORCHESTRATOR_FUNCTIONS = ['incomingMessage', 'determineStep', 'buildStepRequest', 'forwardToStep', 'runOrchestrator'];
+const ORCHESTRATOR_FUNCTIONS = ['incomingMessage', 'determineStep', 'isPlainChatMessage', 'chooseStep', 'buildStepRequest', 'forwardToStep', 'runOrchestrator'];
 
 function buildOrchestratorJsCode() {
   return [
     ...TITLE_CONSTANTS,
     `const PAGE_MESSAGE_LABELS = ${JSON.stringify(shared.PAGE_MESSAGE_LABELS)};`,
     `const STEP_ROUTES = ${JSON.stringify(orchestrator.STEP_ROUTES)};`,
+    `const DEFAULT_STEP_ID = ${JSON.stringify(orchestrator.DEFAULT_STEP_ID)};`,
     `const UNKNOWN_STEP_TEXT = ${JSON.stringify(orchestrator.UNKNOWN_STEP_TEXT)};`,
+    `const STEP_SUMMARIES = ${JSON.stringify(steps.map(stepSummary), null, 2)};`,
+    `const ORCHESTRATOR_PROMPT_TEMPLATE = ${JSON.stringify(shared.ORCHESTRATOR_PROMPT_TEMPLATE)};`,
     '',
     inlineFunctions([shared], ORCHESTRATOR_SHARED_FUNCTIONS),
     '',
@@ -141,6 +160,7 @@ function buildOrchestratorJsCode() {
     '',
     'const result = await runOrchestrator({',
     '  input: $json,',
+    '  summaries: STEP_SUMMARIES,',
     `  env: ${envLiteral([
       'N8N_WEBHOOK_TOKEN',
       'BELEIDSKOMPAS_N8N_WEBHOOK_TOKEN',
@@ -177,7 +197,7 @@ const STEP_SHARED_FUNCTIONS = [
   'isVerdict',
   'answerFormat',
   'fillTemplate',
-  'buildSystemPrompt',
+  'buildReportPrompt',
   'buildConversationPrompt',
   'emptyValue',
   'emptyStructured',
@@ -198,15 +218,12 @@ const STEP_SHARED_FUNCTIONS = [
   'runStep',
 ];
 
-// The step workflows: one per step definition in steps/.
-const steps = [step1.STEP, step2.STEP, step3.STEP, step4.STEP];
-
 function buildStepJsCode(step) {
   return [
     `const DISCLAIMER = ${JSON.stringify(shared.DISCLAIMER)};`,
     `const CITATIONS_META_MARKER = ${JSON.stringify(shared.CITATIONS_META_MARKER)};`,
     `const CITATIONS_META_LABEL = ${JSON.stringify(shared.CITATIONS_META_LABEL)};`,
-    `const SYSTEM_PROMPT_TEMPLATE = ${JSON.stringify(shared.SYSTEM_PROMPT_TEMPLATE)};`,
+    `const REPORT_PROMPT_TEMPLATE = ${JSON.stringify(shared.REPORT_PROMPT_TEMPLATE)};`,
     `const CONVERSATION_PROMPT_TEMPLATE = ${JSON.stringify(shared.CONVERSATION_PROMPT_TEMPLATE)};`,
     `const COMMON_RULES = ${JSON.stringify(shared.COMMON_RULES)};`,
     '',

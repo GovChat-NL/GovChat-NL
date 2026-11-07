@@ -39,5 +39,13 @@ test("parseCitationsMetaBlock understands the HTML comment of older messages and
   assert.equal(parsed.displayText, "Antwoord.");
   assert.deepEqual(parsed.citations, [{ id: "x" }]);
 
-  assert.deepEqual(parseCitationsMetaBlock("  Gewoon tekst  "), { displayText: "Gewoon tekst", citations: [], retrieval_trace: null });
+  assert.deepEqual(parseCitationsMetaBlock("  Gewoon tekst  "), { displayText: "Gewoon tekst", citations: [], retrieval_trace: null, agent: null, asked_from: null });
+});
+
+test("parseCitationsMetaBlock reads which step answered and where the user asked from", () => {
+  const meta = { citations: [], retrieval_trace: null, agent: "stap3", asked_from: "1.3" };
+  const encoded = Buffer.from(JSON.stringify(meta), "utf8").toString("base64");
+  const parsed = parseCitationsMetaBlock(`Antwoord.\n\n[beleidskompas-meta]: data:application/json;base64,${encoded}`);
+  assert.equal(parsed.agent, "stap3");
+  assert.equal(parsed.asked_from, "1.3");
 });

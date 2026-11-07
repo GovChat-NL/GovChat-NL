@@ -7,19 +7,23 @@
  * through the n8n-openai-bridge. The orchestrator does not answer anything
  * about a case itself: it checks the caller's token, takes the message apart
  * into the parts the page composed it from (step or substep, case, findings
- * so far, conversation, message)
- * and sends those as fields to that step's workflow, whose answer
- * it returns unchanged. A message that names no known step is refused with a
- * message for the chat, never sent to a default step. The one request it does
- * answer itself is LibreChat's request for a conversation title, which
- * belongs to no step.
+ * so far, conversation, message) and sends those as fields to a step's
+ * workflow, whose answer it returns unchanged. A request for a report goes
+ * to the step of the substep the page named. A typed message goes to the
+ * step the message is about: the orchestrator asks the model to pick one
+ * (see chooseStep), and keeps the page's step when the model does not pick
+ * another. A message typed in LibreChat's own chat has no labels at all;
+ * that is a question too, with step 1 as the step to keep. A message with
+ * labels that names no known step is refused with a message for the chat.
+ * The one request it does answer itself is LibreChat's request for a
+ * conversation title, which belongs to no step.
  *
  * generate-workflow.js copies these functions, with the ones they use from
  * shared.js, into the Code node of beleidskompas-orchestrator.json, so the
  * code that runs in n8n is this code.
  */
 
-const { extractSuppliedToken, parsePageMessage, requestRaw, isTitleRequest, extractConvoCaseText, buildTitleResponse } = require('./shared');
+const { ORCHESTRATOR_PROMPT_TEMPLATE, PAGE_MESSAGE_LABELS, extractSuppliedToken, parsePageMessage, requestRaw, callLiteLLM, isTitleRequest, extractConvoCaseText, buildTitleResponse } = require('./shared');
 
 // Which step id belongs to which webhook path in n8n. The paths are the
 // addresses of the four step workflows.
@@ -29,6 +33,10 @@ const STEP_ROUTES = {
   stap3: 'beleidskompas-step-stap3',
   stap4: 'beleidskompas-step-stap4',
 };
+
+// The step a question from LibreChat's own chat is about when the model
+// picks no other: there is no page to say where the user is.
+const DEFAULT_STEP_ID = 'stap1';
 
 // Shown in the chat when a message names no known step.
 const UNKNOWN_STEP_TEXT =
@@ -49,13 +57,67 @@ function determineStep(parts, routes) {
   return Object.prototype.hasOwnProperty.call(routes, stepId) ? stepId : '';
 }
 
+/** Whether a message has none of the labels the page puts in a message:
+ *  then it was typed in LibreChat's own chat, and all of it is the message. */
+function isPlainChatMessage(text) {
+  const labels = Object.values(PAGE_MESSAGE_LABELS);
+  return !String(text || '')
+    .split('\n')
+    .some((line) => labels.some((label) => line.startsWith(label)));
+}
+
+/** Asks the model which step a typed message is about, and returns that
+ *  step's id. `summaries` describes the steps the model can choose from
+ *  (see stepSummary in generate-workflow.js): id, number, title, role and
+ *  substep titles. The model answers with a number only. When it names no
+ *  step in `routes`, cannot be reached, or is not configured, the answer is
+ *  `activeStepId`, the step the user is in: a wrong guess would send the
+ *  message to a step it is not about. */
+async function chooseStep({ message, activeStepId, summaries, routes, env, fetchImpl, httpModule, httpsModule, urlModule }) {
+  const steps = Array.isArray(summaries) ? summaries : [];
+  const litellmUrl = String((env && env.LITELLM_URL) || '').trim();
+  const litellmApiKey = String((env && (env.LITELLM_API_KEY || env.OPENAI_API_KEY)) || '').trim();
+  const active = steps.find((s) => s.id === activeStepId);
+  if (!litellmUrl || !litellmApiKey || !active || !String(message || '').trim()) return activeStepId;
+
+  const list = steps
+    .map((s) => `${s.nr}. ${s.title}. ${String(s.role || '').trim()} Deelstappen: ${(s.substeps || []).join(', ')}.`)
+    .join('\n');
+  const systemPrompt = ORCHESTRATOR_PROMPT_TEMPLATE.replaceAll('{{steps}}', list).replaceAll('{{active_nr}}', String(active.nr));
+
+  let raw;
+  try {
+    raw = await callLiteLLM({
+      baseUrl: litellmUrl,
+      apiKey: litellmApiKey,
+      model: (env && env.BELEIDSKOMPAS_MODEL) || 'govchat-default',
+      systemPrompt,
+      userPrompt: String(message).slice(0, 4000),
+      timeoutMs: 20000,
+      fetchImpl,
+      httpModule,
+      httpsModule,
+      urlModule,
+    });
+  } catch (_) {
+    return activeStepId;
+  }
+  const number = /\d+/.exec(String(raw || ''));
+  const chosen = number && steps.find((s) => String(s.nr) === number[0]);
+  return chosen && Object.prototype.hasOwnProperty.call(routes || {}, chosen.id) ? chosen.id : activeStepId;
+}
+
 /** What a step workflow receives: the parts of the message as fields, plus
- *  who is asking. */
+ *  who is asking. The substep only goes along when it belongs to `stepId`;
+ *  a message sent to another step is about that whole step. `asked_from`
+ *  always says which substep the user was in. */
 function buildStepRequest(stepId, parts, body) {
   const b = body && typeof body === 'object' ? body : {};
+  const ownSubstep = stepId === parts.stepId ? parts.substepId || null : null;
   return {
     step_id: stepId,
-    substep_id: parts.substepId || null,
+    substep_id: ownSubstep,
+    asked_from: parts.substepId || null,
     case_text: parts.caseText,
     findings: parts.findings,
     conversation: parts.conversation,
@@ -126,12 +188,13 @@ async function forwardToStep({ baseUrl, path, stepId, body, callerToken, timeout
  *
  *  `input` is the incoming request as n8n hands it over (`$json`: the
  *  request's `body` and `headers`), `env` holds the settings read from
- *  n8n's `$env`, and the rest are the means to send HTTP. In order: check
- *  the token, answer a title request, take the message apart and read the
- *  step from it, send the parts to that step. The returned object is what
- *  the workflow responds with. */
+ *  n8n's `$env`, `summaries` describes the steps for chooseStep, and the
+ *  rest are the means to send HTTP. In order: check the token, answer a
+ *  title request, take the message apart and read the step from it, let
+ *  the model pick the step a typed message is about, send the parts to that
+ *  step. The returned object is what the workflow responds with. */
 async function runOrchestrator(ctx) {
-  const { input, env, fetchImpl, httpModule, httpsModule, urlModule } = ctx;
+  const { input, env, summaries, fetchImpl, httpModule, httpsModule, urlModule } = ctx;
   const raw = input || {};
   const body = raw.body || {};
   const headers = raw.headers || {};
@@ -157,10 +220,23 @@ async function runOrchestrator(ctx) {
   }
 
   const parts = parsePageMessage(message);
-  const stepId = determineStep(parts, STEP_ROUTES);
-  if (!stepId) {
+  let activeStepId = determineStep(parts, STEP_ROUTES);
+  if (!activeStepId && isPlainChatMessage(message)) {
+    // parsePageMessage returns an unlabeled text as the case; from the chat
+    // it is the question itself.
+    parts.message = parts.caseText;
+    parts.caseText = '';
+    activeStepId = DEFAULT_STEP_ID;
+  }
+  if (!activeStepId) {
     return { ok: false, step_id: null, error: 'No step recognised in the request', text: UNKNOWN_STEP_TEXT, answer: UNKNOWN_STEP_TEXT };
   }
+
+  // A report is always written by the step of the substep the page named.
+  // A typed message is answered by the step it is about.
+  const stepId = parts.message
+    ? await chooseStep({ message: parts.message, activeStepId, summaries, routes: STEP_ROUTES, env, fetchImpl, httpModule, httpsModule, urlModule })
+    : activeStepId;
 
   return forwardToStep({
     baseUrl: env && env.BELEIDSKOMPAS_N8N_BASE_URL,
@@ -178,9 +254,12 @@ async function runOrchestrator(ctx) {
 
 module.exports = {
   STEP_ROUTES,
+  DEFAULT_STEP_ID,
   UNKNOWN_STEP_TEXT,
   incomingMessage,
   determineStep,
+  isPlainChatMessage,
+  chooseStep,
   buildStepRequest,
   forwardToStep,
   runOrchestrator,

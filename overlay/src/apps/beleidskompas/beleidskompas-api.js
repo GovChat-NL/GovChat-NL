@@ -35,12 +35,16 @@ const CITATIONS_META_LABEL = "beleidskompas-meta";
  *  text that never had one. */
 export function parseCitationsMetaBlock(text) {
   const raw = String(text || "");
-  const empty = { displayText: raw.trim(), citations: [], retrieval_trace: null };
+  const empty = { displayText: raw.trim(), citations: [], retrieval_trace: null, agent: null, asked_from: null };
 
+  // `agent` is the id of the step that answered, `asked_from` the substep
+  // the user was in when asking; both are null for older messages.
   const shape = (parsed, displayText) => ({
     displayText,
     citations: Array.isArray(parsed.citations) ? parsed.citations : [],
     retrieval_trace: parsed.retrieval_trace || null,
+    agent: parsed.agent ? String(parsed.agent) : null,
+    asked_from: parsed.asked_from ? String(parsed.asked_from) : null,
   });
 
   const defMarker = `[${CITATIONS_META_LABEL}]: data:application/json;base64,`;
@@ -145,7 +149,7 @@ export function parseComposedPrompt(text) {
 
 /** Sends one message to the Beleidskompas custom endpoint and waits for
  *  the full reply via SSE. Returns { conversationId, messageId, text,
- *  citations, retrieval_trace }. */
+ *  citations, retrieval_trace, agent }. */
 export async function sendBeleidskompasChatMessage({ text, conversationId, parentMessageId }) {
   const messageId = newClientMessageId();
   const startResp = await librechatFetch("/api/agents/chat/" + BELEIDSKOMPAS_ENDPOINT, {
@@ -235,13 +239,14 @@ export async function sendBeleidskompasChatMessage({ text, conversationId, paren
   }
 
   const responseMessage = finalPayload.responseMessage || {};
-  const { displayText, citations, retrieval_trace } = parseCitationsMetaBlock(extractMessageText(responseMessage));
+  const { displayText, citations, retrieval_trace, agent } = parseCitationsMetaBlock(extractMessageText(responseMessage));
   return {
     conversationId: finalPayload?.conversation?.conversationId || streamId,
     messageId: responseMessage.messageId || null,
     text: displayText,
     citations,
     retrieval_trace,
+    agent,
   };
 }
 
@@ -262,8 +267,8 @@ export async function fetchBeleidskompasHistory(conversationId) {
         const text = message || (substepId ? `Deelstap ${substepId}: ${substepTitle}` : String(m.text || "").trim());
         return { messageId: m.messageId, role: "user", text, substepId, caseText, conversation: Boolean(message), citations: [], retrieval_trace: null, ts: m.createdAt || new Date().toISOString() };
       }
-      const { displayText, citations, retrieval_trace } = parseCitationsMetaBlock(extractMessageText(m));
-      return { messageId: m.messageId, role: "assistant", text: displayText, citations, retrieval_trace, ts: m.createdAt || new Date().toISOString() };
+      const { displayText, citations, retrieval_trace, agent } = parseCitationsMetaBlock(extractMessageText(m));
+      return { messageId: m.messageId, role: "assistant", text: displayText, citations, retrieval_trace, agent, ts: m.createdAt || new Date().toISOString() };
     });
 }
 

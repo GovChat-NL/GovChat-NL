@@ -54,15 +54,22 @@ function messageBodyHTML(message) {
 const CHART_ICON =
   '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/></svg>';
 
-function messageHTML(m, idx) {
+/** `stepLabel(agent)` names the step that answered a message in the
+ *  conversation ("Stap 3 · Instrumentkeuze"), shown next to the author so
+ *  the user sees which step answered, also when it is another step than
+ *  the one they are in. */
+function messageHTML(m, idx, stepLabel) {
   const isUser = m.role === "user";
+  const label = !isUser && m.conversation && m.agent ? stepLabel(m.agent) : "";
   return `
     <div class="gc-bk-msg-row ${isUser ? "is-user" : "is-assistant"}">
       <div class="gc-bk-msg-col">
         <div class="gc-bk-msg">
           ${isUser
             ? ""
-            : `<div class="gc-bk-msg-author"><span class="gc-bk-msg-avatar">${CHART_ICON}</span><span class="gc-bk-msg-name">Beleidskompas</span></div>`}
+            : `<div class="gc-bk-msg-author"><span class="gc-bk-msg-avatar">${CHART_ICON}</span><span class="gc-bk-msg-name">Beleidskompas</span>${
+                label ? `<span class="gc-bk-msg-step">${escapeHTML(label)}</span>` : ""
+              }</div>`}
           <div class="gc-bk-msg-text">${
             m.pending && !m.text
               ? '<span class="gc-bk-typing-dots"><span></span><span></span><span></span></span>'
@@ -85,8 +92,13 @@ export function setupChat(store) {
   const sendBtn = requireElement("gc-bk-send");
   const newChatBtn = requireElement("gc-bk-new-chat");
 
+  function stepLabel(stepId) {
+    const step = store.steps.find((s) => s.id === stepId);
+    return step ? `Stap ${step.nr} · ${step.title}` : "";
+  }
+
   function renderChat() {
-    chatLogEl.innerHTML = state.messages.map(messageHTML).join("");
+    chatLogEl.innerHTML = state.messages.map((m, idx) => messageHTML(m, idx, stepLabel)).join("");
     chatLogEl.scrollTop = chatLogEl.scrollHeight;
   }
 
@@ -112,7 +124,7 @@ export function setupChat(store) {
     if (result.conversationId) store.setConversationId(result.conversationId);
     if (result.messageId) store.setLastMessageId(result.messageId);
 
-    return { answer: result.text, citations: result.citations, retrieval_trace: result.retrieval_trace };
+    return { answer: result.text, citations: result.citations, retrieval_trace: result.retrieval_trace, agent: result.agent };
   }
 
   function setComposerDisabled(disabled) {
@@ -170,6 +182,7 @@ export function setupChat(store) {
         text: String(result.answer || "").trim(),
         citations: normalizeCitations(result.citations),
         retrieval_trace: result.retrieval_trace || null,
+        agent: result.agent || null,
       });
       if (!conversing && parseAdvice(pendingMessage.text)) {
         store.setSubstepResult(substep.id, {

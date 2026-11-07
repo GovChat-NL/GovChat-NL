@@ -329,6 +329,14 @@
   color: #374151;
 }
 
+.gc-bk-msg-step {
+  font-size: 11px;
+  color: #4b5563;
+  background: #f3f4f6;
+  border-radius: 999px;
+  padding: 1px 8px;
+}
+
 .gc-bk-msg-text {
   font-size: 13px;
   line-height: 1.5;
@@ -1222,6 +1230,11 @@
 
 .dark .gc-bk-msg-name {
   color: #e5e7eb;
+}
+
+.dark .gc-bk-msg-step {
+  color: #d1d5db;
+  background: #374151;
 }
 
 .dark .gc-bk-chat-compose,

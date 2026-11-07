@@ -22,7 +22,9 @@ function emptyResults(substeps) {
 
 // A message belongs to a substep (substepId) and is either part of the
 // conversation about it (conversation: true, what the user typed and the
-// answer to it) or a report and the request for it.
+// answer to it) or a report and the request for it. An answer also says
+// which step gave it (agent), which can be another step than the substep's
+// when the question was about that step.
 function createMessage(role, text, meta = {}) {
   const message = {
     role,
@@ -30,6 +32,7 @@ function createMessage(role, text, meta = {}) {
     ts: meta.ts || new Date().toISOString(),
     citations: normalizeCitations(meta.citations),
     retrieval_trace: meta.retrieval_trace || null,
+    agent: meta.agent ? String(meta.agent) : null,
     substepId: String(meta.substepId || ""),
     conversation: Boolean(meta.conversation),
   };
