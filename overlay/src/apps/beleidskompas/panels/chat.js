@@ -160,8 +160,9 @@ export function setupChat(store, { refreshState }) {
   async function ask(substep, message, caseDescription) {
     if (state.asking) return;
     const conversing = Boolean(message);
-    const text = composePrompt({ substep, caseText: state.caseText, message });
-    store.addMessage("user", caseDescription || message || `Deelstap ${substep.id}: ${substep.title}`, { substepId: substep.id, conversation: conversing });
+    const shown = caseDescription || message || `Deelstap ${substep.id}: ${substep.title}`;
+    const text = composePrompt({ substep, caseText: state.caseText, message, shown });
+    store.addMessage("user", shown, { substepId: substep.id, conversation: conversing });
     setComposerDisabled(true);
     store.setAsking(substep.id);
 

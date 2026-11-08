@@ -143,12 +143,12 @@ const ORCHESTRATOR_SHARED_FUNCTIONS = [
   'buildTitleResponse',
 ];
 
-const ORCHESTRATOR_FUNCTIONS = ['incomingMessage', 'determineStep', 'isPlainChatMessage', 'chooseStep', 'contextFromState', 'buildStepRequest', 'forwardToStep', 'runOrchestrator'];
+const ORCHESTRATOR_FUNCTIONS = ['incomingMessage', 'determineStep', 'chooseStep', 'contextFromState', 'buildStepRequest', 'forwardToStep', 'runOrchestrator'];
 
 function buildOrchestratorJsCode() {
   return [
     ...TITLE_CONSTANTS,
-    `const PAGE_MESSAGE_LABELS = ${JSON.stringify(shared.PAGE_MESSAGE_LABELS)};`,
+    `const REQUEST_META_LABEL = ${JSON.stringify(shared.REQUEST_META_LABEL)};`,
     `const STEP_ROUTES = ${JSON.stringify(orchestrator.STEP_ROUTES)};`,
     `const DEFAULT_STEP_ID = ${JSON.stringify(orchestrator.DEFAULT_STEP_ID)};`,
     `const UNKNOWN_STEP_TEXT = ${JSON.stringify(orchestrator.UNKNOWN_STEP_TEXT)};`,

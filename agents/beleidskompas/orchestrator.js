@@ -31,7 +31,7 @@
  * code that runs in n8n is this code.
  */
 
-const { ORCHESTRATOR_PROMPT_TEMPLATE, PAGE_MESSAGE_LABELS, extractSuppliedToken, parsePageMessage, requestRaw, callLiteLLM, isTitleRequest, extractConvoCaseText, buildTitleResponse } = require('./shared');
+const { ORCHESTRATOR_PROMPT_TEMPLATE, extractSuppliedToken, parsePageMessage, requestRaw, callLiteLLM, isTitleRequest, extractConvoCaseText, buildTitleResponse } = require('./shared');
 const { createStoreClient } = require('./store-client');
 
 // Which step id belongs to which webhook path in n8n. The paths are the
@@ -64,15 +64,6 @@ function incomingMessage(body) {
 function determineStep(parts, routes) {
   const stepId = String((parts && parts.stepId) || '');
   return Object.prototype.hasOwnProperty.call(routes, stepId) ? stepId : '';
-}
-
-/** Whether a message has none of the labels the page puts in a message:
- *  then it was typed in LibreChat's own chat, and all of it is the message. */
-function isPlainChatMessage(text) {
-  const labels = Object.values(PAGE_MESSAGE_LABELS);
-  return !String(text || '')
-    .split('\n')
-    .some((line) => labels.some((label) => line.startsWith(label)));
 }
 
 /** Asks the model which step a typed message is about, and returns that
@@ -147,10 +138,12 @@ function contextFromState(state, { substepId, forReport, summaries }) {
   };
 }
 
-/** What a step workflow receives: the parts of the message as fields, plus
- *  who is asking. The substep only goes along when it belongs to `stepId`;
- *  a message sent to another step is about that whole step. `asked_from`
- *  always says which substep the user was in. */
+/** What a step workflow receives: the parts of the message as fields, the
+ *  reports and the conversation from the store (`findings` and
+ *  `conversation`, see contextFromState), plus who is asking. The substep
+ *  only goes along when it belongs to `stepId`; a message sent to another
+ *  step is about that whole step. `asked_from` always says which substep
+ *  the user was in. */
 function buildStepRequest(stepId, parts, body) {
   const b = body && typeof body === 'object' ? body : {};
   const ownSubstep = stepId === parts.stepId ? parts.substepId || null : null;
@@ -159,8 +152,8 @@ function buildStepRequest(stepId, parts, body) {
     substep_id: ownSubstep,
     asked_from: parts.substepId || null,
     case_text: parts.caseText,
-    findings: parts.findings,
-    conversation: parts.conversation,
+    findings: parts.findings || '',
+    conversation: parts.conversation || '',
     message: parts.message,
     sessionId: b.sessionId || null,
     userId: b.userId || null,
@@ -268,7 +261,8 @@ async function runOrchestrator(ctx) {
   // so it is answered here with a title instead of being forwarded.
   const message = incomingMessage(body);
   if (isTitleRequest(message) || isTitleRequest(String(body.systemPrompt || ''))) {
-    // The title is made from the case itself, not from the labels around it.
+    // The title is made from the case itself, not from the block the page
+    // put behind it.
     const caseText = parsePageMessage(extractConvoCaseText(message)).caseText;
     const titled = await buildTitleResponse({ titleSource: caseText || message, env, fetchImpl, httpModule, httpsModule, urlModule });
     await write('title', () => store.setTitle({ caseId, userId, title: titled.answer }));
@@ -277,13 +271,9 @@ async function runOrchestrator(ctx) {
 
   const parts = parsePageMessage(message);
   let activeStepId = determineStep(parts, STEP_ROUTES);
-  if (!activeStepId && isPlainChatMessage(message)) {
-    // parsePageMessage returns an unlabeled text as the case; from the chat
-    // it is the question itself.
-    parts.message = parts.caseText;
-    parts.caseText = '';
-    activeStepId = DEFAULT_STEP_ID;
-  }
+  // A message without the block of the page was typed in LibreChat's own
+  // chat: it is a question, and there is no page to say where the user is.
+  if (!activeStepId && !parts.fromPage) activeStepId = DEFAULT_STEP_ID;
   if (!activeStepId) {
     return { ok: false, step_id: null, error: 'No step recognised in the request', text: UNKNOWN_STEP_TEXT, answer: UNKNOWN_STEP_TEXT };
   }
@@ -358,7 +348,6 @@ module.exports = {
   UNKNOWN_STEP_TEXT,
   incomingMessage,
   determineStep,
-  isPlainChatMessage,
   chooseStep,
   contextFromState,
   buildStepRequest,

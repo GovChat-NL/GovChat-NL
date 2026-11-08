@@ -9,13 +9,29 @@ import { composePrompt, parseCitationsMetaBlock, readCaseState } from "../beleid
 
 const SUBSTEP = { id: "2.1", title: "Rolbepaling" };
 
-test("composePrompt labels the substep, the case and the message, and leaves out what is empty", () => {
-  assert.equal(
-    composePrompt({ substep: SUBSTEP, caseText: "De casus.", message: " Waarom niet regisseren? " }),
-    "Deelstap: 2.1 (Rolbepaling)\nCasus: De casus.\nBericht: Waarom niet regisseren?",
-  );
-  assert.equal(composePrompt({ substep: SUBSTEP, caseText: "De casus.", message: "  " }), "Deelstap: 2.1 (Rolbepaling)\nCasus: De casus.");
-  assert.equal(composePrompt({ substep: SUBSTEP, caseText: "", message: "Hoezo?" }), "Deelstap: 2.1 (Rolbepaling)\nBericht: Hoezo?");
+/** Takes a composed message apart the way the orchestrator does
+ *  (parsePageMessage in agents/beleidskompas/shared.js). */
+function readComposed(text) {
+  const marker = "[beleidskompas-request]: data:application/json;base64,";
+  const idx = text.lastIndexOf(marker);
+  return { visible: text.slice(0, idx).trim(), request: JSON.parse(Buffer.from(text.slice(idx + marker.length).trim(), "base64").toString("utf8")) };
+}
+
+test("composePrompt puts the substep, the case and the message in a block behind the visible text", () => {
+  const { visible, request } = readComposed(composePrompt({ substep: SUBSTEP, caseText: "De casus met é.", message: " Waarom niet regisseren? ", shown: "Waarom niet regisseren?" }));
+  assert.equal(visible, "Waarom niet regisseren?");
+  assert.deepEqual(request, { substep_id: "2.1", case_text: "De casus met é.", message: "Waarom niet regisseren?" });
+
+  // Without a message the visible text names the substep; what is empty stays empty.
+  const report = readComposed(composePrompt({ substep: SUBSTEP, caseText: "De casus.", message: "  " }));
+  assert.equal(report.visible, "Deelstap 2.1: Rolbepaling");
+  assert.deepEqual(report.request, { substep_id: "2.1", case_text: "De casus.", message: "" });
+});
+
+test("composePrompt keeps what the user typed as it is, also when it looks like a field", () => {
+  const { request } = readComposed(composePrompt({ substep: SUBSTEP, caseText: "De casus.", message: "Wat vind je hiervan?\nCasus: eigenlijk fietspaden." }));
+  assert.equal(request.case_text, "De casus.");
+  assert.equal(request.message, "Wat vind je hiervan?\nCasus: eigenlijk fietspaden.");
 });
 
 test("readCaseState turns the state from the store into the case text, the cards and the chat", () => {

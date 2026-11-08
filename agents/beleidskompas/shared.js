@@ -80,53 +80,42 @@ function extractSuppliedToken(headers) {
 
 // --- The message as the Beleidskompas page composes it ---
 
-// The page can only send text, so it puts everything a step needs in one
-// message with a label at the start of each part (composePrompt in
-// overlay/src/apps/beleidskompas/beleidskompas-api.js writes these): the
-// step or substep, the case as the user described it, the reports so far,
-// the conversation about this substep, and the message the user typed just
-// now. A message that was typed means a conversation turn. Without a
-// message, the step writes the report of the substep.
-const PAGE_MESSAGE_LABELS = {
-  step: 'Stap:',
-  substep: 'Deelstap:',
-  caseText: 'Casus:',
-  findings: 'Eerdere bevindingen:',
-  conversation: 'Gesprek:',
-  message: 'Bericht:',
-};
+// The page can only send text, so it puts what the orchestrator needs to
+// know about a request behind the visible text of the message, in a
+// markdown link definition with base64 JSON (composePrompt in
+// overlay/src/apps/beleidskompas/beleidskompas-api.js writes it, the way
+// appendCitationsMetaBlock below puts the citations behind an answer):
+// the substep, the case as the user described it and the message the user
+// typed just now. A markdown view does not show the definition, and what
+// the user typed sits inside the JSON, so it can never be mistaken for one
+// of those fields. A message that was typed means a conversation turn.
+// Without a message, the step writes the report of the substep.
+const REQUEST_META_LABEL = 'beleidskompas-request';
 
-/** Splits a message from the page into its parts (see PAGE_MESSAGE_LABELS;
- *  every part but the first two can span many lines). A substep id also
- *  names its step: 1.3 is a substep of stap1, so a message with only a
- *  substep still gets its step id. A part whose label is missing is ''. A
- *  message without any label is returned whole as the case text, so a direct
- *  webhook call with a plain case description keeps working. */
+/** Takes a message apart. `fromPage` says whether the message carries the
+ *  block of the page; without it the message was typed in LibreChat's own
+ *  chat and all of it is the message. A substep id also names its step:
+ *  1.3 is a substep of stap1. A part that is missing is ''. */
 function parsePageMessage(text) {
-  const parts = { stepId: '', substepId: '', caseText: '', findings: '', conversation: '', message: '' };
-  const unlabeled = [];
-  let current = null;
+  const raw = String(text || '');
+  const parts = { fromPage: false, stepId: '', substepId: '', caseText: '', message: raw.trim() };
+  const marker = `[${REQUEST_META_LABEL}]: data:application/json;base64,`;
+  const idx = raw.lastIndexOf(marker);
+  if (idx === -1) return parts;
 
-  for (const line of String(text || '').split('\n')) {
-    const key = Object.keys(PAGE_MESSAGE_LABELS).find((k) => line.startsWith(PAGE_MESSAGE_LABELS[k]));
-    if (key) {
-      current = key;
-      parts[key] = line.slice(PAGE_MESSAGE_LABELS[key].length).trim();
-    } else if (current) {
-      parts[current] += '\n' + line;
-    } else {
-      unlabeled.push(line);
-    }
+  let request;
+  try {
+    const encoded = raw.slice(idx + marker.length).split('\n')[0].trim();
+    request = JSON.parse(Buffer.from(encoded, 'base64').toString('utf8'));
+  } catch (_) {
+    return parts;
   }
-
-  if (!current) parts.caseText = unlabeled.join('\n');
-  const substepMatch = /^(\d+)\.\d+/.exec(parts.substep || '');
+  const substepMatch = /^(\d+)\.\d+/.exec(String(request.substep_id || '').trim());
+  parts.fromPage = true;
   parts.substepId = substepMatch ? substepMatch[0] : '';
-  const stepMatch = /^([A-Za-z0-9_-]+)/.exec(parts.step || '');
-  parts.stepId = stepMatch ? stepMatch[1].toLowerCase() : substepMatch ? `stap${substepMatch[1]}` : '';
-  delete parts.step;
-  delete parts.substep;
-  for (const key of Object.keys(parts)) parts[key] = String(parts[key] || '').trim();
+  parts.stepId = substepMatch ? `stap${substepMatch[1]}` : '';
+  parts.caseText = String(request.case_text || '').trim();
+  parts.message = String(request.message || '').trim();
   return parts;
 }
 
@@ -800,7 +789,7 @@ module.exports = {
   CITATIONS_META_LABEL,
   TITLE_REQUEST_MARKER,
   TITLE_PREFIX,
-  PAGE_MESSAGE_LABELS,
+  REQUEST_META_LABEL,
   extractSuppliedToken,
   parsePageMessage,
   tokenizePolicyText,

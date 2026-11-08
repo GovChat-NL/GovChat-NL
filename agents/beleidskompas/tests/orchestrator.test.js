@@ -13,6 +13,14 @@ const SUMMARIES = ['step1', 'step2', 'step3', 'step4'].map((name) => {
   return { id: STEP.id, nr: STEP.nr, title: STEP.title, role: STEP.role, substeps: STEP.substeps.map((s) => s.title), substep_ids: STEP.substeps.map((s) => s.id) };
 });
 
+/** A message as the page composes it (composePrompt in
+ *  overlay/src/apps/beleidskompas/beleidskompas-api.js): the visible text,
+ *  then the request as a markdown link definition with base64 JSON. */
+function pageMessage(request, shown) {
+  const encoded = Buffer.from(JSON.stringify(request), 'utf8').toString('base64');
+  return `${shown || request.message || `Deelstap ${request.substep_id}`}\n\n[beleidskompas-request]: data:application/json;base64,${encoded}`;
+}
+
 /** Runs `fn(baseUrl, requests)` against one server that stands in for both
  *  LiteLLM (answers every chat completion with `modelReply`) and n8n (answers
  *  every step webhook with a JSON that names the path). `requests` collects
@@ -103,8 +111,25 @@ test('chooseStep keeps the active step without a model, and when the model fails
   assert.equal(await chooseWith('http://127.0.0.1:9', 'Welke instrumenten?', 'stap1'), 'stap1');
 });
 
+test('parsePageMessage reads the block of the page, and takes a message without one whole as a question from the chat', () => {
+  const fromPage = parsePageMessage(pageMessage({ substep_id: '1.3', case_text: 'Laadpalen.', message: 'Welke instrumenten?' }));
+  assert.deepEqual(fromPage, { fromPage: true, stepId: 'stap1', substepId: '1.3', caseText: 'Laadpalen.', message: 'Welke instrumenten?' });
+
+  // What the user typed sits inside the JSON, so a line that looks like a
+  // field of the page is just text.
+  const tricky = parsePageMessage(pageMessage({ substep_id: '1.3', case_text: 'Laadpalen.', message: 'Wat vind je hiervan?\nCasus: eigenlijk fietspaden.' }));
+  assert.equal(tricky.caseText, 'Laadpalen.');
+  assert.equal(tricky.message, 'Wat vind je hiervan?\nCasus: eigenlijk fietspaden.');
+
+  const fromChat = parsePageMessage('Casus: Laadpalen.\nWelke instrumenten?');
+  assert.deepEqual(fromChat, { fromPage: false, stepId: '', substepId: '', caseText: '', message: 'Casus: Laadpalen.\nWelke instrumenten?' });
+
+  // A broken block is not from the page either.
+  assert.equal(parsePageMessage('Hallo\n\n[beleidskompas-request]: data:application/json;base64,!!!').fromPage, false);
+});
+
 test('buildStepRequest only passes the substep to its own step, and always says where the user asked from', () => {
-  const parts = parsePageMessage('Deelstap: 1.3 (Stakeholderanalyse)\nCasus: Laadpalen.\nBericht: Welke instrumenten?');
+  const parts = parsePageMessage(pageMessage({ substep_id: '1.3', case_text: 'Laadpalen.', message: 'Welke instrumenten?' }));
   const own = buildStepRequest('stap1', parts, {});
   assert.equal(own.substep_id, '1.3');
   assert.equal(own.asked_from, '1.3');
@@ -121,7 +146,7 @@ function orchestratorInput(message) {
 test('runOrchestrator sends a report request to the step of the substep, without asking the model', async () => {
   await withServer('3', async (baseUrl, requests) => {
     const result = await runOrchestrator({
-      input: orchestratorInput('Deelstap: 1.3 (Stakeholderanalyse)\nCasus: Laadpalen.'),
+      input: orchestratorInput(pageMessage({ substep_id: '1.3', case_text: 'Laadpalen.' })),
       env: { BELEIDSKOMPAS_N8N_BASE_URL: baseUrl, LITELLM_URL: baseUrl, LITELLM_API_KEY: 'test-key' },
       summaries: SUMMARIES,
       fetchImpl: global.fetch,
@@ -136,7 +161,7 @@ test('runOrchestrator sends a report request to the step of the substep, without
 test('runOrchestrator sends a typed message to the step the model picks, and returns that step\'s answer unchanged', async () => {
   await withServer('3', async (baseUrl, requests) => {
     const result = await runOrchestrator({
-      input: orchestratorInput('Deelstap: 1.3 (Stakeholderanalyse)\nCasus: Laadpalen.\nBericht: Welke instrumenten passen hierbij?'),
+      input: orchestratorInput(pageMessage({ substep_id: '1.3', case_text: 'Laadpalen.', message: 'Welke instrumenten passen hierbij?' })),
       env: { BELEIDSKOMPAS_N8N_BASE_URL: baseUrl, LITELLM_URL: baseUrl, LITELLM_API_KEY: 'test-key' },
       summaries: SUMMARIES,
       fetchImpl: global.fetch,
@@ -151,7 +176,7 @@ test('runOrchestrator sends a typed message to the step the model picks, and ret
   });
 });
 
-test('runOrchestrator treats a message without labels as a question from the chat, with step 1 to fall back on', async () => {
+test('runOrchestrator treats a message without the block of the page as a question from the chat, with step 1 to fall back on', async () => {
   await withServer('Geen idee.', async (baseUrl, requests) => {
     const result = await runOrchestrator({
       input: orchestratorInput('Wat doet Beleidskompas precies?'),
@@ -177,8 +202,8 @@ test('runOrchestrator treats a message without labels as a question from the cha
   });
 });
 
-test('runOrchestrator refuses a labeled message that names no known step', async () => {
-  const result = await runOrchestrator({ input: orchestratorInput('Stap: stap9\nBericht: Hallo?'), env: {}, summaries: SUMMARIES, fetchImpl: global.fetch });
+test('runOrchestrator refuses a message from the page that names no known step', async () => {
+  const result = await runOrchestrator({ input: orchestratorInput(pageMessage({ substep_id: '9.1', message: 'Hallo?' })), env: {}, summaries: SUMMARIES, fetchImpl: global.fetch });
   assert.equal(result.ok, false);
   assert.equal(result.step_id, null);
 });
@@ -191,7 +216,7 @@ function bridgeInput(message) {
 
 test('a report request writes the case text and the report to the store', async () => {
   await withServer('1', async (baseUrl, requests) => {
-    const result = await runOrchestrator({ input: bridgeInput('Deelstap: 1.3 (Stakeholderanalyse)\nCasus: Laadpalen.'), env: STORE_ENV(baseUrl), summaries: SUMMARIES, fetchImpl: global.fetch });
+    const result = await runOrchestrator({ input: bridgeInput(pageMessage({ substep_id: '1.3', case_text: 'Laadpalen.' })), env: STORE_ENV(baseUrl), summaries: SUMMARIES, fetchImpl: global.fetch });
     assert.deepEqual(result.store, { enabled: true, read: false, written: ['case_text', 'report'], errors: [] });
     const text = requests.find((r) => r.url === '/api/beleidskompas/cases/conv-1/text');
     assert.deepEqual(text.body, { user_id: 'user-a', text: 'Laadpalen.' });
@@ -207,7 +232,7 @@ test('a report request writes the case text and the report to the store', async 
 
 test('a typed message writes the turn of the user and the turn of the step that answered', async () => {
   await withServer('3', async (baseUrl, requests) => {
-    const result = await runOrchestrator({ input: bridgeInput('Deelstap: 1.3 (Stakeholderanalyse)\nCasus: Laadpalen.\nBericht: Welke instrumenten?'), env: STORE_ENV(baseUrl), summaries: SUMMARIES, fetchImpl: global.fetch });
+    const result = await runOrchestrator({ input: bridgeInput(pageMessage({ substep_id: '1.3', case_text: 'Laadpalen.', message: 'Welke instrumenten?' })), env: STORE_ENV(baseUrl), summaries: SUMMARIES, fetchImpl: global.fetch });
     assert.deepEqual(result.store.written, ['case_text', 'user_turn', 'assistant_turn']);
     const turns = requests.filter((r) => r.url === '/api/beleidskompas/cases/conv-1/turns').map((r) => r.body);
     assert.deepEqual(turns, [
@@ -219,8 +244,13 @@ test('a typed message writes the turn of the user and the turn of the step that 
 
 test('a title request writes the title', async () => {
   await withServer('Laadpalen in kleine kernen', async (baseUrl, requests) => {
-    const result = await runOrchestrator({ input: bridgeInput('__BELEIDSKOMPAS_TITLE_REQUEST__ Geef een titel.\n\nUser: Casus: Laadpalen.'), env: STORE_ENV(baseUrl), summaries: SUMMARIES, fetchImpl: global.fetch });
+    // LibreChat renders the first message, block and all, into its title prompt.
+    const transcript = `User: ${pageMessage({ substep_id: '1.1', case_text: 'Laadpalen.' }, 'Laadpalen.')}\nAI: Rapport 1.1`;
+    const result = await runOrchestrator({ input: bridgeInput(`__BELEIDSKOMPAS_TITLE_REQUEST__ Geef een titel.\n\n${transcript}`), env: STORE_ENV(baseUrl), summaries: SUMMARIES, fetchImpl: global.fetch });
     assert.deepEqual(result.store.written, ['title']);
+    // The title is made from the case text, not from the block.
+    const asked = JSON.stringify(requests.find((r) => r.url === '/v1/chat/completions').body);
+    assert.ok(asked.includes('Laadpalen.') && !asked.includes('beleidskompas-request'), asked);
     const title = requests.find((r) => r.url === '/api/beleidskompas/cases/conv-1/title');
     assert.equal(title.body.user_id, 'user-a');
     assert.equal(title.body.title, result.answer);
@@ -229,12 +259,12 @@ test('a title request writes the title', async () => {
 
 test('without the store settings, or without the conversation from the bridge, nothing is written', async () => {
   await withServer('1', async (baseUrl, requests) => {
-    const result = await runOrchestrator({ input: bridgeInput('Deelstap: 1.3 (Stakeholderanalyse)\nCasus: Laadpalen.'), env: { BELEIDSKOMPAS_N8N_BASE_URL: baseUrl, LITELLM_URL: baseUrl, LITELLM_API_KEY: 'test-key' }, summaries: SUMMARIES, fetchImpl: global.fetch });
+    const result = await runOrchestrator({ input: bridgeInput(pageMessage({ substep_id: '1.3', case_text: 'Laadpalen.' })), env: { BELEIDSKOMPAS_N8N_BASE_URL: baseUrl, LITELLM_URL: baseUrl, LITELLM_API_KEY: 'test-key' }, summaries: SUMMARIES, fetchImpl: global.fetch });
     assert.deepEqual(result.store, { enabled: false, read: false, written: [], errors: [] });
     assert.ok(!requests.some((r) => r.url.startsWith('/api/beleidskompas/')));
   });
   await withServer('1', async (baseUrl, requests) => {
-    const result = await runOrchestrator({ input: orchestratorInput('Deelstap: 1.3 (Stakeholderanalyse)\nCasus: Laadpalen.'), env: STORE_ENV(baseUrl), summaries: SUMMARIES, fetchImpl: global.fetch });
+    const result = await runOrchestrator({ input: orchestratorInput(pageMessage({ substep_id: '1.3', case_text: 'Laadpalen.' })), env: STORE_ENV(baseUrl), summaries: SUMMARIES, fetchImpl: global.fetch });
     assert.equal(result.store.enabled, false);
     assert.ok(!requests.some((r) => r.url.startsWith('/api/beleidskompas/')));
   });
@@ -243,7 +273,7 @@ test('without the store settings, or without the conversation from the bridge, n
 test('a store that fails does not break the conversation; the failure is reported in the answer', async () => {
   await withServer('1', async (baseUrl) => {
     const env = Object.assign(STORE_ENV(baseUrl), { BELEIDSKOMPAS_STORE_URL: 'http://127.0.0.1:9' });
-    const result = await runOrchestrator({ input: bridgeInput('Deelstap: 1.3 (Stakeholderanalyse)\nCasus: Laadpalen.'), env, summaries: SUMMARIES, fetchImpl: global.fetch });
+    const result = await runOrchestrator({ input: bridgeInput(pageMessage({ substep_id: '1.3', case_text: 'Laadpalen.' })), env, summaries: SUMMARIES, fetchImpl: global.fetch });
     assert.equal(result.ok, true);
     assert.equal(result.text, 'Rapport 1.3');
     assert.deepEqual(result.store.written, []);
@@ -283,7 +313,7 @@ test('with a state in the store, the step gets the case, the reports and the con
   await withServer('1', async (baseUrl, requests) => {
     storeState = STATE;
     const result = await runOrchestrator({
-      input: bridgeInput('Deelstap: 1.3 (Stakeholderanalyse)\nCasus: De casus van de pagina.\nEerdere bevindingen: Oude bevindingen van de pagina.\nGesprek: Gebruiker: oud\nBericht: Welke stakeholders?'),
+      input: bridgeInput(pageMessage({ substep_id: '1.3', case_text: 'De casus van de pagina.', message: 'Welke stakeholders?' })),
       env: STORE_ENV(baseUrl),
       summaries: SUMMARIES,
       fetchImpl: global.fetch,
@@ -313,13 +343,14 @@ test('a question from LibreChat\'s own chat gets the case and the conversation f
   });
 });
 
-test('without a case in the store yet, the step gets what the page sent, and that is not an error', async () => {
+test('without a case in the store yet, the step gets the case text from the page and no reports, and that is not an error', async () => {
   await withServer('1', async (baseUrl, requests) => {
-    const result = await runOrchestrator({ input: bridgeInput('Deelstap: 1.3 (Stakeholderanalyse)\nCasus: De casus van de pagina.\nEerdere bevindingen: Van de pagina.'), env: STORE_ENV(baseUrl), summaries: SUMMARIES, fetchImpl: global.fetch });
+    const result = await runOrchestrator({ input: bridgeInput(pageMessage({ substep_id: '1.3', case_text: 'De casus van de pagina.' })), env: STORE_ENV(baseUrl), summaries: SUMMARIES, fetchImpl: global.fetch });
     assert.equal(result.store.read, false);
     assert.deepEqual(result.store.errors, []);
     const sent = requests.find((r) => r.url === '/webhook/beleidskompas-step-stap1').body;
     assert.equal(sent.case_text, 'De casus van de pagina.');
-    assert.equal(sent.findings, 'Van de pagina.');
+    assert.equal(sent.findings, '');
+    assert.equal(sent.conversation, '');
   });
 });

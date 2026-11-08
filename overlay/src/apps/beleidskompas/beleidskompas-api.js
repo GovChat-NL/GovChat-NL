@@ -93,22 +93,31 @@ export async function sendBeleidskompasFeedback({ rating, comment, stepId }) {
   if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
 }
 
-/** The only channel to the orchestrator is the chat message's plain text,
- *  so a request is composed into one labeled text: the substep, the case
- *  and the message the user typed (the last two only when there is one).
- *  The orchestrator takes it apart on these labels. The reports and the
- *  conversation so far are not sent along: the orchestrator reads those
- *  from the store. A typed message means a conversation turn. Without one,
- *  Beleidskompas writes the report of the substep. */
-export function composePrompt({ substep, caseText, message }) {
-  const lines = [`Deelstap: ${substep.id} (${substep.title})`];
-  const part = (label, value) => {
-    const text = String(value || "").trim();
-    if (text) lines.push(`${label} ${text}`);
-  };
-  part("Casus:", caseText);
-  part("Bericht:", message);
-  return lines.join("\n");
+const REQUEST_META_LABEL = "beleidskompas-request";
+
+/** The only channel to the orchestrator is the chat message, so what the
+ *  orchestrator needs to know about a request travels behind the visible
+ *  text of the message, in a markdown link definition with base64 JSON
+ *  (the way the citations travel behind an answer, see
+ *  parseCitationsMetaBlock): the substep, the case text and the message
+ *  the user typed. A markdown view does not show the definition, and what
+ *  the user typed sits inside the JSON, so it can never be mistaken for
+ *  one of those fields. `shown` is the visible text, what the chat of
+ *  LibreChat shows for this message. The reports and the conversation so
+ *  far are not sent along: the orchestrator reads those from the store. A
+ *  typed message means a conversation turn. Without one, Beleidskompas
+ *  writes the report of the substep. */
+export function composePrompt({ substep, caseText, message, shown }) {
+  const request = { substep_id: substep.id, case_text: String(caseText || "").trim(), message: String(message || "").trim() };
+  const visible = String(shown || "").trim() || request.message || `Deelstap ${substep.id}: ${substep.title}`;
+  return `${visible}\n\n[${REQUEST_META_LABEL}]: data:application/json;base64,${base64Utf8(JSON.stringify(request))}`;
+}
+
+/** btoa only takes bytes, so the text goes through UTF-8 first. */
+function base64Utf8(text) {
+  let binary = "";
+  for (const byte of new TextEncoder().encode(text)) binary += String.fromCharCode(byte);
+  return btoa(binary);
 }
 
 /** Sends one message to the Beleidskompas custom endpoint and waits for
