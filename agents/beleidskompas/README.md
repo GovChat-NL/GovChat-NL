@@ -5,6 +5,7 @@ Deze map bevat de broncode van de n8n-workflows van Beleidskompas: de orchestrat
 | Bestand | Wat erin staat |
 |---|---|
 | `orchestrator.js` | De orchestrator: controleert het token, beantwoordt het titelverzoek van LibreChat, haalt het bericht van de pagina uit elkaar en stuurt het naar de juiste stap. |
+| `store-client.js` | De aanroepen van de opslag van de beheeromgeving (casustekst, uitwerking, gespreksbeurt, titel, de stand), die de orchestrator gebruikt. |
 | `shared.js` | Wat de orchestrator en de stappen delen: het token lezen, HTTP-verzoeken, de aanroep van het taalmodel, bronnen scoren, het bronnenblok in een chatbericht, het titelverzoek, en `runStep`, dat een stap uitvoert. |
 | `steps/step1.js` … `steps/step4.js` | De structuur van een stap: welke deelstappen er zijn en welk promptbestand bij elke deelstap hoort. |
 | `prompts/` | De teksten voor het taalmodel, als gewone tekstbestanden: de sjablonen van de systeemprompt voor het uitwerken (`report-prompt.md`), voor een gesprek over een stap (`conversation-prompt.md`) en voor de keuze van de orchestrator welke stap een bericht beantwoordt (`orchestrator-prompt.md`), de regels die voor elke stap gelden (`rules.md`), en per stap een map met de rol van het model (`role.md`) en één bestand per deelstap. |
@@ -17,7 +18,7 @@ n8n leest alleen workflow-bestanden (JSON), met de code als tekst in een Code no
 
 | Workflow | Gemaakt uit |
 |---|---|
-| `beleidskompas-orchestrator.json` | `orchestrator.js`, plus wat het gebruikt uit `shared.js` |
+| `beleidskompas-orchestrator.json` | `orchestrator.js` en `store-client.js`, plus wat die gebruiken uit `shared.js` |
 | `beleidskompas-step-stap1.json`, `-stap2.json`, … | Eén workflow per bestand in `steps/`: de stapdefinitie met de teksten uit `prompts/`, plus wat die gebruikt uit `shared.js` en de bestanden in `fixtures/` |
 | `overlay/src/apps/beleidskompas/steps.json` | De lijst van stappen en deelstappen (id, nummer, titel) voor de Beleidskompas-pagina, uit dezelfde stapdefinities |
 
@@ -29,11 +30,17 @@ De orchestrator is de webhook achter het Beleidskompas-endpoint van LibreChat. E
 
 1. **Token.** Het token van de aanroeper wordt vergeleken met `BELEIDSKOMPAS_N8N_WEBHOOK_TOKEN` (of `N8N_WEBHOOK_TOKEN`). Klopt het niet, dan komt er `ok: false` terug en gebeurt er verder niets.
 2. **Titelverzoek.** LibreChat vraagt via hetzelfde endpoint om een korte gesprekstitel; dat verzoek is te herkennen aan de markering in `titlePrompt` in `librechat.yaml`. De orchestrator maakt die titel zelf, zonder een stap aan te roepen.
-3. **Bericht uit elkaar halen.** De pagina kan alleen tekst sturen en zet daarom alles in één bericht, met een label aan het begin van elk deel: `Deelstap:` (of `Stap:` voor een hele stap), `Casus:` (de casus zoals de gebruiker die beschreef), `Eerdere bevindingen:` (de uitwerkingen tot nu toe), `Gesprek:` (het gesprek over deze deelstap) en `Bericht:` (wat de gebruiker zojuist typte). De orchestrator knipt het bericht op die labels in losse delen. Een deelstap noemt ook haar stap: `1.3` hoort bij `stap1`.
+3. **Bericht uit elkaar halen.** De pagina kan alleen tekst sturen en zet daarom alles in één bericht, met een label aan het begin van elk deel: `Deelstap:` (of `Stap:` voor een hele stap), `Casus:` (de casus zoals de gebruiker die beschreef) en `Bericht:` (wat de gebruiker zojuist typte). De uitwerkingen en het gesprek stuurt de pagina niet mee; die haalt de orchestrator uit de opslag. De labels `Eerdere bevindingen:` en `Gesprek:` worden nog wel begrepen. De orchestrator knipt het bericht op die labels in losse delen. Een deelstap noemt ook haar stap: `1.3` hoort bij `stap1`.
 4. **De stap kiezen.** Een verzoek om een uitwerking (geen `Bericht:`) gaat naar de stap van de deelstap. Een getypt bericht gaat naar de stap waar het over gaat: de orchestrator legt het model de stappen voor (nummer, titel, rol en deelstappen, met het sjabloon `prompts/orchestrator-prompt.md`) en vraagt alleen een nummer. Noemt het model geen geldige stap, of is er geen model, dan blijft het de stap van de deelstap. Een bericht zonder labels komt uit de gewone chat van LibreChat; dat is altijd een vraag, en de stap om op terug te vallen is dan stap 1.
 5. **Doorsturen.** De delen gaan als velden (`step_id`, `substep_id`, `asked_from`, `case_text`, `findings`, `conversation`, `message`) naar de webhook van de stap (`beleidskompas-step-<stap>`), met het token van de aanroeper. Gaat het bericht naar een andere stap dan die van de deelstap, dan gaat de deelstap niet mee: die stap beantwoordt de vraag over zijn hele stap. `asked_from` zegt altijd vanuit welke deelstap is gevraagd. Het antwoord van de stap gaat ongewijzigd terug; de stap zet in het meta-blok achter de tekst zijn eigen id (`agent`) en `asked_from`, zodat de pagina kan tonen welke stap antwoordde.
 
 Een bericht mét labels dat geen bekende stap noemt (alleen `stap1` tot en met `stap4` gelden), wordt niet beantwoord: de orchestrator geeft `ok: false` terug met een leesbare melding in het tekstveld, zodat die in de chat verschijnt.
+
+### De opslag
+
+De orchestrator is ook de enige die in de opslag van Beleidskompas schrijft: de database van de beheeromgeving met de stand van elke casus (`services/admin-overlay/admin/lib/beleidskompas/`). Hij gebruikt daarvoor `store-client.js` en de instellingen `BELEIDSKOMPAS_STORE_URL` en `BELEIDSKOMPAS_STORE_TOKEN`; de casus is het gesprek-id (`sessionId`) en de gebruiker (`userId`) die de bridge doorgeeft. Per verzoek schrijft hij: de casustekst (maakt de casus aan als die nieuw is), bij een getypt bericht de beurt van de gebruiker vooraf en die van de stap achteraf, bij een uitwerking de JSON van het model met de gerenderde tekst en de citaten, en bij het titelverzoek de titel.
+
+Hij leest er ook uit. Na het schrijven van de casustekst haalt hij de stand van de casus op (`getState`) en geeft die aan de stap in plaats van wat de pagina meestuurde: de nieuwste casustekst, de nieuwste uitwerking per deelstap als bevindingen (bij een vraag alle deelstappen, bij een uitwerking alleen die tot en met de deelstap zelf), en de laatste twintig beurten van het gesprek. Wat de pagina meestuurde is de terugval als de opslag uit staat, niet antwoordt of de casus nog niet kent. Zo heeft een vraag uit de gewone chat van LibreChat dezelfde casus en hetzelfde gesprek als op de pagina. Het veld `store.read` in het antwoord zegt of de stand uit de opslag kwam. Een schrijfactie die mislukt breekt het gesprek niet: het antwoord van de stap gaat gewoon terug, en de fout staat in het veld `store` van het antwoord van de orchestrator, zichtbaar in de uitvoering in n8n. Zonder de instellingen schrijft hij niets. De stappen weten niets van de opslag.
 
 ## Een stap
 

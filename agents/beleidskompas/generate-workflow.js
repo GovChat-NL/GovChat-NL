@@ -5,7 +5,7 @@
  * Writes the Beleidskompas workflows in n8n/workflows/beleidskompas/ from
  * the source files in this folder:
  *
- * - beleidskompas-orchestrator.json from orchestrator.js
+ * - beleidskompas-orchestrator.json from orchestrator.js and store-client.js
  * - beleidskompas-step-stapN.json from steps/stepN.js and the fixtures
  *
  * All of them also get the functions they use from shared.js.
@@ -24,6 +24,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const shared = require('./shared');
 const orchestrator = require('./orchestrator');
+const storeClient = require('./store-client');
 const step1 = require('./steps/step1');
 const step2 = require('./steps/step2');
 const step3 = require('./steps/step3');
@@ -115,9 +116,10 @@ function buildWorkflow({ id, name, webhookPath, nodeNames, jsCode }) {
 // The step workflows: one per step definition in steps/.
 const steps = [step1.STEP, step2.STEP, step3.STEP, step4.STEP];
 
-/** What the orchestrator tells the model about a step when it has to pick
- *  the step a message is about: number, title, role and substep titles. The
- *  instructions of the substeps stay out; they are for the step itself. */
+/** What the orchestrator knows about a step: number, title, role and the
+ *  substeps (titles for the model that picks a step, ids for the order of
+ *  the reports). The instructions of the substeps stay out; they are for
+ *  the step itself. */
 function stepSummary(step) {
   return {
     id: step.id,
@@ -125,6 +127,7 @@ function stepSummary(step) {
     title: step.title,
     role: step.role,
     substeps: step.substeps.map((substep) => substep.title),
+    substep_ids: step.substeps.map((substep) => substep.id),
   };
 }
 
@@ -140,7 +143,7 @@ const ORCHESTRATOR_SHARED_FUNCTIONS = [
   'buildTitleResponse',
 ];
 
-const ORCHESTRATOR_FUNCTIONS = ['incomingMessage', 'determineStep', 'isPlainChatMessage', 'chooseStep', 'buildStepRequest', 'forwardToStep', 'runOrchestrator'];
+const ORCHESTRATOR_FUNCTIONS = ['incomingMessage', 'determineStep', 'isPlainChatMessage', 'chooseStep', 'contextFromState', 'buildStepRequest', 'forwardToStep', 'runOrchestrator'];
 
 function buildOrchestratorJsCode() {
   return [
@@ -153,6 +156,8 @@ function buildOrchestratorJsCode() {
     `const ORCHESTRATOR_PROMPT_TEMPLATE = ${JSON.stringify(shared.ORCHESTRATOR_PROMPT_TEMPLATE)};`,
     '',
     inlineFunctions([shared], ORCHESTRATOR_SHARED_FUNCTIONS),
+    '',
+    inlineFunctions([storeClient], ['storeRequest', 'createStoreClient']),
     '',
     inlineFunctions([orchestrator], ORCHESTRATOR_FUNCTIONS),
     '',
@@ -169,6 +174,8 @@ function buildOrchestratorJsCode() {
       'LITELLM_API_KEY',
       'OPENAI_API_KEY',
       'BELEIDSKOMPAS_MODEL',
+      'BELEIDSKOMPAS_STORE_URL',
+      'BELEIDSKOMPAS_STORE_TOKEN',
     ])},`,
     ...HTTP_ARGS,
     '});',

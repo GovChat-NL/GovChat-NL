@@ -1,7 +1,9 @@
-// Talking to the Beleidskompas endpoint of LibreChat. Beleidskompas is a
-// LibreChat custom endpoint ("govchat-beleidskompas" in librechat.yaml), so
-// a case is an ordinary LibreChat conversation: stored in MongoDB and listed
-// like any other chat.
+// Talking to Beleidskompas from the browser. Messages go through LibreChat:
+// Beleidskompas is a LibreChat custom endpoint ("govchat-beleidskompas" in
+// librechat.yaml), so a case is a LibreChat conversation and the case id is
+// its conversationId. The state of a case (the case text, the reports and
+// the conversation) is kept by the Beleidskompas store, which the page
+// reads through /govchat-api/beleidskompas/.
 //
 // Sending a message takes two calls: POST /api/agents/chat/:endpoint returns
 // a {streamId} at once, and the reply arrives via SSE on
@@ -10,6 +12,10 @@
 import { getLibreChatAuthToken, librechatFetch, newClientMessageId } from "../../shared/librechat-api.js";
 
 const BELEIDSKOMPAS_ENDPOINT = "govchat-beleidskompas";
+// nginx forwards this to the store's "my cases" API, which answers with
+// the cases of the logged-in user only (it reads who that is from the
+// LibreChat cookie).
+const STORE_URL = "/govchat-api/beleidskompas";
 const NO_PARENT_MESSAGE_ID = "00000000-0000-0000-0000-000000000000";
 
 /** Extracts the assistant's text from a LibreChat message object. LibreChat
@@ -87,64 +93,22 @@ export async function sendBeleidskompasFeedback({ rating, comment, stepId }) {
   if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
 }
 
-/** The only channel to the backend is the chat message's plain text, so
- *  everything a request needs is composed into one labeled text: the
- *  substep, the case, the reports so far, the conversation about the
- *  substep and the message the user typed (each only when there is one).
- *  The orchestrator takes it apart on these labels. A typed message means a
- *  conversation turn. Without one, Beleidskompas writes the report of the
- *  substep. */
-export function composePrompt({ substep, caseText, findings, conversation, message }) {
+/** The only channel to the orchestrator is the chat message's plain text,
+ *  so a request is composed into one labeled text: the substep, the case
+ *  and the message the user typed (the last two only when there is one).
+ *  The orchestrator takes it apart on these labels. The reports and the
+ *  conversation so far are not sent along: the orchestrator reads those
+ *  from the store. A typed message means a conversation turn. Without one,
+ *  Beleidskompas writes the report of the substep. */
+export function composePrompt({ substep, caseText, message }) {
   const lines = [`Deelstap: ${substep.id} (${substep.title})`];
   const part = (label, value) => {
     const text = String(value || "").trim();
     if (text) lines.push(`${label} ${text}`);
   };
   part("Casus:", caseText);
-  part("Eerdere bevindingen:", findings);
-  part("Gesprek:", conversation);
   part("Bericht:", message);
   return lines.join("\n");
-}
-
-/** The counterpart of composePrompt, for a message read back from the
- *  history: takes the composed text apart again. The reports and the
- *  conversation are not needed back (they are rebuilt from the messages),
- *  so only the substep, the case and the typed message are returned. */
-export function parseComposedPrompt(text) {
-  const lines = String(text || "").split("\n");
-  // The first line is what composePrompt wrote, "Deelstap: 1.3 (Stakeholderanalyse)".
-  // The pattern, piece by piece, with the part of that line each one matches:
-  //   ^Deelstap:         "Deelstap:"            the label, at the start of the line
-  //   \s*                " "                    spaces, as many as there are (also none)
-  //   (\d+\.\d+)          "1.3"                  the substep id: digits, a dot, digits -> head[1]
-  //   \s*                " "                    spaces again
-  //   (?:\((.*)\))?      "(Stakeholderanalyse)" the title inside the round brackets,
-  //                                             kept without the brackets -> head[2];
-  //                                             this piece may be missing altogether
-  //   \s*$               ""                     spaces, then the end of the line
-  // A first line of any other form gives null: then there is no substep.
-  const head = /^Deelstap:\s*(\d+\.\d+)\s*(?:\((.*)\))?\s*$/.exec(lines[0] || "");
-  // Every other part starts with its label at the start of a line and runs
-  // until the next label.
-  const labels = ["Casus:", "Eerdere bevindingen:", "Gesprek:", "Bericht:"];
-  const parts = {};
-  let current = "";
-  for (const line of lines.slice(1)) {
-    const label = labels.find((l) => line.startsWith(l));
-    if (label) {
-      current = label;
-      parts[label] = line.slice(label.length);
-    } else if (current) {
-      parts[current] += "\n" + line;
-    }
-  }
-  return {
-    substepId: head ? head[1] : "",
-    substepTitle: head ? String(head[2] || "").trim() : "",
-    caseText: String(parts["Casus:"] || "").trim(),
-    message: String(parts["Bericht:"] || "").trim(),
-  };
 }
 
 /** Sends one message to the Beleidskompas custom endpoint and waits for
@@ -250,41 +214,69 @@ export async function sendBeleidskompasChatMessage({ text, conversationId, paren
   };
 }
 
-/** Reads back a previously-persisted Beleidskompas conversation so a page
- *  reload can resume the same case instead of starting over. */
-export async function fetchBeleidskompasHistory(conversationId) {
+/** The id of the last message of a LibreChat conversation. LibreChat links
+ *  every message to the one before it. The page sends that id along with
+ *  the next message; without it, the next message would start a new
+ *  branch in the conversation as LibreChat shows it. */
+export async function fetchLastMessageId(conversationId) {
   const resp = await librechatFetch(`/api/messages/${encodeURIComponent(conversationId)}`, { method: "GET" });
-  if (!resp.ok) throw new Error(`Kon casusgeschiedenis niet ophalen (HTTP ${resp.status}).`);
+  if (!resp.ok) throw new Error(`Kon het gesprek niet ophalen (HTTP ${resp.status}).`);
   const messages = await resp.json().catch(() => []);
-  return (Array.isArray(messages) ? messages : [])
+  const last = (Array.isArray(messages) ? messages : [])
     .slice()
     .sort((a, b) => new Date(a.createdAt || 0) - new Date(b.createdAt || 0))
-    .map((m) => {
-      if (m.isCreatedByUser) {
-        // The message holds what the page composed (see composePrompt); the
-        // chat shows what the user typed, or the substep that was asked for.
-        const { substepId, substepTitle, caseText, message } = parseComposedPrompt(m.text);
-        const text = message || (substepId ? `Deelstap ${substepId}: ${substepTitle}` : String(m.text || "").trim());
-        return { messageId: m.messageId, role: "user", text, substepId, caseText, conversation: Boolean(message), citations: [], retrieval_trace: null, ts: m.createdAt || new Date().toISOString() };
-      }
-      const { displayText, citations, retrieval_trace, agent } = parseCitationsMetaBlock(extractMessageText(m));
-      return { messageId: m.messageId, role: "assistant", text: displayText, citations, retrieval_trace, agent, ts: m.createdAt || new Date().toISOString() };
-    });
+    .pop();
+  return (last && last.messageId) || null;
 }
 
-/** Lists the user's own recent Beleidskompas cases (LibreChat conversations
- *  for this endpoint), newest first, so a case can be reopened without
- *  needing its conversationId to already be in sessionStorage. */
-export async function listRecentBeleidskompasConversations(limit) {
-  const resp = await librechatFetch(`/api/convos?limit=${encodeURIComponent(limit || 20)}`, { method: "GET" });
+/** The state of a case as the store keeps it: the newest case text, the
+ *  newest report per substep and the turns of the conversation. Throws
+ *  when the case is not in the store or belongs to another user. */
+export async function fetchCaseState(caseId) {
+  const resp = await fetch(`${STORE_URL}/cases/${encodeURIComponent(caseId)}`, { cache: "no-store" });
+  if (!resp.ok) throw new Error(`Kon de stand van de casus niet ophalen (HTTP ${resp.status}).`);
+  return resp.json();
+}
+
+/** Turns the state from the store into what the screen works with: the
+ *  case text, the report per substep (`results`, in the shape of the step
+ *  cards), the conversation as chat messages and the substep with the
+ *  newest report (`lastReportSubstepId`), so a reopened case continues
+ *  there. */
+export function readCaseState(state) {
+  const results = {};
+  let lastReportSubstepId = "";
+  let newest = "";
+  for (const [substepId, report] of Object.entries(state?.reports || {})) {
+    const updatedAt = String(report.created_at || "");
+    results[substepId] = { report_text: String(report.text || ""), citations: report.citations || [], retrieval_trace: report.retrieval_trace || null, updated_at: updatedAt };
+    if (updatedAt >= newest) {
+      newest = updatedAt;
+      lastReportSubstepId = substepId;
+    }
+  }
+  // A turn is what the user typed or the answer to it, so it is always
+  // part of the conversation (never a report).
+  const messages = (state?.turns || []).map((t) => ({
+    role: t.role,
+    text: String(t.text || ""),
+    agent: t.role === "assistant" ? t.step_id || null : null,
+    substepId: t.asked_from || "",
+    conversation: true,
+    ts: t.created_at,
+  }));
+  return { caseText: String(state?.case_text?.text || ""), results, messages, lastReportSubstepId };
+}
+
+/** The user's own cases from the store, newest first, so a case can be
+ *  reopened without its id already being in sessionStorage. */
+export async function listBeleidskompasCases(limit) {
+  const resp = await fetch(`${STORE_URL}/cases?limit=${encodeURIComponent(limit || 20)}`, { cache: "no-store" });
   if (!resp.ok) throw new Error(`Kon casuslijst niet ophalen (HTTP ${resp.status}).`);
-  const data = await resp.json().catch(() => ({}));
-  const conversations = Array.isArray(data?.conversations) ? data.conversations : [];
-  return conversations
-    .filter((c) => c && c.endpoint === BELEIDSKOMPAS_ENDPOINT)
-    .map((c) => ({
-      conversationId: c.conversationId,
-      title: parseCitationsMetaBlock(String(c.title || "").trim()).displayText || "Naamloze casus",
-      updatedAt: c.updatedAt || c.createdAt || null,
-    }));
+  const cases = await resp.json().catch(() => []);
+  return (Array.isArray(cases) ? cases : []).map((c) => ({
+    conversationId: c.id,
+    title: String(c.title || "").trim() || "Naamloze casus",
+    updatedAt: c.updated_at || c.created_at || null,
+  }));
 }

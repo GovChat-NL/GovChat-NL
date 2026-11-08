@@ -38,7 +38,7 @@ test("every change tells exactly the panels that show it", () => {
   assert.deepEqual(seen.splice(0), ["chat", "chat", "chat"]);
 
   store.setActiveSubstep(1);
-  store.setSubstepResult("1.2", { report_text: "uitwerking" });
+  store.replaceResults({ "1.2": { report_text: "uitwerking" } });
   assert.deepEqual(seen.splice(0), ["steps", "steps"]);
 
   store.setConversationId("abc");
@@ -70,32 +70,42 @@ test("a substep counts as done once it has a non-empty report, a step once all i
   assert.equal(store.substepDone("1.1"), false);
   assert.equal(store.stepDone("stap1"), false);
 
-  store.setSubstepResult("1.1", { report_text: "uitwerking", citations: [{ id: "a" }] });
+  store.replaceResults({ "1.1": { report_text: "uitwerking", citations: [{ id: "a" }] } });
   assert.equal(store.substepDone("1.1"), true);
   assert.equal(store.stepDone("stap1"), false);
   assert.equal(store.substepResult("1.1").citations[0].rank, 1);
   assert.equal(store.substepResult("1.1").retrieval_trace, null);
 
-  store.setSubstepResult("1.2", { report_text: "ook" });
+  store.replaceResults({ "1.1": { report_text: "uitwerking" }, "1.2": { report_text: "ook" } });
   assert.equal(store.stepDone("stap1"), true);
   assert.equal(store.stepDone("stap2"), false);
 
-  store.setSubstepResult("1.1", { report_text: "   " });
+  // What is left out of replaceResults is empty again; an unknown substep is ignored.
+  store.replaceResults({ "1.1": { report_text: "   " }, "9.9": { report_text: "x" } });
   assert.equal(store.substepDone("1.1"), false);
+  assert.equal(store.substepDone("1.2"), false);
   assert.equal(store.stepDone("stap1"), false);
+  assert.equal("9.9" in store.state.results, false);
 });
 
-test("the findings for a substep are the reports before it and its own, in order", () => {
-  const store = createStore(STEPS);
-  store.setSubstepResult("1.1", { report_text: "een" });
-  store.setSubstepResult("2.1", { report_text: "drie" });
+test("a case has begun once there is a case text, a message from the user or a report", () => {
+  assert.equal(createStore(STEPS).caseStarted(), false);
 
-  assert.equal(store.findingsFor("1.1"), "een");
-  assert.equal(store.findingsFor("1.2"), "een");
-  assert.equal(store.findingsFor("2.1"), "een\n\ndrie");
+  const withCase = createStore(STEPS);
+  withCase.setCaseText("De casus.");
+  assert.equal(withCase.caseStarted(), true);
 
-  store.setSubstepResult("1.2", { report_text: "twee" });
-  assert.equal(store.findingsFor("2.1"), "een\n\ntwee\n\ndrie");
+  // A case begun in the LibreChat chat has no case text, only messages.
+  const fromChat = createStore(STEPS);
+  fromChat.replaceMessages([{ role: "user", text: "Hoezo?" }, { role: "assistant", text: "Daarom." }]);
+  assert.equal(fromChat.caseStarted(), true);
+
+  const withReport = createStore(STEPS);
+  withReport.replaceResults({ "1.1": { report_text: "uitwerking" } });
+  assert.equal(withReport.caseStarted(), true);
+
+  withReport.startNewSession();
+  assert.equal(withReport.caseStarted(), false);
 });
 
 test("the open case is remembered in sessionStorage, so a new store after a reload picks it up", () => {
@@ -118,7 +128,7 @@ test("startNewSession forgets the case and starts again at the first substep", (
     store.setConversationId("abc-123");
     store.setLastMessageId("msg-9");
     store.setActiveSubstep(2);
-    store.setSubstepResult("1.1", { report_text: "klaar" });
+    store.replaceResults({ "1.1": { report_text: "klaar" } });
     store.addMessage("user", "mijn casus");
 
     store.startNewSession();

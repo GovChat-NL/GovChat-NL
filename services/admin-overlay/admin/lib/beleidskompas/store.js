@@ -94,12 +94,13 @@ function createStore(query) {
   }
 
   /** Stores a report of a substep as a new version. `content` is the
-   *  structured answer of the model, `text` the rendered report. */
+   *  structured answer of the model, `text` the rendered report. Creates
+   *  the case when needed, like setCaseText. */
   async function addReport({ caseId, userId, substepId, content, text, citations, retrievalTrace }) {
     const substep = requireText(substepId, "substep id");
     const rendered = requireText(text, "report text");
     if (!content || typeof content !== "object" || Array.isArray(content)) throw new StoreError(400, "report content must be an object");
-    const { id } = await requireOwnedCase(requireText(caseId, "case id"), requireText(userId, "user id"));
+    const { id } = await ensureCase({ id: caseId, userId });
     const { rows } = await withOneRetry(() =>
       query(
         `INSERT INTO reports (case_id, substep_id, version, content, text, citations, retrieval_trace)
@@ -114,12 +115,14 @@ function createStore(query) {
 
   /** Appends a turn to the conversation of the case: what the user typed
    *  (role "user") or what a step answered (role "assistant", with the step
-   *  in `stepId`). `askedFrom` is the substep the user was in. */
+   *  in `stepId`). `askedFrom` is the substep the user was in. Creates the
+   *  case when needed: a conversation in LibreChat's own chat starts with a
+   *  question, not with a case text. */
   async function addTurn({ caseId, userId, role, stepId, askedFrom, text }) {
     const content = requireText(text, "turn text");
     const who = requireText(role, "role");
     if (who !== "user" && who !== "assistant") throw new StoreError(400, 'role must be "user" or "assistant"');
-    const { id } = await requireOwnedCase(requireText(caseId, "case id"), requireText(userId, "user id"));
+    const { id } = await ensureCase({ id: caseId, userId });
     const { rows } = await withOneRetry(() =>
       query(
         `INSERT INTO conversation_turns (case_id, seq, role, step_id, asked_from, text)

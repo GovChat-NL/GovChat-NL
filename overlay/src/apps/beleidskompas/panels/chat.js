@@ -85,7 +85,10 @@ function messageHTML(m, idx, stepLabel) {
     </div>`;
 }
 
-export function setupChat(store) {
+/** `refreshState(conversationId)` (from cases.js) puts the case text and
+ *  the reports as the store has them on the screen; the chat calls it
+ *  after every answer. */
+export function setupChat(store, { refreshState }) {
   const { state } = store;
   const chatLogEl = requireElement("gc-bk-chat-log");
   const chatInputEl = requireElement("gc-bk-chat-input");
@@ -143,12 +146,12 @@ export function setupChat(store) {
   /** Sends a request about `substep` to Beleidskompas.
    *
    *  If the user typed a `message`, Beleidskompas answers it in the chat.
-   *  The card stays as it was. If there is no message, Beleidskompas writes
-   *  the report of the substep. The report appears in the chat and on the
-   *  card of that substep, even if the user has gone to another substep in
-   *  the meantime. If the answer has no headings, it is an error message.
-   *  The error message appears in the chat but not on the card, so the user
-   *  can try again.
+   *  If there is no message, Beleidskompas writes the report of the
+   *  substep. The answer appears in the chat. After that the cards are
+   *  filled from the store: a report lands on the card of its substep,
+   *  even if the user has gone to another substep in the meantime. An
+   *  error message is not a report, so the store does not have it and the
+   *  card stays as it was; the user can try again.
    *
    *  `caseDescription` is only passed with the first message, which is the
    *  case. The user's bubble then shows the case. Otherwise the bubble
@@ -157,15 +160,7 @@ export function setupChat(store) {
   async function ask(substep, message, caseDescription) {
     if (state.asking) return;
     const conversing = Boolean(message);
-    // Composed before the user's message is added, so the conversation so
-    // far does not already contain it.
-    const text = composePrompt({
-      substep,
-      caseText: state.caseText,
-      findings: store.findingsFor(substep.id),
-      conversation: store.conversationFor(substep.id),
-      message,
-    });
+    const text = composePrompt({ substep, caseText: state.caseText, message });
     store.addMessage("user", caseDescription || message || `Deelstap ${substep.id}: ${substep.title}`, { substepId: substep.id, conversation: conversing });
     setComposerDisabled(true);
     store.setAsking(substep.id);
@@ -184,15 +179,15 @@ export function setupChat(store) {
         retrieval_trace: result.retrieval_trace || null,
         agent: result.agent || null,
       });
-      if (!conversing && parseAdvice(pendingMessage.text)) {
-        store.setSubstepResult(substep.id, {
-          report_text: pendingMessage.text,
-          citations: pendingMessage.citations,
-          retrieval_trace: pendingMessage.retrieval_trace,
-          updated_at: new Date().toISOString(),
-        });
-      }
       if (state.conversationId === conversationIdBeforeRequest) store.changed("conversation");
+      // The answer is in the chat by now. When the store cannot be read,
+      // only the cards are behind, so that is a message of its own and not
+      // an error in place of the answer.
+      try {
+        await refreshState(state.conversationId);
+      } catch (err) {
+        store.addMessage("assistant", `Kon de stand van de casus niet ophalen (${String(err?.message || err)}). Open de casus opnieuw om de kaarten bij te werken.`);
+      }
     } catch (err) {
       store.updateMessage(pendingMessage, {
         pending: false,

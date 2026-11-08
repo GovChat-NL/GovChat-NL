@@ -35,12 +35,13 @@ test("ensureCase creates the case once and returns it", async () => {
   assert.deepEqual(db.calls[0].params, ["conv-1", "user-a"]);
 });
 
-test("a case id taken by another user cannot be created, and reads as unknown everywhere else", async () => {
+test("a case id taken by another user cannot be written to, and reads as unknown", async () => {
   const db = fakeDatabase({ "FROM cases WHERE id": ownedBy(CASE) });
   const store = createStore(db.query);
   await assert.rejects(store.ensureCase({ id: "conv-1", userId: "user-b" }), (err) => err instanceof StoreError && err.status === 403);
-  await assert.rejects(store.addReport({ caseId: "conv-1", userId: "user-b", substepId: "1.1", content: {}, text: "x" }), (err) => err.status === 404);
-  await assert.rejects(store.addTurn({ caseId: "conv-1", userId: "user-b", role: "user", text: "hoi" }), (err) => err.status === 404);
+  await assert.rejects(store.addReport({ caseId: "conv-1", userId: "user-b", substepId: "1.1", content: {}, text: "x" }), (err) => err.status === 403);
+  await assert.rejects(store.addTurn({ caseId: "conv-1", userId: "user-b", role: "user", text: "hoi" }), (err) => err.status === 403);
+  await assert.rejects(store.setTitle({ caseId: "conv-1", userId: "user-b", title: "x" }), (err) => err.status === 404);
   assert.equal(await store.getState({ caseId: "conv-1", userId: "user-b" }), null);
   // The lookup itself filters on the user, so the database never hands out another user's row.
   assert.ok(db.calls.every((c) => !c.sql.includes("FROM cases WHERE id") || c.params[1] === "user-b"));
@@ -95,10 +96,11 @@ test("an insert that collides on the version number is tried once more", async (
   assert.equal(attempts, 2);
 });
 
-test("addTurn numbers the turns and only accepts user and assistant", async () => {
+test("addTurn numbers the turns, creates the case when needed, and only accepts user and assistant", async () => {
   const db = fakeDatabase({ "FROM cases WHERE id": ownedBy(CASE), "INSERT INTO conversation_turns": [{ seq: 4 }] });
   const store = createStore(db.query);
   assert.deepEqual(await store.addTurn({ caseId: "conv-1", userId: "user-a", role: "assistant", stepId: "stap3", askedFrom: "1.3", text: "Antwoord." }), { seq: 4 });
+  assert.match(db.calls[0].sql, /INSERT INTO cases .* ON CONFLICT \(id\) DO NOTHING/);
   const insert = db.calls.find((c) => c.sql.startsWith("INSERT INTO conversation_turns"));
   assert.deepEqual(insert.params, ["conv-1", "assistant", "stap3", "1.3", "Antwoord."]);
   await assert.rejects(store.addTurn({ caseId: "conv-1", userId: "user-a", role: "system", text: "x" }), (err) => err.status === 400);

@@ -109,31 +109,14 @@ export function createStore(steps) {
     return Boolean(step && step.substeps.length && step.substeps.every((s) => substepDone(s.id)));
   }
 
-  function setSubstepResult(substepId, result) {
-    state.results[substepId] = { ...emptyResult(), ...result, citations: normalizeCitations(result.citations) };
-    changed("steps");
-  }
-
-  /** Puts back the reports of a reopened case, all at once: the ones
-   *  given replace what there was, the others are empty again. */
+  /** Puts the reports as the store has them on the cards, all at once:
+   *  the ones given replace what there was, the others are empty again. */
   function replaceResults(resultsById) {
     state.results = emptyResults(substeps);
     for (const [substepId, result] of Object.entries(resultsById || {})) {
       if (substepId in state.results) state.results[substepId] = { ...emptyResult(), ...result, citations: normalizeCitations(result.citations) };
     }
     changed("steps");
-  }
-
-  /** What a substep builds on: the reports of every substep before
-   *  it, and its own when it has one (a follow-up question continues on
-   *  it), in order. */
-  function findingsFor(substepId) {
-    const index = substeps.findIndex((s) => s.id === substepId);
-    return substeps
-      .slice(0, index + 1)
-      .map((s) => String(substepResult(s.id).report_text || "").trim())
-      .filter(Boolean)
-      .join("\n\n");
   }
 
   function setAsking(substepId) {
@@ -146,19 +129,12 @@ export function createStore(steps) {
     changed("steps");
   }
 
-  /** Whether a case has been entered: the first thing the user types is the
-   *  case; everything else builds on that. */
+  /** Whether the case has begun. On the page the first thing the user
+   *  types is the case. A case begun in the LibreChat chat has no case
+   *  text, only messages, and may have reports; it has begun too, so what
+   *  the user types next is a message and not the case. */
   function caseStarted() {
-    return Boolean(state.caseText);
-  }
-
-  /** The conversation about a substep as text for the model: what the user
-   *  typed and what was answered, in order. */
-  function conversationFor(substepId) {
-    return state.messages
-      .filter((m) => m.conversation && m.substepId === substepId && m.text && !m.pending)
-      .map((m) => `${m.role === "user" ? "Gebruiker" : "Beleidskompas"}: ${m.text}`)
-      .join("\n");
+    return Boolean(state.caseText) || state.messages.some((m) => m.role === "user") || substeps.some((s) => substepDone(s.id));
   }
 
   /** Whether the conversation about a substep went on after its report, so
@@ -228,13 +204,10 @@ export function createStore(steps) {
     substepResult,
     substepDone,
     stepDone,
-    setSubstepResult,
     replaceResults,
-    findingsFor,
     setAsking,
     setCaseText,
     caseStarted,
-    conversationFor,
     talkedSinceReport,
     addMessage,
     replaceMessages,

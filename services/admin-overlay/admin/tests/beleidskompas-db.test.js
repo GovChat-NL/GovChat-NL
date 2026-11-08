@@ -61,6 +61,10 @@ test("the store against a real Postgres", { skip: !enabled && "set BELEIDSKOMPAS
 
     await store.setCaseText({ caseId: "conv-2", userId: "user-a", text: "Tweede casus." });
     assert.deepEqual((await store.listCases({ userId: "user-a" })).map((c) => c.id), ["conv-2", "conv-1"], "newest first");
+
+    // A conversation from LibreChat's own chat starts with a question, without a case text.
+    assert.deepEqual(await store.addTurn({ caseId: "conv-3", userId: "user-a", role: "user", text: "Wat is Beleidskompas?" }), { seq: 1 });
+    assert.equal((await store.getState({ caseId: "conv-3", userId: "user-a" })).case_text, null);
     assert.deepEqual(await store.listCases({ userId: "user-b" }), []);
   } finally {
     await client.query(`DROP SCHEMA IF EXISTS ${schema} CASCADE`);

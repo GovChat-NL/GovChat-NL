@@ -78,3 +78,24 @@ test("a StoreError becomes its status, any other error a 500 without details", a
     console.error = original;
   }
 });
+
+test("the page's endpoints take the user from the LibreChat login, never from the request", async () => {
+  const store = fakeStore({ listCases: [{ id: "conv-1" }], getState: (args) => (args.userId === "user-a" && args.caseId === "conv-1" ? { id: "conv-1" } : null) });
+  const resolveUser = (req) => (req.cookies && req.cookies.refreshToken === "good" ? { id: "user-a" } : null);
+  const handlers = createBeleidskompasHandlers({ store, internalToken: TOKEN, resolveUser });
+
+  // Not logged in: 401, also with a user_id in the query and a store token.
+  assert.equal((await handlers.myCases({ headers: { authorization: `Bearer ${TOKEN}` }, query: { user_id: "user-a" }, cookies: {} })).status, 401);
+
+  const logged = { headers: {}, cookies: { refreshToken: "good" }, query: { user_id: "user-b" }, params: {} };
+  assert.deepEqual(await handlers.myCases(logged), { status: 200, body: [{ id: "conv-1" }] });
+  assert.equal(store.calls[0].args.userId, "user-a", "the user comes from the login, not from the query");
+
+  assert.deepEqual(await handlers.myCase({ ...logged, params: { id: "conv-1" } }), { status: 200, body: { id: "conv-1" } });
+  assert.deepEqual(await handlers.myCase({ ...logged, params: { id: "conv-9" } }), { status: 404, body: { error: "Unknown case" } });
+});
+
+test("the page's endpoints answer 503 without a store", async () => {
+  const handlers = createBeleidskompasHandlers({ store: null, internalToken: TOKEN, resolveUser: () => ({ id: "user-a" }) });
+  assert.equal((await handlers.myCases({ headers: {}, cookies: {} })).status, 503);
+});

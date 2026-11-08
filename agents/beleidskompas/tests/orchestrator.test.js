@@ -10,26 +10,44 @@ const { parsePageMessage } = require('../shared');
 // The same shape generate-workflow.js builds for the orchestrator workflow.
 const SUMMARIES = ['step1', 'step2', 'step3', 'step4'].map((name) => {
   const { STEP } = require(`../steps/${name}`);
-  return { id: STEP.id, nr: STEP.nr, title: STEP.title, role: STEP.role, substeps: STEP.substeps.map((s) => s.title) };
+  return { id: STEP.id, nr: STEP.nr, title: STEP.title, role: STEP.role, substeps: STEP.substeps.map((s) => s.title), substep_ids: STEP.substeps.map((s) => s.id) };
 });
 
 /** Runs `fn(baseUrl, requests)` against one server that stands in for both
  *  LiteLLM (answers every chat completion with `modelReply`) and n8n (answers
  *  every step webhook with a JSON that names the path). `requests` collects
  *  what was sent, in order. */
+let storeState = null;
+
 function withServer(modelReply, fn) {
   const requests = [];
+  storeState = null;
   return new Promise((resolve, reject) => {
     const server = http.createServer((req, res) => {
       let body = '';
       req.on('data', (c) => (body += c));
       req.on('end', () => {
         requests.push({ url: req.url, body: body ? JSON.parse(body) : null });
-        res.writeHead(200, { 'content-type': 'application/json' });
+        res.setHeader('content-type', 'application/json');
         if (req.url.endsWith('/v1/chat/completions')) {
           res.end(JSON.stringify({ choices: [{ message: { content: modelReply } }] }));
+        } else if (req.url.startsWith('/api/beleidskompas/') && req.method === 'GET') {
+          // The store: the state of the case, or 404 when the test gave none.
+          if (!storeState) {
+            res.statusCode = 404;
+            res.end(JSON.stringify({ error: 'Unknown case' }));
+          } else {
+            res.end(JSON.stringify(storeState));
+          }
+        } else if (req.url.startsWith('/api/beleidskompas/')) {
+          // The store: every write succeeds with a version or a sequence number.
+          res.end(JSON.stringify({ version: 1, seq: 1 }));
+        } else if (req.url.endsWith('/beleidskompas-step-stap1') && !(body && JSON.parse(body).message)) {
+          // A report from step 1, in the shape runStep returns.
+          res.end(JSON.stringify({ ok: true, mode: 'report', step_id: 'stap1', substep_id: '1.3', structured: { substeps: { '1.3': { a: 1 } } }, citations: [{ id: 'doc-1' }], retrieval_trace: { algorithm: 'needle' }, text: 'Rapport 1.3', answer: 'Rapport 1.3' }));
         } else {
-          res.end(JSON.stringify({ ok: true, text: `antwoord van ${req.url}`, answer: `antwoord van ${req.url}` }));
+          const stepId = (/beleidskompas-step-(stap\d)/.exec(req.url) || [])[1] || null;
+          res.end(JSON.stringify({ ok: true, mode: 'conversation', step_id: stepId, text: `antwoord van ${req.url}`, answer: `antwoord van ${req.url}` }));
         }
       });
     });
@@ -111,7 +129,7 @@ test('runOrchestrator sends a report request to the step of the substep, without
     assert.equal(requests.length, 1);
     assert.equal(requests[0].url, '/webhook/beleidskompas-step-stap1');
     assert.equal(requests[0].body.substep_id, '1.3');
-    assert.equal(result.text, 'antwoord van /webhook/beleidskompas-step-stap1');
+    assert.equal(result.text, 'Rapport 1.3');
   });
 });
 
@@ -163,4 +181,145 @@ test('runOrchestrator refuses a labeled message that names no known step', async
   const result = await runOrchestrator({ input: orchestratorInput('Stap: stap9\nBericht: Hallo?'), env: {}, summaries: SUMMARIES, fetchImpl: global.fetch });
   assert.equal(result.ok, false);
   assert.equal(result.step_id, null);
+});
+
+const STORE_ENV = (baseUrl) => ({ BELEIDSKOMPAS_N8N_BASE_URL: baseUrl, LITELLM_URL: baseUrl, LITELLM_API_KEY: 'test-key', BELEIDSKOMPAS_STORE_URL: baseUrl, BELEIDSKOMPAS_STORE_TOKEN: 'store-secret' });
+
+function bridgeInput(message) {
+  return { body: { currentMessage: message, sessionId: 'conv-1', userId: 'user-a' }, headers: {} };
+}
+
+test('a report request writes the case text and the report to the store', async () => {
+  await withServer('1', async (baseUrl, requests) => {
+    const result = await runOrchestrator({ input: bridgeInput('Deelstap: 1.3 (Stakeholderanalyse)\nCasus: Laadpalen.'), env: STORE_ENV(baseUrl), summaries: SUMMARIES, fetchImpl: global.fetch });
+    assert.deepEqual(result.store, { enabled: true, read: false, written: ['case_text', 'report'], errors: [] });
+    const text = requests.find((r) => r.url === '/api/beleidskompas/cases/conv-1/text');
+    assert.deepEqual(text.body, { user_id: 'user-a', text: 'Laadpalen.' });
+    const report = requests.find((r) => r.url === '/api/beleidskompas/cases/conv-1/reports');
+    assert.deepEqual(report.body, { user_id: 'user-a', substep_id: '1.3', content: { substeps: { '1.3': { a: 1 } } }, text: 'Rapport 1.3', citations: [{ id: 'doc-1' }], retrieval_trace: { algorithm: 'needle' } });
+    // The case text is written before the step is asked, the report after.
+    const order = requests.map((r) => r.url);
+    assert.ok(order.indexOf('/api/beleidskompas/cases/conv-1/text') < order.indexOf('/webhook/beleidskompas-step-stap1'));
+    assert.ok(order.indexOf('/webhook/beleidskompas-step-stap1') < order.indexOf('/api/beleidskompas/cases/conv-1/reports'));
+    assert.equal(result.text, 'Rapport 1.3', 'the answer of the step is passed on unchanged');
+  });
+});
+
+test('a typed message writes the turn of the user and the turn of the step that answered', async () => {
+  await withServer('3', async (baseUrl, requests) => {
+    const result = await runOrchestrator({ input: bridgeInput('Deelstap: 1.3 (Stakeholderanalyse)\nCasus: Laadpalen.\nBericht: Welke instrumenten?'), env: STORE_ENV(baseUrl), summaries: SUMMARIES, fetchImpl: global.fetch });
+    assert.deepEqual(result.store.written, ['case_text', 'user_turn', 'assistant_turn']);
+    const turns = requests.filter((r) => r.url === '/api/beleidskompas/cases/conv-1/turns').map((r) => r.body);
+    assert.deepEqual(turns, [
+      { user_id: 'user-a', role: 'user', asked_from: '1.3', text: 'Welke instrumenten?' },
+      { user_id: 'user-a', role: 'assistant', step_id: 'stap3', asked_from: '1.3', text: 'antwoord van /webhook/beleidskompas-step-stap3' },
+    ]);
+  });
+});
+
+test('a title request writes the title', async () => {
+  await withServer('Laadpalen in kleine kernen', async (baseUrl, requests) => {
+    const result = await runOrchestrator({ input: bridgeInput('__BELEIDSKOMPAS_TITLE_REQUEST__ Geef een titel.\n\nUser: Casus: Laadpalen.'), env: STORE_ENV(baseUrl), summaries: SUMMARIES, fetchImpl: global.fetch });
+    assert.deepEqual(result.store.written, ['title']);
+    const title = requests.find((r) => r.url === '/api/beleidskompas/cases/conv-1/title');
+    assert.equal(title.body.user_id, 'user-a');
+    assert.equal(title.body.title, result.answer);
+  });
+});
+
+test('without the store settings, or without the conversation from the bridge, nothing is written', async () => {
+  await withServer('1', async (baseUrl, requests) => {
+    const result = await runOrchestrator({ input: bridgeInput('Deelstap: 1.3 (Stakeholderanalyse)\nCasus: Laadpalen.'), env: { BELEIDSKOMPAS_N8N_BASE_URL: baseUrl, LITELLM_URL: baseUrl, LITELLM_API_KEY: 'test-key' }, summaries: SUMMARIES, fetchImpl: global.fetch });
+    assert.deepEqual(result.store, { enabled: false, read: false, written: [], errors: [] });
+    assert.ok(!requests.some((r) => r.url.startsWith('/api/beleidskompas/')));
+  });
+  await withServer('1', async (baseUrl, requests) => {
+    const result = await runOrchestrator({ input: orchestratorInput('Deelstap: 1.3 (Stakeholderanalyse)\nCasus: Laadpalen.'), env: STORE_ENV(baseUrl), summaries: SUMMARIES, fetchImpl: global.fetch });
+    assert.equal(result.store.enabled, false);
+    assert.ok(!requests.some((r) => r.url.startsWith('/api/beleidskompas/')));
+  });
+});
+
+test('a store that fails does not break the conversation; the failure is reported in the answer', async () => {
+  await withServer('1', async (baseUrl) => {
+    const env = Object.assign(STORE_ENV(baseUrl), { BELEIDSKOMPAS_STORE_URL: 'http://127.0.0.1:9' });
+    const result = await runOrchestrator({ input: bridgeInput('Deelstap: 1.3 (Stakeholderanalyse)\nCasus: Laadpalen.'), env, summaries: SUMMARIES, fetchImpl: global.fetch });
+    assert.equal(result.ok, true);
+    assert.equal(result.text, 'Rapport 1.3');
+    assert.deepEqual(result.store.written, []);
+    assert.equal(result.store.read, false);
+    assert.deepEqual(result.store.errors.map((e) => e.split(':')[0]), ['case_text', 'state', 'report']);
+    assert.match(result.store.errors[0], /^case_text: Store unreachable/);
+  });
+});
+
+const { contextFromState } = require('../orchestrator');
+
+const STATE = {
+  id: 'conv-1',
+  case_text: { version: 2, text: 'De casus uit de opslag.' },
+  reports: {
+    '2.1': { version: 1, text: 'Rapport 2.1' },
+    '1.1': { version: 3, text: 'Rapport 1.1 v3' },
+    '1.3': { version: 1, text: 'Rapport 1.3' },
+  },
+  turns: [
+    { seq: 1, role: 'user', text: 'Eerste vraag' },
+    { seq: 2, role: 'assistant', step_id: 'stap1', text: 'Eerste antwoord' },
+  ],
+};
+
+test('contextFromState gives a report the reports up to its substep, and a question every report, in order', () => {
+  const forReport = contextFromState(STATE, { substepId: '1.3', forReport: true, summaries: SUMMARIES });
+  assert.equal(forReport.caseText, 'De casus uit de opslag.');
+  assert.equal(forReport.findings, 'Rapport 1.1 v3\n\nRapport 1.3');
+  assert.equal(forReport.conversation, 'Gebruiker: Eerste vraag\nBeleidskompas: Eerste antwoord');
+  const forQuestion = contextFromState(STATE, { substepId: '1.3', forReport: false, summaries: SUMMARIES });
+  assert.equal(forQuestion.findings, 'Rapport 1.1 v3\n\nRapport 1.3\n\nRapport 2.1');
+  assert.deepEqual(contextFromState(null, { substepId: '1.1', forReport: true, summaries: SUMMARIES }), { caseText: '', findings: '', conversation: '' });
+});
+
+test('with a state in the store, the step gets the case, the reports and the conversation from the store, not from the page', async () => {
+  await withServer('1', async (baseUrl, requests) => {
+    storeState = STATE;
+    const result = await runOrchestrator({
+      input: bridgeInput('Deelstap: 1.3 (Stakeholderanalyse)\nCasus: De casus van de pagina.\nEerdere bevindingen: Oude bevindingen van de pagina.\nGesprek: Gebruiker: oud\nBericht: Welke stakeholders?'),
+      env: STORE_ENV(baseUrl),
+      summaries: SUMMARIES,
+      fetchImpl: global.fetch,
+    });
+    assert.equal(result.store.read, true);
+    const sent = requests.find((r) => r.url === '/webhook/beleidskompas-step-stap1').body;
+    assert.equal(sent.case_text, 'De casus uit de opslag.');
+    assert.equal(sent.findings, 'Rapport 1.1 v3\n\nRapport 1.3\n\nRapport 2.1');
+    assert.equal(sent.conversation, 'Gebruiker: Eerste vraag\nBeleidskompas: Eerste antwoord');
+    assert.equal(sent.message, 'Welke stakeholders?');
+    // The state is read before the user's turn is written, so the turn is not in the conversation twice.
+    const order = requests.map((r) => `${r.method || ''} ${r.url}`.trim());
+    const read = requests.findIndex((r) => r.url.startsWith('/api/beleidskompas/cases/conv-1?'));
+    const turn = requests.findIndex((r) => r.url === '/api/beleidskompas/cases/conv-1/turns');
+    assert.ok(read !== -1 && turn !== -1 && read < turn, order.join(' | '));
+  });
+});
+
+test('a question from LibreChat\'s own chat gets the case and the conversation from the store', async () => {
+  await withServer('1', async (baseUrl, requests) => {
+    storeState = STATE;
+    await runOrchestrator({ input: bridgeInput('En wie zijn de stakeholders dan?'), env: STORE_ENV(baseUrl), summaries: SUMMARIES, fetchImpl: global.fetch });
+    const sent = requests.find((r) => r.url === '/webhook/beleidskompas-step-stap1').body;
+    assert.equal(sent.case_text, 'De casus uit de opslag.');
+    assert.equal(sent.conversation, 'Gebruiker: Eerste vraag\nBeleidskompas: Eerste antwoord');
+    assert.equal(sent.message, 'En wie zijn de stakeholders dan?');
+  });
+});
+
+test('without a case in the store yet, the step gets what the page sent, and that is not an error', async () => {
+  await withServer('1', async (baseUrl, requests) => {
+    const result = await runOrchestrator({ input: bridgeInput('Deelstap: 1.3 (Stakeholderanalyse)\nCasus: De casus van de pagina.\nEerdere bevindingen: Van de pagina.'), env: STORE_ENV(baseUrl), summaries: SUMMARIES, fetchImpl: global.fetch });
+    assert.equal(result.store.read, false);
+    assert.deepEqual(result.store.errors, []);
+    const sent = requests.find((r) => r.url === '/webhook/beleidskompas-step-stap1').body;
+    assert.equal(sent.case_text, 'De casus van de pagina.');
+    assert.equal(sent.findings, 'Van de pagina.');
+  });
 });

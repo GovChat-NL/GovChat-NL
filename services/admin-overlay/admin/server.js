@@ -3461,7 +3461,7 @@ server.on("upgrade", (req, socket, head) => {
 
 // The service only listens once Beleidskompas has its database, so a
 // migration that fails stops the service instead of going unnoticed.
-beleidskompas.start(app).catch((err) => {
+beleidskompas.start(app, { resolveUser: resolveUserFromVerifiedRefreshToken }).catch((err) => {
   console.error(`[govchat-admin] Beleidskompas failed to start: ${err.message}`);
   process.exit(1);
 }).then(() => server.listen(PORT, "0.0.0.0", () => {

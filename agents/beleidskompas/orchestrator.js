@@ -18,12 +18,21 @@
  * The one request it does answer itself is LibreChat's request for a
  * conversation title, which belongs to no step.
  *
+ * The orchestrator is also the one that writes to the Beleidskompas store
+ * (see store-client.js): the case text, the turns of the conversation, a
+ * report and the title. It sees everything that is needed for that: the
+ * conversation and the user from the bridge, what the page sent and what
+ * the step answered. The steps know nothing of the store. A write that
+ * fails never breaks the conversation; it is reported in the `store` field
+ * of the answer, which n8n keeps with the execution.
+ *
  * generate-workflow.js copies these functions, with the ones they use from
  * shared.js, into the Code node of beleidskompas-orchestrator.json, so the
  * code that runs in n8n is this code.
  */
 
 const { ORCHESTRATOR_PROMPT_TEMPLATE, PAGE_MESSAGE_LABELS, extractSuppliedToken, parsePageMessage, requestRaw, callLiteLLM, isTitleRequest, extractConvoCaseText, buildTitleResponse } = require('./shared');
+const { createStoreClient } = require('./store-client');
 
 // Which step id belongs to which webhook path in n8n. The paths are the
 // addresses of the four step workflows.
@@ -105,6 +114,37 @@ async function chooseStep({ message, activeStepId, summaries, routes, env, fetch
   const number = /\d+/.exec(String(raw || ''));
   const chosen = number && steps.find((s) => String(s.nr) === number[0]);
   return chosen && Object.prototype.hasOwnProperty.call(routes || {}, chosen.id) ? chosen.id : activeStepId;
+}
+
+/** What a step gets to work with, from the state of the case in the store:
+ *  the newest case text, the newest report per substep as one text, and
+ *  the conversation. For a typed message every report goes along, so a step
+ *  answering from a later step knows what was worked out there. For a
+ *  report only the reports up to and including the substep go along, the
+ *  way the page did it: a report builds on what came before. The
+ *  conversation is the last turns of the whole case, in the form the steps
+ *  know ("Gebruiker: ..." and "Beleidskompas: ..."). `summaries` gives the
+ *  order of the substeps. */
+function contextFromState(state, { substepId, forReport, summaries }) {
+  const order = (Array.isArray(summaries) ? summaries : []).flatMap((s) => s.substep_ids || []);
+  const reports = (state && state.reports) || {};
+  let ids = Object.keys(reports).sort((a, b) => order.indexOf(a) - order.indexOf(b));
+  if (forReport && substepId) {
+    const upTo = order.indexOf(substepId);
+    ids = ids.filter((id) => upTo === -1 || order.indexOf(id) <= upTo);
+  }
+  const findings = ids
+    .map((id) => String(reports[id].text || '').trim())
+    .filter(Boolean)
+    .join('\n\n');
+  const conversation = ((state && state.turns) || [])
+    .map((t) => `${t.role === 'user' ? 'Gebruiker' : 'Beleidskompas'}: ${String(t.text || '').trim()}`)
+    .join('\n');
+  return {
+    caseText: String((state && state.case_text && state.case_text.text) || '').trim(),
+    findings,
+    conversation,
+  };
 }
 
 /** What a step workflow receives: the parts of the message as fields, plus
@@ -199,6 +239,20 @@ async function runOrchestrator(ctx) {
   const body = raw.body || {};
   const headers = raw.headers || {};
 
+  // What this request writes to the store, and what went wrong doing so.
+  // Nothing is written without the conversation and the user from the
+  // bridge: without them there is no case to write to.
+  const store = createStoreClient({ env, fetchImpl, httpModule, httpsModule, urlModule });
+  const caseId = String(body.sessionId || '').trim();
+  const userId = String(body.userId || '').trim();
+  const stored = { enabled: store.enabled && Boolean(caseId && userId), written: [], errors: [] };
+  async function write(name, call) {
+    if (!stored.enabled) return;
+    const result = await call();
+    if (result.ok) stored.written.push(name);
+    else stored.errors.push(`${name}: ${result.error}`);
+  }
+
   // The same token check as in the step workflows. A wrong token gives a
   // normal answer with ok: false, not a thrown error: n8n can turn a thrown
   // error into an empty response, and then the caller sees nothing at all.
@@ -216,7 +270,9 @@ async function runOrchestrator(ctx) {
   if (isTitleRequest(message) || isTitleRequest(String(body.systemPrompt || ''))) {
     // The title is made from the case itself, not from the labels around it.
     const caseText = parsePageMessage(extractConvoCaseText(message)).caseText;
-    return buildTitleResponse({ titleSource: caseText || message, env, fetchImpl, httpModule, httpsModule, urlModule });
+    const titled = await buildTitleResponse({ titleSource: caseText || message, env, fetchImpl, httpModule, httpsModule, urlModule });
+    await write('title', () => store.setTitle({ caseId, userId, title: titled.answer }));
+    return Object.assign({}, titled, { store: stored });
   }
 
   const parts = parsePageMessage(message);
@@ -238,11 +294,31 @@ async function runOrchestrator(ctx) {
     ? await chooseStep({ message: parts.message, activeStepId, summaries, routes: STEP_ROUTES, env, fetchImpl, httpModule, httpsModule, urlModule })
     : activeStepId;
 
-  return forwardToStep({
+  // The case text goes to the store first, so the state read next has it.
+  // Then the state of the case replaces what the page sent along; what the
+  // page sent is the fallback when the store is off or does not answer.
+  // The user's message is written after the state is read, so the
+  // conversation the step gets does not already contain it. Writing before
+  // the step answers keeps the message even when the step fails.
+  if (parts.caseText) await write('case_text', () => store.setCaseText({ caseId, userId, text: parts.caseText }));
+  let context = parts;
+  stored.read = false;
+  if (stored.enabled) {
+    const state = await store.getState({ caseId, userId, maxTurns: 20 });
+    if (state.ok && state.payload) {
+      context = Object.assign({}, parts, contextFromState(state.payload, { substepId: parts.substepId, forReport: !parts.message, summaries }));
+      stored.read = true;
+    } else if (state.status !== 404) {
+      stored.errors.push(`state: ${state.error}`);
+    }
+  }
+  if (parts.message) await write('user_turn', () => store.addTurn({ caseId, userId, role: 'user', askedFrom: parts.substepId || null, text: parts.message }));
+
+  const result = await forwardToStep({
     baseUrl: env && env.BELEIDSKOMPAS_N8N_BASE_URL,
     path: STEP_ROUTES[stepId],
     stepId,
-    body: buildStepRequest(stepId, parts, body),
+    body: buildStepRequest(stepId, context, body),
     callerToken,
     timeoutMs: 120000,
     fetchImpl,
@@ -250,6 +326,30 @@ async function runOrchestrator(ctx) {
     httpsModule,
     urlModule,
   });
+
+  if (result.ok && result.mode === 'report') {
+    const substepId = String(result.substep_id || parts.substepId || '').trim();
+    if (substepId) {
+      await write('report', () =>
+        store.addReport({
+          caseId,
+          userId,
+          substepId,
+          content: result.structured || {},
+          text: result.answer,
+          citations: result.citations,
+          retrievalTrace: result.retrieval_trace,
+        }),
+      );
+    } else {
+      stored.errors.push('report: no substep to file the report under');
+    }
+  }
+  if (result.ok && parts.message) {
+    await write('assistant_turn', () => store.addTurn({ caseId, userId, role: 'assistant', stepId: result.step_id || stepId, askedFrom: parts.substepId || null, text: result.answer }));
+  }
+
+  return Object.assign({}, result, { store: stored });
 }
 
 module.exports = {
@@ -260,6 +360,7 @@ module.exports = {
   determineStep,
   isPlainChatMessage,
   chooseStep,
+  contextFromState,
   buildStepRequest,
   forwardToStep,
   runOrchestrator,

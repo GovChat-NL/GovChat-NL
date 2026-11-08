@@ -83,8 +83,8 @@ function openBeleidskompas(config, help) {
     openHelpModal(help.data, { appName: help.appName, storageKey: HELP_STORAGE_KEY });
   });
 
-  const { resumeConversation } = setupCases(store);
-  const { requestReport } = setupChat(store);
+  const { resumeConversation, refreshState } = setupCases(store);
+  const { requestReport } = setupChat(store, { refreshState });
   setupStepper(store);
   setupStepCard(store, { specialistTeam: config.specialistTeam, requestReport });
   const { setView } = setupOverview(store);

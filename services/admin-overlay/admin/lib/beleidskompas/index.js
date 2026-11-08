@@ -2,7 +2,9 @@
 
 /**
  * Starts the Beleidskompas store in the admin service: opens the database,
- * runs the migrations, and mounts the endpoints for n8n on `app`.
+ * runs the migrations, and mounts the endpoints on `app`. `resolveUser(req)`
+ * is the service's own check of the LibreChat login, for the endpoints the
+ * page reads.
  *
  * Without BELEIDSKOMPAS_DB_HOST there is no database; the endpoints are
  * mounted anyway and answer 503, and the rest of the service runs as
@@ -14,7 +16,7 @@ const db = require("../../db/connection");
 const { createStore } = require("./store");
 const routes = require("./routes");
 
-async function start(app, env = process.env) {
+async function start(app, { resolveUser } = {}, env = process.env) {
   let store = null;
   const pool = db.openPool(env);
   if (pool) {
@@ -24,7 +26,7 @@ async function start(app, env = process.env) {
   } else {
     console.log("[govchat-admin] Beleidskompas store disabled (BELEIDSKOMPAS_DB_HOST not set)");
   }
-  routes.mount(app, { store, internalToken: String(env.BELEIDSKOMPAS_STORE_TOKEN || "").trim() });
+  routes.mount(app, { store, internalToken: String(env.BELEIDSKOMPAS_STORE_TOKEN || "").trim(), resolveUser });
   return store;
 }
 
