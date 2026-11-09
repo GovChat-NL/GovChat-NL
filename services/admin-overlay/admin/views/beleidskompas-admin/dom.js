@@ -100,9 +100,11 @@ export function bound(obj, key, { multiline = false, rows = 3, type = "text", on
 }
 
 // Small modal asking for one line of text. Resolves to the text, or null when cancelled.
-export function askText({ title, label, placeholder = "", confirm = "OK", required = false }) {
+// value prefills the input, with the cursor at the start.
+export function askText({ title, label, placeholder = "", value = "", confirm = "OK", required = false }) {
   return new Promise((resolve) => {
     const input = h("input", { class: "input", type: "text", placeholder, "aria-label": label, required });
+    input.value = value;
     const dialog = h(
       "dialog",
       { class: "dialog" },
@@ -114,7 +116,8 @@ export function askText({ title, label, placeholder = "", confirm = "OK", requir
         h(
           "div",
           { class: "dialog-actions" },
-          h("button", { class: "btn btn-secondary", value: "cancel", formnovalidate: true }, "Annuleren"),
+          // type "button": Enter submits with the first submit button, which must be the confirm button.
+          h("button", { class: "btn btn-secondary", type: "button", onClick: () => dialog.close("cancel") }, "Annuleren"),
           h("button", { class: "btn btn-primary", value: "ok" }, confirm),
         ),
       ),
@@ -125,6 +128,7 @@ export function askText({ title, label, placeholder = "", confirm = "OK", requir
     });
     document.body.append(dialog);
     dialog.showModal();
+    input.setSelectionRange(0, 0);
   });
 }
 
