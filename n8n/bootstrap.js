@@ -6,7 +6,9 @@ const fs = require('fs');
 const path = require('path');
 
 const N8N_URL = 'http://n8n:5678';
-const WORKFLOWS_DIR = '/workspace/agents/n8n/workflows';
+const WORKFLOWS_DIR = String(
+  process.env.AGENTS_LOCAL_WORKFLOWS_DIR || '/workspace/agents/n8n/workflows',
+).trim();
 const MARKER_FILE = '/home/node/.n8n/.govchat-seeded-v8';
 const ORCHESTRATOR_ID = 'govchat-orchestrator-litellm';
 const TOPDESK_SEARCH_ID = '3d74c6d5-0475-4b79-9f11-2a876fd1c002';

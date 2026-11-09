@@ -43,9 +43,8 @@ geen veilige vervanging voor het vaststellen van die bron.
 
 Verander `GOVCHAT_DATA_ROOT` alleen als de data op de nieuwe locatie staat en
 rechten/back-ups zijn geregeld; een nieuwe lege directory is geen datamigratie.
-MongoDB gebruikt nu het named volume `mongodb-data`, niet een bind mount onder
-`GOVCHAT_DATA_ROOT`. Volg [de upgrade-instructies](../UPGRADE.md) voor het overzetten
-van bestaande Mongo-data en neem het volume afzonderlijk op in back-ups.
+MongoDB behoudt de bestaande bindmount onder de dataroot. De startpagina en
+Beleidskompas vereisen geen opslagmigratie; zie [de upgrade-instructies](../UPGRADE.md).
 Wijzig een database-image pas na een back-up en controle op ondersteunde
 upgrade/downgradepaden. Een nieuw instelbaar image impliceert niet dat iedere
 databaseversie is getest.
@@ -132,7 +131,7 @@ Gebruik de normale modus als Beleidskompas beschikbaar moet zijn.
 
 Dit is een deploymentbrede UI-/featurekeuze, geen autorisatiegrens: verborgen
 knoppen vervangen geen backendrechten of SSO-/ingressbeleid. De selectors zijn
-gericht op de gepinde LibreChat v0.8.7; controleer beide modi bij upgrades.
+gericht op de gepinde LibreChat v0.8.8; controleer beide modi bij upgrades.
 De optionele browsertest `scripts/test-minimal-chat.py` vereist lokale Docker,
 Playwright/Chromium en een bestaande admin. Gebruik uitsluitend een vertrouwde
 eigen test-URL: de test gebruikt tijdelijk diens toegangstoken in het geheugen.

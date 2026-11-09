@@ -9,12 +9,12 @@ const {
 } = require('../scripts/librechat-tool-event-overlay');
 const { createLibreChatStepEventDecoder } = require('../scripts/librechat-tool-event-protocol');
 const { processEventStream } = require('../scripts/n8n-processEventStream.patched');
+const librechatRoot = process.env.GOVCHAT_TEST_LIBRECHAT_ROOT ||
+  (fs.existsSync('/app/api/server/controllers/agents/callbacks.js') ? '/app' :
+    path.resolve(__dirname, '../../LibreChat'));
 
 test('overlay source patch is valid, idempotent, and routes decoded events through handlers', () => {
-  const target = path.resolve(
-    __dirname,
-    '../../LibreChat/api/server/controllers/agents/callbacks.js',
-  );
+  const target = path.join(librechatRoot, 'api/server/controllers/agents/callbacks.js');
   const original = fs.readFileSync(target, 'utf8');
   const patched = patchCallbacksSource(original);
 
@@ -35,10 +35,7 @@ test('overlay source patch is valid, idempotent, and routes decoded events throu
 });
 
 test('initialize overlay provides message content parts for native run-step indexing', () => {
-  const target = path.resolve(
-    __dirname,
-    '../../LibreChat/api/server/services/Endpoints/agents/initialize.js',
-  );
+  const target = path.join(librechatRoot, 'api/server/services/Endpoints/agents/initialize.js');
   const original = fs.readFileSync(target, 'utf8');
   const patched = patchInitializeSource(original);
 

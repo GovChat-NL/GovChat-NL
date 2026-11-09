@@ -90,15 +90,15 @@ tag-upgrade:
    naar een expliciet gekozen release en haal die image op.
 2. Voer de unit-tests uit met `node tests/translations/run-tests.js`.
 3. Test de kandidaat-image tegen zijn **eigen echte** gebundelde locale en
-   `i18next`-dependency (PowerShell vanuit `GovChat-NL-LibreChat`):
+   `i18next`-dependency (PowerShell vanuit de GovChat-NL-werkboom):
 
    ```powershell
    docker run --rm -v "${PWD}:/govchat:ro" --entrypoint node `
-     registry.librechat.ai/danny-avila/librechat:v0.8.7 `
+     registry.librechat.ai/librechat-ai/librechat:v0.8.8 `
      /govchat/tests/translations/run-image-loader-test.js
    ```
 
-   Vervang `v0.8.7` bij een upgrade door de kandidaat-tag. De controle importeert
+   Vervang `v0.8.8` bij een upgrade door de kandidaat-tag. De controle importeert
    de gepatchte echte locale-module, geeft
    `module.t.default` door aan `i18next` en controleert de v0.8.7-legacy-key
    `com_ui_good_evening` op de UI-uitkomst `Goedenavond, Jeannot`.

@@ -60,7 +60,9 @@ test('regenerating the moved orchestrator does not create duplicate utility expo
   try {
     const scripts = path.join(temporary, 'scripts');
     fs.mkdirSync(scripts);
-    for (const file of ['update-orchestrator-workflow.js', 'orchestrator-utility-workflow.js']) {
+    for (const file of ['update-orchestrator-workflow.js', 'orchestrator-utility-workflow.js',
+      'orchestrator-document-workflow.js', 'n8n-document-context.js',
+      'orchestrator-image-workflow.js', 'orchestrator-prompt-workflow.js']) {
       fs.copyFileSync(path.resolve(__dirname, '../../scripts', file), path.join(scripts, file));
     }
     const workflowsDir = path.join(temporary, 'agents/n8n/workflows');
@@ -71,6 +73,15 @@ test('regenerating the moved orchestrator does not create duplicate utility expo
     const ids = workflows.flatMap(entry => entry.ids);
     assert.equal(new Set(ids).size, ids.length);
     assert.equal(workflows.filter(entry => entry.file.startsWith('algemeen/govchat-utility-')).length, 0);
+    const template = JSON.parse(fs.readFileSync(path.join(workflowsDir, 'algemeen/orchestrator-litellm.json')))[0];
+    const detector = template.nodes.find(node => node.id === 'DetectImageMessages');
+    assert.match(detector.parameters.jsCode, /api\/internal\/orchestrator\/prompt/);
+    assert.match(detector.parameters.jsCode, /role: 'system', content: orchestratorPrompt/);
+    assert.ok(template.nodes.some(node => node.id === 'ExtractDocumentContext'));
+    const agent = template.nodes.find(node => node.id === 'AIAgentOrchestrator');
+    assert.match(agent.parameters.options.systemMessage, /const organizationPrompt = \$json\.orchestratorPrompt/);
+    const imageTool = template.nodes.find(node => node.name === 'image_generation_tool');
+    assert.match(JSON.stringify(imageTool.parameters), /Webhook Orchestrator/);
   } finally {
     fs.rmSync(temporary, { recursive: true, force: true });
   }

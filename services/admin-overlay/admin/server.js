@@ -7,6 +7,10 @@ const path = require("path");
 const sharp = require("sharp");
 const { WebSocket, WebSocketServer } = require("ws");
 const { environmentDefaults, normalizeConfig, mergeConfig, atomicWriteJSON } = require("./lib/orchestrator-config");
+const { createPromptStore } = require("./lib/orchestrator-prompt");
+const { registerPromptRoutes } = require("./lib/orchestrator-prompt-routes");
+const { createNameStore } = require("./lib/orchestrator-name");
+const { registerNameRoutes } = require("./lib/orchestrator-name-routes");
 const { createUtilityHandler } = require("./lib/utility-tools");
 
 const app = express();
@@ -261,6 +265,23 @@ function extractTranscriptFromRealtimeEvent(evt) {
 }
 
 // ── Middleware ──────────────────────────────────────────────────────
+app.use("/api/orchestrator/name", (req, res, next) => {
+  res.set("Cache-Control", "no-store");
+  next();
+}, express.json({ limit: "2kb", strict: false }));
+app.use("/api/orchestrator/name", (err, req, res, next) => {
+  if (!err) return next();
+  res.status(err.status === 413 ? 413 : 400).json({ error: "Ongeldige of te grote JSON-invoer" });
+});
+app.use(["/api/orchestrator/prompt", "/api/internal/orchestrator/prompt"], (req, res, next) => {
+  res.set("Cache-Control", "no-store");
+  res.set("Pragma", "no-cache");
+  next();
+}, express.json({ limit: "200kb", strict: false }));
+app.use(["/api/orchestrator/prompt", "/api/internal/orchestrator/prompt"], (err, req, res, next) => {
+  if (!err) return next();
+  return res.status(err.status === 413 ? 413 : 400).json({ error: "Ongeldige of te grote JSON-invoer" });
+});
 app.use("/api/orchestrator/tools", express.json({ limit: "16kb", strict: false }));
 app.use("/api/orchestrator/tools", (err, req, res, next) => {
   if (!err) return next();
@@ -2420,6 +2441,17 @@ function sendView(res, name, vars = {}) {
 }
 
 // ── Public API endpoints (no auth) ────────────────────────────────
+registerNameRoutes(app, {
+  store: createNameStore({ dataDir: DATA_DIR, publishDir: PUBLISH_DIR }),
+  isAuthenticated,
+});
+registerPromptRoutes(app, {
+  store: createPromptStore({ dataDir: DATA_DIR, publishDir: PUBLISH_DIR }),
+  isAuthenticated,
+  token: CRAWLER_INTERNAL_TOKEN,
+  extractToken,
+});
+
 app.get("/api/config/help-content", (req, res) => {
   const data = readJSON("help-content.json");
   if (!data) return res.status(404).json({ error: "Not found" });
@@ -2631,7 +2663,7 @@ app.get("/crawler-editor", requireAuth, (req, res) => {
 
 app.get("/orchestrator-editor", requireAuth, (req, res) => {
   sendView(res, "orchestrator-editor.html", {
-    orchestratorData: JSON.stringify(readOrchestratorConfig()),
+    orchestratorData: JSON.stringify(readOrchestratorConfig()).replace(/</g, "\\u003c"),
   });
 });
 

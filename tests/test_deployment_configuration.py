@@ -12,6 +12,8 @@ import unittest
 import uuid
 from pathlib import Path
 
+from scripts.librechat_release import read_pins
+
 
 ROOT = Path(__file__).resolve().parents[1]
 IMAGE = os.environ.get("GOVCHAT_TEST_NGINX_IMAGE", "nginx:1.28-alpine")
@@ -45,6 +47,12 @@ class ComposeConfigurationTests(unittest.TestCase):
         self.assertEqual(services["librechat-proxy"]["environment"]["GOVCHAT_BLOCK_PASSWORD_AUTH"], "false")
         self.assertEqual(services["admin-panel"]["environment"]["API_SERVER_URL"], "http://librechat-proxy:3080")
         self.assertFalse(config["networks"]["librechat-net"].get("external", False))
+
+    def test_librechat_and_retention_use_the_same_official_release(self):
+        services = self.config("docker-compose.override.yml")["services"]
+        image, _ = read_pins((ROOT / "docker-compose.yml").read_text())
+        self.assertEqual(services["librechat"]["image"], image)
+        self.assertEqual(services["govchat-retention"]["image"], image)
 
     def test_portable_paths_network_image_and_context(self):
         config = self.config(GOVCHAT_DATA_ROOT="/srv/govchat-test", GOVCHAT_NETWORK_EXTERNAL="true",
@@ -85,14 +93,31 @@ class ComposeConfigurationTests(unittest.TestCase):
         config = self.config(GOVCHAT_DATA_ROOT="/srv/govchat-test")
         services = config["services"]
         mongo = [v for v in services["mongodb"]["volumes"] if v["target"] == "/data/db"]
-        self.assertEqual([(v["type"], v["source"]) for v in mongo], [("volume", "mongodb-data")])
-        self.assertIn("mongodb-data", config["volumes"])
-        self.assertNotIn("AGENTS_LOCAL_WORKFLOWS_DIR", services["n8n-bootstrap"]["environment"])
+        self.assertEqual([(v["type"], v["source"]) for v in mongo], [("bind", "/srv/govchat-test/data/mongodb")])
+        self.assertNotIn("mongodb-data", config["volumes"])
+        self.assertEqual(services["n8n-bootstrap"]["environment"]["AGENTS_LOCAL_WORKFLOWS_DIR"],
+                         "/workspace/agents/n8n/workflows")
         mounts = {v["target"]: v for v in services["librechat-proxy"]["volumes"]}
         self.assertTrue(mounts["/opt/librechat/overlay/src"]["read_only"])
         self.assertTrue(mounts["/opt/govchat/nginx/librechat-overlay.conf"]["read_only"])
         self.assertNotIn("/etc/nginx/conf.d/default.conf", mounts)
         self.assertEqual(mounts["/opt/librechat/overlay/publish"]["source"], "/srv/govchat-test/overlay/publish")
+
+    def test_native_footer_default_override_empty_and_minimal_ui(self):
+        warning = "GovChat-NL kan fouten maken. Controleer belangrijke informatie."
+        for minimal in ("false", "true"):
+            defaults = self.config("docker-compose.override.yml", GOVCHAT_MINIMAL_UI=minimal)
+            self.assertEqual(defaults["services"]["librechat"]["environment"]["CUSTOM_FOOTER"], warning)
+        cases = [
+            ({"APP_TITLE": "Voorbeeld Chat"}, "Voorbeeld Chat kan fouten maken. Controleer belangrijke informatie."),
+            ({"CUSTOM_FOOTER": "Eigen waarschuwing | Controleer bronnen"}, "Eigen waarschuwing | Controleer bronnen"),
+            ({"CUSTOM_FOOTER": ""}, ""),
+            ({"CUSTOM_FOOTER": "<b>letterlijk</b>\nTweede regel"}, "<b>letterlijk</b>\nTweede regel"),
+        ]
+        for settings, expected in cases:
+            with self.subTest(settings=settings):
+                config = self.config(**settings)
+                self.assertEqual(config["services"]["librechat"]["environment"]["CUSTOM_FOOTER"], expected)
 
     def test_sso_policy_is_coherent_even_with_dev_seeder_enabled(self):
         config = self.config("docker-compose.override.yml", "docker-compose.sso-only.yml",

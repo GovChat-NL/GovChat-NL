@@ -214,7 +214,7 @@ if (imageParts > 0) {
   try {
     const base = String($env.LITELLM_URL || 'http://litellm:4000').replace(/\\\/$/, '') + '/v1/chat/completions';
     const apiKey = String($env.LITELLM_API_KEY || $env.N8N_LITELLM_IMAGE_API_KEY || '').trim();
-    const model = String($env.N8N_ORCHESTRATOR_VISION_MODEL || 'govchat-default').trim() || 'govchat-default';
+    const model = String($env.N8N_ORCHESTRATOR_VISION_MODEL || 'gpt-5.4').trim() || 'gpt-5.4';
 
     if (!apiKey) {
       visionCallStatus = 'no_api_key';
@@ -226,7 +226,7 @@ if (imageParts > 0) {
           'content-type': 'application/json',
           authorization: 'Bearer ' + apiKey,
         },
-        body: JSON.stringify({ model, messages: normalizedMessages }),
+        body: JSON.stringify({ model, messages: normalizedMessages, temperature: 0.2 }),
       });
 
       if (r.ok) {
@@ -321,8 +321,11 @@ agent.parameters.options.systemMessage = originalSystem.includes('[FINAL_ANSWER]
 
 const utilityBuilder = require('./orchestrator-utility-workflow');
 utilityBuilder.applyUtilityTools(wf);
-// Utility exports added on dev remain at the workflow root. Do not regenerate
-// duplicates in algemeen merely because the orchestrator moved there on PR13.
+require('./orchestrator-document-workflow').applyDocumentContext(wf);
+require('./orchestrator-image-workflow').applyImageToolInputs(wf);
+require('./orchestrator-prompt-workflow').configurePromptManagement(wf);
+// Keep dev's utility workflow IDs at their existing root paths. Moving the
+// orchestrator into algemeen must not create duplicate bootstrap exports.
 const utilityWorkflowsDir = require('path').resolve(__dirname, '../agents/n8n/workflows');
 for (const definition of utilityBuilder.definitions) {
   const utility = utilityBuilder.utilityWorkflow(definition);

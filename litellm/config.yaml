@@ -33,16 +33,23 @@ model_list:
       api_version: os.environ/AZURE_OPENAI_API_VERSION
       api_key: os.environ/AZURE_OPENAI_API_KEY
 
+  - model_name: gpt-5.4
+    litellm_params:
+      model: azure/gpt-5.4
+      api_base: os.environ/AZURE_OPENAI_API_BASE
+      api_version: os.environ/AZURE_OPENAI_API_VERSION
+      api_key: os.environ/AZURE_OPENAI_API_KEY
+
   - model_name: govchat-default
     litellm_params:
-      model: os.environ/AZURE_OPENAI_CHAT_MODEL
+      model: azure/gpt-5.4
       api_base: os.environ/AZURE_OPENAI_API_BASE
       api_version: os.environ/AZURE_OPENAI_API_VERSION
       api_key: os.environ/AZURE_OPENAI_API_KEY
 
   - model_name: govchat-versimpelaar
     litellm_params:
-      model: os.environ/AZURE_OPENAI_CHAT_MODEL
+      model: azure/gpt-5.4
       api_base: os.environ/AZURE_OPENAI_API_BASE
       api_version: os.environ/AZURE_OPENAI_API_VERSION
       api_key: os.environ/AZURE_OPENAI_API_KEY

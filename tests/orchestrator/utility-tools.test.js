@@ -40,6 +40,25 @@ test("config rejects non-booleans, malformed tools/objects and invalid IANA time
   assert.throws(() => normalizeConfig({ tools: { time: "true" } }));
 });
 
+test("document limits have higher defaults and validated partial admin saves preserve every other setting", () => {
+  assert.equal(config.documents.max_chars, 1000000);
+  assert.equal(config.documents.timeout_ms, 60000);
+  const legacy = normalizeConfig({ tools: { time: false }, image_data_url_max_chars: 900000 });
+  const changed = mergeConfig({ documents: { max_chars: 2000000, max_count: 20 } }, legacy);
+  assert.equal(changed.documents.max_chars, 2000000);
+  assert.equal(changed.documents.max_bytes, 10485760);
+  assert.equal(changed.documents.max_count, 20);
+  assert.equal(changed.tools.time, false);
+  assert.equal(changed.image_data_url_max_chars, 900000);
+  assert.equal(mergeConfig({ tools: { calculator: false } }, changed).documents.max_chars, 2000000);
+  for (const documents of [null, [], { max_chars: null }, { max_chars: "1000000" }, { max_chars: 4000001 },
+    { max_bytes: 20971521 }, { max_count: 0 }, { timeout_ms: 120001 }, { unknown: 1 }]) {
+    assert.throws(() => mergeConfig({ documents }, changed));
+  }
+  assert.equal(environmentDefaults({ N8N_DOCUMENT_MAX_CHARS: "2500000" }).documents.max_chars, 2500000);
+  assert.throws(() => environmentDefaults({ N8N_DOCUMENT_MAX_CHARS: "unlimited" }));
+});
+
 test("policy publication replaces a full document atomically without leftover temporary files", () => {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), "govchat-policy-test-"));
   try {
@@ -302,22 +321,31 @@ test("authenticated handler rejects missing/bad token, disabled policy and calcu
   assert.equal(safeTokenEqual("secret-more", "secret"), false);
 });
 
-test("editor renders/persists all five booleans and timezone without losing image settings", () => {
+test("editor renders/persists all five booleans and timezone without losing image settings", async () => {
   const html = fs.readFileSync(path.join(__dirname, "../../services/admin-overlay/admin/views/orchestrator-editor.html"), "utf8");
   const elements = new Map();
-  for (const id of ["orchestrator-seed", "orchestratorImageDataUrlMaxChars", "orchestratorImageMaxResolutionPx", "orchestratorDefaultTimezone", ...Object.keys(config.tools).map((tool) => "tool-" + tool)]) elements.set(id, { value: "", checked: false, textContent: id === "orchestrator-seed" ? JSON.stringify({ ...config, tools: { ...config.tools, time: false } }) : "" });
+  for (const id of ["displayName", "nameSave", "nameReset", "nameStatus", "masterPrompt", "promptSave", "promptReset", "promptPreview", "promptStatus", "masterPromptPreview", "orchestrator-seed", "orchestratorImageDataUrlMaxChars", "orchestratorImageMaxResolutionPx", "orchestratorDefaultTimezone", "documentMaxChars", "documentMaxBytes", "documentMaxCount", "documentTimeoutMs", ...Object.keys(config.tools).map((tool) => "tool-" + tool)]) {
+    let value = "";
+    elements.set(id, { get value() { return value; }, set value(next) { value = String(next); }, checked: false,
+      checkValidity: () => Number.isSafeInteger(Number(value)) && Number(value) > 0,
+      textContent: id === "orchestrator-seed" ? JSON.stringify({ ...config, tools: { ...config.tools, time: false } }) : "" });
+  }
   const document = { getElementById: (id) => elements.get(id) };
   const scripts = [...html.matchAll(/<script>([\s\S]*?)<\/script>/g)].map((match) => match[1]).join("\n");
-  const context = vm.createContext({ document });
+  const context = vm.createContext({ document, fetch: async url => ({ ok: true, json: async () => url.endsWith('/name') ? { display_name: 'Testnaam', source: 'default' } : ({ prompt: "Testprompt", source: "default" }) }) });
   vm.runInContext(scripts, context);
+  await vm.runInContext("loadPrompt()", context);
   assert.equal(elements.get("tool-time").checked, false);
   assert.equal(elements.get("tool-calculator").checked, true);
   elements.get("tool-nos_news").checked = false;
   elements.get("orchestratorDefaultTimezone").value = "UTC";
+  elements.get("documentMaxChars").value = "2000000";
   vm.runInContext("readForm()", context);
   const saved = JSON.parse(vm.runInContext("JSON.stringify(orchestratorData)", context));
   assert.equal(saved.tools.nos_news, false);
   assert.equal(saved.tools.time, false);
   assert.equal(saved.default_timezone, "UTC");
   assert.equal(saved.image_data_url_max_chars, config.image_data_url_max_chars);
+  assert.equal(saved.documents.max_chars, 2000000);
+  assert.equal(saved.documents.max_count, 10);
 });

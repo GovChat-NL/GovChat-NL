@@ -12,7 +12,7 @@ const { applyMetadata } = require('../../scripts/apply-branding-metadata');
 test('the modular overlay retains deployment branding instead of the retired published loader', () => {
   const source = fs.readFileSync(path.resolve(__dirname, '../../overlay/src/overlay.js'), 'utf8');
   assert.match(source, /appName: window\.GOVCHAT_BRANDING\?\.appName \|\| document\.title/);
-  assert.match(source, /footerBrandText: window\.GOVCHAT_BRANDING\?\.appName/);
+  assert.doesNotMatch(source, /footerBrandText|applyFooterBranding/);
   const renderer = fs.readFileSync(path.resolve(__dirname, '../../scripts/render-proxy-config.sh'), 'utf8');
   assert.match(renderer, /type="module" src="\/govchat-overlay\/src\/overlay\.js"/);
   assert.doesNotMatch(renderer, /\/govchat-overlay\/loader\.js/);

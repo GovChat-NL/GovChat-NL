@@ -16,17 +16,30 @@ GovChat-NL is een open platform waarmee Nederlandse overheidsorganisaties AI-toe
 - **Verantwoord werken met AI** met aandacht voor AI-geletterdheid en de Nederlandse overheidscontext; zie de [AI-geletterdheidshandleiding](https://govchat-nl.github.io/docs/ai-geletterdheid).
 - **De toepassing zelf beheren** met Docker Compose, inclusief de configuratie, verbindingen en workflow-import.
 
+### Inhoudelijke orkestrator-masterprompt beheren
+
+Beheer de inhoudelijke masterprompt via **GovChat Admin → Orchestrator**, met veilige tekstpreview, actieve bron, opslaan en reset. Voorrang: private beheerdersoverride → omgevingsvariabele → bestaande GovChat-standaard. Beheerderswijzigingen werken vanaf het volgende verzoek; technische instructies en integraties blijven behouden. Zie [promptbeheer, beveiliging en gerichte uitrol](docs/orchestrator-prompt-management.md).
+
 ### Live aanroepen van n8n-hulpmiddelen in de chat
 
 Wanneer een n8n-agent tijdens een gesprek een hulpmiddel gebruikt, toont LibreChat die aanroep direct als een ingebouwde kaart in de chat. De gebruiker ziet het hulpmiddel starten, de voortgang en het resultaat of de foutmelding; de gewone tekst van de assistent blijft leesbaar. Dit werkt door de samenwerking tussen de GovChat-bridge, n8n en de LibreChat-interface.
 
 De architectuur en controlepunten staan in de uitleg over [live aanroepen van hulpmiddelen](docs/live-tool-calling.md).
 
+### Waarschuwing onder de chatinvoer
+
+De ingebouwde LibreChat-footer toont standaard **GovChat-NL kan fouten maken. Controleer belangrijke informatie.**
+Configureer de tekst via CUSTOM_FOOTER; een expliciet lege waarde verbergt de hoofdtekst.
+Er is geen aparte DOM-overlay of admin-aan/uit-schakelaar nodig. Zie [footerconfiguratie en migratie](docs/chat-disclaimer.md).
+
 De standaard orkestrator heeft ook vijf afzonderlijk configureerbare hulpmiddelen:
 de standaard n8n-rekenmachine, NOS- en L1-nieuws per RSS-categorie, feestdagen via
 OpenHolidays API en tijd-/datumrekenen met tijdzones en zomer-/wintertijd.
 Ze staan standaard aan en worden beheerd via de Orchestrator-pagina van het
 beheerportaal. Zie [configuratie, ingebruikname en tests](docs/orchestrator-utility-tools.md).
+
+PDF- en documentbijlagen worden vóór de n8n-chatagent via Apache Tika omgezet naar
+begrensde tekstcontext. Zie [documentondersteuning, veilige uitrol en regressietests](docs/chat-document-context.md).
 
 ## Verbonden systemen
 
@@ -99,3 +112,8 @@ defaults, migratie van lokale overrides en de bijbehorende tests.
 - [Bridge voor n8n](https://github.com/GovChat-NL/n8n-openai-bridge)
 
 De oude OpenWebUI-installatie staat in [GovChat-NL-legacy](https://github.com/GovChat-NL/GovChat-NL-legacy). Gesprekken, accounts en configuratie uit die installatie worden niet automatisch naar LibreChat overgezet.
+# Chatweergavenaam
+
+De publieke orkestratornaam is configureerbaar via N8N_ORCHESTRATOR_DISPLAY_NAME en GovChat Admin → Orchestrator.
+Adminoverride gaat vóór omgeving en generieke standaard; reset verwijdert de override. Dit verandert geen model-ID of masterprompt.
+Zie [naambeheer en veilige uitrol](docs/orchestrator-display-name.md).

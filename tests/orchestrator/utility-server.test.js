@@ -49,7 +49,7 @@ async function startServer(t, { token = "utility-test-token", legacy = { image_d
     const result = await fetch(base + route, { method: "POST", headers: { "content-type": "application/json", ...headers }, body: JSON.stringify(body) });
     return { status: result.status, body: await result.json() };
   };
-  return { base, data, publish, cookie, policy, request };
+  return { base, data, publish, cookie, policy, request, logs: () => logs };
 }
 
 test('PR13 publication keeps policy and app config but never publishes code or private feedback', async (t) => {
@@ -138,6 +138,58 @@ test("real route rejects every utility call when internal token is not configure
   const result = await server.request("/api/orchestrator/tools/time", {}, { authorization: "Bearer guessed" });
   assert.equal(result.status, 503);
   assert.equal(result.body.error.code, "AUTH_NOT_CONFIGURED");
+});
+
+test("admin saves document limits into the live publication and the next document turn consumes them", async (t) => {
+  const server = await startServer(t);
+  const { normalizeDocumentContext } = require("../../scripts/n8n-document-context");
+  const { createTextPdf } = require("../fixtures/document-pdf");
+  const input = { body: { messages: [{ role: "user", content: [{ type: "file", file: {
+    filename: "synthetic-policy.pdf", file_data: "data:application/pdf;base64," + createTextPdf().toString("base64"),
+  } }] }] } };
+  const env = { N8N_ORCHESTRATOR_POLICY_FILE: path.join(server.publish, "orchestrator-config.json") };
+  const text = "A".repeat(214790);
+  const run = async () => (await normalizeDocumentContext(input, env, async () => text))[0].json;
+  assert.equal((await run()).documentContext.status, "ok");
+  const before = server.policy();
+  const saved = await server.request("/api/orchestrator/config", { documents: { max_chars: 120000 } }, { cookie: server.cookie });
+  assert.equal(saved.status, 200);
+  assert.equal((await run()).documentContext.code, "TEXT_TOO_LARGE");
+  assert.deepEqual(server.policy().tools, before.tools);
+  assert.equal(server.policy().image_data_url_max_chars, before.image_data_url_max_chars);
+  assert.equal((await server.request("/api/orchestrator/config", { documents: { max_chars: 4000001 } }, { cookie: server.cookie })).status, 400);
+  assert.equal(server.policy().documents.max_chars, 120000);
+  await server.request("/api/orchestrator/config", { documents: { max_chars: 2000000 } }, { cookie: server.cookie });
+  assert.equal((await run()).documentContext.status, "ok");
+  const page = await fetch(server.base + "/orchestrator-editor", { headers: { cookie: server.cookie } });
+  const html = await page.text();
+  for (const id of ["documentMaxChars", "documentMaxBytes", "documentMaxCount", "documentTimeoutMs"]) assert.ok(html.includes(`id="${id}"`));
+});
+
+test("full server keeps prompt out of public API, HTML seeds, publications and logs", async t => {
+  const server = await startServer(t);
+  const prompt = "PRIVATE-CANARY\n</script><img src=x onerror=alert(1)>\n${notExecuted()}";
+  const headers = { cookie: server.cookie, "content-type": "application/json", origin: server.base, "sec-fetch-site": "same-origin" };
+  const saved = await fetch(server.base + "/api/orchestrator/prompt", { method: "POST", headers, body: JSON.stringify({ prompt }) });
+  assert.equal(saved.status, 200);
+  assert.equal(saved.headers.get("cache-control"), "no-store");
+  assert.equal((await saved.json()).prompt, prompt);
+  const internal = await fetch(server.base + "/api/internal/orchestrator/prompt", { headers: { authorization: "Bearer utility-test-token" } });
+  assert.equal((await internal.json()).prompt, prompt);
+  for (const route of ["/api/config/orchestrator", "/orchestrator-editor"]) {
+    const response = await fetch(server.base + route, { headers: { cookie: server.cookie } });
+    assert.ok(!(await response.text()).includes("PRIVATE-CANARY"));
+  }
+  for (const file of fs.readdirSync(server.publish)) {
+    const target = path.join(server.publish, file);
+    if (fs.statSync(target).isFile()) assert.ok(!fs.readFileSync(target, "utf8").includes("PRIVATE-CANARY"));
+  }
+  assert.ok(!server.logs().includes("PRIVATE-CANARY"));
+  for (const body of ["{", JSON.stringify({ prompt: "x".repeat(210000) })]) {
+    const response = await fetch(server.base + "/api/orchestrator/prompt", { method: "POST", headers, body });
+    assert.ok([400, 413].includes(response.status));
+    assert.equal(response.headers.get("cache-control"), "no-store");
+  }
 });
 
 test("startup with corrupt stored config invalidates an obsolete published policy and exits closed", async () => {
