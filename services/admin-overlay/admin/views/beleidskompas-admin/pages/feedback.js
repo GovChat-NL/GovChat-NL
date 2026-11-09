@@ -76,8 +76,8 @@ export function renderFeedback({ store, render }) {
 function matchesTemplate(item, filter) {
   if (filter === "all") return true;
   const [kind, tplId, versionId] = filter.split(":");
-  if (item.template_id !== tplId) return false;
-  return kind === "t" || item.version_id === versionId;
+  if (String(item.template_id) !== tplId) return false;
+  return kind === "t" || String(item.version_id) === versionId;
 }
 
 function matchesPeriod(item, ui) {
@@ -126,8 +126,8 @@ function describe(item, store) {
 function subtitleFor(filter, store) {
   if (filter === "all") return "Alle templates";
   const [, tplId, versionId] = filter.split(":");
-  const tpl = store.templates.find((t) => t.id === tplId);
-  return versionId ? `Template ${tpl?.name} · ${versionLabel(tpl, versionId)}` : `Template ${tpl?.name} · alle versies`;
+  const tpl = store.templates.find((t) => String(t.id) === tplId);
+  return versionId ? `Template ${tpl?.name} · ${versionLabel(tpl, Number(versionId))}` : `Template ${tpl?.name} · alle versies`;
 }
 
 function stat(label, value, iconName) {

@@ -3,7 +3,7 @@
 
 COMPOSE := docker compose
 
-.PHONY: help env up up-n8n down logs reload-workflows rebuild-admin check test-beleidskompas generate-stap1
+.PHONY: help env up up-n8n down logs reload-workflows rebuild-admin check test-beleidskompas test-admin generate-stap1
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z0-9_-]+:.*## ' $(MAKEFILE_LIST) | sed -E 's/:.*## /: /' | sort
@@ -40,6 +40,11 @@ check: ## Validate the compose file, the workflow exports and the scripts (no ru
 test-beleidskompas: ## Run the Beleidskompas unit tests: step 1 logic and the page (no Docker needed)
 	cd agents/beleidskompas && node --test
 	cd overlay/src/apps/beleidskompas && node --test
+
+test-admin: env ## Run the admin store tests inside the stack, against the pgvector database (starts pgvector if needed)
+	$(COMPOSE) --profile admin-overlay run --rm --build \
+		-v $(CURDIR)/services/admin-overlay/admin/beleidskompas:/app/beleidskompas:ro \
+		govchat-overlay-admin sh -c 'BELEIDSKOMPAS_TEST_DATABASE_URL=$$BELEIDSKOMPAS_DATABASE_URL node --test'
 
 generate-stap1: ## Regenerate beleidskompas-step-stap1.json from agents/beleidskompas
 	cd agents/beleidskompas && node generate-workflow.js

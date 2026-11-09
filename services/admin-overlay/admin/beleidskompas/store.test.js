@@ -1,0 +1,187 @@
+const { test, before, after } = require("node:test");
+const assert = require("node:assert/strict");
+const { createDb } = require("./db");
+const { createStore } = require("./store");
+
+const url = process.env.BELEIDSKOMPAS_TEST_DATABASE_URL;
+const opts = url ? {} : { skip: "BELEIDSKOMPAS_TEST_DATABASE_URL not set" };
+let db, store;
+
+before(async () => {
+  if (!url) return;
+  const admin = createDb({ connectionString: url, schema: "public" });
+  await admin.query("DROP SCHEMA IF EXISTS beleidskompas_store_test CASCADE");
+  await admin.end();
+  db = createDb({ connectionString: url, schema: "beleidskompas_store_test" });
+  await db.applySchema();
+  store = createStore(db);
+});
+after(async () => { if (db) await db.end(); });
+
+const doc = (text) => store.upsertDocument({ filename: `${text}.txt`, contentType: "text/plain", bytes: Buffer.from(text), previewText: text });
+
+test("createTemplate writes version 1 and saveVersion numbers upward", opts, async () => {
+  const { template, version } = await store.createTemplate({ name: "A", snapshot: { title: "A", steps: [] }, documentIds: [], note: "init" });
+  assert.equal(version.version, 1);
+  const v2 = await store.saveVersion(template.id, { title: "A2", steps: [] }, [], "edit");
+  assert.equal(v2.version.version, 2);
+  assert.equal(v2.isLive, false);
+  const [t] = await store.listTemplates();
+  assert.equal(t.live_version_id, v2.version.id);
+  assert.equal(t.versions[0].is_live, true);
+  assert.equal(t.versions[1].is_live, false);
+  assert.deepEqual(t.versions[0].snapshot, { title: "A2", steps: [] });
+  assert.equal(typeof t.versions[0].published_at, "string");
+});
+
+test("upload reuses bytes by hash and pins documents per version", opts, async () => {
+  const a = await store.upsertDocument({ filename: "a.txt", contentType: "text/plain", bytes: Buffer.from("same"), previewText: "same" });
+  const b = await store.upsertDocument({ filename: "b.txt", contentType: "text/plain", bytes: Buffer.from("same"), previewText: "same" });
+  assert.equal(a.id, b.id); assert.equal(a.reused, false); assert.equal(b.reused, true);
+  const got = await store.getDocument(a.id);
+  assert.equal(got.filename, "a.txt");
+  assert.deepEqual(got.content, Buffer.from("same"));
+  assert.equal(await store.getDocument(999999), null);
+});
+
+test("listDocuments shows history with active flag", opts, async () => {
+  const d1 = await doc("hist-1");
+  const d2 = await doc("hist-2");
+  const { template } = await store.createTemplate({ name: "H", snapshot: {}, documentIds: [d1.id, d2.id], note: "" });
+  await store.saveVersion(template.id, {}, [d2.id], "drop doc 1");
+  const docs = await store.listDocuments(template.id);
+  assert.equal(docs.length, 2);
+  assert.equal(docs.find((d) => d.id === d1.id).active, false);
+  assert.equal(docs.find((d) => d.id === d2.id).active, true);
+  assert.equal(docs[0].size_bytes, 6);
+  assert.equal(typeof docs[0].uploaded_at, "string");
+});
+
+test("renameDocument changes the filename", opts, async () => {
+  const d = await doc("rename-me");
+  await store.renameDocument(d.id, "renamed.txt");
+  assert.equal((await store.getDocument(d.id)).filename, "renamed.txt");
+});
+
+test("saving the live template publishes the new version; other saves leave live alone", opts, async () => {
+  const d = await doc("live-doc");
+  const d2 = await doc("live-doc-2");
+  const { template, version } = await store.createTemplate({ name: "L", snapshot: { v: 1 }, documentIds: [d.id], note: "" });
+  await store.setLive(template.id, version.id);
+  const saved = await store.saveVersion(template.id, { v: 2 }, [d.id, d2.id], "");
+  assert.equal(saved.isLive, true);
+  const live = await store.getLive();
+  assert.equal(live.template_id, template.id);
+  assert.equal(live.version_id, saved.version.id);
+  assert.deepEqual(live.snapshot, { v: 2 });
+  assert.deepEqual(live.documents.map((x) => x.id), [d.id, d2.id]);
+  assert.equal("active" in live.documents[0], false);
+
+  const other = await store.createTemplate({ name: "Other", snapshot: {}, documentIds: [], note: "" });
+  const otherSave = await store.saveVersion(other.template.id, { other: true }, [], "");
+  assert.equal(otherSave.isLive, false);
+  assert.deepEqual(await store.getLive(), live);
+});
+
+test("createTemplate copies document links, not bytes", opts, async () => {
+  const x = await doc("copy-x");
+  const src = await store.createTemplate({ name: "Src", snapshot: {}, documentIds: [x.id], note: "" });
+  const copy = await store.createTemplate({ name: "Copy", snapshot: {}, documentIds: [x.id], createdFromVersionId: src.version.id, note: "" });
+  assert.equal(copy.template.created_from_version_id, src.version.id);
+  const cur = await store.getCurrent(copy.template.id);
+  assert.deepEqual(cur.documentIds, [x.id]);
+  const n = await db.query("SELECT count(*)::int AS n FROM documents WHERE filename = 'copy-x.txt'");
+  assert.equal(n.rows[0].n, 1);
+  assert.equal(await store.getCurrent(999999), null);
+});
+
+test("concurrent saves: the second gets status 409", opts, async () => {
+  const { template } = await store.createTemplate({ name: "C", snapshot: {}, documentIds: [], note: "" });
+  // Hold back both inserts until each has started, so they really overlap.
+  let release;
+  const gate = db.transaction(async (q) => {
+    await q("LOCK TABLE template_versions IN SHARE MODE");
+    await new Promise((r) => { release = r; });
+  });
+  while (!release) await new Promise((r) => setImmediate(r));
+  const saves = Promise.allSettled([
+    store.saveVersion(template.id, { a: 1 }, [], ""),
+    store.saveVersion(template.id, { b: 1 }, [], ""),
+  ]);
+  const waiting = "SELECT count(*)::int AS n FROM pg_locks WHERE NOT granted AND relation = 'template_versions'::regclass";
+  for (let tries = 0; (await db.query(waiting)).rows[0].n < 2; tries++) {
+    if (tries === 50) { release(); await gate; assert.fail("saves never reached the lock"); }
+    await new Promise((r) => setTimeout(r, 100));
+  }
+  release();
+  await gate;
+  const results = await saves;
+  const rejected = results.filter((r) => r.status === "rejected");
+  assert.equal(rejected.length, 1);
+  assert.equal(rejected[0].reason.status, 409);
+});
+
+test("settings round-trip", opts, async () => {
+  assert.equal(await store.getSettings(), null);
+  await store.saveSettings({ a: 1 });
+  await store.saveSettings({ a: 2 });
+  assert.deepEqual(await store.getSettings(), { a: 2 });
+});
+
+test("importLegacyState maps versions in date order and keeps the legacy live version", opts, async () => {
+  const state = {
+    versions: [
+      { id: "v2", published_at: "2026-02-01T00:00:00.000Z", published_by: "Bob", note: "second", snapshot: { n: 2 } },
+      { id: "v1", published_at: "2026-01-01T00:00:00.000Z", published_by: "Ann", note: "first", snapshot: { n: 1 } },
+    ],
+    documents: [{ filename: "legacy.txt", mime_type: "text/plain", content_base64: Buffer.from("x").toString("base64"), preview_text: "x" }],
+    live_version_id: "v1",
+  };
+  const result = await store.importLegacyState(state, "Legacy");
+  const t = (await store.listTemplates()).find((x) => x.id === result.templateId);
+  assert.equal(t.name, "Legacy");
+  const byId = Object.fromEntries(t.versions.map((v) => [v.id, v]));
+  assert.equal(result.newestVersionId, result.versionIds.v2);
+  assert.equal(byId[result.versionIds.v1].snapshot.n, 1);
+  assert.equal(byId[result.versionIds.v2].snapshot.n, 2);
+  const nums = await db.query("SELECT id, version FROM template_versions WHERE template_id = $1", [result.templateId]);
+  const num = Object.fromEntries(nums.rows.map((r) => [r.id, r.version]));
+  assert.equal(num[result.versionIds.v1], 1);
+  assert.equal(num[result.versionIds.v2], 2);
+  assert.equal(byId[result.versionIds.v1].published_by, "Ann");
+  assert.equal(byId[result.versionIds.v2].published_by, "Bob");
+  assert.equal(byId[result.versionIds.v1].published_at, "2026-01-01T00:00:00.000Z");
+  assert.equal(byId[result.versionIds.v2].published_at, "2026-02-01T00:00:00.000Z");
+  const links = await db.query(
+    "SELECT vd.version_id, d.filename FROM version_documents vd JOIN documents d ON d.id = vd.document_id WHERE vd.version_id = ANY($1)",
+    [Object.values(result.versionIds)]);
+  assert.equal(links.rows.length, 2);
+  assert.ok(links.rows.every((r) => r.filename === "legacy.txt"));
+  assert.equal(await db.query("SELECT 1 FROM live WHERE template_id = $1", [result.templateId]).then((r) => r.rowCount), 0);
+});
+
+test("importLegacyState defaults missing author and mime type, and rolls back on failure", opts, async () => {
+  const ok = await store.importLegacyState({
+    versions: [{ id: "a", published_at: "2026-03-01T00:00:00.000Z", published_by: null, note: "", snapshot: {} }],
+    documents: [{ filename: "nomime.bin", content_base64: Buffer.from("nomime").toString("base64"), preview_text: "" }],
+  }, "Defaults");
+  const t = (await store.listTemplates()).find((x) => x.id === ok.templateId);
+  assert.equal(t.versions[0].published_by, "Onbekend");
+  assert.equal((await store.getDocument((await store.listDocuments(ok.templateId))[0].id)).mime_type, "application/octet-stream");
+
+  const before = (await store.listTemplates()).length;
+  await assert.rejects(store.importLegacyState({
+    versions: [
+      { id: "x", published_at: "2026-01-01T00:00:00.000Z", published_by: "A", snapshot: {} },
+      { id: "y", published_at: "2026-02-01T00:00:00.000Z", published_by: "A", snapshot: null },
+    ],
+    documents: [],
+  }, "Broken"));
+  assert.equal((await store.listTemplates()).length, before);
+});
+
+test("createTemplate leaves no template behind when the version fails", opts, async () => {
+  const before = (await store.listTemplates()).length;
+  await assert.rejects(store.createTemplate({ name: "Bad", snapshot: {}, documentIds: [999999], note: "" }));
+  assert.equal((await store.listTemplates()).length, before);
+});

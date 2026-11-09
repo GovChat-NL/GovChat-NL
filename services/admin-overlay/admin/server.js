@@ -6,6 +6,8 @@ const http = require("http");
 const path = require("path");
 const sharp = require("sharp");
 const { WebSocket, WebSocketServer } = require("ws");
+const { createDb } = require("./beleidskompas/db");
+const { createStore } = require("./beleidskompas/store");
 
 const app = express();
 const PORT = process.env.PORT || 3002;
@@ -74,6 +76,14 @@ const BELEIDSKOMPAS_WORKFLOWS_DIR_NAME = "beleidskompas-workflows";
 const BELEIDSKOMPAS_HOOFDAGENT_WEBHOOK_PATH_DEFAULT = "beleidskompas-hoofdagent";
 const BELEIDSKOMPAS_N8N_BASE_URL = String(process.env.BELEIDSKOMPAS_N8N_BASE_URL || "http://n8n:5678").replace(/\/$/, "");
 const BELEIDSKOMPAS_N8N_WEBHOOK_TOKEN = String(process.env.BELEIDSKOMPAS_N8N_WEBHOOK_TOKEN || process.env.N8N_WEBHOOK_TOKEN || "").trim();
+const DEFAULT_BELEIDSKOMPAS_SETTINGS = {
+  retention_days: 365,
+  enforce_source_citation: true,
+  require_human_validation: true,
+  default_model: "govchat-default",
+};
+const db = createDb({ connectionString: process.env.BELEIDSKOMPAS_DATABASE_URL });
+const store = createStore(db);
 const TRANSCRIPT_AUTH_DEBUG = String(process.env.TRANSCRIPT_AUTH_DEBUG || "false").toLowerCase() === "true";
 const LIBRECHAT_JWT_REFRESH_SECRET = String(process.env.JWT_REFRESH_SECRET || process.env.JWT_SECRET || "").trim();
 
@@ -332,16 +342,6 @@ function initDefaults() {
     fs.writeFileSync(crawlerRunsPath, JSON.stringify({ runs: [] }, null, 2), "utf-8");
     console.log(`[init] Created crawler-runs.json in ${DATA_DIR}`);
   }
-
-  const beleidskompasStatePath = path.join(DATA_DIR, BELEIDSKOMPAS_STATE_FILE);
-  if (!fs.existsSync(beleidskompasStatePath)) {
-    writePrivateJSON(BELEIDSKOMPAS_STATE_FILE, defaultBeleidskompasState());
-    console.log(`[init] Created ${BELEIDSKOMPAS_STATE_FILE} in ${DATA_DIR}`);
-  }
-
-  const beleidskompasState = readBeleidskompasState();
-  publishBeleidskompasLiveConfig(beleidskompasState.live || beleidskompasState.draft || defaultBeleidskompasFlow());
-  syncBeleidskompasWorkflowFiles(beleidskompasState);
 }
 
 function readJSON(filename) {
@@ -372,10 +372,6 @@ function writeJSON(filename, data) {
   fs.writeFileSync(filepath, JSON.stringify(data, null, 2), "utf-8");
   // Also publish to shared static volume for Open WebUI
   publishFile(filename, data);
-}
-
-function cloneJSON(input) {
-  return JSON.parse(JSON.stringify(input));
 }
 
 function normalizeTags(value) {
@@ -653,6 +649,7 @@ function normalizeBeleidskompasFlow(input) {
       prompt: String(step?.prompt ?? fb.prompt ?? "").trim(),
       doc_tags: normalizeTags(step?.doc_tags || fb.doc_tags),
       rag: normalizeStepRagSettings(step?.rag || fb.rag || {}, step || fb),
+      document_ids: Array.isArray(step?.document_ids) ? step.document_ids.map(String) : [],
       substeps: substepsRaw.map((sub, subIdx) => ({
         id: String(sub?.id || `${idx + 1}.${subIdx + 1}`).trim() || `${idx + 1}.${subIdx + 1}`,
         title: String(sub?.title || `Substap ${subIdx + 1}`).trim() || `Substap ${subIdx + 1}`,
@@ -675,84 +672,6 @@ function normalizeBeleidskompasFlow(input) {
     sources: normalizeTags(src.sources || fallback.sources),
     steps,
   };
-}
-
-function defaultBeleidskompasState() {
-  const baseFlow = defaultBeleidskompasFlow();
-  const now = new Date().toISOString();
-  return {
-    draft: cloneJSON(baseFlow),
-    live: cloneJSON(baseFlow),
-    live_version_id: "v1",
-    versions: [
-      {
-        id: "v1",
-        published_at: now,
-        published_by: "System",
-        note: "Initiële versie",
-        is_live: true,
-        snapshot: cloneJSON(baseFlow),
-      },
-    ],
-    documents: [],
-    settings: {
-      retention_days: 365,
-      enforce_source_citation: true,
-      require_human_validation: true,
-      default_model: "govchat-default",
-    },
-  };
-}
-
-function normalizeBeleidskompasState(input) {
-  const fallback = defaultBeleidskompasState();
-  const src = input && typeof input === "object" ? input : {};
-  const draft = normalizeBeleidskompasFlow(src.draft || src.flow || fallback.draft);
-  const live = normalizeBeleidskompasFlow(src.live || fallback.live);
-  const versionsRaw = Array.isArray(src.versions) ? src.versions : fallback.versions;
-  const versions = versionsRaw.map((v, idx) => ({
-    id: String(v?.id || `v${idx + 1}`).trim() || `v${idx + 1}`,
-    published_at: String(v?.published_at || new Date().toISOString()).trim(),
-    published_by: String(v?.published_by || "Onbekend").trim() || "Onbekend",
-    note: String(v?.note || "").trim(),
-    is_live: Boolean(v?.is_live),
-    snapshot: normalizeBeleidskompasFlow(v?.snapshot || draft),
-  }));
-
-  const documents = normalizeBeleidskompasDocuments(src.documents || []);
-
-  const settings = {
-    ...fallback.settings,
-    ...(src.settings && typeof src.settings === "object" ? src.settings : {}),
-  };
-
-  let liveVersionId = String(src.live_version_id || fallback.live_version_id || "").trim();
-  if (!versions.some((v) => v.id === liveVersionId)) {
-    liveVersionId = versions[0]?.id || "v1";
-  }
-  for (const v of versions) {
-    v.is_live = v.id === liveVersionId;
-  }
-
-  return {
-    draft,
-    live,
-    live_version_id: liveVersionId,
-    versions,
-    documents,
-    settings,
-  };
-}
-
-function readBeleidskompasState() {
-  const raw = readPrivateJSON(BELEIDSKOMPAS_STATE_FILE);
-  return normalizeBeleidskompasState(raw || defaultBeleidskompasState());
-}
-
-function writeBeleidskompasState(state) {
-  const normalized = normalizeBeleidskompasState(state);
-  writePrivateJSON(BELEIDSKOMPAS_STATE_FILE, normalized);
-  return normalized;
 }
 
 function publishBeleidskompasLiveConfig(flow) {
@@ -1000,16 +919,7 @@ function buildBeleidskompasHoofdagentWorkflow(flow) {
   };
 }
 
-function syncBeleidskompasWorkflowFiles(flowInput) {
-  let flow = defaultBeleidskompasFlow();
-  let documents = [];
-  if (flowInput && typeof flowInput === "object" && (flowInput.draft || flowInput.live || flowInput.documents)) {
-    const state = normalizeBeleidskompasState(flowInput);
-    flow = normalizeBeleidskompasFlow(state.draft || state.live || defaultBeleidskompasFlow());
-    documents = normalizeBeleidskompasDocuments(state.documents || []);
-  } else {
-    flow = normalizeBeleidskompasFlow(flowInput || defaultBeleidskompasFlow());
-  }
+function syncBeleidskompasWorkflowFiles(flow, documents = []) {
   const dir = ensureBeleidskompasWorkflowsDir();
   const steps = Array.isArray(flow.steps) ? flow.steps : [];
 
@@ -1075,8 +985,50 @@ function publishAll() {
     const data = readJSON(file);
     if (data) publishFile(file, data);
   }
-  const bkState = readBeleidskompasState();
-  publishBeleidskompasLiveConfig(bkState.live || bkState.draft || defaultBeleidskompasFlow());
+  publishLive().catch((err) => console.error("[publish] Beleidskompas publiceren mislukt:", err));
+}
+
+async function publishLive() {
+  const live = await store.getLive();
+  if (!live) {
+    console.warn("[publish] Geen live Beleidskompas-versie; niets gepubliceerd");
+    return null;
+  }
+  publishBeleidskompasLiveConfig(live.snapshot);
+  return syncBeleidskompasWorkflowFiles(normalizeBeleidskompasFlow(live.snapshot), live.documents);
+}
+
+function normalizeLegacyState(state) {
+  const out = { ...state };
+  out.versions = (Array.isArray(out.versions) ? out.versions : []).map((v) => ({ ...v, snapshot: normalizeBeleidskompasFlow(v?.snapshot) }));
+  if ("live" in out) out.live = normalizeBeleidskompasFlow(out.live);
+  if ("draft" in out) out.draft = normalizeBeleidskompasFlow(out.draft);
+  return out;
+}
+
+async function startBeleidskompas() {
+  await db.applySchema();
+  if ((await store.listTemplates()).length) {
+    console.log("[init] Beleidskompas database bevat al templates, import overgeslagen");
+  } else {
+    const legacy = readPrivateJSON(BELEIDSKOMPAS_STATE_FILE);
+    if (legacy) {
+      const { templateId, versionIds, newestVersionId } = await store.importLegacyState(normalizeLegacyState(legacy), "SiS 4.0");
+      await store.setLive(templateId, versionIds[legacy.live_version_id] ?? newestVersionId);
+      await store.saveSettings({ ...DEFAULT_BELEIDSKOMPAS_SETTINGS, ...(legacy.settings || {}) });
+      const statePath = path.join(DATA_DIR, BELEIDSKOMPAS_STATE_FILE);
+      fs.renameSync(statePath, `${statePath}.migrated`);
+      console.log(`[init] ${BELEIDSKOMPAS_STATE_FILE} geïmporteerd in de database en hernoemd naar .migrated`);
+    } else {
+      const { template, version } = await store.createTemplate({
+        name: "SiS 4.0", snapshot: defaultBeleidskompasFlow(), documentIds: [], note: "Initiële versie",
+      });
+      await store.setLive(template.id, version.id);
+      await store.saveSettings(DEFAULT_BELEIDSKOMPAS_SETTINGS);
+      console.log("[init] Beleidskompas template SiS 4.0 aangemaakt met standaardflow");
+    }
+  }
+  await publishLive();
 }
 
 function readCrawlerConfig() {
@@ -2608,35 +2560,35 @@ app.get("/", (req, res) => {
   res.redirect("/login");
 });
 
-app.get("/dashboard", requireAuth, (req, res) => {
-  const helpData = readJSON("help-content.json");
-  const appsData = readJSON("apps.json");
-  const crawlerConfig = readCrawlerConfig();
-  const orchestratorConfig = readOrchestratorConfig();
-  const beleidskompasState = readBeleidskompasState();
-  const helpSections = helpData?.sections?.length || 0;
-  const appCount = appsData?.apps?.length || 0;
-  const beleidskompasStepCount = Array.isArray(beleidskompasState?.live?.steps)
-    ? beleidskompasState.live.steps.length
-    : 0;
-  const beleidskompasVersionCount = Array.isArray(beleidskompasState?.versions)
-    ? beleidskompasState.versions.length
-    : 0;
-  const beleidskompasDocCount = Array.isArray(beleidskompasState?.documents)
-    ? beleidskompasState.documents.length
-    : 0;
-  sendView(res, "dashboard.html", {
-    helpSections: String(helpSections),
-    appCount: String(appCount),
-    crawlerSources: String(crawlerConfig?.sources?.filter((s) => s?.enabled !== false).length || 0),
-    crawlerEnabled: crawlerConfig?.enabled ? "Actief" : "Uitgeschakeld",
-    orchestratorImageCap: String(orchestratorConfig?.image_data_url_max_chars || ORCHESTRATOR_IMAGE_DATA_URL_MAX_CHARS_DEFAULT),
-    helpTitle: helpData?.title || "(niet ingesteld)",
-    appsTitle: appsData?.title || "(niet ingesteld)",
-    beleidskompasVersionCount: String(beleidskompasVersionCount),
-    beleidskompasStepCount: String(beleidskompasStepCount),
-    beleidskompasDocCount: String(beleidskompasDocCount),
-  });
+app.get("/dashboard", requireAuth, async (req, res) => {
+  try {
+    const helpData = readJSON("help-content.json");
+    const appsData = readJSON("apps.json");
+    const crawlerConfig = readCrawlerConfig();
+    const orchestratorConfig = readOrchestratorConfig();
+    const templates = await store.listTemplates();
+    const live = await store.getLive();
+    const helpSections = helpData?.sections?.length || 0;
+    const appCount = appsData?.apps?.length || 0;
+    const beleidskompasStepCount = live?.snapshot?.steps?.length || 0;
+    const beleidskompasVersionCount = templates.reduce((sum, t) => sum + t.versions.length, 0);
+    const beleidskompasDocCount = live?.documents.length || 0;
+    sendView(res, "dashboard.html", {
+      helpSections: String(helpSections),
+      appCount: String(appCount),
+      crawlerSources: String(crawlerConfig?.sources?.filter((s) => s?.enabled !== false).length || 0),
+      crawlerEnabled: crawlerConfig?.enabled ? "Actief" : "Uitgeschakeld",
+      orchestratorImageCap: String(orchestratorConfig?.image_data_url_max_chars || ORCHESTRATOR_IMAGE_DATA_URL_MAX_CHARS_DEFAULT),
+      helpTitle: helpData?.title || "(niet ingesteld)",
+      appsTitle: appsData?.title || "(niet ingesteld)",
+      beleidskompasVersionCount: String(beleidskompasVersionCount),
+      beleidskompasStepCount: String(beleidskompasStepCount),
+      beleidskompasDocCount: String(beleidskompasDocCount),
+    });
+  } catch (err) {
+    console.error("[dashboard]", err);
+    return res.status(500).send("Dashboard laden mislukt");
+  }
 });
 
 app.get("/crawler-editor", requireAuth, (req, res) => {
@@ -2695,10 +2647,76 @@ app.post("/api/config/apps", requireAuth, (req, res) => {
   }
 });
 
-app.get("/api/beleidskompas/state", requireAuth, (req, res) => {
-  const state = readBeleidskompasState();
-  const workflow_manifest = readBeleidskompasWorkflowManifest();
-  return res.json({ ok: true, state, workflow_manifest });
+app.get("/api/beleidskompas/state", requireAuth, async (req, res) => {
+  try {
+    const live = await store.getLive();
+    return res.json({
+      ok: true,
+      templates: await store.listTemplates(),
+      settings: { ...DEFAULT_BELEIDSKOMPAS_SETTINGS, ...((await store.getSettings()) || {}) },
+      live: live ? { template_id: live.template_id, version_id: live.version_id } : null,
+      workflow_manifest: readBeleidskompasWorkflowManifest(),
+    });
+  } catch (err) {
+    return res.status(err.status || 400).json({ error: String(err?.message || err) });
+  }
+});
+
+app.post("/api/beleidskompas/templates", requireAuth, async (req, res) => {
+  try {
+    const name = String(req.body?.name || "").trim();
+    if (!name) return res.status(400).json({ error: "name ontbreekt" });
+    const fromId = req.body?.from_template_id;
+    const src = fromId ? await getCurrentOr404(Number(fromId)) : null;
+    const { template, version } = await store.createTemplate({
+      name,
+      snapshot: normalizeBeleidskompasFlow(req.body?.flow ?? src?.snapshot),
+      documentIds: src?.documentIds || [],
+      createdFromVersionId: src?.versionId || null,
+      note: fromId ? `Aangemaakt vanuit template ${fromId}` : "Nieuw template",
+    });
+    return res.json({ ok: true, template, version });
+  } catch (err) {
+    return res.status(err.status || 400).json({ error: String(err?.message || err) });
+  }
+});
+
+const templateIdParam = (req) => Number(req.params.id);
+const notFound = (message) => Object.assign(new Error(message), { status: 404 });
+
+async function getCurrentOr404(templateId) {
+  const current = await store.getCurrent(templateId);
+  if (!current) throw notFound("Template niet gevonden");
+  return current;
+}
+
+// Saves a new version of the template with the document added or removed; returns the workflow manifest when live.
+async function setTemplateDocument(templateId, docId, active, label, filename) {
+  const current = await getCurrentOr404(templateId);
+  const doc = await store.getDocument(docId);
+  if (!doc) throw notFound("Document niet gevonden");
+  const others = current.documentIds.filter((x) => x !== docId);
+  if (!active && others.length === current.documentIds.length) throw notFound("Document niet actief in dit template");
+  const { isLive } = await store.saveVersion(
+    templateId, current.snapshot, active ? [...others, docId] : others, `${label}: ${filename || doc.filename}`);
+  return isLive ? publishLive() : null;
+}
+
+async function findTemplateDocument(templateId, docId) {
+  return (await store.listDocuments(templateId)).find((d) => d.id === docId) || null;
+}
+
+app.post("/api/beleidskompas/templates/:id/versions", requireAuth, async (req, res) => {
+  try {
+    const id = templateIdParam(req);
+    const current = await getCurrentOr404(id);
+    const { version, isLive } = await store.saveVersion(
+      id, normalizeBeleidskompasFlow(req.body?.flow), current.documentIds, String(req.body?.note || ""));
+    const workflow_manifest = isLive ? await publishLive() : null;
+    return res.json({ ok: true, version, workflow_manifest });
+  } catch (err) {
+    return res.status(err.status || 400).json({ error: String(err?.message || err) });
+  }
 });
 
 // ── Beleidskompas user feedback ──────────────────────────────────
@@ -2743,172 +2761,114 @@ app.get("/api/beleidskompas-feedback", requireAuth, (req, res) => {
   });
 });
 
-app.get("/api/beleidskompas/export", requireAuth, (req, res) => {
-  const state = readBeleidskompasState();
-  res.setHeader("Content-Type", "application/json; charset=utf-8");
-  return res.status(200).send(JSON.stringify(state, null, 2));
+app.get("/api/beleidskompas/templates/:id/export", requireAuth, async (req, res) => {
+  try {
+    const id = templateIdParam(req);
+    const template = (await store.listTemplates()).find((t) => t.id === id);
+    if (!template) return res.status(404).json({ error: "Template niet gevonden" });
+    const current = await getCurrentOr404(id);
+    const documents = [];
+    for (const d of (await store.listDocuments(id)).filter((x) => x.active)) {
+      documents.push({ ...d, content_base64: (await store.getDocument(d.id)).content.toString("base64") });
+    }
+    return res.json({
+      name: template.name,
+      live: current.snapshot,
+      draft: current.snapshot,
+      live_version_id: current.versionId,
+      versions: template.versions,
+      documents,
+    });
+  } catch (err) {
+    return res.status(err.status || 400).json({ error: String(err?.message || err) });
+  }
 });
 
-app.post("/api/beleidskompas/import", requireAuth, (req, res) => {
+app.post("/api/beleidskompas/import", requireAuth, async (req, res) => {
   try {
     const incoming = req.body && typeof req.body === "object" ? req.body : {};
-    const current = readBeleidskompasState();
-    const next = {
-      ...current,
-      ...(incoming.state && typeof incoming.state === "object" ? incoming.state : incoming),
-    };
-    const saved = writeBeleidskompasState(next);
-    const workflow_manifest = syncBeleidskompasWorkflowFiles(saved);
-    return res.json({ ok: true, state: saved, workflow_manifest });
+    const { templateId } = await store.importLegacyState(normalizeLegacyState(incoming), String(incoming.name || "Import"));
+    return res.json({ ok: true, template_id: templateId });
   } catch (err) {
-    return res.status(400).json({ error: String(err?.message || err) });
+    return res.status(err.status || 400).json({ error: String(err?.message || err) });
   }
 });
 
-app.post("/api/beleidskompas/draft", requireAuth, (req, res) => {
+app.post("/api/beleidskompas/settings", requireAuth, async (req, res) => {
   try {
-    const state = readBeleidskompasState();
-    const flow = normalizeBeleidskompasFlow(req.body?.flow || req.body || state.draft);
-    state.draft = flow;
-    const saved = writeBeleidskompasState(state);
-    const workflow_manifest = syncBeleidskompasWorkflowFiles(saved);
-    return res.json({ ok: true, draft: saved.draft, workflow_manifest });
-  } catch (err) {
-    return res.status(400).json({ error: String(err?.message || err) });
-  }
-});
-
-app.post("/api/beleidskompas/settings", requireAuth, (req, res) => {
-  try {
-    const state = readBeleidskompasState();
+    const current = { ...DEFAULT_BELEIDSKOMPAS_SETTINGS, ...((await store.getSettings()) || {}) };
     const incoming = req.body && typeof req.body === "object" ? req.body : {};
     const nextSettings = {
-      ...state.settings,
+      ...current,
       ...incoming,
-      retention_days: Math.max(1, Number.parseInt(String(incoming.retention_days ?? state.settings?.retention_days ?? 365), 10) || 365),
+      retention_days: Math.max(1, Number.parseInt(String(incoming.retention_days ?? current.retention_days ?? 365), 10) || 365),
       enforce_source_citation: Boolean(
         Object.prototype.hasOwnProperty.call(incoming, "enforce_source_citation")
           ? incoming.enforce_source_citation
-          : state.settings?.enforce_source_citation,
+          : current.enforce_source_citation,
       ),
       require_human_validation: Boolean(
         Object.prototype.hasOwnProperty.call(incoming, "require_human_validation")
           ? incoming.require_human_validation
-          : state.settings?.require_human_validation,
+          : current.require_human_validation,
       ),
-      default_model: String(incoming.default_model ?? state.settings?.default_model ?? "govchat-default").trim() || "govchat-default",
+      default_model: String(incoming.default_model ?? current.default_model ?? "govchat-default").trim() || "govchat-default",
     };
-    state.settings = nextSettings;
-    const saved = writeBeleidskompasState(state);
-    return res.json({ ok: true, settings: saved.settings });
+    await store.saveSettings(nextSettings);
+    return res.json({ ok: true, settings: nextSettings });
   } catch (err) {
-    return res.status(400).json({ error: String(err?.message || err) });
+    return res.status(err.status || 400).json({ error: String(err?.message || err) });
   }
 });
 
-app.post("/api/beleidskompas/publish", requireAuth, (req, res) => {
+app.get("/api/beleidskompas/workflows/status", requireAuth, async (req, res) => {
   try {
-    const state = readBeleidskompasState();
-    const flow = normalizeBeleidskompasFlow(req.body?.flow || state.draft || state.live);
-    const note = String(req.body?.note || "").trim();
-    const versionId = `v${Date.now()}`;
-    const who = "System Administrator";
-    const publishedAt = new Date().toISOString();
+    const live = await store.getLive();
+    const flow = normalizeBeleidskompasFlow(live?.snapshot || defaultBeleidskompasFlow());
+    const manifest = readBeleidskompasWorkflowManifest();
+    const expectedStepCount = Array.isArray(flow.steps) ? flow.steps.length : 0;
+    const mappedStepCount = Array.isArray(manifest?.steps) ? manifest.steps.length : 0;
+    const stepMismatch = expectedStepCount !== mappedStepCount;
 
-    for (const v of state.versions) v.is_live = false;
-    const version = {
-      id: versionId,
-      published_at: publishedAt,
-      published_by: who,
-      note,
-      is_live: true,
-      snapshot: cloneJSON(flow),
-    };
-    state.versions.unshift(version);
-    state.live_version_id = versionId;
-    state.live = cloneJSON(flow);
-    state.draft = cloneJSON(flow);
-
-    const saved = writeBeleidskompasState(state);
-    publishBeleidskompasLiveConfig(saved.live);
-    const workflow_manifest = syncBeleidskompasWorkflowFiles(saved);
-    return res.json({ ok: true, version, live: saved.live, workflow_manifest });
+    return res.json({
+      ok: true,
+      n8n_base_url: BELEIDSKOMPAS_N8N_BASE_URL,
+      token_configured: Boolean(BELEIDSKOMPAS_N8N_WEBHOOK_TOKEN),
+      step_count_expected: expectedStepCount,
+      step_count_mapped: mappedStepCount,
+      step_mismatch: stepMismatch,
+      manifest: manifest || null,
+    });
   } catch (err) {
-    return res.status(400).json({ error: String(err?.message || err) });
+    return res.status(err.status || 400).json({ error: String(err?.message || err) });
   }
 });
 
-app.post("/api/beleidskompas/rollback/:versionId", requireAuth, (req, res) => {
-  const versionId = String(req.params.versionId || "").trim();
-  if (!versionId) return res.status(400).json({ error: "versionId ontbreekt" });
-
-  const state = readBeleidskompasState();
-  const target = state.versions.find((v) => String(v.id || "") === versionId);
-  if (!target) return res.status(404).json({ error: "Versie niet gevonden" });
-
-  state.live_version_id = versionId;
-  state.live = normalizeBeleidskompasFlow(target.snapshot);
-  state.draft = normalizeBeleidskompasFlow(target.snapshot);
-  for (const v of state.versions) v.is_live = v.id === versionId;
-
-  const saved = writeBeleidskompasState(state);
-  publishBeleidskompasLiveConfig(saved.live);
-  const workflow_manifest = syncBeleidskompasWorkflowFiles(saved);
-  return res.json({ ok: true, live: saved.live, version_id: versionId, workflow_manifest });
-});
-
-app.get("/api/beleidskompas/workflows/status", requireAuth, (req, res) => {
-  const state = readBeleidskompasState();
-  const source = String(req.query?.source || "draft").trim().toLowerCase();
-  const flow =
-    source === "live"
-      ? normalizeBeleidskompasFlow(state.live || state.draft || defaultBeleidskompasFlow())
-      : normalizeBeleidskompasFlow(state.draft || state.live || defaultBeleidskompasFlow());
-  const manifest = readBeleidskompasWorkflowManifest();
-  const expectedStepCount = Array.isArray(flow.steps) ? flow.steps.length : 0;
-  const mappedStepCount = Array.isArray(manifest?.steps) ? manifest.steps.length : 0;
-  const stepMismatch = expectedStepCount !== mappedStepCount;
-
-  return res.json({
-    ok: true,
-    n8n_base_url: BELEIDSKOMPAS_N8N_BASE_URL,
-    token_configured: Boolean(BELEIDSKOMPAS_N8N_WEBHOOK_TOKEN),
-    step_count_expected: expectedStepCount,
-    step_count_mapped: mappedStepCount,
-    step_mismatch: stepMismatch,
-    manifest: manifest || null,
-  });
-});
-
-app.post("/api/beleidskompas/workflows/sync", requireAuth, (req, res) => {
+app.post("/api/beleidskompas/workflows/sync", requireAuth, async (req, res) => {
   try {
-    const state = readBeleidskompasState();
-    const useLive = String(req.body?.source || "").trim().toLowerCase() === "live";
-    const flow = useLive
-      ? normalizeBeleidskompasFlow(state.live || defaultBeleidskompasFlow())
-      : normalizeBeleidskompasFlow(state.draft || state.live || defaultBeleidskompasFlow());
-    const manifest = syncBeleidskompasWorkflowFiles({ ...state, draft: flow });
-    return res.json({ ok: true, source: useLive ? "live" : "draft", manifest });
+    const manifest = await publishLive();
+    return res.json({ ok: true, source: "live", manifest });
   } catch (err) {
-    return res.status(500).json({ error: String(err?.message || err) });
+    return res.status(err.status || 500).json({ error: String(err?.message || err) });
   }
 });
 
-app.get("/api/beleidskompas/documents", requireAuth, (req, res) => {
-  const state = readBeleidskompasState();
-  const docs = state.documents.map((d) => ({
-    ...d,
-    content_base64: undefined,
-  }));
-  return res.json({ ok: true, documents: docs });
+app.get("/api/beleidskompas/templates/:id/documents", requireAuth, async (req, res) => {
+  try {
+    const id = templateIdParam(req);
+    await getCurrentOr404(id);
+    return res.json({ ok: true, documents: await store.listDocuments(id) });
+  } catch (err) {
+    return res.status(err.status || 400).json({ error: String(err?.message || err) });
+  }
 });
 
-app.post("/api/beleidskompas/documents", requireAuth, (req, res) => {
+app.post("/api/beleidskompas/templates/:id/documents", requireAuth, async (req, res) => {
   try {
+    const id = templateIdParam(req);
     const filename = String(req.body?.filename || "").trim();
     const mimeType = String(req.body?.mime_type || "application/octet-stream").trim();
     const contentBase64 = String(req.body?.content_base64 || "").trim();
-    const tags = normalizeTags(req.body?.tags || []);
     if (!filename) return res.status(400).json({ error: "filename ontbreekt" });
 
     const bytes = contentBase64 ? Buffer.from(contentBase64, "base64") : Buffer.from("");
@@ -2917,88 +2877,70 @@ app.post("/api/beleidskompas/documents", requireAuth, (req, res) => {
       previewText = bytes.toString("utf-8").slice(0, 4000);
     }
 
-    const state = readBeleidskompasState();
-    const doc = {
-      id: crypto.randomUUID(),
-      filename,
-      mime_type: mimeType,
-      uploaded_at: new Date().toISOString(),
-      size_bytes: bytes.length,
-      tags,
-      preview_text: previewText,
-      content_base64: contentBase64,
-    };
-    state.documents.unshift(doc);
-    const saved = writeBeleidskompasState(state);
-    const workflow_manifest = syncBeleidskompasWorkflowFiles(saved);
-
-    return res.status(201).json({ ok: true, document: { ...doc, content_base64: undefined }, workflow_manifest });
+    await getCurrentOr404(id);
+    const { id: docId, reused } = await store.upsertDocument({ filename, contentType: mimeType, bytes, previewText });
+    const workflow_manifest = await setTemplateDocument(id, docId, true, "Document toegevoegd", filename);
+    return res.status(201).json({ ok: true, document: await findTemplateDocument(id, docId), reused, workflow_manifest });
   } catch (err) {
-    return res.status(400).json({ error: String(err?.message || err) });
+    return res.status(err.status || 400).json({ error: String(err?.message || err) });
   }
 });
 
-app.patch("/api/beleidskompas/documents/:docId", requireAuth, (req, res) => {
-  const docId = String(req.params.docId || "").trim();
-  if (!docId) return res.status(400).json({ error: "docId ontbreekt" });
-
-  const state = readBeleidskompasState();
-  const idx = state.documents.findIndex((d) => String(d.id || "") === docId);
-  if (idx < 0) return res.status(404).json({ error: "Document niet gevonden" });
-
-  const current = state.documents[idx];
-  current.tags = normalizeTags(req.body?.tags || current.tags || []);
-  current.filename = String(req.body?.filename || current.filename || "document").trim() || "document";
-  state.documents[idx] = current;
-  const saved = writeBeleidskompasState(state);
-  const workflow_manifest = syncBeleidskompasWorkflowFiles(saved);
-  return res.json({ ok: true, document: { ...current, content_base64: undefined }, workflow_manifest });
-});
-
-app.get("/api/beleidskompas/documents/:docId/preview", requireAuth, (req, res) => {
-  const docId = String(req.params.docId || "").trim();
-  if (!docId) return res.status(400).json({ error: "docId ontbreekt" });
-
-  const state = readBeleidskompasState();
-  const doc = state.documents.find((d) => String(d.id || "") === docId);
-  if (!doc) return res.status(404).json({ error: "Document niet gevonden" });
-  return res.json({ ok: true, preview_text: String(doc.preview_text || "") });
-});
-
-app.get("/api/beleidskompas/documents/:docId/download", requireAuth, (req, res) => {
-  const docId = String(req.params.docId || "").trim();
-  if (!docId) return res.status(400).json({ error: "docId ontbreekt" });
-
-  const state = readBeleidskompasState();
-  const doc = state.documents.find((d) => String(d.id || "") === docId);
-  if (!doc) return res.status(404).json({ error: "Document niet gevonden" });
-
-  const b64 = String(doc.content_base64 || "").trim();
-  if (!b64) return res.status(404).json({ error: "Geen inhoud beschikbaar" });
-
-  const bytes = Buffer.from(b64, "base64");
-  res.setHeader("Content-Type", String(doc.mime_type || "application/octet-stream"));
-  res.setHeader("Content-Disposition", `attachment; filename="${encodeURIComponent(String(doc.filename || "document"))}"`);
-  return res.status(200).send(bytes);
-});
-
-app.delete("/api/beleidskompas/documents/:docId", requireAuth, (req, res) => {
-  const docId = String(req.params.docId || "").trim();
-  if (!docId) return res.status(400).json({ error: "docId ontbreekt" });
-
-  const state = readBeleidskompasState();
-  const before = state.documents.length;
-  state.documents = state.documents.filter((d) => String(d.id || "") !== docId);
-  if (state.documents.length === before) return res.status(404).json({ error: "Document niet gevonden" });
-  const saved = writeBeleidskompasState(state);
-  const workflow_manifest = syncBeleidskompasWorkflowFiles(saved);
-  return res.json({ ok: true, removed: docId, workflow_manifest });
-});
-
-app.post("/api/beleidskompas/rag/query", requireAuth, (req, res) => {
+app.patch("/api/beleidskompas/templates/:id/documents/:docId", requireAuth, async (req, res) => {
   try {
-    const state = readBeleidskompasState();
-    const flow = normalizeBeleidskompasFlow(state.draft || state.live || defaultBeleidskompasFlow());
+    const id = templateIdParam(req);
+    const docId = Number(req.params.docId);
+    const filename = typeof req.body?.filename === "string" ? req.body.filename.trim() : "";
+    await getCurrentOr404(id);
+    if (!(await findTemplateDocument(id, docId))) return res.status(404).json({ error: "Document niet gevonden" });
+    if (filename) await store.renameDocument(docId, filename);
+    if (req.body?.active === false) await setTemplateDocument(id, docId, false, "Document verwijderd");
+    if (req.body?.active === true) await setTemplateDocument(id, docId, true, "Document geactiveerd");
+    const document = await findTemplateDocument(id, docId);
+    if (!document) return res.status(404).json({ error: "Document niet gevonden" });
+    return res.json({ ok: true, document });
+  } catch (err) {
+    return res.status(err.status || 400).json({ error: String(err?.message || err) });
+  }
+});
+
+app.delete("/api/beleidskompas/templates/:id/documents/:docId", requireAuth, async (req, res) => {
+  try {
+    const docId = Number(req.params.docId);
+    await setTemplateDocument(templateIdParam(req), docId, false, "Document verwijderd");
+    return res.json({ ok: true, removed: docId });
+  } catch (err) {
+    return res.status(err.status || 400).json({ error: String(err?.message || err) });
+  }
+});
+
+app.get("/api/beleidskompas/documents/:docId/preview", requireAuth, async (req, res) => {
+  try {
+    const doc = await store.getDocument(Number(req.params.docId));
+    if (!doc) return res.status(404).json({ error: "Document niet gevonden" });
+    return res.json({ ok: true, preview_text: String(doc.preview_text || "") });
+  } catch (err) {
+    return res.status(err.status || 400).json({ error: String(err?.message || err) });
+  }
+});
+
+app.get("/api/beleidskompas/documents/:docId/download", requireAuth, async (req, res) => {
+  try {
+    const doc = await store.getDocument(Number(req.params.docId));
+    if (!doc) return res.status(404).json({ error: "Document niet gevonden" });
+    res.setHeader("Content-Type", String(doc.mime_type || "application/octet-stream"));
+    res.setHeader("Content-Disposition", `attachment; filename="${encodeURIComponent(String(doc.filename || "document"))}"`);
+    return res.status(200).send(doc.content);
+  } catch (err) {
+    return res.status(err.status || 400).json({ error: String(err?.message || err) });
+  }
+});
+
+app.post("/api/beleidskompas/rag/query", requireAuth, async (req, res) => {
+  try {
+    const live = await store.getLive();
+    if (!live) return res.status(400).json({ error: "Geen live versie" });
+    const flow = normalizeBeleidskompasFlow(live.snapshot);
     const stepId = String(req.body?.step_id || "").trim();
     let step = Array.isArray(flow.steps) ? flow.steps.find((s) => String(s?.id || "") === stepId) : null;
     if (!step) step = Array.isArray(flow.steps) ? flow.steps[0] : null;
@@ -3009,7 +2951,7 @@ app.post("/api/beleidskompas/rag/query", requireAuth, (req, res) => {
       question: String(req.body?.question || ""),
       caseText: String(req.body?.case_text || ""),
       stepFields: req.body?.step_fields && typeof req.body.step_fields === "object" ? req.body.step_fields : {},
-      documents: state.documents || [],
+      documents: live.documents,
     });
 
     return res.json({
@@ -3461,7 +3403,7 @@ server.on("upgrade", (req, socket, head) => {
   });
 });
 
-server.listen(PORT, "0.0.0.0", () => {
+startBeleidskompas().then(() => server.listen(PORT, "0.0.0.0", () => {
   console.log(`[govchat-admin] Running on http://0.0.0.0:${PORT}`);
   console.log(`[govchat-admin] Data directory: ${DATA_DIR}`);
   console.log(`[govchat-admin] Publish directory: ${PUBLISH_DIR}`);
@@ -3476,4 +3418,7 @@ server.listen(PORT, "0.0.0.0", () => {
   console.log(
     `[govchat-admin] Realtime STT bridge: /api/realtime-stt (provider=${REALTIME_STT_PROVIDER_DEFAULT})`,
   );
+}), (err) => {
+  console.error("[init] Beleidskompas database start mislukt:", err);
+  process.exit(1);
 });

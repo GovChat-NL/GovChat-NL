@@ -22,8 +22,7 @@ export function renderFlow({ store, render, markDirty }) {
     { class: "notice notice-info" },
     icon("info", 14),
     "Titels, beschrijvingen en substappen verschijnen na publiceren op de Beleidskompas-pagina. " +
-      "Prompts en zoekinstellingen worden opgeslagen in het template, maar de assistent leest ze nog niet. " +
-      "De documentkeuze per stap wordt nog niet opgeslagen: die geldt alleen in dit tabblad.",
+      "Prompts en zoekinstellingen worden opgeslagen in het template, maar de assistent leest ze nog niet.",
   );
 
   const list = flowList({
@@ -63,7 +62,7 @@ export function renderFlow({ store, render, markDirty }) {
 
 function stepEditor(step, { tpl, store, markDirty, render }) {
   step.rag = step.rag || {};
-  const docIds = api.getStepDocumentIds(tpl.id, step, store.documents);
+  const docIds = api.getStepDocumentIds(step);
 
   const texts = h(
     "div",
@@ -84,7 +83,7 @@ function stepEditor(step, { tpl, store, markDirty, render }) {
     }),
   );
 
-  const docs = store.documents.filter((d) => api.isDocumentActive(tpl.id, d.id));
+  const docs = store.documents.filter((d) => api.isDocumentActive(d));
   const docList = h(
     "div",
     { class: "doc-checks" },
@@ -92,9 +91,9 @@ function stepEditor(step, { tpl, store, markDirty, render }) {
       ? docs.map((d) =>
           toggle({
             form: "check",
-            checked: docIds.has(d.id),
+            checked: docIds.has(String(d.id)),
             label: d.filename,
-            onChange: (v) => api.setStepDocument(tpl.id, step.id, d.id, v),
+            onChange: (v) => { api.setStepDocument(step, d.id, v); markDirty(); },
           }),
         )
       : h("p", { class: "muted" }, "Geen actieve documenten in de bibliotheek van dit template."),

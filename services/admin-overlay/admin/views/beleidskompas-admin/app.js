@@ -20,10 +20,10 @@ const ROUTES = {
 const DEFAULT_ROUTE = "editor";
 
 export const store = {
-  state: null, // server state: draft, live, versions, documents, settings
+  state: null, // server state: templates, settings, live
   manifest: null,
   templates: [],
-  templateId: "sis40",
+  templateId: null,
   flow: null, // working copy of the selected template; published as a whole
   dirty: false,
   documents: [],
@@ -41,21 +41,19 @@ export function versionLabel(tpl, versionId) {
 }
 
 function liveFlowOf(tpl) {
-  if (!tpl.mock) return structuredClone(store.state.draft || store.state.live);
-  const live = tpl.versions.find((v) => v.id === tpl.live_version_id) || tpl.versions[0];
-  return structuredClone(live.snapshot);
+  return structuredClone((tpl.versions.find((v) => v.id === tpl.live_version_id) || tpl.versions[0]).snapshot);
 }
 
 async function loadDocuments() {
-  const tpl = template();
-  store.documents = tpl.mock ? tpl.documents : await api.listDocuments();
+  store.documents = await api.listDocuments(template().id);
 }
 
 export async function reload() {
-  const { state, workflow_manifest } = await api.getState();
+  const state = await api.getState();
   store.state = state;
-  store.manifest = workflow_manifest;
+  store.manifest = state.workflow_manifest;
   store.templates = api.listTemplates(state);
+  if (!store.templates.some((t) => t.id === store.templateId)) store.templateId = store.templates[0]?.id;
   store.flow = liveFlowOf(template());
   store.dirty = false;
   store.feedback = null;
@@ -63,7 +61,7 @@ export async function reload() {
 }
 
 export async function selectTemplate(id) {
-  if (store.dirty && !confirm("Er zijn niet-gepubliceerde wijzigingen. Toch wisselen van template?")) return;
+  if (store.dirty && !confirm("Er zijn niet-opgeslagen wijzigingen. Toch wisselen van template?")) return;
   store.templateId = id;
   store.flow = liveFlowOf(template());
   store.dirty = false;
@@ -79,27 +77,30 @@ export function markDirty() {
   if (el) el.hidden = false;
 }
 
-async function publish() {
+async function save() {
   const tpl = template();
-  const note = await askText({ title: `Publiceren als nieuwe versie van ${tpl.name}`, label: "Wat is er veranderd? (optioneel)", placeholder: "Bijv. typfout in stap 2 hersteld", confirm: "Publiceren" });
+  const note = await askText({ title: `Opslaan als nieuwe versie van ${tpl.name}`, label: "Wat is er veranderd? (optioneel)", placeholder: "Bijv. typfout in stap 2 hersteld", confirm: "Opslaan" });
   if (note === null) return;
   try {
-    const { version } = await api.publishVersion(store.flow, note);
+    const { version } = await api.publishVersion(tpl.id, store.flow, note);
     await reload();
-    toast(`Gepubliceerd als ${versionLabel(template(), version.id)}`, "success");
+    toast(`Opgeslagen als ${versionLabel(template(), version.id)}`, "success");
     render();
   } catch (err) {
-    toast(`Publiceren mislukt: ${err.message}`, "error");
+    toast(`Opslaan mislukt: ${err.message}`, "error");
   }
 }
 
 async function saveAsNewTemplate() {
   const name = await askText({ title: "Opslaan als nieuw template", label: "Naam van het nieuwe template", placeholder: "Bijv. SiS 4.0 – Mobiliteit", confirm: "Opslaan", required: true });
   if (!name) return;
-  const tpl = api.saveAsNewTemplate(name, store.flow);
-  store.templates = api.listTemplates(store.state);
-  store.dirty = false;
-  await selectTemplate(tpl.id);
+  try {
+    const t = await api.saveAsNewTemplate(template().id, name, store.flow);
+    await reload();
+    await selectTemplate(t.id);
+  } catch (err) {
+    return toast(`Opslaan mislukt: ${err.message}`, "error");
+  }
   toast(`Template “${name}” aangemaakt`, "success");
 }
 
@@ -130,7 +131,7 @@ function subtitleFor(def) {
     "Template ",
     h("strong", {}, tpl.name),
     ` · ${versionLabel(tpl, tpl.live_version_id)} live`,
-    h("span", { id: "dirty-flag", class: "dirty-flag", hidden: !store.dirty }, " · niet-gepubliceerde wijzigingen"),
+    h("span", { id: "dirty-flag", class: "dirty-flag", hidden: !store.dirty }, " · niet-opgeslagen wijzigingen"),
   ];
 }
 
@@ -144,7 +145,7 @@ export function render() {
   const actions = def.editor
     ? [
         h("button", { class: "btn btn-secondary", onClick: saveAsNewTemplate }, icon("branch", 14), "Opslaan als nieuw template"),
-        h("button", { class: "btn btn-primary", onClick: publish, disabled: tpl.mock, title: tpl.mock ? "Voorbeeldtemplate: publiceren is niet beschikbaar" : undefined }, "Publiceren als nieuwe versie"),
+        h("button", { class: "btn btn-primary", onClick: save, disabled: tpl.mock, title: tpl.mock ? "Voorbeeldtemplate: opslaan is niet beschikbaar" : undefined }, "Opslaan"),
       ]
     : [];
   document.getElementById("toolbar").replaceChildren(

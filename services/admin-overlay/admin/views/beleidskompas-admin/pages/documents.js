@@ -12,12 +12,12 @@ export function renderDocuments({ store, render }) {
   const selected = docs.find((d) => d.id === ui.docId) || null;
 
   const reloadDocs = async () => {
-    store.documents = await api.listDocuments();
+    store.documents = await api.listDocuments(tpl.id);
     render();
   };
 
   const files = docs.map((d) => {
-    const active = api.isDocumentActive(tpl.id, d.id);
+    const active = api.isDocumentActive(d);
     return {
       id: d.id,
       name: d.filename,
@@ -25,9 +25,13 @@ export function renderDocuments({ store, render }) {
       trailing: toggle({
         checked: active,
         label: null,
-        onChange: (v) => {
-          api.setDocumentActive(tpl.id, d.id, v);
-          render();
+        onChange: async (v) => {
+          try {
+            await api.updateDocument(tpl.id, d.id, { active: v });
+            await reloadDocs();
+          } catch (err) {
+            toast(`Opslaan mislukt: ${err.message}`, "error");
+          }
         },
       }),
     };
@@ -38,7 +42,7 @@ export function renderDocuments({ store, render }) {
   const uploadInput = h("input", { type: "file", multiple: true, hidden: true });
   uploadInput.addEventListener("change", async () => {
     try {
-      for (const file of uploadInput.files || []) await api.uploadDocument(file);
+      for (const file of uploadInput.files || []) await api.uploadDocument(tpl.id, file);
       toast("Document(en) geüpload", "success");
       await reloadDocs();
     } catch (err) {
@@ -70,7 +74,7 @@ function emptyPreview() {
 
 function docPreview(doc, { tpl, store, reloadDocs }) {
   const readOnly = tpl.mock;
-  const usedIn = store.flow.steps.filter((s) => api.getStepDocumentIds(tpl.id, s, store.documents).has(doc.id));
+  const usedIn = store.flow.steps.filter((s) => api.getStepDocumentIds(s).has(String(doc.id)));
 
   const actions = h(
     "div",
@@ -84,7 +88,7 @@ function docPreview(doc, { tpl, store, reloadDocs }) {
           const name = await askText({ title: "Document hernoemen", label: "Bestandsnaam", placeholder: doc.filename, confirm: "Hernoemen", required: true });
           if (!name) return;
           try {
-            await api.updateDocument(doc.id, { filename: name });
+            await api.updateDocument(tpl.id, doc.id, { filename: name });
             await reloadDocs();
           } catch (err) {
             toast(`Hernoemen mislukt: ${err.message}`, "error");
@@ -104,7 +108,7 @@ function docPreview(doc, { tpl, store, reloadDocs }) {
         onClick: async () => {
           if (!confirm(`“${doc.filename}” verwijderen?`)) return;
           try {
-            await api.deleteDocument(doc.id);
+            await api.deleteDocument(tpl.id, doc.id);
             store.ui.docId = null;
             await reloadDocs();
           } catch (err) {
