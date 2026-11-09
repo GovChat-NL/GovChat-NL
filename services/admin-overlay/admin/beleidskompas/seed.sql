@@ -3,6 +3,9 @@
 -- Recreates the example template that used to live in the UI's mock-data.js:
 -- "Omgevingsvisie (voorbeeld)" with two versions (v2 is live) and three documents.
 --
+-- The admin loads this file by itself on startup when BELEIDSKOMPAS_DEV_SEED=true and the
+-- database has no templates. To wipe the database and load it again: make replenish-beleidskompas-db
+--
 -- Plain SQL: run it in any client (VS Code query window, psql -f, ...) against the
 -- database used by the admin service.
 --

@@ -8,6 +8,8 @@ const sharp = require("sharp");
 const { WebSocket, WebSocketServer } = require("ws");
 const { createDb } = require("./beleidskompas/db");
 const { createStore } = require("./beleidskompas/store");
+const { createService } = require("./beleidskompas/service");
+const { createBeleidskompasRouter } = require("./beleidskompas/routes");
 
 const app = express();
 const PORT = process.env.PORT || 3002;
@@ -75,6 +77,8 @@ const BELEIDSKOMPAS_FEEDBACK_MAX = 500;
 const BELEIDSKOMPAS_WORKFLOWS_DIR_NAME = "beleidskompas-workflows";
 const BELEIDSKOMPAS_HOOFDAGENT_WEBHOOK_PATH_DEFAULT = "beleidskompas-hoofdagent";
 const BELEIDSKOMPAS_N8N_BASE_URL = String(process.env.BELEIDSKOMPAS_N8N_BASE_URL || "http://n8n:5678").replace(/\/$/, "");
+// Demo/dev: when the database has no templates, load beleidskompas/seed.sql instead of the bare default template.
+const BELEIDSKOMPAS_DEV_SEED = String(process.env.BELEIDSKOMPAS_DEV_SEED || "false").toLowerCase() === "true";
 const BELEIDSKOMPAS_N8N_WEBHOOK_TOKEN = String(process.env.BELEIDSKOMPAS_N8N_WEBHOOK_TOKEN || process.env.N8N_WEBHOOK_TOKEN || "").trim();
 const DEFAULT_BELEIDSKOMPAS_SETTINGS = {
   retention_days: 365,
@@ -1019,6 +1023,10 @@ async function startBeleidskompas() {
       const statePath = path.join(DATA_DIR, BELEIDSKOMPAS_STATE_FILE);
       fs.renameSync(statePath, `${statePath}.migrated`);
       console.log(`[init] ${BELEIDSKOMPAS_STATE_FILE} geïmporteerd in de database en hernoemd naar .migrated`);
+    } else if (BELEIDSKOMPAS_DEV_SEED) {
+      await db.query(fs.readFileSync(path.join(__dirname, "beleidskompas", "seed.sql"), "utf8"));
+      await store.saveSettings(DEFAULT_BELEIDSKOMPAS_SETTINGS);
+      console.log("[init] BELEIDSKOMPAS_DEV_SEED: voorbeelddata uit seed.sql geladen");
     } else {
       const { template, version } = await store.createTemplate({
         name: "SiS 4.0", snapshot: defaultBeleidskompasFlow(), documentIds: [], note: "Initiële versie",
@@ -2647,77 +2655,20 @@ app.post("/api/config/apps", requireAuth, (req, res) => {
   }
 });
 
-app.get("/api/beleidskompas/state", requireAuth, async (req, res) => {
-  try {
-    const live = await store.getLive();
-    return res.json({
-      ok: true,
-      templates: await store.listTemplates(),
-      settings: { ...DEFAULT_BELEIDSKOMPAS_SETTINGS, ...((await store.getSettings()) || {}) },
-      live: live ? { template_id: live.template_id, version_id: live.version_id } : null,
-      workflow_manifest: readBeleidskompasWorkflowManifest(),
-    });
-  } catch (err) {
-    return res.status(err.status || 400).json({ error: String(err?.message || err) });
-  }
-});
-
-app.post("/api/beleidskompas/templates", requireAuth, async (req, res) => {
-  try {
-    const name = String(req.body?.name || "").trim();
-    if (!name) return res.status(400).json({ error: "name ontbreekt" });
-    const fromId = req.body?.from_template_id;
-    const src = fromId ? await getCurrentOr404(Number(fromId)) : null;
-    const { template, version } = await store.createTemplate({
-      name,
-      snapshot: normalizeBeleidskompasFlow(req.body?.flow ?? src?.snapshot),
-      documentIds: src?.documentIds || [],
-      createdFromVersionId: src?.versionId || null,
-      note: fromId ? `Aangemaakt vanuit template ${fromId}` : "Nieuw template",
-    });
-    return res.json({ ok: true, template, version });
-  } catch (err) {
-    return res.status(err.status || 400).json({ error: String(err?.message || err) });
-  }
-});
-
-const templateIdParam = (req) => Number(req.params.id);
-const notFound = (message) => Object.assign(new Error(message), { status: 404 });
-
-async function getCurrentOr404(templateId) {
-  const current = await store.getCurrent(templateId);
-  if (!current) throw notFound("Template niet gevonden");
-  return current;
-}
-
-// Saves a new version of the template with the document added or removed; returns the workflow manifest when live.
-async function setTemplateDocument(templateId, docId, active, label, filename) {
-  const current = await getCurrentOr404(templateId);
-  const doc = await store.getDocument(docId);
-  if (!doc) throw notFound("Document niet gevonden");
-  const others = current.documentIds.filter((x) => x !== docId);
-  if (!active && others.length === current.documentIds.length) throw notFound("Document niet actief in dit template");
-  const { isLive } = await store.saveVersion(
-    templateId, current.snapshot, active ? [...others, docId] : others, `${label}: ${filename || doc.filename}`);
-  return isLive ? publishLive() : null;
-}
-
-async function findTemplateDocument(templateId, docId) {
-  return (await store.listDocuments(templateId)).find((d) => d.id === docId) || null;
-}
-
-app.post("/api/beleidskompas/templates/:id/versions", requireAuth, async (req, res) => {
-  try {
-    const id = templateIdParam(req);
-    const current = await getCurrentOr404(id);
-    const { version, isLive } = await store.saveVersion(
-      id, normalizeBeleidskompasFlow(req.body?.flow), current.documentIds, String(req.body?.note || ""));
-    const workflow_manifest = isLive ? await publishLive() : null;
-    return res.json({ ok: true, version, workflow_manifest });
-  } catch (err) {
-    return res.status(err.status || 400).json({ error: String(err?.message || err) });
-  }
-});
+const beleidskompasService = createService({ store, publishLive });
+app.use(
+  "/api/beleidskompas",
+  createBeleidskompasRouter({
+    store,
+    service: beleidskompasService,
+    requireAuth,
+    flow: {
+      DEFAULT_BELEIDSKOMPAS_SETTINGS, normalizeBeleidskompasFlow, defaultBeleidskompasFlow,
+      readBeleidskompasWorkflowManifest, selectBeleidskompasRagDocs, normalizeLegacyState, publishLive,
+      n8nBaseUrl: BELEIDSKOMPAS_N8N_BASE_URL, n8nWebhookToken: BELEIDSKOMPAS_N8N_WEBHOOK_TOKEN,
+    },
+  }),
+);
 
 // ── Beleidskompas user feedback ──────────────────────────────────
 //
@@ -2759,225 +2710,6 @@ app.get("/api/beleidskompas-feedback", requireAuth, (req, res) => {
     items: items.slice().reverse(),
     totals: { total: items.length, up, down: items.length - up },
   });
-});
-
-app.get("/api/beleidskompas/templates/:id/export", requireAuth, async (req, res) => {
-  try {
-    const id = templateIdParam(req);
-    const template = (await store.listTemplates()).find((t) => t.id === id);
-    if (!template) return res.status(404).json({ error: "Template niet gevonden" });
-    const current = await getCurrentOr404(id);
-    const documents = [];
-    for (const d of (await store.listDocuments(id)).filter((x) => x.active)) {
-      documents.push({ ...d, content_base64: (await store.getDocument(d.id)).content.toString("base64") });
-    }
-    return res.json({
-      name: template.name,
-      live: current.snapshot,
-      draft: current.snapshot,
-      live_version_id: current.versionId,
-      versions: template.versions,
-      documents,
-    });
-  } catch (err) {
-    return res.status(err.status || 400).json({ error: String(err?.message || err) });
-  }
-});
-
-app.post("/api/beleidskompas/import", requireAuth, async (req, res) => {
-  try {
-    const incoming = req.body && typeof req.body === "object" ? req.body : {};
-    const { templateId } = await store.importLegacyState(normalizeLegacyState(incoming), String(incoming.name || "Import"));
-    return res.json({ ok: true, template_id: templateId });
-  } catch (err) {
-    return res.status(err.status || 400).json({ error: String(err?.message || err) });
-  }
-});
-
-app.post("/api/beleidskompas/settings", requireAuth, async (req, res) => {
-  try {
-    const current = { ...DEFAULT_BELEIDSKOMPAS_SETTINGS, ...((await store.getSettings()) || {}) };
-    const incoming = req.body && typeof req.body === "object" ? req.body : {};
-    const nextSettings = {
-      ...current,
-      ...incoming,
-      retention_days: Math.max(1, Number.parseInt(String(incoming.retention_days ?? current.retention_days ?? 365), 10) || 365),
-      enforce_source_citation: Boolean(
-        Object.prototype.hasOwnProperty.call(incoming, "enforce_source_citation")
-          ? incoming.enforce_source_citation
-          : current.enforce_source_citation,
-      ),
-      require_human_validation: Boolean(
-        Object.prototype.hasOwnProperty.call(incoming, "require_human_validation")
-          ? incoming.require_human_validation
-          : current.require_human_validation,
-      ),
-      default_model: String(incoming.default_model ?? current.default_model ?? "govchat-default").trim() || "govchat-default",
-    };
-    await store.saveSettings(nextSettings);
-    return res.json({ ok: true, settings: nextSettings });
-  } catch (err) {
-    return res.status(err.status || 400).json({ error: String(err?.message || err) });
-  }
-});
-
-app.get("/api/beleidskompas/workflows/status", requireAuth, async (req, res) => {
-  try {
-    const live = await store.getLive();
-    const flow = normalizeBeleidskompasFlow(live?.snapshot || defaultBeleidskompasFlow());
-    const manifest = readBeleidskompasWorkflowManifest();
-    const expectedStepCount = Array.isArray(flow.steps) ? flow.steps.length : 0;
-    const mappedStepCount = Array.isArray(manifest?.steps) ? manifest.steps.length : 0;
-    const stepMismatch = expectedStepCount !== mappedStepCount;
-
-    return res.json({
-      ok: true,
-      n8n_base_url: BELEIDSKOMPAS_N8N_BASE_URL,
-      token_configured: Boolean(BELEIDSKOMPAS_N8N_WEBHOOK_TOKEN),
-      step_count_expected: expectedStepCount,
-      step_count_mapped: mappedStepCount,
-      step_mismatch: stepMismatch,
-      manifest: manifest || null,
-    });
-  } catch (err) {
-    return res.status(err.status || 400).json({ error: String(err?.message || err) });
-  }
-});
-
-app.post("/api/beleidskompas/workflows/sync", requireAuth, async (req, res) => {
-  try {
-    const manifest = await publishLive();
-    return res.json({ ok: true, source: "live", manifest });
-  } catch (err) {
-    return res.status(err.status || 500).json({ error: String(err?.message || err) });
-  }
-});
-
-app.get("/api/beleidskompas/templates/:id/documents", requireAuth, async (req, res) => {
-  try {
-    const id = templateIdParam(req);
-    await getCurrentOr404(id);
-    return res.json({ ok: true, documents: await store.listDocuments(id) });
-  } catch (err) {
-    return res.status(err.status || 400).json({ error: String(err?.message || err) });
-  }
-});
-
-app.post("/api/beleidskompas/templates/:id/documents", requireAuth, async (req, res) => {
-  try {
-    const id = templateIdParam(req);
-    const filename = String(req.body?.filename || "").trim();
-    const mimeType = String(req.body?.mime_type || "application/octet-stream").trim();
-    const contentBase64 = String(req.body?.content_base64 || "").trim();
-    if (!filename) return res.status(400).json({ error: "filename ontbreekt" });
-
-    const bytes = contentBase64 ? Buffer.from(contentBase64, "base64") : Buffer.from("");
-    let previewText = "Preview niet beschikbaar voor dit documenttype.";
-    if (mimeType.startsWith("text/") || filename.toLowerCase().endsWith(".md") || filename.toLowerCase().endsWith(".txt")) {
-      previewText = bytes.toString("utf-8").slice(0, 4000);
-    }
-
-    await getCurrentOr404(id);
-    const { id: docId, reused } = await store.upsertDocument({ filename, contentType: mimeType, bytes, previewText });
-    const workflow_manifest = await setTemplateDocument(id, docId, true, "Document toegevoegd", filename);
-    return res.status(201).json({ ok: true, document: await findTemplateDocument(id, docId), reused, workflow_manifest });
-  } catch (err) {
-    return res.status(err.status || 400).json({ error: String(err?.message || err) });
-  }
-});
-
-app.patch("/api/beleidskompas/templates/:id/documents/:docId", requireAuth, async (req, res) => {
-  try {
-    const id = templateIdParam(req);
-    const docId = Number(req.params.docId);
-    const filename = typeof req.body?.filename === "string" ? req.body.filename.trim() : "";
-    await getCurrentOr404(id);
-    if (!(await findTemplateDocument(id, docId))) return res.status(404).json({ error: "Document niet gevonden" });
-    if (filename) await store.renameDocument(docId, filename);
-    if (req.body?.active === false) await setTemplateDocument(id, docId, false, "Document verwijderd");
-    if (req.body?.active === true) await setTemplateDocument(id, docId, true, "Document geactiveerd");
-    const document = await findTemplateDocument(id, docId);
-    if (!document) return res.status(404).json({ error: "Document niet gevonden" });
-    return res.json({ ok: true, document });
-  } catch (err) {
-    return res.status(err.status || 400).json({ error: String(err?.message || err) });
-  }
-});
-
-app.delete("/api/beleidskompas/templates/:id/documents/:docId", requireAuth, async (req, res) => {
-  try {
-    const docId = Number(req.params.docId);
-    await setTemplateDocument(templateIdParam(req), docId, false, "Document verwijderd");
-    return res.json({ ok: true, removed: docId });
-  } catch (err) {
-    return res.status(err.status || 400).json({ error: String(err?.message || err) });
-  }
-});
-
-app.get("/api/beleidskompas/documents/:docId/preview", requireAuth, async (req, res) => {
-  try {
-    const doc = await store.getDocument(Number(req.params.docId));
-    if (!doc) return res.status(404).json({ error: "Document niet gevonden" });
-    return res.json({ ok: true, preview_text: String(doc.preview_text || "") });
-  } catch (err) {
-    return res.status(err.status || 400).json({ error: String(err?.message || err) });
-  }
-});
-
-app.get("/api/beleidskompas/documents/:docId/download", requireAuth, async (req, res) => {
-  try {
-    const doc = await store.getDocument(Number(req.params.docId));
-    if (!doc) return res.status(404).json({ error: "Document niet gevonden" });
-    res.setHeader("Content-Type", String(doc.mime_type || "application/octet-stream"));
-    res.setHeader("Content-Disposition", `attachment; filename="${encodeURIComponent(String(doc.filename || "document"))}"`);
-    return res.status(200).send(doc.content);
-  } catch (err) {
-    return res.status(err.status || 400).json({ error: String(err?.message || err) });
-  }
-});
-
-app.post("/api/beleidskompas/rag/query", requireAuth, async (req, res) => {
-  try {
-    const live = await store.getLive();
-    if (!live) return res.status(400).json({ error: "Geen live versie" });
-    const flow = normalizeBeleidskompasFlow(live.snapshot);
-    const stepId = String(req.body?.step_id || "").trim();
-    let step = Array.isArray(flow.steps) ? flow.steps.find((s) => String(s?.id || "") === stepId) : null;
-    if (!step) step = Array.isArray(flow.steps) ? flow.steps[0] : null;
-    if (!step) return res.status(400).json({ error: "Geen stappen geconfigureerd" });
-
-    const result = selectBeleidskompasRagDocs({
-      step,
-      question: String(req.body?.question || ""),
-      caseText: String(req.body?.case_text || ""),
-      stepFields: req.body?.step_fields && typeof req.body.step_fields === "object" ? req.body.step_fields : {},
-      documents: live.documents,
-    });
-
-    return res.json({
-      ok: true,
-      step_id: String(step.id || stepId),
-      rag: result.rag,
-      citations: result.docs.map((d, i) => ({
-        rank: i + 1,
-        id: d.id,
-        filename: d.filename,
-        score: Number(d.score.toFixed(4)),
-        tags: d.tags,
-        preview: d.preview,
-      })),
-      trace: {
-        algorithm: result.rag.algorithm,
-        top_k: result.rag.top_k,
-        min_score: result.rag.min_score,
-        tag_filter_mode: result.rag.tag_filter_mode,
-        required_tags: result.rag.required_tags,
-        matched_docs: result.docs.length,
-      },
-    });
-  } catch (err) {
-    return res.status(400).json({ error: String(err?.message || err) });
-  }
 });
 
 app.get("/api/transcript-sessions", requireLibreChatUser, (req, res) => {
