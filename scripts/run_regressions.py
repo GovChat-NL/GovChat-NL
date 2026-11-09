@@ -24,7 +24,9 @@ FILES = {".env.example", ".gitignore", ".gitattributes", "librechat.yaml", "dock
          "docker-compose.admin-panel-build.yml"}
 # Permit this change set before the maintainer's first commit, not arbitrary untracked files.
 NEW_FILES = {"scripts/librechat_release.py", "scripts/librechat-release-pin.js", "scripts/run_regressions.py",
-             "tests/test_librechat_release.py", "tests/test_regression_runner.py", "tests/librechat-release-pin.test.js"}
+             "tests/test_librechat_release.py", "tests/test_regression_runner.py", "tests/librechat-release-pin.test.js",
+             "scripts/orchestrator-image-workflow.js", "tests/image-tool-identity.test.js",
+             "tests/orchestrator/n8n-image-integration.test.js"}
 
 
 def clean_env():
@@ -139,7 +141,8 @@ def execute_suite(source, offline=False):
         for script in ("tests/translations/run-tests.js", "tests/translations/run-image-loader-test.js"):
             run(container_args(source, image, ["node", script]), source)
         run(container_args(source, admin_image, node_tests(source, ["tests/orchestrator/name*.test.js", "tests/orchestrator/prompt*.test.js", "tests/orchestrator/utility*.test.js"])), source)
-        run(container_args(source, n8n_image, ["node", "--test", "tests/orchestrator/n8n-utility-integration.test.js"], mounts), source)
+        run(container_args(source, n8n_image, ["node", "--test", "tests/orchestrator/n8n-utility-integration.test.js",
+                                             "tests/orchestrator/n8n-image-integration.test.js"], mounts), source)
         run(container_args(source, n8n_image, ["node", "tests/orchestrator/run-document-smoke.js"]), source)
         env = {**clean_env(), "GOVCHAT_DOCKER_TESTS": "1",
                "DOCKER_CONFIG": str(source / ".regression-docker-config")}

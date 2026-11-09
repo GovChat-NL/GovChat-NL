@@ -9,11 +9,33 @@
     "isArchived": false,
     "nodes": [
       {
-        "parameters": {},
+        "parameters": {
+          "inputSource": "workflowInputs",
+          "workflowInputs": {
+            "values": [
+              {
+                "name": "prompt",
+                "type": "string"
+              },
+              {
+                "name": "size",
+                "type": "string"
+              },
+              {
+                "name": "quality",
+                "type": "string"
+              },
+              {
+                "name": "userId",
+                "type": "string"
+              }
+            ]
+          }
+        },
         "id": "ExecuteWorkflowTriggerImage",
         "name": "When Executed by Another Workflow",
         "type": "n8n-nodes-base.executeWorkflowTrigger",
-        "typeVersion": 1,
+        "typeVersion": 1.1,
         "position": [
           -980,
           40

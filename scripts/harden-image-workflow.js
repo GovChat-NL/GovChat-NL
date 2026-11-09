@@ -14,12 +14,7 @@ if (!prepareNode || !callNode || !responseNode || !triggerNode) {
   throw new Error('Required image workflow nodes were not found');
 }
 
-triggerNode.parameters = {
-  ...(triggerNode.parameters || {}),
-  workflowInputs: {
-    values: [{ name: 'prompt' }, { name: 'size' }, { name: 'quality' }],
-  },
-};
+require('./orchestrator-image-workflow').applyImageTriggerInputs(workflow);
 
 prepareNode.parameters.jsCode = String.raw`const crypto = require('crypto');
 const fs = require('fs');
