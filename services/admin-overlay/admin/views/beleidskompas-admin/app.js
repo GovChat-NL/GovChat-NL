@@ -8,13 +8,16 @@ import { renderGeneral } from "./pages/general.js";
 import { renderEditor } from "./pages/editor.js";
 import { renderDocuments } from "./pages/documents.js";
 import { renderFlow } from "./pages/flow.js";
+import { renderDeploy } from "./pages/deploy.js";
 import { renderFeedback } from "./pages/feedback.js";
 
 const ROUTES = {
   general: { title: "Algemeen", page: renderGeneral },
   editor: { title: "Editor", page: renderEditor, editor: true },
-  "editor/documents": { title: "Documentenbibliotheek", page: renderDocuments, editor: true },
-  "editor/flow": { title: "Flow builder", page: renderFlow, editor: true },
+  // gated: only open once a template is selected in the Editor.
+  "editor/documents": { title: "Documentenbibliotheek", page: renderDocuments, editor: true, gated: true },
+  "editor/flow": { title: "Flow builder", page: renderFlow, editor: true, gated: true },
+  "editor/deploy": { title: "Deploy", page: renderDeploy },
   feedback: { title: "Feedback", page: renderFeedback },
 };
 const DEFAULT_ROUTE = "editor";
@@ -23,15 +26,15 @@ export const store = {
   state: null, // server state: draft, live, versions, documents, settings
   manifest: null,
   templates: [],
-  templateId: "sis40",
-  flow: null, // working copy of the selected template; published as a whole
+  templateId: null, // nothing selected until the admin picks a template in the Editor
+  flow: null, // working copy of the selected template's newest version; saved as a whole
   dirty: false,
   documents: [],
   feedback: null,
-  ui: { docId: null, stepId: null, fbTemplate: "all", fbPeriod: "30", fbFrom: "", fbTo: "" },
+  ui: { docId: null, stepId: null, fbTemplate: "all", fbVersion: "all", fbPeriod: "30", fbFrom: "", fbTo: "", depTemplate: null, depVersion: null },
 };
 
-export const template = () => store.templates.find((t) => t.id === store.templateId) || store.templates[0];
+export const template = () => store.templates.find((t) => t.id === store.templateId) || null;
 
 // Version labels count from the oldest version: v1, v2, …
 export function versionLabel(tpl, versionId) {
@@ -40,15 +43,16 @@ export function versionLabel(tpl, versionId) {
   return idx < 0 ? "onbekende versie" : `v${idx + 1}`;
 }
 
-function liveFlowOf(tpl) {
-  if (!tpl.mock) return structuredClone(store.state.draft || store.state.live);
-  const live = tpl.versions.find((v) => v.id === tpl.live_version_id) || tpl.versions[0];
-  return structuredClone(live.snapshot);
+export const newestVersion = (tpl) => [...tpl.versions].sort((a, b) => b.published_at.localeCompare(a.published_at))[0];
+
+// The editor always works on the newest saved version, live or not.
+function flowOf(tpl) {
+  return tpl ? structuredClone(newestVersion(tpl)?.snapshot || store.state.live) : null;
 }
 
 async function loadDocuments() {
   const tpl = template();
-  store.documents = tpl.mock ? tpl.documents : await api.listDocuments();
+  store.documents = !tpl ? [] : tpl.mock ? tpl.documents : await api.listDocuments();
 }
 
 export async function reload() {
@@ -56,16 +60,16 @@ export async function reload() {
   store.state = state;
   store.manifest = workflow_manifest;
   store.templates = api.listTemplates(state);
-  store.flow = liveFlowOf(template());
+  store.flow = flowOf(template());
   store.dirty = false;
   store.feedback = null;
   await loadDocuments();
 }
 
 export async function selectTemplate(id) {
-  if (store.dirty && !confirm("Er zijn niet-gepubliceerde wijzigingen. Toch wisselen van template?")) return;
+  if (store.dirty && !confirm("Er zijn niet-opgeslagen wijzigingen. Toch wisselen van template?")) return;
   store.templateId = id;
-  store.flow = liveFlowOf(template());
+  store.flow = flowOf(template());
   store.dirty = false;
   store.ui.stepId = null;
   store.ui.docId = null;
@@ -79,17 +83,17 @@ export function markDirty() {
   if (el) el.hidden = false;
 }
 
-async function publish() {
+async function saveVersion() {
   const tpl = template();
-  const note = await askText({ title: `Publiceren als nieuwe versie van ${tpl.name}`, label: "Wat is er veranderd? (optioneel)", placeholder: "Bijv. typfout in stap 2 hersteld", confirm: "Publiceren" });
+  const note = await askText({ title: `Opslaan als nieuwe versie van ${tpl.name}`, label: "Wat is er veranderd? (optioneel)", placeholder: "Bijv. typfout in stap 2 hersteld", confirm: "Opslaan" });
   if (note === null) return;
   try {
-    const { version } = await api.publishVersion(store.flow, note);
+    const { version } = await api.saveVersion(store.flow, note);
     await reload();
-    toast(`Gepubliceerd als ${versionLabel(template(), version.id)}`, "success");
+    toast(`Opgeslagen als ${versionLabel(template(), version.id)}. Live zetten doe je via Deploy.`, "success");
     render();
   } catch (err) {
-    toast(`Publiceren mislukt: ${err.message}`, "error");
+    toast(`Opslaan mislukt: ${err.message}`, "error");
   }
 }
 
@@ -106,7 +110,12 @@ async function saveAsNewTemplate() {
 // ── Routing (hash routes, so the browser's back button works) ─────
 const currentRoute = () => {
   const r = location.hash.replace(/^#\/?/, "");
-  return ROUTES[r] ? r : DEFAULT_ROUTE;
+  if (!ROUTES[r]) return DEFAULT_ROUTE;
+  if (ROUTES[r].gated && !template()) {
+    history.replaceState(null, "", `#/${DEFAULT_ROUTE}`);
+    return DEFAULT_ROUTE;
+  }
+  return r;
 };
 
 window.addEventListener("hashchange", render);
@@ -117,34 +126,40 @@ window.addEventListener("beforeunload", (e) => {
 
 function crumbsFor(route) {
   const def = ROUTES[route];
-  if (!def.editor) return [{ label: def.title, route }];
-  const crumbs = [{ label: "Editor", route: "editor" }, { label: template().name, route: "editor" }];
+  if (!def.editor) return route.startsWith("editor/") ? [{ label: "Editor", route: "editor" }, { label: def.title, route }] : [{ label: def.title, route }];
+  const tpl = template();
+  const crumbs = [{ label: "Editor", route: "editor" }, ...(tpl ? [{ label: tpl.name, route: "editor" }] : [])];
   if (route !== "editor") crumbs.push({ label: def.title, route });
   return crumbs;
 }
 
+export const dirtyFlag = () =>
+  h("span", { id: "dirty-flag", class: "dirty-flag", hidden: !store.dirty }, " · niet-opgeslagen wijzigingen");
+
 function subtitleFor(def) {
   if (!def.editor) return def.subtitle;
   const tpl = template();
-  return [
-    "Template ",
-    h("strong", {}, tpl.name),
-    ` · ${versionLabel(tpl, tpl.live_version_id)} live`,
-    h("span", { id: "dirty-flag", class: "dirty-flag", hidden: !store.dirty }, " · niet-gepubliceerde wijzigingen"),
-  ];
+  return ["Template ", h("strong", {}, tpl.name), ` · ${versionStatus(tpl)}`, dirtyFlag()];
+}
+
+// "v2 live", or "v3 nieuwste · v2 live" when the newest version is not deployed yet.
+export function versionStatus(tpl) {
+  const newest = newestVersion(tpl);
+  const live = `${versionLabel(tpl, tpl.live_version_id)} live`;
+  return newest.id === tpl.live_version_id ? live : `${versionLabel(tpl, newest.id)} nieuwste · ${live}`;
 }
 
 export function render() {
   const route = currentRoute();
   const def = ROUTES[route];
   document.title = `${def.title} - Beleidskompas Admin`;
-  document.getElementById("sidebar").replaceChildren(...sidebar(route));
+  document.getElementById("sidebar").replaceChildren(...sidebar(route, { locked: !template() }));
 
   const tpl = template();
-  const actions = def.editor
+  const actions = def.editor && tpl
     ? [
         h("button", { class: "btn btn-secondary", onClick: saveAsNewTemplate }, icon("branch", 14), "Opslaan als nieuw template"),
-        h("button", { class: "btn btn-primary", onClick: publish, disabled: tpl.mock, title: tpl.mock ? "Voorbeeldtemplate: publiceren is niet beschikbaar" : undefined }, "Publiceren als nieuwe versie"),
+        h("button", { class: "btn btn-primary", onClick: saveVersion, disabled: tpl.mock, title: tpl.mock ? "Voorbeeldtemplate: opslaan is niet beschikbaar" : undefined }, "Opslaan als nieuwe versie"),
       ]
     : [];
   document.getElementById("toolbar").replaceChildren(

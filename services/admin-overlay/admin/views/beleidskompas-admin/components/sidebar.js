@@ -1,25 +1,21 @@
 import { h, icon } from "../dom.js";
 
-// Left pane: sidebar with the admin pages and links to the other GovChat editors.
+// Left pane: sidebar with the Beleidskompas admin pages and a way back to the GovChat dashboard.
 const PAGES = [
   { route: "general", label: "Algemeen", icon: "gear" },
   { route: "editor", label: "Editor", icon: "pencil" },
-  { route: "editor/documents", label: "Documentenbibliotheek", icon: "folder", child: true },
-  { route: "editor/flow", label: "Flow builder", icon: "flow", child: true },
+  { route: "editor/documents", label: "Documentenbibliotheek", icon: "folder", child: true, gated: true },
+  { route: "editor/flow", label: "Flow builder", icon: "flow", child: true, gated: true },
+  { route: "editor/deploy", label: "Deploy", icon: "upload", child: true },
   { route: "feedback", label: "Feedback", icon: "chat" },
 ];
 
-const OTHER_EDITORS = [
-  { href: "/dashboard", label: "Dashboard", icon: "home" },
-  { href: "/help-editor", label: "Handleiding", icon: "book" },
-  { href: "/apps-editor", label: "Apps", icon: "grid" },
-  { href: "/crawler-editor", label: "Crawler", icon: "globe" },
-  { href: "/orchestrator-editor", label: "Orchestrator", icon: "cpu" },
-];
-
-export function sidebar(currentRoute) {
+// locked: no template selected yet, so the gated pages are shown but not clickable.
+export function sidebar(currentRoute, { locked = false } = {}) {
   const item = (p) =>
-    h(
+    p.gated && locked
+      ? h("span", { class: "side-item is-child is-disabled", "aria-disabled": "true", title: "Kies eerst een template in de Editor" }, icon(p.icon), h("span", {}, p.label))
+      : h(
       "a",
       {
         href: `#/${p.route}`,
@@ -29,14 +25,11 @@ export function sidebar(currentRoute) {
       icon(p.icon),
       h("span", {}, p.label),
     );
-  const link = (l) => h("a", { href: l.href, class: "side-item" }, icon(l.icon), h("span", {}, l.label));
 
   return [
     h("div", { class: "side-title" }, "Beleidskompas"),
     h("nav", { class: "side-group", "aria-label": "Beleidskompas" }, PAGES.map(item)),
-    h("div", { class: "side-heading" }, "GovChat-beheer"),
-    h("nav", { class: "side-group", "aria-label": "GovChat-beheer" }, OTHER_EDITORS.map(link)),
-    h("div", { class: "side-spacer" }),
-    h("a", { href: "/logout", class: "side-item" }, icon("logout"), h("span", {}, "Uitloggen")),
+    h("hr", { class: "side-sep" }),
+    h("a", { href: "/dashboard", class: "side-item" }, icon("home"), h("span", {}, "Terug naar dashboard")),
   ];
 }

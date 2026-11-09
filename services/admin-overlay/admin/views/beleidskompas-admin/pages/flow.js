@@ -4,7 +4,6 @@ import { h, icon, card, field, bound } from "../dom.js";
 import { flowList } from "../components/flow-list.js";
 import { dropdown } from "../components/dropdown.js";
 import { toggle } from "../components/toggle.js";
-import { template } from "../app.js";
 
 const SEARCH_METHODS = [
   { value: "hybrid", label: "Hybride (aanbevolen)" },
@@ -13,17 +12,29 @@ const SEARCH_METHODS = [
 ];
 
 export function renderFlow({ store, render, markDirty }) {
-  const tpl = template();
   const steps = store.flow.steps;
   const changed = () => { markDirty(); render(); };
+  // Inserts a new step at position `at` (default: the end), collapsed.
+  const addStep = (at = steps.length) => {
+    const id = `stap${Date.now().toString(36)}`;
+    steps.splice(at, 0, {
+      id,
+      title: `Nieuwe stap ${at + 1}`,
+      description: "",
+      prompt: "",
+      doc_tags: [],
+      rag: { algorithm: "hybrid", top_k: 3, min_score: 0.08, tag_filter_mode: "any", required_tags: [] },
+      substeps: [],
+    });
+    changed();
+  };
 
   const notice = h(
     "p",
     { class: "notice notice-info" },
     icon("info", 14),
-    "Titels, beschrijvingen en substappen verschijnen na publiceren op de Beleidskompas-pagina. " +
-      "Prompts en zoekinstellingen worden opgeslagen in het template, maar de assistent leest ze nog niet. " +
-      "De documentkeuze per stap wordt nog niet opgeslagen: die geldt alleen in dit tabblad.",
+    "Titels, beschrijvingen en substappen verschijnen op de Beleidskompas-pagina zodra de versie live staat (Deploy). " +
+      "Prompts, zoekinstellingen en de documenten per stap worden opgeslagen in het template, maar de assistent leest ze nog niet.",
   );
 
   const list = flowList({
@@ -40,30 +51,16 @@ export function renderFlow({ store, render, markDirty }) {
       steps.splice(idx, 1);
       changed();
     },
-    onAdd: () => {
-      const n = steps.length + 1;
-      const id = `stap${Date.now().toString(36)}`;
-      steps.push({
-        id,
-        title: `Nieuwe stap ${n}`,
-        description: "",
-        prompt: "",
-        doc_tags: [],
-        rag: { algorithm: "hybrid", top_k: 3, min_score: 0.08, tag_filter_mode: "any", required_tags: [] },
-        substeps: [],
-      });
-      store.ui.stepId = id;
-      changed();
-    },
-    renderEditor: (step) => stepEditor(step, { tpl, store, markDirty, render }),
+    onAdd: () => addStep(),
+    renderEditor: (step, idx) => stepEditor(step, { store, markDirty, render, addAfter: () => addStep(idx + 1) }),
   });
 
   return { content: h("div", { class: "stack" }, notice, list) };
 }
 
-function stepEditor(step, { tpl, store, markDirty, render }) {
+function stepEditor(step, { store, markDirty, render, addAfter }) {
   step.rag = step.rag || {};
-  const docIds = api.getStepDocumentIds(tpl.id, step, store.documents);
+  const docIds = api.stepDocumentIds(step, store.documents);
 
   const texts = h(
     "div",
@@ -84,20 +81,24 @@ function stepEditor(step, { tpl, store, markDirty, render }) {
     }),
   );
 
-  const docs = store.documents.filter((d) => api.isDocumentActive(tpl.id, d.id));
   const docList = h(
     "div",
     { class: "doc-checks" },
-    docs.length
-      ? docs.map((d) =>
+    store.documents.length
+      ? store.documents.map((d) =>
           toggle({
             form: "check",
             checked: docIds.has(d.id),
             label: d.filename,
-            onChange: (v) => api.setStepDocument(tpl.id, step.id, d.id, v),
+            onChange: (v) => {
+              if (v) docIds.add(d.id);
+              else docIds.delete(d.id);
+              step.document_ids = [...docIds];
+              markDirty();
+            },
           }),
         )
-      : h("p", { class: "muted" }, "Geen actieve documenten in de bibliotheek van dit template."),
+      : h("p", { class: "muted" }, "Nog geen documenten in de Documentenbibliotheek."),
   );
 
   const substeps = h(
@@ -149,6 +150,11 @@ function stepEditor(step, { tpl, store, markDirty, render }) {
     texts,
     card("Documenten", search, docList),
     card("Substappen", substeps),
-    advanced,
+    h(
+      "div",
+      { class: "flow-editor-foot" },
+      advanced,
+      h("button", { class: "btn btn-secondary", onClick: addAfter }, icon("plus", 14), "Stap hierna toevoegen"),
+    ),
   );
 }

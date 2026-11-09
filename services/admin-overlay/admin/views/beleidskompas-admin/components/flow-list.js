@@ -39,6 +39,6 @@ export function flowList({ steps, expandedId, onToggle, renderEditor, onMove, on
     }),
     readOnly
       ? null
-      : h("li", { class: "flow-step flow-add" }, h("span", { class: "flow-num is-add", "aria-hidden": "true" }, icon("plus", 14)), h("button", { class: "btn btn-secondary", onClick: onAdd }, "Stap toevoegen")),
+      : h("li", { class: "flow-step flow-add" }, h("span", { class: "flow-num is-add", "aria-hidden": "true" }, icon("plus", 14)), h("button", { class: "btn btn-secondary", onClick: onAdd }, icon("plus", 14), "Stap toevoegen")),
   );
 }

@@ -653,6 +653,8 @@ function normalizeBeleidskompasFlow(input) {
       description: String(step?.description ?? fb.description ?? "").trim(),
       prompt: String(step?.prompt ?? fb.prompt ?? "").trim(),
       doc_tags: normalizeTags(step?.doc_tags || fb.doc_tags),
+      // Documents picked in the Flow builder. Retrieval still uses doc_tags; missing = not picked yet.
+      document_ids: Array.isArray(step?.document_ids) ? [...new Set(step.document_ids.map(String))] : undefined,
       rag: normalizeStepRagSettings(step?.rag || fb.rag || {}, step || fb),
       substeps: substepsRaw.map((sub, subIdx) => ({
         id: String(sub?.id || `${idx + 1}.${subIdx + 1}`).trim() || `${idx + 1}.${subIdx + 1}`,
@@ -2814,26 +2816,30 @@ app.post("/api/beleidskompas/publish", requireAuth, (req, res) => {
     const state = readBeleidskompasState();
     const flow = normalizeBeleidskompasFlow(req.body?.flow || state.draft || state.live);
     const note = String(req.body?.note || "").trim();
+    // live: false saves a new version without deploying it (deploy goes through /rollback/:versionId).
+    const goLive = req.body?.live !== false;
     const versionId = `v${Date.now()}`;
     const who = "System Administrator";
     const publishedAt = new Date().toISOString();
 
-    for (const v of state.versions) v.is_live = false;
+    if (goLive) for (const v of state.versions) v.is_live = false;
     const version = {
       id: versionId,
       published_at: publishedAt,
       published_by: who,
       note,
-      is_live: true,
+      is_live: goLive,
       snapshot: cloneJSON(flow),
     };
     state.versions.unshift(version);
-    state.live_version_id = versionId;
-    state.live = cloneJSON(flow);
     state.draft = cloneJSON(flow);
+    if (goLive) {
+      state.live_version_id = versionId;
+      state.live = cloneJSON(flow);
+    }
 
     const saved = writeBeleidskompasState(state);
-    publishBeleidskompasLiveConfig(saved.live);
+    if (goLive) publishBeleidskompasLiveConfig(saved.live);
     const workflow_manifest = syncBeleidskompasWorkflowFiles(saved);
     return res.json({ ok: true, version, live: saved.live, workflow_manifest });
   } catch (err) {
