@@ -17,7 +17,7 @@ const ROUTES = {
   // gated: only open once a template is selected in the Editor.
   "editor/documents": { title: "Documentenbibliotheek", page: renderDocuments, editor: true, gated: true },
   "editor/flow": { title: "Flow builder", page: renderFlow, editor: true, gated: true },
-  "editor/deploy": { title: "Deploy", page: renderDeploy },
+  deploy: { title: "Deploy", page: renderDeploy },
   feedback: { title: "Feedback", page: renderFeedback },
 };
 const DEFAULT_ROUTE = "editor";
@@ -126,7 +126,7 @@ window.addEventListener("beforeunload", (e) => {
 
 function crumbsFor(route) {
   const def = ROUTES[route];
-  if (!def.editor) return route.startsWith("editor/") ? [{ label: "Editor", route: "editor" }, { label: def.title, route }] : [{ label: def.title, route }];
+  if (!def.editor) return [{ label: def.title, route }];
   const tpl = template();
   const crumbs = [{ label: "Editor", route: "editor" }, ...(tpl ? [{ label: tpl.name, route: "editor" }] : [])];
   if (route !== "editor") crumbs.push({ label: def.title, route });

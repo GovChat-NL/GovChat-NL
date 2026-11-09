@@ -6,7 +6,7 @@ const PAGES = [
   { route: "editor", label: "Editor", icon: "pencil" },
   { route: "editor/documents", label: "Documentenbibliotheek", icon: "folder", child: true, gated: true },
   { route: "editor/flow", label: "Flow builder", icon: "flow", child: true, gated: true },
-  { route: "editor/deploy", label: "Deploy", icon: "upload", child: true },
+  { route: "deploy", label: "Deploy", icon: "upload" },
   { route: "feedback", label: "Feedback", icon: "chat" },
 ];
 
