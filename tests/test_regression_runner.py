@@ -105,6 +105,7 @@ class RunnerTests(unittest.TestCase):
         with patch.object(runner, "run") as run, patch.object(runner.subprocess, "run") as cleanup:
             runner.execute_suite(ROOT)
         commands = [call.args[0] for call in run.call_args_list]
+        self.assertTrue(any(command[-1] == "tests/orchestrator/run-document-smoke.js" for command in commands))
         builds = [command for command in commands if command[:2] == ["docker", "build"]]
         self.assertEqual(len(builds), 1)
         admin_image = builds[0][3]

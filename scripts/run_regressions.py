@@ -140,6 +140,7 @@ def execute_suite(source, offline=False):
             run(container_args(source, image, ["node", script]), source)
         run(container_args(source, admin_image, node_tests(source, ["tests/orchestrator/name*.test.js", "tests/orchestrator/prompt*.test.js", "tests/orchestrator/utility*.test.js"])), source)
         run(container_args(source, n8n_image, ["node", "--test", "tests/orchestrator/n8n-utility-integration.test.js"], mounts), source)
+        run(container_args(source, n8n_image, ["node", "tests/orchestrator/run-document-smoke.js"]), source)
         env = {**clean_env(), "GOVCHAT_DOCKER_TESTS": "1",
                "DOCKER_CONFIG": str(source / ".regression-docker-config")}
         run([sys.executable, "-m", "unittest", "discover", "-s", "tests", "-p", "test_*.py", "-v"], source, env)

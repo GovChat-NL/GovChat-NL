@@ -26,6 +26,10 @@
         "N8N_WEBHOOK_TOKEN",
         "CRAWLER_ADMIN_BASE_URL",
         "CRAWLER_INTERNAL_TOKEN",
+        "N8N_DOCUMENT_TIKA_URL",
+        "N8N_DOCUMENT_MAX_BYTES",
+        "N8N_DOCUMENT_MAX_CHARS",
+        "N8N_DOCUMENT_TIMEOUT_MS",
         "LITELLM_URL",
         "LITELLM_API_KEY"
       ],

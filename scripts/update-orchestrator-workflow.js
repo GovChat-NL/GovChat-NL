@@ -321,6 +321,7 @@ agent.parameters.options.systemMessage = originalSystem.includes('[FINAL_ANSWER]
 
 const utilityBuilder = require('./orchestrator-utility-workflow');
 utilityBuilder.applyUtilityTools(wf);
+require('./orchestrator-document-workflow').applyDocumentContext(wf);
 for (const definition of utilityBuilder.definitions) {
   const utility = utilityBuilder.utilityWorkflow(definition);
   fs.writeFileSync(require('path').join(require('path').dirname(workflowPath), utility.id + '.json'), JSON.stringify([utility], null, 2) + '\n');
