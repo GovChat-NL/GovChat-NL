@@ -167,29 +167,35 @@ test("document context reaches mixed-image vision and document failures are pres
   const workflow = JSON.parse(fs.readFileSync(path.join(__dirname, "../agents/n8n/workflows/algemeen/orchestrator-litellm.json")))[0];
   const code = workflow.nodes.find((node) => node.id === "DetectImageMessages").parameters.jsCode;
   const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor;
-  const run = new AsyncFunction("$json", "$env", "require", "fetch", "Buffer", code);
+  const run = new AsyncFunction("$json", "$env", "require", "fetch", "Buffer", "$", code);
   let visionCalls = 0;
+  let intentCalls = 0;
   const fakeFetch = async (url, options = {}) => {
     let response = {};
     if (url.endsWith("/api/internal/orchestrator/prompt")) response = { prompt: "Synthetic prompt", source: "default" };
     if (url.endsWith("/normalize-image")) response = { image_data_url: JSON.parse(options.body).image_data_url };
     if (url.endsWith("/v1/chat/completions")) {
-      visionCalls++;
       assert.match(JSON.stringify(JSON.parse(options.body).messages), /13/);
       assert.doesNotMatch(options.body, /data:application\/pdf;base64/);
-      response = { choices: [{ message: { content: "13" } }] };
+      const classification = JSON.parse(options.body).messages[0].content.includes('Classify the latest');
+      if (classification) { intentCalls++; assert.doesNotMatch(options.body, /data:image\//); }
+      else visionCalls++;
+      response = { choices: [{ message: { content: classification ? "analyze" : "13" } }] };
     }
     return { ok: true, status: 200, text: async () => JSON.stringify(response) };
   };
-  const env = { CRAWLER_INTERNAL_TOKEN: "synthetic-token", LITELLM_API_KEY: "synthetic-key" };
+  const env = { CRAWLER_INTERNAL_TOKEN: "synthetic-token", N8N_WEBHOOK_TOKEN: "synthetic-token", LITELLM_API_KEY: "synthetic-key" };
+  const originalWebhook = () => ({ first: () => ({ json: { headers: { authorization: 'Bearer synthetic-token' }, body: { userId: 'synthetic-owner-123' } } }) });
   const mixed = request([filePart(), { type: "image_url", image_url: { url: "data:image/png;base64,AAAA" } }]);
   const output = await result(mixed, {}, async () => "13");
-  const detected = (await run(output, env, require, fakeFetch, Buffer))[0].json;
+  const detected = (await run(output, env, require, fakeFetch, Buffer, originalWebhook))[0].json;
   assert.equal(detected.precomputed_response, "13"); assert.equal(visionCalls, 1);
+  assert.equal(intentCalls, 1);
   const failure = await result(mixed, {}, async () => "");
-  const failed = (await run(failure, env, require, fakeFetch, Buffer))[0].json;
+  const failed = (await run(failure, env, require, fakeFetch, Buffer, originalWebhook))[0].json;
   assert.equal(failed.precomputed_response, failure.precomputed_response);
   assert.equal(visionCalls, 1, "unreadable document never triggers a partial vision answer");
+  assert.equal(intentCalls, 1, "unreadable document never triggers image classification");
 });
 
 test("document environment options are passed to n8n and allowed in external runners", () => {

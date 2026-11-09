@@ -26,7 +26,10 @@ FILES = {".env.example", ".gitignore", ".gitattributes", "librechat.yaml", "dock
 NEW_FILES = {"scripts/librechat_release.py", "scripts/librechat-release-pin.js", "scripts/run_regressions.py",
              "tests/test_librechat_release.py", "tests/test_regression_runner.py", "tests/librechat-release-pin.test.js",
              "scripts/orchestrator-image-workflow.js", "tests/image-tool-identity.test.js",
-             "tests/orchestrator/n8n-image-integration.test.js"}
+             "tests/orchestrator/n8n-image-integration.test.js",
+             "scripts/image-edit-workflow.js", "scripts/orchestrator-image-edit-workflow.js",
+             "scripts/enable-image-to-image.js", "tests/image-edit-workflow.test.js",
+             "tests/orchestrator/run-image-edit-smoke.js"}
 SOURCE_TEST_PATTERNS = ["tests/*.test.js", "tests/branding/*.test.js", "tests/agents/*.test.js",
                         "agents/beleidskompas/*.test.js",
                         "overlay/src/apps/beleidskompas/tests/*.test.js", "tests/overlay/*.test.js"]
@@ -108,13 +111,15 @@ def node_tests(source, patterns):
     return ["node", "--test", "--test-concurrency=2", *files]
 
 
-def container_args(source, image, command, mounts=()):
+def container_args(source, image, command, mounts=(), image_storage=False):
     args = ["docker", "run", "--rm", "--pull", "never", "--network", "none",
             "--security-opt", "no-new-privileges:true", "--cap-drop", "ALL",
             "--env", "CI=true", "--env", "NODE_PATH=/app/node_modules",
             "--mount", f"type=bind,source={source},target=/repo,readonly", "--workdir", "/repo"]
     for name, target in mounts:
         args += ["--mount", f"type=bind,source={source / name},target={target},readonly"]
+    if image_storage:
+        args += ["--tmpfs", "/shared-images:uid=1000,gid=1000,mode=0700"]
     return [*args, "--entrypoint", "node", image, *command[1:]]
 
 
@@ -147,6 +152,7 @@ def execute_suite(source, offline=False):
         run(container_args(source, n8n_image, ["node", "--test", "tests/orchestrator/n8n-utility-integration.test.js",
                                              "tests/orchestrator/n8n-image-integration.test.js"], mounts), source)
         run(container_args(source, n8n_image, ["node", "tests/orchestrator/run-document-smoke.js"]), source)
+        run(container_args(source, n8n_image, ["node", "tests/orchestrator/run-image-edit-smoke.js"], image_storage=True), source)
         env = {**clean_env(), "GOVCHAT_DOCKER_TESTS": "1",
                "DOCKER_CONFIG": str(source / ".regression-docker-config")}
         run([sys.executable, "-m", "unittest", "discover", "-s", "tests", "-p", "test_*.py", "-v"], source, env)

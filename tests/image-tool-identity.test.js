@@ -41,9 +41,10 @@ test('committed tool and trigger match their builders and expose only image opti
   assert.deepEqual(applyImageToolInputs(structuredClone(orchestrator)), orchestrator);
   assert.deepEqual(applyImageTriggerInputs(structuredClone(image)), image);
   assert.equal(trigger.typeVersion, 1.1);
-  assert.deepEqual(trigger.parameters.workflowInputs.values.map(field => field.name), ['prompt', 'size', 'quality', 'userId']);
+  assert.deepEqual(trigger.parameters.workflowInputs.values.map(field => field.name), ['prompt', 'size', 'quality', 'userId', 'operation', 'sourceImage']);
   assert.equal(tool.parameters.workflowInputs.value.userId, trustedUserExpression);
   assert.equal(tool.parameters.workflowInputs.value.userId.includes('$fromAI'), false);
+  for (const field of ['operation', 'sourceImage']) assert.equal(tool.parameters.workflowInputs.value[field].includes('$fromAI'), false);
   for (const field of ['prompt', 'size', 'quality']) assert.match(tool.parameters.workflowInputs.value[field], /\$fromAI/);
 });
 

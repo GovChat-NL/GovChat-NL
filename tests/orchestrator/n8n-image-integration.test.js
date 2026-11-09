@@ -15,13 +15,14 @@ const workflow = JSON.parse(fs.readFileSync(path.join(root, 'agents/n8n/workflow
 const node = workflow.nodes.find(item => item.name === 'image_generation_tool');
 const original = { headers: { authorization: 'Bearer synthetic-token' }, body: { userId: 'trusted-owner-123' } };
 let argumentsFromAI = {};
+let detectorContext = {};
 const context = {
   getNode: () => node,
   getInputData: () => [{ json: { query: argumentsFromAI } }],
   getNodeParameter: (name, index, fallback) => {
     if (name === 'workflowInputs.value') return Object.fromEntries(Object.entries(node.parameters.workflowInputs.value).map(([key, expression]) => [key,
       vm.runInNewContext(expression.slice(3, -2), {
-        $: name => { assert.equal(name, 'Webhook Orchestrator'); return { first: () => ({ json: original }) }; },
+        $: name => { assert.ok(['Webhook Orchestrator', 'Detect Image Messages'].includes(name)); return { first: () => ({ json: name === 'Webhook Orchestrator' ? original : detectorContext }) }; },
         $env: { N8N_WEBHOOK_TOKEN: 'synthetic-token' },
         $fromAI: (key, description, type, defaultValue) => argumentsFromAI[key] ?? defaultValue,
       })]));
@@ -59,4 +60,19 @@ test('pinned n8n maps the original owner into subworkflow items despite forged q
   } finally {
     original.headers.authorization = 'Bearer synthetic-token';
   }
+});
+
+test('pinned n8n fixes edit source, operation and prompt outside model schema', async () => {
+  const service = new WorkflowToolService(context, { returnAllItems: true });
+  detectorContext = { image_edit_context: { sourceImage: '/images/trusted-owner-123/generated-result.png', prompt: 'Trusted latest user edit' } };
+  argumentsFromAI = { prompt: 'Forged prompt', sourceImage: 'https://evil.invalid/source.png', operation: 'generate', userId: 'attacker-owner' };
+  try {
+    const tool = service.createStructuredTool('image_generation_tool', 'Synthetic', async () => 'ok');
+    assert.deepEqual(Object.keys(tool.schema.shape).sort(), ['prompt','quality','size']);
+    const items = await service.prepareWorkflowItems(context, argumentsFromAI, 0, { query: argumentsFromAI });
+    assert.equal(items[0].json.userId, 'trusted-owner-123');
+    assert.equal(items[0].json.operation, 'edit');
+    assert.equal(items[0].json.prompt, 'Trusted latest user edit');
+    assert.equal(items[0].json.sourceImage, detectorContext.image_edit_context.sourceImage);
+  } finally { detectorContext = {}; }
 });

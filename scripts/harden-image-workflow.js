@@ -201,5 +201,6 @@ workflow.settings = {
   saveManualExecutions: false,
 };
 
+require('./image-edit-workflow').applyImageEditWorkflow(workflow);
 fs.writeFileSync(workflowPath, JSON.stringify(fileContents, null, 2) + '\n');
 console.log('Hardened image workflow owner, input, response and storage handling');

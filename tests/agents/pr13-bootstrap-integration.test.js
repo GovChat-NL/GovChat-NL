@@ -62,7 +62,8 @@ test('regenerating the moved orchestrator does not create duplicate utility expo
     fs.mkdirSync(scripts);
     for (const file of ['update-orchestrator-workflow.js', 'orchestrator-utility-workflow.js',
       'orchestrator-document-workflow.js', 'n8n-document-context.js',
-      'orchestrator-image-workflow.js', 'orchestrator-prompt-workflow.js']) {
+      'orchestrator-image-workflow.js', 'orchestrator-prompt-workflow.js',
+      'orchestrator-image-edit-workflow.js']) {
       fs.copyFileSync(path.resolve(__dirname, '../../scripts', file), path.join(scripts, file));
     }
     const workflowsDir = path.join(temporary, 'agents/n8n/workflows');
@@ -77,11 +78,13 @@ test('regenerating the moved orchestrator does not create duplicate utility expo
     const detector = template.nodes.find(node => node.id === 'DetectImageMessages');
     assert.match(detector.parameters.jsCode, /api\/internal\/orchestrator\/prompt/);
     assert.match(detector.parameters.jsCode, /role: 'system', content: orchestratorPrompt/);
+    assert.match(detector.parameters.jsCode, /imageEditContext/);
     assert.ok(template.nodes.some(node => node.id === 'ExtractDocumentContext'));
     const agent = template.nodes.find(node => node.id === 'AIAgentOrchestrator');
     assert.match(agent.parameters.options.systemMessage, /const organizationPrompt = \$json\.orchestratorPrompt/);
     const imageTool = template.nodes.find(node => node.name === 'image_generation_tool');
     assert.match(JSON.stringify(imageTool.parameters), /Webhook Orchestrator/);
+    assert.match(JSON.stringify(imageTool.parameters), /sourceImage/);
   } finally {
     fs.rmSync(temporary, { recursive: true, force: true });
   }

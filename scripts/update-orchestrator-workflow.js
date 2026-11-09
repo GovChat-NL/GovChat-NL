@@ -323,6 +323,7 @@ const utilityBuilder = require('./orchestrator-utility-workflow');
 utilityBuilder.applyUtilityTools(wf);
 require('./orchestrator-document-workflow').applyDocumentContext(wf);
 require('./orchestrator-image-workflow').applyImageToolInputs(wf);
+require('./orchestrator-image-edit-workflow').applyOrchestratorImageEdits(wf);
 require('./orchestrator-prompt-workflow').configurePromptManagement(wf);
 // Keep dev's utility workflow IDs at their existing root paths. Moving the
 // orchestrator into algemeen must not create duplicate bootstrap exports.

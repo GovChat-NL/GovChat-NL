@@ -1,6 +1,7 @@
 # PR #13: startpagina en Beleidskompas aansluiten op dev
 
-De actuele dev-commit **8f249f600e6a28ea43b606db79eb4bdeb8dbc67d** is geïntegreerd
+De actuele dev-commit **847d2f6fee871237ffac2aa67a419a3ef048d5e8**, inclusief
+de gemergede image-to-image PR #33, is geïntegreerd
 in de bestaande featurebranch. Dev is inhoudelijk leidend; de PR voegt de eigen
 pagina's voor start en Beleidskompas toe zonder oudere infrastructuur terug te zetten.
 De PR is niet automatisch gemerged of naar een draaiende installatie uitgerold.
@@ -12,6 +13,11 @@ De PR is niet automatisch gemerged of naar een draaiende installatie uitgerold.
 - De [generator](../scripts/update-orchestrator-workflow.js) gebruikt het nieuwe
   workflowpad en behoudt alle dev-builders. Regenereren herstelt ook promptbeheer
   en maakt geen dubbele utility-exports in de nieuwe submap.
+- Image-to-image gebruikt exact de actuele dev-workflowtemplates, met behoud van
+  bronvalidatie, vertrouwde ownercontext, uploadlimieten, generatie- én editroutes.
+  De [image-to-image-tooling](../scripts/enable-image-to-image.js) en bijbehorende
+  [n8n-smoketest](../tests/orchestrator/run-image-edit-smoke.js) volgen de verplaatste
+  workflowpaden. De regressierunner neemt zowel deze tests als de paginatests mee.
 - De [proxyrenderer](../scripts/render-proxy-config.sh) laadt de modulaire overlay.
   De native LibreChat-footer blijft verantwoordelijk voor de chatwaarschuwing;
   verouderde footerinjectie is niet teruggebracht.
