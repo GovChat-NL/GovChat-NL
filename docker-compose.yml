@@ -644,6 +644,7 @@ services:
     environment:
       N8N_RUNNERS_TASK_BROKER_URI: http://n8n:5679
       N8N_RUNNERS_AUTH_TOKEN: ${N8N_RUNNERS_AUTH_TOKEN}
+      N8N_WEBHOOK_TOKEN: ${N8N_WEBHOOK_TOKEN}
       # Nodig voor Code node gebruik van $env.* in runner context
       N8N_BLOCK_ENV_ACCESS_IN_NODE: "false"
       CRAWLER_ADMIN_BASE_URL: ${CRAWLER_ADMIN_BASE_URL:-http://govchat-overlay-admin:3002}

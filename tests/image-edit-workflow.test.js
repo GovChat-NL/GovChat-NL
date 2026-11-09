@@ -205,5 +205,8 @@ test('image and vision environment reaches main and runner without removing docu
     assert.equal([...compose.matchAll(new RegExp('^\\s+'+name+':','gm'))].length,2); assert.ok(runner['allowed-env'].includes(name));
   }
   assert.ok(runner['allowed-env'].includes('PUBLIC_BASE_URL'));
+  const runnerService = compose.match(/^  n8n-runners:\n([\s\S]*?)(?=^  [A-Za-z0-9_-]+:)/m)[1];
+  assert.match(runnerService, /N8N_WEBHOOK_TOKEN: \$\{N8N_WEBHOOK_TOKEN\}/);
+  assert.ok(runner['allowed-env'].includes('N8N_WEBHOOK_TOKEN'));
   assert.equal(runner['env-overrides'].NODE_FUNCTION_ALLOW_BUILTIN,'fs,path,crypto,url,http,https');
 });
