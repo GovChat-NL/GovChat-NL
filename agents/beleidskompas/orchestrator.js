@@ -52,6 +52,16 @@ const UNKNOWN_STEP_TEXT =
   'Beleidskompas kon niet bepalen voor welke stap dit bericht is en heeft het daarom niet beantwoord. ' +
   'Stel je vraag opnieuw vanaf de Beleidskompas-pagina, met een stap gekozen.';
 
+// Shown in the chat when the store cannot be used. The store is where a
+// step gets the case, the earlier reports and the conversation from, and
+// where the answer is kept. Without it a step would answer as if the case
+// were new and the answer would be lost, while the user sees a normal
+// answer. So the user is told instead.
+const STORE_MISSING_TEXT =
+  'Beleidskompas kan zijn opslag niet gebruiken en heeft dit bericht daarom niet beantwoord. Meld dit bij de beheerder.';
+const STORE_FAILED_TEXT = 'De opslag van Beleidskompas gaf een fout. Dit bericht is daarom niet beantwoord; probeer het later opnieuw.';
+const STORE_WARNING_TEXT = 'Let op: de opslag van Beleidskompas gaf een fout. Dit antwoord is mogelijk niet bewaard.';
+
 /** The text of the incoming message: the bridge delivers it in
  *  `currentMessage` and `chatInput`, direct webhook calls in `question`. */
 function incomingMessage(body) {
@@ -224,8 +234,10 @@ async function forwardToStep({ baseUrl, path, stepId, body, callerToken, timeout
  *  n8n's `$env`, `summaries` describes the steps for chooseStep, and the
  *  rest are the means to send HTTP. In order: check the token, answer a
  *  title request, take the message apart and read the step from it, let
- *  the model pick the step a typed message is about, send the parts to that
- *  step. The returned object is what the workflow responds with. */
+ *  the model pick the step a typed message is about, read the state of the
+ *  case from the store, send the parts and the state to that step, keep
+ *  the answer in the store. The returned object is what the workflow
+ *  responds with. */
 async function runOrchestrator(ctx) {
   const { input, env, summaries, fetchImpl, httpModule, httpsModule, urlModule } = ctx;
   const raw = input || {};
@@ -277,6 +289,10 @@ async function runOrchestrator(ctx) {
   if (!activeStepId) {
     return { ok: false, step_id: null, error: 'No step recognised in the request', text: UNKNOWN_STEP_TEXT, answer: UNKNOWN_STEP_TEXT };
   }
+  if (!stored.enabled) {
+    const error = store.enabled ? 'No conversation or user from the bridge' : 'Store not configured';
+    return { ok: false, step_id: null, error, text: STORE_MISSING_TEXT, answer: STORE_MISSING_TEXT, store: stored };
+  }
 
   // A report is always written by the step of the substep the page named.
   // A typed message is answered by the step it is about.
@@ -285,24 +301,28 @@ async function runOrchestrator(ctx) {
     : activeStepId;
 
   // The case text goes to the store first, so the state read next has it.
-  // Then the state of the case replaces what the page sent along; what the
-  // page sent is the fallback when the store is off or does not answer.
+  // The state gives the step the case text, the reports and the
+  // conversation. Before the first answer the store does not know the case
+  // yet (404); then the step gets only the case text the page sent.
   // The user's message is written after the state is read, so the
   // conversation the step gets does not already contain it. Writing before
   // the step answers keeps the message even when the step fails.
   if (parts.caseText) await write('case_text', () => store.setCaseText({ caseId, userId, text: parts.caseText }));
   let context = parts;
   stored.read = false;
-  if (stored.enabled) {
-    const state = await store.getState({ caseId, userId, maxTurns: 20 });
-    if (state.ok && state.payload) {
-      context = Object.assign({}, parts, contextFromState(state.payload, { substepId: parts.substepId, forReport: !parts.message, summaries }));
-      stored.read = true;
-    } else if (state.status !== 404) {
-      stored.errors.push(`state: ${state.error}`);
-    }
+  const state = await store.getState({ caseId, userId, maxTurns: 20 });
+  if (state.ok && state.payload) {
+    context = Object.assign({}, parts, contextFromState(state.payload, { substepId: parts.substepId, forReport: !parts.message, summaries }));
+    stored.read = true;
+  } else if (state.status !== 404) {
+    stored.errors.push(`state: ${state.error}`);
   }
   if (parts.message) await write('user_turn', () => store.addTurn({ caseId, userId, role: 'user', askedFrom: parts.substepId || null, text: parts.message }));
+  // An error so far means the step would answer without the state of the
+  // case, or the user's message would not be kept. Then better no answer.
+  if (stored.errors.length) {
+    return { ok: false, step_id: null, error: stored.errors.join('; '), text: STORE_FAILED_TEXT, answer: STORE_FAILED_TEXT, store: stored };
+  }
 
   const result = await forwardToStep({
     baseUrl: env && env.BELEIDSKOMPAS_N8N_BASE_URL,
@@ -339,13 +359,21 @@ async function runOrchestrator(ctx) {
     await write('assistant_turn', () => store.addTurn({ caseId, userId, role: 'assistant', stepId: result.step_id || stepId, askedFrom: parts.substepId || null, text: result.answer }));
   }
 
-  return Object.assign({}, result, { store: stored });
+  // `text` carries the meta block behind the answer, so the warning goes
+  // in front, in both.
+  const warned = result.ok && stored.errors.length
+    ? Object.assign({}, result, { answer: `${STORE_WARNING_TEXT}\n\n${result.answer}`, text: `${STORE_WARNING_TEXT}\n\n${result.text}` })
+    : result;
+  return Object.assign({}, warned, { store: stored });
 }
 
 module.exports = {
   STEP_ROUTES,
   DEFAULT_STEP_ID,
   UNKNOWN_STEP_TEXT,
+  STORE_MISSING_TEXT,
+  STORE_FAILED_TEXT,
+  STORE_WARNING_TEXT,
   incomingMessage,
   determineStep,
   chooseStep,
