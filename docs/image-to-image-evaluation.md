@@ -1,9 +1,12 @@
 # Secure image-to-image evaluation
 
-This is source-only work on **feature/image-to-image-evaluation**, based on dev
-8f249f6. It is not a production deployment or upstream-provider/UI acceptance
-test. Do not push, open a PR, merge, or deploy until the maintainer authorizes
-evaluation. Never use the old unmerged implementation as a deployment patch.
+This feature was developed on **feature/image-to-image-evaluation**, based on dev
+8f249f6, and deployed to the development environment for authorized UI evaluation.
+On 9 November 2026, the maintainer reported that the live evaluation works and
+authorized opening a PR targeting dev. This is maintainer-reported acceptance,
+not an automated test of every upstream provider or request variant. Merge still
+requires normal PR review. Never use the old unmerged implementation as a
+deployment patch.
 
 ## Offline patch API for reviewed LIVE exports
 
