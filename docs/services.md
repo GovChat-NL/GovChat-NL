@@ -7,7 +7,7 @@ De hoofdconfiguratie staat in [`docker-compose.yml`](../docker-compose.yml). Zon
 | Container | Functie |
 | --- | --- |
 | `librechat` | Webomgeving voor gesprekken, bestanden en agents. |
-| `librechat-proxy` | Ontvangt webverkeer en levert de LibreChat-overlay. |
+| `librechat-proxy` | Ontvangt webverkeer en levert de LibreChat-overlay uit `overlay/src/`. |
 | `admin-panel` | Beheerpaneel van LibreChat. |
 | `n8n-openai-bridge` | Verbindt LibreChat met n8n en geeft live toolgebeurtenissen terug aan de webomgeving. |
 | `n8n` | Voert workflows en agents uit. |

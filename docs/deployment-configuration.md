@@ -43,6 +43,8 @@ geen veilige vervanging voor het vaststellen van die bron.
 
 Verander `GOVCHAT_DATA_ROOT` alleen als de data op de nieuwe locatie staat en
 rechten/back-ups zijn geregeld; een nieuwe lege directory is geen datamigratie.
+MongoDB behoudt de bestaande bindmount onder de dataroot. De startpagina en
+Beleidskompas vereisen geen opslagmigratie; zie [de upgrade-instructies](../UPGRADE.md).
 Wijzig een database-image pas na een back-up en controle op ondersteunde
 upgrade/downgradepaden. Een nieuw instelbaar image impliceert niet dat iedere
 databaseversie is getest.
@@ -98,7 +100,8 @@ getest; proxytests bewijzen die providerstappen niet.
 ## Optionele minimalistische chatinterface
 
 `GOVCHAT_MINIMAL_UI=false` is de standaard: de bestaande LibreChat-configuratie,
-modelselectie, Agents en GovChat-launcher/help-overlay blijven ongewijzigd.
+modelselectie en Agents blijven beschikbaar, met de modulaire GovChat-overlay
+en het configureerbare startscherm op `/start/`.
 Zet `GOVCHAT_MINIMAL_UI=true` in je eigen `.env` voor één vaste
 `govchat-orchestrator`-backend, zonder model-/parameterkeuze, Agents, extra tools,
 spraakbediening of launcher/helpmodal. Chatgeschiedenis, accounttoegang,
@@ -122,6 +125,9 @@ met de naam `govchat-orchestrator`. In minimale modus worden eventuele andere
 custom endpoints niet aangeboden. Ongeldige waarden worden geweigerd bij opstart.
 Terug naar `false` en dezelfde services opnieuw aanmaken herstelt de normale
 configuratie. Branding en Nederlandse vertalingen zijn onafhankelijke opties.
+De losse pagina's blijven statisch bereikbaar, maar minimale modus biedt het
+Beleidskompas-endpoint niet aan en injecteert geen launcher of startschermredirect.
+Gebruik de normale modus als Beleidskompas beschikbaar moet zijn.
 
 Dit is een deploymentbrede UI-/featurekeuze, geen autorisatiegrens: verborgen
 knoppen vervangen geen backendrechten of SSO-/ingressbeleid. De selectors zijn

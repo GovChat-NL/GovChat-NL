@@ -1,6 +1,6 @@
 const fs = require('fs');
 
-const workflowPath = require('path').resolve(__dirname, '../agents/n8n/workflows/orchestrator-litellm.json');
+const workflowPath = require('path').resolve(__dirname, '../agents/n8n/workflows/algemeen/orchestrator-litellm.json');
 const data = JSON.parse(fs.readFileSync(workflowPath, 'utf8'));
 const wf = Array.isArray(data) ? data[0] : data;
 
@@ -325,9 +325,12 @@ require('./orchestrator-document-workflow').applyDocumentContext(wf);
 require('./orchestrator-image-workflow').applyImageToolInputs(wf);
 require('./orchestrator-image-edit-workflow').applyOrchestratorImageEdits(wf);
 require('./orchestrator-prompt-workflow').configurePromptManagement(wf);
+// Keep dev's utility workflow IDs at their existing root paths. Moving the
+// orchestrator into algemeen must not create duplicate bootstrap exports.
+const utilityWorkflowsDir = require('path').resolve(__dirname, '../agents/n8n/workflows');
 for (const definition of utilityBuilder.definitions) {
   const utility = utilityBuilder.utilityWorkflow(definition);
-  fs.writeFileSync(require('path').join(require('path').dirname(workflowPath), utility.id + '.json'), JSON.stringify([utility], null, 2) + '\n');
+  fs.writeFileSync(require('path').join(utilityWorkflowsDir, utility.id + '.json'), JSON.stringify([utility], null, 2) + '\n');
 }
 fs.writeFileSync(workflowPath, JSON.stringify(data, null, 2));
 console.log('Updated orchestrator workflow detect node + passthrough prompt');

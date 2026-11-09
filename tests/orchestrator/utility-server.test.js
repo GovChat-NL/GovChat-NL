@@ -52,6 +52,36 @@ async function startServer(t, { token = "utility-test-token", legacy = { image_d
   return { base, data, publish, cookie, policy, request, logs: () => logs };
 }
 
+test('PR13 publication keeps policy and app config but never publishes code or private feedback', async (t) => {
+  const server = await startServer(t);
+  // The real image mounts overlay/defaults next to server.js. Seed the same
+  // public documents here without writing into the read-only source checkout.
+  for (const file of ['apps.json', 'help-content.json']) {
+    fs.copyFileSync(path.resolve(__dirname, '../../overlay/defaults', file), path.join(server.data, file));
+  }
+  // publishAll also runs on the periodic refresh, after policy-only startup.
+  await delay(15100);
+  assert.ok(server.policy().tools);
+  for (const file of ['apps.json', 'help-content.json', 'beleidskompas-config.json']) {
+    assert.ok(fs.existsSync(path.join(server.publish, file)), `Missing public config: ${file}`);
+  }
+  for (const file of ['loader.js', 'custom.css', 'beleidskompas-feedback.json']) {
+    assert.equal(fs.existsSync(path.join(server.publish, file)), false);
+  }
+  assert.equal((await server.request('/api/beleidskompas-feedback', { rating: 'invalid' })).status, 400);
+  assert.equal((await server.request('/api/beleidskompas-feedback', {
+    rating: 'up', comment: 'Test feedback', step_id: 'stap1', user_id: 'must-not-be-stored', conversation_id: 'private',
+  })).status, 201);
+  const stored = JSON.parse(fs.readFileSync(path.join(server.data, 'beleidskompas-feedback.json')));
+  assert.deepEqual(Object.keys(stored.items[0]).sort(), ['comment', 'created_at', 'id', 'rating', 'step_id']);
+  const unauthorized = await fetch(server.base + '/api/beleidskompas-feedback', { redirect: 'manual' });
+  assert.ok([302, 401, 403].includes(unauthorized.status));
+  const authorized = await fetch(server.base + '/api/beleidskompas-feedback', { headers: { cookie: server.cookie } });
+  assert.equal(authorized.status, 200);
+  assert.equal((await authorized.json()).totals.total, 1);
+  assert.equal(fs.existsSync(path.join(server.publish, 'beleidskompas-feedback.json')), false);
+});
+
 test("real server: startup publishes normalized env/legacy config; authenticated partial saves publish full policy", async (t) => {
   const server = await startServer(t);
   const before = server.policy();

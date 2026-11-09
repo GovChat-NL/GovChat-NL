@@ -11,7 +11,7 @@ const { spawn } = require("node:child_process");
 const assert = require("node:assert/strict");
 const directory = fs.mkdtempSync(path.join(os.tmpdir(), "govchat-n8n-smoke-"));
 const policy = require("../../scripts/n8n-orchestrator-tool-policy");
-const source = JSON.parse(fs.readFileSync("agents/n8n/workflows/orchestrator-litellm.json"))[0];
+const source = JSON.parse(fs.readFileSync("agents/n8n/workflows/algemeen/orchestrator-litellm.json"))[0];
 const workflow = JSON.parse(JSON.stringify(source));
 for (const key of ["versionMetadata", "versionId", "activeVersionId", "shared", "pinData", "staticData", "sourceWorkflowId"]) delete workflow[key];
 workflow.id = "govchat-utility-smoke";

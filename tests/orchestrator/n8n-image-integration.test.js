@@ -11,7 +11,7 @@ const pkg = fs.readdirSync(base).find(name => name.startsWith('@n8n+n8n-nodes-la
 const dist = path.join(base, pkg, 'node_modules/@n8n/n8n-nodes-langchain/dist');
 const { WorkflowToolService } = require(path.join(dist, 'nodes/tools/ToolWorkflow/v2/utils/WorkflowToolService'));
 const root = path.resolve(__dirname, '../..');
-const workflow = JSON.parse(fs.readFileSync(path.join(root, 'agents/n8n/workflows/orchestrator-litellm.json')))[0];
+const workflow = JSON.parse(fs.readFileSync(path.join(root, 'agents/n8n/workflows/algemeen/orchestrator-litellm.json')))[0];
 const node = workflow.nodes.find(item => item.name === 'image_generation_tool');
 const original = { headers: { authorization: 'Bearer synthetic-token' }, body: { userId: 'trusted-owner-123' } };
 let argumentsFromAI = {};

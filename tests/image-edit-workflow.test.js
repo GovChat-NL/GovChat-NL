@@ -7,7 +7,7 @@ const os = require('node:os');
 const vm = require('node:vm');
 const { validatedImageSource, prepareImageEdit, applyImageEditWorkflow } = require('../scripts/image-edit-workflow');
 const { imageConversation, applyOrchestratorImageEdits } = require('../scripts/orchestrator-image-edit-workflow');
-const load = name => JSON.parse(fs.readFileSync(path.resolve(__dirname, '../agents/n8n/workflows', name + '.json')))[0];
+const load = name => JSON.parse(fs.readFileSync(path.resolve(__dirname, '../agents/n8n/workflows/algemeen', name + '.json')))[0];
 const owner = 'synthetic-owner-123';
 const png = Buffer.concat([Buffer.from([137,80,78,71,13,10,26,10]), Buffer.alloc(120)]);
 const inline = 'data:image/png;base64,' + png.toString('base64');

@@ -3,7 +3,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
-const workflow = JSON.parse(fs.readFileSync(path.join(__dirname, '../../agents/n8n/workflows/orchestrator-litellm.json'), 'utf8'))[0];
+const workflow = JSON.parse(fs.readFileSync(path.join(__dirname, '../../agents/n8n/workflows/algemeen/orchestrator-litellm.json'), 'utf8'))[0];
 const expression = workflow.nodes.find(node => node.name === 'AI Agent Orchestrator').parameters.options.systemMessage;
 const { DEFAULT_PROMPT } = require('../../services/admin-overlay/admin/lib/orchestrator-prompt');
 

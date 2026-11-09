@@ -14,7 +14,7 @@ const {
 
 const dir = path.resolve(__dirname, '../../agents/n8n/workflows');
 const read = (file) => JSON.parse(fs.readFileSync(path.join(dir, file), 'utf8'));
-const rawOrchestrator = read('orchestrator-litellm.json');
+const rawOrchestrator = read('algemeen/orchestrator-litellm.json');
 const search = read('topdesk-knowledge-items-search.json');
 const ingest = read('topdesk-knowledge-items-ingest.json');
 const toolName = 'topdesk_knowledge_search_tool';
@@ -63,11 +63,11 @@ test('only search becomes active when enabled; ingest scheduling stays opt-in', 
 
 test('flag changes update orchestrator and search even after the bootstrap seed marker', () => {
   const workflows = discoverWorkflows(dir, disabled);
-  const offMarker = JSON.stringify({ version: 7, topdeskSearchEnabled: false });
-  const onMarker = JSON.stringify({ version: 7, topdeskSearchEnabled: true });
+  const offMarker = JSON.stringify({ version: 8, topdeskSearchEnabled: false });
+  const onMarker = JSON.stringify({ version: 8, topdeskSearchEnabled: true });
   assert.deepEqual(getWorkflowImportPlan(workflows, offMarker, false, disabled), []);
   const change = getWorkflowImportPlan(workflows, offMarker, false, enabled);
-  assert.deepEqual(change.map((entry) => entry.file).sort(), ['orchestrator-litellm.json', 'topdesk-knowledge-items-search.json']);
+  assert.deepEqual(change.map((entry) => entry.file).sort(), ['algemeen/orchestrator-litellm.json', 'topdesk-knowledge-items-search.json']);
   assert.equal(change.some((entry) => entry.ids.includes(ingest.id)), false);
   assert.equal(getWorkflowImportPlan(workflows, onMarker, false, disabled).length, 2);
   assert.deepEqual(getWorkflowImportPlan(workflows, onMarker, true, enabled), workflows);

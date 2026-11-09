@@ -56,7 +56,7 @@ async function main() {
     {model:'dall-e-2',azure:false,operation:'edit'}, {model:'dall-e-2',azure:true,operation:'edit'},
     {model:'gpt-image-1',azure:false,operation:'generate'}, {model:'gpt-image-1',azure:false,operation:'edit',sourceFile:true}];
   const workflows = cases.map((item,index)=>{
-    const workflow = JSON.parse(fs.readFileSync(path.resolve(__dirname,'../../agents/n8n/workflows/image-generator-litellm.json')))[0];
+    const workflow = JSON.parse(fs.readFileSync(path.resolve(__dirname,'../../agents/n8n/workflows/algemeen/image-generator-litellm.json')))[0];
     for (const key of ['versionMetadata','versionId','activeVersionId','shared','pinData','staticData','sourceWorkflowId']) delete workflow[key];
     workflow.id='synthetic-image-smoke-'+index; workflow.name=workflow.id; workflow.active=false;
     workflow.nodes=workflow.nodes.filter(n=>!['When Executed by Another Workflow','Webhook Image Generator'].includes(n.name));

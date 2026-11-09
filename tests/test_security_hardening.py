@@ -14,7 +14,7 @@ class SecurityHardeningTests(unittest.TestCase):
         cls.compose = (ROOT / "docker-compose.yml").read_text(encoding="utf-8")
         cls.admin = (ROOT / "services/admin-overlay/admin/server.js").read_text(encoding="utf-8")
         workflow_doc = json.loads(
-            (ROOT / "agents/n8n/workflows/image-generator-litellm.json").read_text(encoding="utf-8")
+            (ROOT / "agents/n8n/workflows/algemeen/image-generator-litellm.json").read_text(encoding="utf-8")
         )
         cls.workflow = workflow_doc[0] if isinstance(workflow_doc, list) else workflow_doc
         cls.workflow_nodes = {node["name"]: node for node in cls.workflow["nodes"]}

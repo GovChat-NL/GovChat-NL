@@ -19,7 +19,7 @@ The imported Admin Overlay project also contains standalone Open WebUI deploymen
 ## Paths and architecture decisions
 
 - Root Compose files remain at repository root to avoid changing deployment entrypoints and the existing `/opt/librechat` host mounts.
-- [`n8n/bootstrap.js`](../n8n/bootstrap.js) is mounted into the n8n image and run as the one-shot bootstrap. It scans sorted top-level `*.json` exports from `./agents/n8n/workflows` and derives workflow IDs from each export; a per-file environment list and external workflow source are not needed.
+- [`n8n/bootstrap.js`](../n8n/bootstrap.js) is mounted into the n8n image and run as the one-shot bootstrap. It scans sorted `*.json` exports from `./agents/n8n/workflows` and its subfolders and derives workflow IDs from each export; a per-file environment list and external workflow source are not needed.
 - Admin build context is `./services/admin-overlay/admin`; LibreChat runtime defaults stay at `./overlay/defaults`.
 - Bridge config moved from a directory whose name resembled the external bridge checkout to `bridge/models.json`.
 - Clone the bridge repository beside this checkout on `main`, then start the standard stack:

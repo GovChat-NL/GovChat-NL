@@ -51,7 +51,7 @@ test('does not rewrite other sources, malformed IDs or unrelated URLs', () => {
 });
 
 function workflowCode(filename, nodeName) {
-  const data = JSON.parse(fs.readFileSync(path.join(__dirname, '../../agents/n8n/workflows', filename), 'utf8'));
+  const data = JSON.parse(fs.readFileSync(path.join(__dirname, '../../agents/n8n/workflows/openbesluitvorming', filename), 'utf8'));
   const workflow = Array.isArray(data) ? data[0] : data;
   return workflow.nodes.find(node => node.name === nodeName).parameters.jsCode;
 }
@@ -80,7 +80,7 @@ test('workflow rendering is reproducible and idempotent', () => {
   const directory = fs.mkdtempSync(path.join(require('node:os').tmpdir(), 'govchat-public-links-'));
   const files = ['openbesluitvorming-search.json', 'openbesluitvorming-document-worker.json'];
   try {
-    for (const file of files) fs.copyFileSync(path.join(__dirname, '../../agents/n8n/workflows', file), path.join(directory, file));
+    for (const file of files) fs.copyFileSync(path.join(__dirname, '../../agents/n8n/workflows/openbesluitvorming', file), path.join(directory, file));
     const before = files.map(file => fs.readFileSync(path.join(directory, file), 'utf8'));
     renderWorkflows(directory);
     renderWorkflows(directory);

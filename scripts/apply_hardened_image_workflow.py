@@ -4,7 +4,7 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
-WORKFLOW_PATH = ROOT / "agents/n8n/workflows/image-generator-litellm.json"
+WORKFLOW_PATH = ROOT / "agents/n8n/workflows/algemeen/image-generator-litellm.json"
 SOURCE_PATH = ROOT / "scripts/harden-image-workflow.js"
 
 

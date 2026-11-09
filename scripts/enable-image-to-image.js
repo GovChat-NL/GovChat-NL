@@ -15,7 +15,7 @@ function applyImageEvaluationWorkflows(orchestrator, image) {
 }
 
 if (require.main === module) {
-  const root = path.resolve(__dirname, '../agents/n8n/workflows');
+  const root = path.resolve(__dirname, '../agents/n8n/workflows/algemeen');
   const files = ['orchestrator-litellm.json', 'image-generator-litellm.json'];
   const bundles = files.map(file => JSON.parse(fs.readFileSync(path.join(root, file), 'utf8')));
   applyImageEvaluationWorkflows(...bundles.map(bundle => Array.isArray(bundle) ? bundle[0] : bundle));

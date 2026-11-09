@@ -89,6 +89,20 @@ class ComposeConfigurationTests(unittest.TestCase):
         defaults = self.config("docker-compose.override.yml")["services"]
         self.assertEqual(defaults["librechat"]["environment"]["GOVCHAT_MINIMAL_UI"], "false")
 
+    def test_pr13_storage_bootstrap_and_modular_overlay_mounts(self):
+        config = self.config(GOVCHAT_DATA_ROOT="/srv/govchat-test")
+        services = config["services"]
+        mongo = [v for v in services["mongodb"]["volumes"] if v["target"] == "/data/db"]
+        self.assertEqual([(v["type"], v["source"]) for v in mongo], [("bind", "/srv/govchat-test/data/mongodb")])
+        self.assertNotIn("mongodb-data", config["volumes"])
+        self.assertEqual(services["n8n-bootstrap"]["environment"]["AGENTS_LOCAL_WORKFLOWS_DIR"],
+                         "/workspace/agents/n8n/workflows")
+        mounts = {v["target"]: v for v in services["librechat-proxy"]["volumes"]}
+        self.assertTrue(mounts["/opt/librechat/overlay/src"]["read_only"])
+        self.assertTrue(mounts["/opt/govchat/nginx/librechat-overlay.conf"]["read_only"])
+        self.assertNotIn("/etc/nginx/conf.d/default.conf", mounts)
+        self.assertEqual(mounts["/opt/librechat/overlay/publish"]["source"], "/srv/govchat-test/overlay/publish")
+
     def test_native_footer_default_override_empty_and_minimal_ui(self):
         warning = "GovChat-NL kan fouten maken. Controleer belangrijke informatie."
         for minimal in ("false", "true"):
@@ -195,7 +209,7 @@ class ProxyIntegrationTests(unittest.TestCase):
     def start_upstream(cls, version):
         path = Path(cls.temp.name) / (version + ".conf")
         servers = []
-        for port in (3080, 5678, 6333, 7700, 3333):
+        for port in (3080, 5678, 6333, 7700, 3333, 3002):
             extra = ""
             if port == 5678:
                 extra = ('add_header Set-Cookie "session=test; Path=/; HttpOnly" always; '
@@ -205,12 +219,12 @@ class ProxyIntegrationTests(unittest.TestCase):
                          "return 200 'const x=\"/dashboard/app.js\";'; } ")
             servers.append("server { listen " + str(port) + "; server_name _; " + extra +
                            "location / { default_type text/plain; return 200 '" + version +
-                           "|$http_x_forwarded_proto|$http_x_forwarded_for'; } }")
+                           "|$http_x_forwarded_proto|$http_x_forwarded_for|$uri|$args'; } }")
         path.write_text("\n".join(servers))
         name = cls.network + "-" + version
         cls.containers.append(name)
         args = ["docker", "run", "-d", "--pull", "never", "--name", name, "--network", cls.network]
-        for alias in ("librechat", "n8n", "qdrant", "meilisearch", "n8n-openai-bridge"):
+        for alias in ("librechat", "n8n", "qdrant", "meilisearch", "n8n-openai-bridge", "govchat-overlay-admin"):
             args.extend(["--network-alias", alias])
         command(*args, "-v", str(path) + ":/etc/nginx/conf.d/default.conf:ro", IMAGE)
         cls.upstream = name
@@ -231,6 +245,7 @@ class ProxyIntegrationTests(unittest.TestCase):
             ("nginx/trusted-proxies.conf", "/etc/nginx/trusted-proxies.conf"),
             ("nginx/trusted-proxies.geo", "/etc/nginx/trusted-proxies.geo"),
             ("overlay/minimal.css", "/opt/govchat/minimal.css"),
+            ("overlay/src", "/opt/librechat/overlay/src"),
         ):
             source_path = ROOT / source
             if trust_directory and source.startswith("nginx/trusted-proxies."):
@@ -260,7 +275,7 @@ class ProxyIntegrationTests(unittest.TestCase):
         self.assertIn("$http_upgrade", config)
         self.assertIn("$govchat_admin_upstream", config)
         self.assertNotIn("${GOVCHAT_SERVER_NAMES}", config)
-        self.assertIn('/govchat-overlay/loader.js', config)
+        self.assertIn('/govchat-overlay/src/overlay.js', config)
         self.assertNotIn('${GOVCHAT_UI_HEAD}', config)
         self.assertEqual(self.request(proxy, "/api/auth/login")[0], 200)
         self.assertEqual(self.request(proxy, host="chat.example.org")[0], 200)
@@ -275,6 +290,29 @@ class ProxyIntegrationTests(unittest.TestCase):
         for path in ("/oauth/openid", "/oauth/openid/callback", "/api/auth/refresh",
                      "/api/admin/oauth/openid/callback"):
             self.assertEqual(self.request(proxy, path)[0], 200, path)
+
+    def test_pr13_pages_modules_and_security_headers(self):
+        proxy = self.proxy(GOVCHAT_BLOCK_PASSWORD_AUTH="true")
+        for path, content in (("/start/", '<title>'), ("/beleidskompas/", 'gc-bk'),
+                              ("/govchat-overlay/src/overlay.js", 'GOVCHAT_BRANDING'),
+                              ("/govchat-overlay/src/shared/help.js", 'export'),
+                              ("/govchat-overlay/src/custom.css", 'gc-')):
+            with self.subTest(path=path):
+                response = self.request_raw(proxy, path)
+                self.assertEqual(response.returncode, 0, response.stderr)
+                self.assertIn(content, response.stdout)
+                self.assertIn("X-Content-Type-Options: nosniff", response.stderr)
+                self.assertIn("X-Frame-Options: SAMEORIGIN", response.stderr)
+        for path in ("/start", "/beleidskompas"):
+            self.assertIn("301", self.request_raw(proxy, path).stderr)
+        self.assertEqual(self.request(proxy, "/govchat-overlay/src/missing.js")[0], 404)
+        self.assertEqual(self.request(proxy, "/api/auth/login")[0], 403)
+
+    def test_pr13_admin_api_rewrite_preserves_path_and_query(self):
+        proxy = self.proxy()
+        status, body = self.request(proxy, "/govchat-api/beleidskompas-feedback?check=1")
+        self.assertEqual(status, 200)
+        self.assertIn("|/api/beleidskompas-feedback|check=1", body)
 
     def test_untrusted_forwarding_metadata_is_not_honored(self):
         proxy = self.proxy()
@@ -336,7 +374,7 @@ class ProxyIntegrationTests(unittest.TestCase):
         proxy = self.proxy(GOVCHAT_MINIMAL_UI="true")
         config = command("docker", "exec", proxy, "cat", "/etc/nginx/conf.d/default.conf").stdout
         self.assertIn('minimal.css?v=1', config)
-        self.assertNotIn('/govchat-overlay/loader.js', config)
+        self.assertNotIn('/govchat-overlay/src/overlay.js', config)
         self.assertNotIn('${GOVCHAT_UI_HEAD}', config)
         status, css = self.request(proxy, '/govchat-overlay/minimal.css')
         self.assertEqual(status, 200)

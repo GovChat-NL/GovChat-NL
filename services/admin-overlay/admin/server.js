@@ -74,6 +74,8 @@ const LIBRECHAT_INTERNAL_URL = String(process.env.LIBRECHAT_INTERNAL_URL || "htt
 const TRANSCRIPT_SESSIONS_FILE = "transcript-sessions.json";
 const BELEIDSKOMPAS_STATE_FILE = "beleidskompas-state.json";
 const BELEIDSKOMPAS_LIVE_FILE = "beleidskompas-config.json";
+const BELEIDSKOMPAS_FEEDBACK_FILE = "beleidskompas-feedback.json";
+const BELEIDSKOMPAS_FEEDBACK_MAX = 500;
 const BELEIDSKOMPAS_WORKFLOWS_DIR_NAME = "beleidskompas-workflows";
 const BELEIDSKOMPAS_HOOFDAGENT_WEBHOOK_PATH_DEFAULT = "beleidskompas-hoofdagent";
 const BELEIDSKOMPAS_N8N_BASE_URL = String(process.env.BELEIDSKOMPAS_N8N_BASE_URL || "http://n8n:5678").replace(/\/$/, "");
@@ -309,6 +311,14 @@ app.use("/api/transcript-sessions", (req, res, next) => {
   next();
 });
 
+app.use("/api/beleidskompas-feedback", (req, res, next) => {
+  res.set("Access-Control-Allow-Origin", CORS_ORIGIN);
+  res.set("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+  res.set("Access-Control-Allow-Headers", "Content-Type");
+  if (req.method === "OPTIONS") return res.sendStatus(204);
+  next();
+});
+
 app.get("/api/realtime-stt", (req, res) => {
   return res.json({
     ok: true,
@@ -346,18 +356,6 @@ function initDefaults() {
   if (fs.existsSync(appsSource)) {
     fs.copyFileSync(appsSource, appsTarget);
     console.log(`[init] Synced runtime config apps.json to ${DATA_DIR}`);
-  }
-
-  // Keep runtime assets in sync with repository defaults on each start.
-  // This prevents stale loader/custom.css from old named volumes.
-  const runtimeAssets = ["loader.js", "custom.css"];
-  for (const file of runtimeAssets) {
-    const source = path.join(__dirname, "defaults", file);
-    const target = path.join(DATA_DIR, file);
-    if (fs.existsSync(source)) {
-      fs.copyFileSync(source, target);
-      console.log(`[init] Synced runtime asset ${file} to ${DATA_DIR}`);
-    }
   }
 
   const crawlerRunsPath = path.join(DATA_DIR, "crawler-runs.json");
@@ -1101,21 +1099,6 @@ function publishFile(filename, data) {
   }
 }
 
-function publishFileRaw(filename) {
-  try {
-    if (!fs.existsSync(PUBLISH_DIR)) {
-      fs.mkdirSync(PUBLISH_DIR, { recursive: true });
-    }
-    const source = path.join(DATA_DIR, filename);
-    if (!fs.existsSync(source)) return;
-    const target = path.join(PUBLISH_DIR, filename);
-    fs.copyFileSync(source, target);
-    console.log(`[publish] ${filename} → ${PUBLISH_DIR}`);
-  } catch (err) {
-    console.warn(`[publish] Failed to publish ${filename}: ${err.message}`);
-  }
-}
-
 function publishOrchestratorConfig() {
   try {
     atomicWriteJSON(PUBLISH_DIR, "orchestrator-config.json", readOrchestratorConfig());
@@ -1137,10 +1120,6 @@ function publishAll() {
   }
   const bkState = readBeleidskompasState();
   publishBeleidskompasLiveConfig(bkState.live || bkState.draft || defaultBeleidskompasFlow());
-  const rawFiles = ["loader.js", "custom.css"];
-  for (const file of rawFiles) {
-    publishFileRaw(file);
-  }
 }
 
 function readCrawlerConfig() {
@@ -2731,6 +2710,48 @@ app.get("/api/beleidskompas/state", requireAuth, (req, res) => {
   const state = readBeleidskompasState();
   const workflow_manifest = readBeleidskompasWorkflowManifest();
   return res.json({ ok: true, state, workflow_manifest });
+});
+
+// ── Beleidskompas user feedback ──────────────────────────────────
+//
+// Deliberately anonymous: only the rating, an optional comment and the step
+// the feedback is about. No user, e-mail or conversation id, so the feedback
+// cannot be traced back to a person or a case.
+function readBeleidskompasFeedback() {
+  const stored = readPrivateJSON(BELEIDSKOMPAS_FEEDBACK_FILE);
+  const items = stored && Array.isArray(stored.items) ? stored.items : [];
+  return items;
+}
+
+app.post("/api/beleidskompas-feedback", (req, res) => {
+  const rating = String(req.body?.rating || "").trim().toLowerCase();
+  if (rating !== "up" && rating !== "down") {
+    return res.status(400).json({ error: 'Veld "rating" moet "up" of "down" zijn' });
+  }
+  const comment = String(req.body?.comment || "").trim().slice(0, 2000);
+  const stepId = String(req.body?.step_id || "").trim().slice(0, 64);
+
+  const items = readBeleidskompasFeedback();
+  items.push({
+    id: crypto.randomUUID(),
+    rating,
+    comment,
+    step_id: stepId,
+    created_at: new Date().toISOString(),
+  });
+  writePrivateJSON(BELEIDSKOMPAS_FEEDBACK_FILE, {
+    items: items.slice(-BELEIDSKOMPAS_FEEDBACK_MAX),
+  });
+  return res.status(201).json({ ok: true });
+});
+
+app.get("/api/beleidskompas-feedback", requireAuth, (req, res) => {
+  const items = readBeleidskompasFeedback();
+  const up = items.filter((i) => i.rating === "up").length;
+  return res.json({
+    items: items.slice().reverse(),
+    totals: { total: items.length, up, down: items.length - up },
+  });
 });
 
 app.get("/api/beleidskompas/export", requireAuth, (req, res) => {

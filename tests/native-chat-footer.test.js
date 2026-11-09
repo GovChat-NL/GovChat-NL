@@ -34,8 +34,8 @@ test("removed disclaimer assets and admin policy are no longer loaded", () => {
 });
 
 test("help overlay cannot overwrite the native footer and minimal CSS does not hide it", () => {
-  assert.doesNotMatch(read("overlay/defaults/loader.js"), /applyFooterBranding|footerBrandText|footerBrandUrl/);
-  for (const filename of ["overlay/defaults/custom.css", "overlay/minimal.css"]) {
+  assert.doesNotMatch(read("overlay/src/overlay.js"), /applyFooterBranding|footerBrandText|footerBrandUrl/);
+  for (const filename of ["overlay/src/custom.css", "overlay/minimal.css"]) {
     assert.doesNotMatch(read(filename), /contentinfo[^}]*display\s*:\s*none/);
   }
 });

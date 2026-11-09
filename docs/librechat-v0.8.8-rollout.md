@@ -26,7 +26,7 @@ De reguliere rootdeployment mag niet blind naast de kandidaat worden gestart.
 - Beeldgeneratie is werkelijk getest. Daarbij bleek een bestaande requestfout:
   GPT Image weigert de DALL-E-parameter response_format. De
   [requestgenerator](../scripts/harden-image-workflow.js) en
-  [workflowbron](../agents/n8n/workflows/image-generator-litellm.json) zijn gericht
+  [workflowbron](../agents/n8n/workflows/algemeen/image-generator-litellm.json) zijn gericht
   gecorrigeerd. [Acht model-/providerregressies](../tests/image-request-compatibility.test.js)
   bewaken zowel GPT Image als DALL-E voor OpenAI- en Azure-requestvormen.
 - Alleen de overeenkomstige gepubliceerde beeldworkflow is na een n8n-backup

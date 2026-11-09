@@ -89,7 +89,7 @@ testing OAuth, streaming, audio, uploads, and injected overlay scripts.
 5. Verify image-job abuse boundaries: unauthenticated requests fail; owner can
    create/poll; user B cannot poll user A's UUID; wrong `Origin` fails; invalid
    prompt/size/quality fails; active-job cap and Nginx throttling return 429.
-6. Import/deploy `agents/n8n/workflows/image-generator-litellm.json` using the
+6. Import/deploy `agents/n8n/workflows/algemeen/image-generator-litellm.json` using the
    normal n8n bootstrap/release path. Test a successful generated PNG and JPEG,
    invalid webhook token, missing user identity, invalid/oversized provider
    payload, and disabled image generation.

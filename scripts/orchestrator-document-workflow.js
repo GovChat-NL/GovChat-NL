@@ -31,7 +31,7 @@ function applyDocumentContext(workflow) {
 }
 
 if (require.main === module) {
-  const filename = path.resolve(__dirname, "../agents/n8n/workflows/orchestrator-litellm.json");
+  const filename = path.resolve(__dirname, "../agents/n8n/workflows/algemeen/orchestrator-litellm.json");
   const data = JSON.parse(fs.readFileSync(filename, "utf8"));
   applyDocumentContext(Array.isArray(data) ? data[0] : data);
   fs.writeFileSync(filename, JSON.stringify(data, null, 2));

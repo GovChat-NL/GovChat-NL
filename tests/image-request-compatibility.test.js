@@ -5,7 +5,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 const root = path.resolve(__dirname, '..');
-const workflow = JSON.parse(fs.readFileSync(path.join(root, 'agents/n8n/workflows/image-generator-litellm.json'), 'utf8'))[0];
+const workflow = JSON.parse(fs.readFileSync(path.join(root, 'agents/n8n/workflows/algemeen/image-generator-litellm.json'), 'utf8'))[0];
 const prepare = workflow.nodes.find(node => node.name === 'Prepare Image Request').parameters.jsCode;
 const generator = fs.readFileSync(path.join(root, 'scripts/harden-image-workflow.js'), 'utf8');
 const requestBlock = source => source.match(/const baseRaw = [\s\S]*?(?=\nreturn \[\{ json:)/)[0];

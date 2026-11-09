@@ -62,6 +62,9 @@ De installatie bevat onder andere workflows voor:
 - **Afbeeldingsgeneratie** — optioneel in te schakelen.
 - **OpenBesluitvorming** — workflows voor zoeken en werken met besluitvormingsinformatie; de organisatie configureert zelf de gegevensbron en toegang.
 - **TOPdesk Knowledge Base** — optionele workflows voor ingest en semantisch zoeken van kennisitems; met `N8N_ENABLE_TOPDESK_SEARCH=true` koppelt bootstrap de zoekworkflow automatisch als tool aan de orchestrator. Hoofditem, credentials, endpoints en bijlageverwerking configureert de organisatie zelf. Zie [TOPdesk-kennisitems instellen](docs/topdesk-knowledge-items.md).
+- **Beleidskompas** — ondersteunt beleidsafwegingen in vier stappen (SiS 4.0), op een eigen pagina. Stap 1 is uitgewerkt, de andere stappen zijn in ontwikkeling.
+
+Na het inloggen komt de gebruiker op een startscherm, met een tegel voor de chat en voor elke app.
 
 ## Snel starten
 
@@ -79,6 +82,8 @@ De installatie bevat onder andere workflows voor:
    docker compose --env-file .env config --quiet
    docker compose --env-file .env up -d
    ```
+
+De [`Makefile`](Makefile) bundelt de gebruikelijke commando's, zoals `make up` om de toepassing te starten. Met `make help` zie je ze allemaal.
 
 Lees daarna de [omgevingsvariabelen](https://govchat-nl.github.io/docs/handleidingen/librechat-omgevingsvariabelen), de [snelle start](https://govchat-nl.github.io/docs/handleidingen/librechat-pre-release) en het [overzicht van de containers](docs/services.md). Open poorten, SSO, secrets, gegevensbewaring en back-ups moeten bij de eigen organisatie-inrichting passen.
 
@@ -100,6 +105,7 @@ defaults, migratie van lokale overrides en de bijbehorende tests.
 - [GovChat-NL-documentatie](https://govchat-nl.github.io/)
 - [Architectuur](https://govchat-nl.github.io/docs/architectuur/librechat)
 - [Containeroverzicht](docs/services.md)
+- [Een bestaande installatie bijwerken](UPGRADE.md)
 - [LibreChat-overrides](docs/OVERRIDES.md)
 - [Nederlandse LibreChat-vertalingen](docs/TRANSLATIONS.md)
 - [Bijdragen aan agents en workflows](agents/CONTRIBUTING.md)

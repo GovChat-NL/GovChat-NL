@@ -30,6 +30,9 @@ NEW_FILES = {"scripts/librechat_release.py", "scripts/librechat-release-pin.js",
              "scripts/image-edit-workflow.js", "scripts/orchestrator-image-edit-workflow.js",
              "scripts/enable-image-to-image.js", "tests/image-edit-workflow.test.js",
              "tests/orchestrator/run-image-edit-smoke.js"}
+SOURCE_TEST_PATTERNS = ["tests/*.test.js", "tests/branding/*.test.js", "tests/agents/*.test.js",
+                        "agents/beleidskompas/*.test.js",
+                        "overlay/src/apps/beleidskompas/tests/*.test.js", "tests/overlay/*.test.js"]
 
 
 def clean_env():
@@ -105,7 +108,7 @@ def node_tests(source, patterns):
     files = sorted({str(path.relative_to(source)) for pattern in patterns for path in source.glob(pattern)})
     if not files:
         raise ReleaseError("No tests matched")
-    return ["node", "--test", *files]
+    return ["node", "--test", "--test-concurrency=2", *files]
 
 
 def container_args(source, image, command, mounts=(), image_storage=False):
@@ -142,7 +145,7 @@ def execute_suite(source, offline=False):
                      "for(const p of ['/app/api/package.json','/app/client/src/components/Chat/Footer.tsx'])"
                      "assert.ok(fs.existsSync(p),p);")
         run(container_args(source, image, ["node", "-e", preflight]), source)
-        run(container_args(source, image, node_tests(source, ["tests/*.test.js", "tests/branding/*.test.js", "tests/agents/*.test.js"])), source)
+        run(container_args(source, image, node_tests(source, SOURCE_TEST_PATTERNS)), source)
         for script in ("tests/translations/run-tests.js", "tests/translations/run-image-loader-test.js"):
             run(container_args(source, image, ["node", script]), source)
         run(container_args(source, admin_image, node_tests(source, ["tests/orchestrator/name*.test.js", "tests/orchestrator/prompt*.test.js", "tests/orchestrator/utility*.test.js"])), source)

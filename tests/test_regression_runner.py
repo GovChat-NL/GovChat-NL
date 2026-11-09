@@ -11,6 +11,14 @@ from scripts.librechat_release import ReleaseError, ROOT
 
 
 class RunnerTests(unittest.TestCase):
+    def test_source_suite_includes_policy_and_start_page_regressions(self):
+        args = runner.node_tests(ROOT, runner.SOURCE_TEST_PATTERNS)
+        self.assertIn("agents/beleidskompas/logic.test.js", args)
+        self.assertIn("overlay/src/apps/beleidskompas/tests/store.test.js", args)
+        self.assertIn("tests/overlay/start-page.test.js", args)
+        self.assertIn("tests/native-chat-footer.test.js", args)
+        self.assertIn("--test-concurrency=2", args)
+
     def test_environment_drops_secrets_and_integration_settings(self):
         with patch.dict(os.environ, {"OPENID_CLIENT_SECRET": "sentinel", "NODE_OPTIONS": "bad",
                          "NODE_PATH": "/private", "GOVCHAT_DOCKER_TESTS": "1", "COMPOSE_FILE": ".env",

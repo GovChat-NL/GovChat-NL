@@ -62,7 +62,7 @@ async function main() {
     CRAWLER_ADMIN_BASE_URL: base,
     CRAWLER_INTERNAL_TOKEN: "synthetic-prompt-token",
   };
-  const workflow = JSON.parse(fs.readFileSync(path.resolve(__dirname, "../../agents/n8n/workflows/orchestrator-litellm.json")))[0];
+  const workflow = JSON.parse(fs.readFileSync(path.resolve(__dirname, "../../agents/n8n/workflows/algemeen/orchestrator-litellm.json")))[0];
   for (const key of ["versionMetadata", "versionId", "activeVersionId", "shared", "pinData", "staticData", "sourceWorkflowId"]) delete workflow[key];
   workflow.id = "synthetic-document-smoke"; workflow.name = "Isolated document context smoke"; workflow.active = false;
   workflow.nodes = workflow.nodes.filter((node) => ["ExtractDocumentContext", "DetectImageMessages", "AIAgentOrchestrator", "ChatModelOrchestrator"].includes(node.id));

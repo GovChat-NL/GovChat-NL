@@ -17,7 +17,7 @@ const request = (parts) => ({ headers: { "x-chat-id": "test-chat" }, body: { mod
 const result = async (...args) => (await normalize(...args))[0].json;
 
 test("baseline reproduces the old prompt dropping a native PDF block", () => {
-  const workflow = JSON.parse(fs.readFileSync(path.join(__dirname, "../agents/n8n/workflows/orchestrator-litellm.json")))[0];
+  const workflow = JSON.parse(fs.readFileSync(path.join(__dirname, "../agents/n8n/workflows/algemeen/orchestrator-litellm.json")))[0];
   const expression = workflow.nodes.find((node) => node.id === "AIAgentOrchestrator").parameters.text;
   const prompt = new Function("$json", `return (${expression.slice(3, -2)});`)(request([filePart()]));
   assert.ok(prompt.includes("Welk getal"));
@@ -141,7 +141,7 @@ test("real bounded HTTP transport uses PUT to configured Tika, never follows red
 });
 
 test("generated workflow is idempotent and the actual agent prompt receives extracted text", async () => {
-  const workflow = JSON.parse(fs.readFileSync(path.join(__dirname, "../agents/n8n/workflows/orchestrator-litellm.json")))[0];
+  const workflow = JSON.parse(fs.readFileSync(path.join(__dirname, "../agents/n8n/workflows/algemeen/orchestrator-litellm.json")))[0];
   const before = structuredClone(workflow); applyDocumentContext(workflow);
   assert.deepEqual(workflow, before);
   assert.equal(workflow.connections["Webhook Orchestrator"].main[0][0].node, "Extract Document Context");
@@ -154,7 +154,7 @@ test("generated workflow is idempotent and the actual agent prompt receives extr
 });
 
 test("embedded n8n Code node executes the same bounded implementation", async () => {
-  const workflow = JSON.parse(fs.readFileSync(path.join(__dirname, "../agents/n8n/workflows/orchestrator-litellm.json")))[0];
+  const workflow = JSON.parse(fs.readFileSync(path.join(__dirname, "../agents/n8n/workflows/algemeen/orchestrator-litellm.json")))[0];
   const code = workflow.nodes.find((node) => node.id === "ExtractDocumentContext").parameters.jsCode;
   const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor;
   const output = await new AsyncFunction("$json", "$env", "require", "Buffer", code)(request([
@@ -164,7 +164,7 @@ test("embedded n8n Code node executes the same bounded implementation", async ()
 });
 
 test("document context reaches mixed-image vision and document failures are preserved", async () => {
-  const workflow = JSON.parse(fs.readFileSync(path.join(__dirname, "../agents/n8n/workflows/orchestrator-litellm.json")))[0];
+  const workflow = JSON.parse(fs.readFileSync(path.join(__dirname, "../agents/n8n/workflows/algemeen/orchestrator-litellm.json")))[0];
   const code = workflow.nodes.find((node) => node.id === "DetectImageMessages").parameters.jsCode;
   const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor;
   const run = new AsyncFunction("$json", "$env", "require", "fetch", "Buffer", "$", code);

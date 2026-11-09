@@ -123,4 +123,3 @@ De zoekoutput bevat de gerangschikte bronnen; laat een antwoordagent de inhoud u
 - Tika verwerkt bestanden intern en krijgt geen publiek gepubliceerde Compose-poort. Beperk toegestane bestandstypen/grootte aan de bronzijde en voer software-updates volgens het reguliere patchbeleid uit.
 - De workflows verwijderen geen punten die in TOPdesk zijn verwijderd of niet langer onder het hoofditem vallen. Plan voor productie een expliciete reconcile/cleanup-strategie voordat de bronstructuur verandert.
 - `pageSize` en de API-paginering verschillen mogelijk per TOPdesk-release. Test met meer records dan één pagina voordat je de workflow voor een volledige dataset activeert.
-

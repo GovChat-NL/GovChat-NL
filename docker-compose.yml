@@ -327,6 +327,7 @@ services:
       - ${NGINX_TRUSTED_PROXIES_CONF_PATH:-./nginx/trusted-proxies.conf}:/etc/nginx/trusted-proxies.conf:ro
       - ${NGINX_TRUSTED_PROXIES_GEO_PATH:-./nginx/trusted-proxies.geo}:/etc/nginx/trusted-proxies.geo:ro
       - ${GOVCHAT_DATA_ROOT:-/opt/librechat}/overlay/publish:/opt/librechat/overlay/publish:ro
+      - ./overlay/src:/opt/librechat/overlay/src:ro
     networks:
       - librechat-net
 

@@ -8,7 +8,7 @@ const { trustedImageUserId, trustedUserExpression, applyImageToolInputs, applyIm
   require('../scripts/orchestrator-image-workflow');
 
 const root = path.resolve(__dirname, '..');
-const load = name => JSON.parse(fs.readFileSync(path.join(root, 'agents/n8n/workflows', name), 'utf8'))[0];
+const load = name => JSON.parse(fs.readFileSync(path.join(root, 'agents/n8n/workflows/algemeen', name), 'utf8'))[0];
 const owner = 'trusted-owner-123';
 const request = { headers: { authorization: 'Bearer synthetic-service-token' }, body: { userId: owner } };
 
