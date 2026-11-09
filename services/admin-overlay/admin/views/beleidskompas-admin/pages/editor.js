@@ -1,6 +1,6 @@
 // Editor landing page: template picker, template settings, versions, export/import.
 import * as api from "../api.js";
-import { h, icon, card, field, bound, toast, formatDate } from "../dom.js";
+import { h, icon, card, field, bound, toast, formatDate, reveal } from "../dom.js";
 import { templateSelector } from "../components/template-selector.js";
 import { template, versionLabel, versionStatus, dirtyFlag } from "../app.js";
 
@@ -82,6 +82,7 @@ export function renderEditor({ store, render, markDirty, selectTemplate, saveAsN
                           await reload();
                           toast(`${label} hersteld als ${versionLabel(template(), version.id)}. Live zetten doe je via Deploy.`, "success");
                           render();
+                          reveal(document.getElementById("versions"));
                         } catch (err) {
                           toast(`Herstellen mislukt: ${err.message}`, "error");
                         }
@@ -127,5 +128,6 @@ export function renderEditor({ store, render, markDirty, selectTemplate, saveAsN
     ),
   );
 
+  versionsCard.id = "versions"; // scrolled into view after a restore
   return { subtitle: [picker, dirtyFlag()], content: h("div", { class: "stack" }, settingsCard, versionsCard, transferCard) };
 }

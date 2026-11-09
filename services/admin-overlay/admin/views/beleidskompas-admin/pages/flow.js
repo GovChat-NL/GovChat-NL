@@ -1,6 +1,6 @@
 // Flow builder: the template's steps, each with its texts, system prompt, search settings and documents.
 import * as api from "../api.js";
-import { h, icon, card, field, bound } from "../dom.js";
+import { h, icon, card, field, bound, reveal } from "../dom.js";
 import { flowList } from "../components/flow-list.js";
 import { dropdown } from "../components/dropdown.js";
 import { toggle } from "../components/toggle.js";
@@ -10,6 +10,9 @@ const SEARCH_METHODS = [
   { value: "needle", label: "Needle: precieze passages" },
   { value: "haystack", label: "Haystack: brede context" },
 ];
+
+// The step's <li> in the rendered list (index in store.flow.steps).
+const stepEl = (idx) => document.querySelectorAll(".flow-list > .flow-step")[idx];
 
 export function renderFlow({ store, render, markDirty }) {
   const steps = store.flow.steps;
@@ -28,7 +31,9 @@ export function renderFlow({ store, render, markDirty }) {
     });
     store.ui.stepId = id;
     changed();
-    document.querySelector(".flow-step.is-open")?.scrollIntoView({ block: "start", behavior: "smooth" });
+    const el = stepEl(steps.length - 1);
+    reveal(el);
+    el?.querySelector(".flow-editor input")?.focus({ preventScroll: true });
   };
 
   const notice = h(
@@ -42,11 +47,16 @@ export function renderFlow({ store, render, markDirty }) {
   const list = flowList({
     steps,
     expandedId: store.ui.stepId,
-    onToggle: (id) => { store.ui.stepId = id; render(); },
+    onToggle: (id) => {
+      store.ui.stepId = id;
+      render();
+      if (id) reveal(stepEl(steps.findIndex((s) => s.id === id)));
+    },
     onMove: (idx, delta) => {
       const [step] = steps.splice(idx, 1);
       steps.splice(idx + delta, 0, step);
       changed();
+      reveal(stepEl(idx + delta));
     },
     onRemove: (idx) => {
       if (!confirm(`Stap “${steps[idx].title}” verwijderen?`)) return;
@@ -125,6 +135,9 @@ function stepEditor(step, { store, markDirty, render }) {
           step.substeps = [...(step.substeps || []), { id: `${idx}.${(step.substeps?.length || 0) + 1}`, title: "", description: "" }];
           markDirty();
           render();
+          const row = document.querySelector(".flow-step.is-open .substep:last-of-type");
+          reveal(row);
+          row?.querySelector("input")?.focus({ preventScroll: true });
         },
       },
       icon("plus", 14),
@@ -132,20 +145,9 @@ function stepEditor(step, { store, markDirty, render }) {
     ),
   );
 
-  const advanced = h(
-    "details",
-    { class: "advanced" },
-    h("summary", {}, "Geavanceerd"),
-    h(
-      "div",
-      { class: "form-grid" },
-      // Step id, workflow id and webhook path are not shown: they link the step to n8n and feedback.
-      // Editing them safely needs a fixed internal id first (private notes, ADMIN_UI_FUTURE_WORK.md §9).
-      field("Aantal passages (top_k)", bound(step.rag, "top_k", { type: "number", onInput: markDirty })),
-      field("Minimale score (0–1)", bound(step.rag, "min_score", { type: "number", onInput: markDirty })),
-    ),
-  );
-
+  // Not shown: step id, workflow id and webhook path link the step to n8n and feedback, and editing
+  // them safely needs a fixed internal id first (private notes, ADMIN_UI_FUTURE_WORK.md §9).
+  // rag.top_k and rag.min_score stay in the template as they are.
   return h(
     "div",
     { class: "stack" },
@@ -155,11 +157,18 @@ function stepEditor(step, { store, markDirty, render }) {
     h(
       "div",
       { class: "flow-editor-foot" },
-      advanced,
       // Edits are already in the working copy; this only closes the step. The server gets them with "Opslaan als nieuwe versie".
       h(
         "button",
-        { class: "btn btn-primary", title: "Bewaart de stap in je wijzigingen; opslaan op de server doe je met “Opslaan als nieuwe versie”", onClick: () => { store.ui.stepId = null; render(); } },
+        {
+          class: "btn btn-primary",
+          title: "Bewaart de stap in je wijzigingen; opslaan op de server doe je met “Opslaan als nieuwe versie”",
+          onClick: () => {
+            store.ui.stepId = null;
+            render();
+            reveal(stepEl(store.flow.steps.indexOf(step)));
+          },
+        },
         "Stap opslaan",
       ),
     ),

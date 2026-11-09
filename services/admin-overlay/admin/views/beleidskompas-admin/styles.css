@@ -197,12 +197,12 @@ textarea.input { resize: vertical; line-height: 1.45; }
 .flow-title { flex: 1; display: flex; flex-direction: column; align-items: flex-start; gap: 2px; padding: 6px 10px; border: none; background: transparent; text-align: left; cursor: pointer; border-radius: 6px; min-width: 0; }
 .flow-title:hover { background: #f7f7f9; }
 .flow-desc { color: var(--muted); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
-.flow-tools { display: flex; gap: 2px; }
+.flow-tools { display: flex; gap: 4px; }
+.flow-tools .icon-btn { width: 32px; height: 32px; }
 .flow-editor { padding: 4px 16px 16px; border-top: 1px solid var(--line); padding-top: 14px; }
 .flow-add { align-items: center; }
 .flow-add .btn { justify-self: start; }
-.flow-editor-foot { display: flex; align-items: flex-start; gap: 12px; border-top: 1px solid var(--line); padding-top: 10px; }
-.flow-editor-foot .advanced { flex: 1; border-top: none; padding-top: 0; }
+.flow-editor-foot { display: flex; justify-content: flex-end; border-top: 1px solid var(--line); padding-top: 10px; }
 .inline-controls { display: flex; gap: 24px; align-items: center; flex-wrap: wrap; }
 .doc-checks { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 10px; padding-top: 4px; }
 .substeps { display: flex; flex-direction: column; gap: 8px; align-items: flex-start; }

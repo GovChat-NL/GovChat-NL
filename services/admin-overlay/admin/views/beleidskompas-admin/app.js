@@ -149,6 +149,8 @@ export function versionStatus(tpl) {
   return newest.id === tpl.live_version_id ? live : `${versionLabel(tpl, newest.id)} nieuwste · ${live}`;
 }
 
+let lastRoute = null;
+
 export function render() {
   const route = currentRoute();
   const def = ROUTES[route];
@@ -168,8 +170,11 @@ export function render() {
 
   const { controls, content, subtitle } = def.page({ store, render, markDirty, selectTemplate, saveAsNewTemplate, reload });
   const body = document.getElementById("body");
+  // Only a new page starts at the top; a redraw of the same page keeps the scroll position.
+  const scrollTop = route === lastRoute ? body.scrollTop : 0;
   body.replaceChildren(header({ title: def.title, subtitle: subtitle ?? subtitleFor(def), controls }), content);
-  body.scrollTop = 0;
+  body.scrollTop = scrollTop;
+  lastRoute = route;
 }
 
 async function init() {
