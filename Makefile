@@ -3,7 +3,7 @@
 
 COMPOSE := docker compose
 
-.PHONY: help env up up-n8n down logs reload-workflows rebuild-admin check test-beleidskompas test-admin generate-stap1
+.PHONY: help env up up-n8n down logs reload-workflows rebuild-admin check test-beleidskompas test-admin replenish-beleidskompas-db generate-stap1
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z0-9_-]+:.*## ' $(MAKEFILE_LIST) | sed -E 's/:.*## /: /' | sort
@@ -45,6 +45,9 @@ test-admin: env ## Run the admin store tests inside the stack, against the pgvec
 	$(COMPOSE) --profile admin-overlay run --rm --build \
 		-v $(CURDIR)/services/admin-overlay/admin/beleidskompas:/app/beleidskompas:ro \
 		govchat-overlay-admin sh -c 'BELEIDSKOMPAS_TEST_DATABASE_URL=$$BELEIDSKOMPAS_DATABASE_URL node --test'
+
+replenish-beleidskompas-db: env ## Wipe the Beleidskompas database and reload the demo seed data (asks for confirmation)
+	scripts/replenish-beleidskompas-db.sh
 
 generate-stap1: ## Regenerate beleidskompas-step-stap1.json from agents/beleidskompas
 	cd agents/beleidskompas && node generate-workflow.js
