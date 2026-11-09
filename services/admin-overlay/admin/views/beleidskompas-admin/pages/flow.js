@@ -14,12 +14,12 @@ const SEARCH_METHODS = [
 export function renderFlow({ store, render, markDirty }) {
   const steps = store.flow.steps;
   const changed = () => { markDirty(); render(); };
-  // Inserts a new step at position `at` (default: the end), collapsed.
-  const addStep = (at = steps.length) => {
+  // Adds a new step at the end, collapsed.
+  const addStep = () => {
     const id = `stap${Date.now().toString(36)}`;
-    steps.splice(at, 0, {
+    steps.push({
       id,
-      title: `Nieuwe stap ${at + 1}`,
+      title: `Nieuwe stap ${steps.length + 1}`,
       description: "",
       prompt: "",
       doc_tags: [],
@@ -51,14 +51,14 @@ export function renderFlow({ store, render, markDirty }) {
       steps.splice(idx, 1);
       changed();
     },
-    onAdd: () => addStep(),
-    renderEditor: (step, idx) => stepEditor(step, { store, markDirty, render, addAfter: () => addStep(idx + 1) }),
+    onAdd: addStep,
+    renderEditor: (step) => stepEditor(step, { store, markDirty, render }),
   });
 
   return { content: h("div", { class: "stack" }, notice, list) };
 }
 
-function stepEditor(step, { store, markDirty, render, addAfter }) {
+function stepEditor(step, { store, markDirty, render }) {
   step.rag = step.rag || {};
   const docIds = api.stepDocumentIds(step, store.documents);
 
@@ -154,7 +154,12 @@ function stepEditor(step, { store, markDirty, render, addAfter }) {
       "div",
       { class: "flow-editor-foot" },
       advanced,
-      h("button", { class: "btn btn-secondary", onClick: addAfter }, icon("plus", 14), "Stap hierna toevoegen"),
+      // Edits are already in the working copy; this only closes the step. The server gets them with "Opslaan als nieuwe versie".
+      h(
+        "button",
+        { class: "btn btn-primary", title: "Bewaart de stap in je wijzigingen; opslaan op de server doe je met “Opslaan als nieuwe versie”", onClick: () => { store.ui.stepId = null; render(); } },
+        "Stap opslaan",
+      ),
     ),
   );
 }
