@@ -65,8 +65,8 @@ function docPreview(doc, { tpl, store, reloadDocs }) {
         class: "btn btn-small btn-secondary",
         disabled: readOnly,
         onClick: async () => {
-          const name = await askText({ title: "Document hernoemen", label: "Bestandsnaam", placeholder: doc.filename, confirm: "Hernoemen", required: true });
-          if (!name) return;
+          const name = await askText({ title: "Document hernoemen", label: "Bestandsnaam", value: doc.filename, confirm: "Hernoemen", required: true });
+          if (!name || name === doc.filename) return;
           try {
             await api.updateDocument(doc.id, { filename: name });
             await reloadDocs();
