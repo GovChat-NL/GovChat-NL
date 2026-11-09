@@ -142,10 +142,10 @@ function subtitleFor(def) {
   return ["Template ", h("strong", {}, tpl.name), ` · ${versionStatus(tpl)}`, dirtyFlag()];
 }
 
-// "v2 live", or "v3 nieuwste · v2 live" when the newest version is not deployed yet.
+// "v2 live", "v3 nieuwste · v2 live" when the newest version is not deployed yet, or "v2 nieuwste · niet live".
 export function versionStatus(tpl) {
   const newest = newestVersion(tpl);
-  const live = `${versionLabel(tpl, tpl.live_version_id)} live`;
+  const live = tpl.live_version_id ? `${versionLabel(tpl, tpl.live_version_id)} live` : "niet live";
   return newest.id === tpl.live_version_id ? live : `${versionLabel(tpl, newest.id)} nieuwste · ${live}`;
 }
 

@@ -1007,7 +1007,8 @@ function syncBeleidskompasWorkflowFiles(flowInput) {
   let documents = [];
   if (flowInput && typeof flowInput === "object" && (flowInput.draft || flowInput.live || flowInput.documents)) {
     const state = normalizeBeleidskompasState(flowInput);
-    flow = normalizeBeleidskompasFlow(state.draft || state.live || defaultBeleidskompasFlow());
+    // The workflow files follow the live version; draft is the newest saved one, which may not be deployed.
+    flow = normalizeBeleidskompasFlow(state.live || state.draft || defaultBeleidskompasFlow());
     documents = normalizeBeleidskompasDocuments(state.documents || []);
   } else {
     flow = normalizeBeleidskompasFlow(flowInput || defaultBeleidskompasFlow());
@@ -2893,7 +2894,7 @@ app.post("/api/beleidskompas/workflows/sync", requireAuth, (req, res) => {
     const flow = useLive
       ? normalizeBeleidskompasFlow(state.live || defaultBeleidskompasFlow())
       : normalizeBeleidskompasFlow(state.draft || state.live || defaultBeleidskompasFlow());
-    const manifest = syncBeleidskompasWorkflowFiles({ ...state, draft: flow });
+    const manifest = syncBeleidskompasWorkflowFiles({ ...state, live: flow });
     return res.json({ ok: true, source: useLive ? "live" : "draft", manifest });
   } catch (err) {
     return res.status(500).json({ error: String(err?.message || err) });

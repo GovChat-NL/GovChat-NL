@@ -60,14 +60,15 @@ const ovFeedback = [
 ].map((f) => ({ ...f, template_id: "omgevingsvisie", answer_text: mockAnswerText(f.step_id) }));
 
 // MOCK #1: a second template, to show the template selector and the feedback filter.
+// Never live: one version is live for the whole app, and only the server's template can be deployed.
 export const MOCK_TEMPLATES = [
   {
     id: "omgevingsvisie",
     name: "Omgevingsvisie (voorbeeld)",
     mock: true,
-    live_version_id: "ov-v2",
+    live_version_id: null,
     versions: [
-      { id: "ov-v2", published_at: daysAgo(7), published_by: "Mock", note: "Verordening toegevoegd", is_live: true, snapshot: omgevingsvisieFlow },
+      { id: "ov-v2", published_at: daysAgo(7), published_by: "Mock", note: "Verordening toegevoegd", is_live: false, snapshot: omgevingsvisieFlow },
       { id: "ov-v1", published_at: daysAgo(60), published_by: "Mock", note: "Eerste versie", is_live: false, snapshot: omgevingsvisieFlow },
     ],
     documents: ovDocs,

@@ -44,13 +44,8 @@ export const saveSettings = (settings) => request("POST", `${BASE}/settings`, se
 export const saveVersion = (flow, note) => request("POST", `${BASE}/publish`, { flow, note, live: false });
 
 // WIRED: POST /api/beleidskompas/rollback/:id makes an existing version live (the Deploy page).
-// MOCK #1: for a sample template the live version changes in this browser tab only.
-export function deployVersion(tpl, versionId) {
-  if (!tpl.mock) return request("POST", `${BASE}/rollback/${encodeURIComponent(versionId)}`);
-  tpl.live_version_id = versionId;
-  for (const v of tpl.versions) v.is_live = v.id === versionId;
-  return Promise.resolve({ ok: true });
-}
+// The server holds the one live version for the whole app; sample templates cannot be deployed (MOCK #1).
+export const deployVersion = (versionId) => request("POST", `${BASE}/rollback/${encodeURIComponent(versionId)}`);
 
 // WIRED: GET /api/beleidskompas/export (the whole state as JSON)
 export const exportUrl = () => `${BASE}/export`;
@@ -77,8 +72,8 @@ export function saveAsNewTemplate(name, flow) {
     id,
     name,
     mock: true,
-    live_version_id: `${id}-v1`,
-    versions: [{ id: `${id}-v1`, published_at: now, published_by: "Mock", note: "Eerste versie", is_live: true, snapshot: structuredClone(flow) }],
+    live_version_id: null,
+    versions: [{ id: `${id}-v1`, published_at: now, published_by: "Mock", note: "Eerste versie", is_live: false, snapshot: structuredClone(flow) }],
     documents: [],
     feedback: [],
   };
