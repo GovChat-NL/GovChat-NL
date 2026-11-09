@@ -246,10 +246,13 @@ textarea.input { resize: vertical; line-height: 1.45; }
 .toast-success { background: #1f6e37; }
 .toast-error { background: var(--red); }
 
-@media (max-width: 900px) {
-  .window { grid-template-columns: 1fr; height: auto; min-height: calc(100vh - 32px); }
-  .sidebar { flex-direction: row; flex-wrap: wrap; border-right: none; border-bottom: 1px solid var(--line); }
+@media (max-width: 675px) {
+  .window { grid-template-columns: 1fr; grid-template-rows: auto 1fr; height: auto; min-height: calc(100vh - 32px); }
+  .sidebar { flex-direction: row; flex-wrap: wrap; align-items: flex-start; border-right: none; border-bottom: 1px solid var(--line); }
   .side-sep, .side-title { display: none; }
+}
+
+@media (max-width: 900px) {
   .finder-columns { grid-template-columns: 1fr; }
   .stats { grid-template-columns: repeat(2, 1fr); }
 }
