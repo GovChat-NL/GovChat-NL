@@ -61,6 +61,21 @@ export function icon(name, size = 16) {
   return svg;
 }
 
+// Reveal rule: after a click shows new content, scroll the content pane just enough to show it,
+// but never past its top, so its header (with the button that was clicked) stays visible.
+// Nothing moves when it is already in view. Honours the OS "reduce motion" setting.
+export function reveal(el, margin = 12) {
+  const pane = document.getElementById("body");
+  if (!el || !pane) return;
+  const p = pane.getBoundingClientRect();
+  const r = el.getBoundingClientRect();
+  const toTop = r.top - p.top - margin;
+  const by = toTop < 0 ? toTop : Math.max(0, Math.min(r.bottom - p.bottom + margin, toTop));
+  if (!by) return;
+  const smooth = !matchMedia("(prefers-reduced-motion: reduce)").matches;
+  pane.scrollBy({ top: by, behavior: smooth ? "smooth" : "auto" });
+}
+
 export function formatDate(iso, withTime = true) {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return "—";
