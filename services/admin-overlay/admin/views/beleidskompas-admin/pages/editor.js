@@ -1,33 +1,35 @@
-// Editor landing page: template choice, template settings, versions, export/import.
+// Editor landing page: template picker, template settings, versions, export/import.
 import * as api from "../api.js";
 import { h, icon, card, field, bound, toast, formatDate } from "../dom.js";
 import { templateSelector } from "../components/template-selector.js";
-import { template, versionLabel } from "../app.js";
+import { template, versionLabel, versionStatus, dirtyFlag } from "../app.js";
 
 export function renderEditor({ store, render, markDirty, selectTemplate, saveAsNewTemplate, reload }) {
   const tpl = template();
   const flow = store.flow;
 
-  const controls = templateSelector({
+  // The picker replaces the subtitle: it already names the template and its versions.
+  const picker = templateSelector({
     templates: store.templates,
-    currentId: tpl.id,
+    currentId: tpl?.id,
+    meta: tpl ? versionStatus(tpl) : null,
     onSelect: selectTemplate,
-    onNew: saveAsNewTemplate,
+    onNew: tpl ? saveAsNewTemplate : null,
   });
 
-  const shortcuts = h(
-    "div",
-    { class: "shortcut-grid" },
-    shortcut("editor/documents", "folder", "Documentenbibliotheek", `${store.documents.length} documenten`),
-    shortcut("editor/flow", "flow", "Flow builder", `${flow.steps.length} stappen`),
-  );
+  // Gate: the template settings, Documentenbibliotheek and Flow builder open once a template is picked.
+  if (!tpl) {
+    return {
+      subtitle: picker,
+      content: h("p", { class: "empty" }, "Kies eerst een template. Daarna kun je de instellingen, de Documentenbibliotheek en de Flow builder openen."),
+    };
+  }
 
   const settingsCard = card(
     "Template-instellingen",
     field("Titel", bound(flow, "title", { onInput: markDirty }), "Getoond boven de Beleidskompas-pagina."),
     field("Disclaimer", bound(flow, "disclaimer", { multiline: true, onInput: markDirty })),
     field("Specialistenteam", bound(flow, "specialist_team", { multiline: true, onInput: markDirty }), "Wie de gebruiker moet betrekken bij grote impact."),
-    field("Bronnen", chipEditor(flow, "sources", markDirty), "Getoond als bronnenlijst op de Beleidskompas-pagina."),
     h(
       "details",
       { class: "advanced" },
@@ -45,11 +47,11 @@ export function renderEditor({ store, render, markDirty, selectTemplate, saveAsN
   const versions = [...tpl.versions].sort((a, b) => b.published_at.localeCompare(a.published_at));
   const versionsCard = card(
     "Versies",
-    h("p", { class: "muted" }, "Kleine wijzigingen publiceer je als nieuwe versie. Grotere, bewuste wijzigingen sla je op als nieuw template."),
+    h("p", { class: "muted" }, "Kleine wijzigingen sla je op als nieuwe versie. Grotere, bewuste wijzigingen sla je op als nieuw template. Live zetten doe je via Deploy."),
     h(
       "table",
       { class: "table" },
-      h("thead", {}, h("tr", {}, h("th", {}, "Versie"), h("th", {}, "Gepubliceerd"), h("th", {}, "Door"), h("th", {}, "Omschrijving"), h("th", {}, ""))),
+      h("thead", {}, h("tr", {}, h("th", {}, "Versie"), h("th", {}, "Opgeslagen"), h("th", {}, "Door"), h("th", {}, "Omschrijving"), h("th", {}, ""))),
       h(
         "tbody",
         {},
@@ -73,12 +75,12 @@ export function renderEditor({ store, render, markDirty, selectTemplate, saveAsN
                       disabled: tpl.mock,
                       onClick: async () => {
                         const label = versionLabel(tpl, v.id);
-                        if (!confirm(`${label} herstellen als nieuwe versie? Niet-gepubliceerde wijzigingen gaan verloren.`)) return;
+                        if (!confirm(`${label} herstellen als nieuwe versie? Niet-opgeslagen wijzigingen gaan verloren.`)) return;
                         try {
-                          // Restoring publishes the old content as a new version, so the history only grows.
-                          const { version } = await api.publishVersion(v.snapshot, `Hersteld van ${label}`);
+                          // Restoring saves the old content as a new version (not live), so the history only grows.
+                          const { version } = await api.saveVersion(v.snapshot, `Hersteld van ${label}`);
                           await reload();
-                          toast(`${label} hersteld als ${versionLabel(template(), version.id)}`, "success");
+                          toast(`${label} hersteld als ${versionLabel(template(), version.id)}. Live zetten doe je via Deploy.`, "success");
                           render();
                         } catch (err) {
                           toast(`Herstellen mislukt: ${err.message}`, "error");
@@ -125,41 +127,5 @@ export function renderEditor({ store, render, markDirty, selectTemplate, saveAsN
     ),
   );
 
-  return { controls, content: h("div", { class: "stack" }, shortcuts, settingsCard, versionsCard, transferCard) };
-}
-
-function shortcut(route, iconName, title, meta) {
-  return h("a", { class: "shortcut", href: `#/${route}` }, h("span", { class: "shortcut-icon" }, icon(iconName, 20)), h("span", {}, h("strong", {}, title), h("span", { class: "muted" }, meta)), icon("chevronRight", 14));
-}
-
-// Editable list of short strings shown as chips.
-export function chipEditor(obj, key, onChange) {
-  const wrap = h("div", { class: "chips" });
-  const input = h("input", { class: "chip-input", type: "text", placeholder: "Toevoegen en Enter…", "aria-label": "Item toevoegen" });
-  const draw = () => {
-    wrap.replaceChildren(
-      ...(obj[key] || []).map((value, i) =>
-        h(
-          "span",
-          { class: "chip" },
-          value,
-          h("button", { class: "chip-x", "aria-label": `${value} verwijderen`, onClick: (e) => { e.preventDefault(); obj[key].splice(i, 1); onChange(); draw(); } }, "×"),
-        ),
-      ),
-      input,
-    );
-  };
-  input.addEventListener("keydown", (e) => {
-    if (e.key !== "Enter") return;
-    e.preventDefault();
-    const value = input.value.trim();
-    if (!value) return;
-    obj[key] = [...(obj[key] || []), value];
-    input.value = "";
-    onChange();
-    draw();
-    input.focus();
-  });
-  draw();
-  return wrap;
+  return { subtitle: [picker, dirtyFlag()], content: h("div", { class: "stack" }, settingsCard, versionsCard, transferCard) };
 }

@@ -2,7 +2,6 @@
 import * as api from "../api.js";
 import { h, icon, toast, askText, formatDate, formatBytes } from "../dom.js";
 import { finder } from "../components/finder.js";
-import { toggle } from "../components/toggle.js";
 import { template } from "../app.js";
 
 export function renderDocuments({ store, render }) {
@@ -16,22 +15,7 @@ export function renderDocuments({ store, render }) {
     render();
   };
 
-  const files = docs.map((d) => {
-    const active = api.isDocumentActive(tpl.id, d.id);
-    return {
-      id: d.id,
-      name: d.filename,
-      muted: !active,
-      trailing: toggle({
-        checked: active,
-        label: null,
-        onChange: (v) => {
-          api.setDocumentActive(tpl.id, d.id, v);
-          render();
-        },
-      }),
-    };
-  });
+  const files = docs.map((d) => ({ id: d.id, name: d.filename }));
 
   const preview = selected ? docPreview(selected, { tpl, store, reloadDocs, render }) : emptyPreview();
 
@@ -70,7 +54,7 @@ function emptyPreview() {
 
 function docPreview(doc, { tpl, store, reloadDocs }) {
   const readOnly = tpl.mock;
-  const usedIn = store.flow.steps.filter((s) => api.getStepDocumentIds(tpl.id, s, store.documents).has(doc.id));
+  const usedIn = store.flow.steps.filter((s) => api.stepDocumentIds(s, store.documents).has(doc.id));
 
   const actions = h(
     "div",

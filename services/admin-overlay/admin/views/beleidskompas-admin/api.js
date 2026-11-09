@@ -40,8 +40,17 @@ export const syncWorkflows = () => request("POST", `${BASE}/workflows/sync`, { s
 // WIRED: POST /api/beleidskompas/settings
 export const saveSettings = (settings) => request("POST", `${BASE}/settings`, settings);
 
-// WIRED: POST /api/beleidskompas/publish. Saves the flow and publishes it as a new version in one call.
-export const publishVersion = (flow, note) => request("POST", `${BASE}/publish`, { flow, note });
+// WIRED: POST /api/beleidskompas/publish with live: false. Saves the flow as a new version; it does not go live.
+export const saveVersion = (flow, note) => request("POST", `${BASE}/publish`, { flow, note, live: false });
+
+// WIRED: POST /api/beleidskompas/rollback/:id makes an existing version live (the Deploy page).
+// MOCK #1: for a sample template the live version changes in this browser tab only.
+export function deployVersion(tpl, versionId) {
+  if (!tpl.mock) return request("POST", `${BASE}/rollback/${encodeURIComponent(versionId)}`);
+  tpl.live_version_id = versionId;
+  for (const v of tpl.versions) v.is_live = v.id === versionId;
+  return Promise.resolve({ ok: true });
+}
 
 // WIRED: GET /api/beleidskompas/export (the whole state as JSON)
 export const exportUrl = () => `${BASE}/export`;
@@ -106,33 +115,13 @@ export const deleteDocument = (id) => request("DELETE", `${BASE}/documents/${enc
 // WIRED: GET /api/beleidskompas/documents/:id/download
 export const downloadUrl = (id) => `${BASE}/documents/${encodeURIComponent(id)}/download`;
 
-// MOCK #3: "Actief in dit template" is kept in this browser tab only; the server has
-// one library for all templates and versions.
-const inactiveDocs = new Set();
-export const isDocumentActive = (templateId, docId) => !inactiveDocs.has(`${templateId}:${docId}`);
-export function setDocumentActive(templateId, docId, active) {
-  const key = `${templateId}:${docId}`;
-  if (active) inactiveDocs.delete(key);
-  else inactiveDocs.add(key);
-}
-
-// MOCK #2: step documents are kept in this browser tab only. The server's steps
-// pick documents by tag (doc_tags), so the first selection is every document
-// sharing a tag with the step.
-const stepDocs = new Map();
-export function getStepDocumentIds(templateId, step, documents) {
-  const key = `${templateId}:${step.id}`;
-  if (!stepDocs.has(key)) {
-    const stepTags = new Set((step.doc_tags || []).map((t) => t.toLowerCase()));
-    stepDocs.set(key, new Set(documents.filter((d) => (d.tags || []).some((t) => stepTags.has(t.toLowerCase()))).map((d) => d.id)));
-  }
-  return stepDocs.get(key);
-}
-export function setStepDocument(templateId, stepId, docId, checked) {
-  const ids = stepDocs.get(`${templateId}:${stepId}`) || new Set();
-  if (checked) ids.add(docId);
-  else ids.delete(docId);
-  stepDocs.set(`${templateId}:${stepId}`, ids);
+// WIRED: the step's documents are saved in the template (step.document_ids) on publish.
+// Steps saved before that field existed start from the documents sharing a tag with the step.
+// The assistant does not read document_ids yet (ADMIN_UI_FUTURE_WORK.md §2).
+export function stepDocumentIds(step, documents) {
+  if (Array.isArray(step.document_ids)) return new Set(step.document_ids);
+  const stepTags = new Set((step.doc_tags || []).map((t) => t.toLowerCase()));
+  return new Set(documents.filter((d) => (d.tags || []).some((t) => stepTags.has(t.toLowerCase()))).map((d) => d.id));
 }
 
 // ── Feedback ───────────────────────────────────────────────────────
