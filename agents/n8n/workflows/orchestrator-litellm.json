@@ -107,6 +107,56 @@
             "__rl": true,
             "mode": "list",
             "value": "govchat-image-generator-litellm"
+          },
+          "workflowInputs": {
+            "mappingMode": "defineBelow",
+            "value": {
+              "prompt": "={{ $fromAI('prompt', 'Beschrijving van de te genereren afbeelding', 'string') }}",
+              "size": "={{ $fromAI('size', 'Afbeeldingsformaat, standaard 1024x1024', 'string', '1024x1024') }}",
+              "quality": "={{ $fromAI('quality', 'Afbeeldingskwaliteit, standaard low', 'string', 'low') }}",
+              "userId": "={{ (function trustedImageUserId(request, expectedToken) {\n  const headers = request?.headers || {};\n  const auth = String(headers.authorization || headers.Authorization || '').trim();\n  const expected = String(expectedToken || '').trim();\n  const bearer = /^bearer /i.test(auth) ? auth.slice(7).trim() : '';\n  if (!expected || bearer !== expected) throw new Error('Unauthorized image tool caller');\n  // Only the service-authenticated bridge payload is trusted, never tool arguments.\n  const userId = typeof request?.body?.userId === 'string' ? request.body.userId.trim() : '';\n  if (!/^[A-Za-z0-9_-]{8,64}$/.test(userId)) throw new Error('Authenticated user context is missing');\n  return userId;\n})($('Webhook Orchestrator').first().json, $env.N8N_WEBHOOK_TOKEN) }}"
+            },
+            "matchingColumns": [],
+            "schema": [
+              {
+                "id": "prompt",
+                "displayName": "prompt",
+                "required": true,
+                "defaultMatch": false,
+                "display": true,
+                "canBeUsedToMatch": true,
+                "type": "string"
+              },
+              {
+                "id": "size",
+                "displayName": "size",
+                "required": false,
+                "defaultMatch": false,
+                "display": true,
+                "canBeUsedToMatch": true,
+                "type": "string"
+              },
+              {
+                "id": "quality",
+                "displayName": "quality",
+                "required": false,
+                "defaultMatch": false,
+                "display": true,
+                "canBeUsedToMatch": true,
+                "type": "string"
+              },
+              {
+                "id": "userId",
+                "displayName": "userId",
+                "required": true,
+                "defaultMatch": false,
+                "display": true,
+                "canBeUsedToMatch": true,
+                "type": "string"
+              }
+            ],
+            "attemptToConvertTypes": false,
+            "convertFieldsToString": false
           }
         },
         "id": "ToolImageGeneration",
