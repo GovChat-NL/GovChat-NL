@@ -105,6 +105,31 @@
         <div class="muted">Afbeeldingen boven deze limiet worden verkleind vóór de vision-call.</div>
       </div>
     </div>
+    <h2>Documentbijlagen</h2>
+    <p class="muted">Opslaan werkt vanaf de volgende documentaanvraag, zonder herstart. Limieten gelden samen voor alle opnieuw meegestuurde bijlagen in één beurt, ook uit de gesprekshistorie. De contextlimiet van het model en de uploadlimieten blijven afzonderlijk gelden.</p>
+    <div class="row">
+      <div class="group">
+        <label for="documentMaxChars">Maximaal aantal teksttekens per beurt</label>
+        <input id="documentMaxChars" type="number" min="1" max="4000000" step="1">
+        <div class="muted">Standaard 1.000.000; maximaal 4.000.000. Hogere waarden gebruiken meer modelcontext en kunnen meer kosten.</div>
+      </div>
+      <div class="group">
+        <label for="documentMaxBytes">Maximale bestandsgrootte samen (bytes)</label>
+        <input id="documentMaxBytes" type="number" min="1" max="20971520" step="1">
+        <div class="muted">Standaard 10 MiB (10.485.760 bytes); maximaal 20 MiB. Dit verhoogt niet automatisch de uploadlimiet van de app/proxy.</div>
+      </div>
+    </div>
+    <div class="row">
+      <div class="group">
+        <label for="documentMaxCount">Maximaal aantal bijlagen per beurt</label>
+        <input id="documentMaxCount" type="number" min="1" max="50" step="1">
+      </div>
+      <div class="group">
+        <label for="documentTimeoutMs">Maximale extractietijd samen (milliseconden)</label>
+        <input id="documentTimeoutMs" type="number" min="1" max="120000" step="1">
+        <div class="muted">Standaard 60.000 ms (60 seconden); maximaal 120 seconden. Dit is niet de totale antwoordtijd van het model.</div>
+      </div>
+    </div>
     <h2>Utility-tools</h2>
     <div class="row">
       <div class="group">
@@ -239,6 +264,11 @@ function render() {
     document.getElementById('tool-' + tool).checked = orchestratorData.tools?.[tool] === true;
   }
   document.getElementById('orchestratorDefaultTimezone').value = orchestratorData.default_timezone || 'Europe/Amsterdam';
+  const documents = orchestratorData.documents || {};
+  for (const [id, key, fallback] of [['documentMaxChars', 'max_chars', 1000000], ['documentMaxBytes', 'max_bytes', 10485760],
+    ['documentMaxCount', 'max_count', 10], ['documentTimeoutMs', 'timeout_ms', 60000]]) {
+    document.getElementById(id).value = documents[key] ?? fallback;
+  }
 }
 
 function readForm() {
@@ -249,11 +279,18 @@ function readForm() {
     orchestratorData.tools[tool] = document.getElementById('tool-' + tool).checked;
   }
   orchestratorData.default_timezone = document.getElementById('orchestratorDefaultTimezone').value.trim();
+  orchestratorData.documents = {};
+  for (const [id, key] of [['documentMaxChars', 'max_chars'], ['documentMaxBytes', 'max_bytes'],
+    ['documentMaxCount', 'max_count'], ['documentTimeoutMs', 'timeout_ms']]) {
+    const input = document.getElementById(id);
+    if (!input.checkValidity() || !input.value.trim()) throw new Error('Vul geldige documentlimieten in');
+    orchestratorData.documents[key] = Number(input.value);
+  }
 }
 
 async function save() {
-  readForm();
   try {
+    readForm();
     const res = await fetch('/api/orchestrator/config', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -265,7 +302,7 @@ async function save() {
     }
     orchestratorData = payload.config || orchestratorData;
     render();
-    toast('Orchestrator-configuratie opgeslagen', 'success');
+    toast('Orchestrator-configuratie opgeslagen; actief vanaf de volgende aanvraag', 'success');
   } catch (err) {
     toast('Opslaan mislukt: ' + err.message, 'error');
   }

@@ -4,6 +4,7 @@ const assert = require("node:assert/strict");
 const http = require("node:http");
 const fs = require("node:fs");
 const path = require("node:path");
+const os = require("node:os");
 const { normalizeDocumentContext: normalize } = require("../scripts/n8n-document-context");
 const { applyDocumentContext } = require("../scripts/orchestrator-document-workflow");
 const { createTextPdf } = require("./fixtures/document-pdf");
@@ -194,11 +195,46 @@ test("document context reaches mixed-image vision and document failures are pres
 test("document environment options are passed to n8n and allowed in external runners", () => {
   const compose = fs.readFileSync(path.join(__dirname, "../docker-compose.yml"), "utf8");
   const runner = JSON.parse(fs.readFileSync(path.join(__dirname, "../n8n/task-runners.json")))["task-runners"][0];
-  for (const name of ["N8N_DOCUMENT_TIKA_URL", "N8N_DOCUMENT_MAX_BYTES", "N8N_DOCUMENT_MAX_CHARS", "N8N_DOCUMENT_TIMEOUT_MS"]) {
+  for (const name of ["N8N_DOCUMENT_TIKA_URL", "N8N_DOCUMENT_MAX_BYTES", "N8N_DOCUMENT_MAX_CHARS", "N8N_DOCUMENT_TIMEOUT_MS", "N8N_DOCUMENT_MAX_COUNT"]) {
     assert.equal([...compose.matchAll(new RegExp(`^\\s+${name}:`, "gm"))].length, 2,
       `${name} must reach n8n and its runner`);
     assert.ok(runner["allowed-env"].includes(name));
   }
+});
+
+test("published document limits change on the next turn without restarting and override old env defaults", async () => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "govchat-document-policy-"));
+  const filename = path.join(directory, "orchestrator-config.json");
+  const env = { N8N_ORCHESTRATOR_POLICY_FILE: filename, N8N_DOCUMENT_MAX_CHARS: "120000" };
+  const input = request([filePart()]); const text = "A".repeat(214790);
+  try {
+    fs.writeFileSync(filename, JSON.stringify({ documents: { max_chars: 1000000 } }));
+    const accepted = await result(input, env, async () => text);
+    assert.equal(accepted.documentContext.status, "ok");
+    assert.equal(accepted.documentContext.characters, 214790);
+    assert.equal(accepted.documentContext.limits.max_chars, 1000000);
+    assert.equal(accepted.documentContext.limitsSource, "published");
+    const temporary = filename + ".tmp";
+    fs.writeFileSync(temporary, JSON.stringify({ documents: { max_chars: 120000 } }));
+    fs.renameSync(temporary, filename);
+    assert.equal((await result(input, env, async () => text)).documentContext.code, "TEXT_TOO_LARGE");
+    fs.writeFileSync(filename, JSON.stringify({ documents: { max_chars: 1000000, max_count: 1 } }));
+    assert.equal((await result(request([filePart(), filePart()]), env, async () => "13")).documentContext.code, "TOO_MANY_DOCUMENTS");
+    for (const value of ["{", '{"documents":null}', '{"documents":{"max_chars":4000001}}',
+      '{"documents":{"max_chars":"1000000"}}', '{"documents":{"file_url":"http://example.invalid"}}']) {
+      fs.writeFileSync(filename, value);
+      assert.equal((await result(input, env, async () => text)).documentContext.code, "CONFIG_INVALID");
+    }
+  } finally { fs.rmSync(directory, { recursive: true, force: true }); }
+});
+
+test("higher default accepts a policy-sized document, while the hard ceiling remains bounded", async () => {
+  const text = "A".repeat(214790);
+  const accepted = await result(request([filePart()]), {}, async () => text, async () => ({}));
+  assert.equal(accepted.documentContext.status, "ok");
+  assert.equal(accepted.documentContext.limits.max_chars, 1000000);
+  const rejected = await result(request([filePart()]), {}, async () => text, async () => ({ documents: { max_chars: 4000001 } }));
+  assert.equal(rejected.documentContext.code, "CONFIG_INVALID");
 });
 
 test("real Tika extracts 13 from external dummy.pdf or a generated synthetic PDF", {

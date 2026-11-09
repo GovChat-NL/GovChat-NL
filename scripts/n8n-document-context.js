@@ -5,7 +5,7 @@
  * Self-contained so the same implementation can be embedded in an n8n Code node.
  * No attachment URLs/IDs are fetched: LibreChat must supply authorized inline bytes.
  */
-async function normalizeDocumentContext(input, env = {}, extractText) {
+async function normalizeDocumentContext(input, env = {}, extractText, readConfig) {
   const isObject = (value) => value && typeof value === "object" && !Array.isArray(value);
   const raw = isObject(input) ? input : {};
   let payload = raw;
@@ -20,8 +20,9 @@ async function normalizeDocumentContext(input, env = {}, extractText) {
   }
 
   const fail = (code) => { const error = new Error(code); error.code = code; throw error; };
-  const limit = (key, fallback, ceiling) => {
-    const value = env[key];
+  let documentLimits = {};
+  const limit = (key, field, fallback, ceiling) => {
+    const value = documentLimits[field] ?? env[key];
     if (value == null || value === "") return fallback;
     const number = Number(value);
     if (!Number.isSafeInteger(number) || number < 1 || number > ceiling) fail("CONFIG_INVALID");
@@ -29,9 +30,34 @@ async function normalizeDocumentContext(input, env = {}, extractText) {
   };
   const context = { documents: 0, bytes: 0, characters: 0, status: "ok" };
   try {
-    const maxBytes = limit("N8N_DOCUMENT_MAX_BYTES", 10 * 1024 * 1024, 20 * 1024 * 1024);
-    const maxChars = limit("N8N_DOCUMENT_MAX_CHARS", 120000, 500000);
-    const timeoutMs = limit("N8N_DOCUMENT_TIMEOUT_MS", 30000, 60000);
+    // The admin publishes atomically into an existing read-only directory mount.
+    // Re-read on every document turn: saves take effect without restarting n8n.
+    let policy;
+    if (readConfig) policy = await readConfig();
+    else {
+      const fs = require("fs");
+      const filename = env.N8N_ORCHESTRATOR_POLICY_FILE || "/govchat-config/orchestrator-config.json";
+      try {
+        if (fs.statSync(filename).size > 65536) fail("CONFIG_INVALID");
+        policy = JSON.parse(fs.readFileSync(filename, "utf8"));
+      } catch (error) {
+        if (error.code !== "ENOENT") fail("CONFIG_INVALID");
+      }
+    }
+    if (policy != null && !isObject(policy)) fail("CONFIG_INVALID");
+    if (policy?.documents !== undefined) {
+      if (!isObject(policy.documents)) fail("CONFIG_INVALID");
+      for (const [key, value] of Object.entries(policy.documents)) {
+        if (!["max_bytes", "max_chars", "max_count", "timeout_ms"].includes(key) || typeof value !== "number") fail("CONFIG_INVALID");
+      }
+      documentLimits = policy.documents;
+    }
+    const maxBytes = limit("N8N_DOCUMENT_MAX_BYTES", "max_bytes", 10 * 1024 * 1024, 20 * 1024 * 1024);
+    const maxChars = limit("N8N_DOCUMENT_MAX_CHARS", "max_chars", 1000000, 4000000);
+    const maxCount = limit("N8N_DOCUMENT_MAX_COUNT", "max_count", 10, 50);
+    const timeoutMs = limit("N8N_DOCUMENT_TIMEOUT_MS", "timeout_ms", 60000, 120000);
+    context.limits = { max_bytes: maxBytes, max_chars: maxChars, max_count: maxCount, timeout_ms: timeoutMs };
+    context.limitsSource = policy?.documents ? "published" : "environment/default";
     const endpoint = String(env.N8N_DOCUMENT_TIKA_URL || "http://tika:9998/tika");
     const { URL } = require("url");
     const target = new URL(endpoint);
@@ -95,7 +121,7 @@ async function normalizeDocumentContext(input, env = {}, extractText) {
       const content = [];
       for (const part of message.content) {
         if (!isDocument(part)) { content.push(part); continue; }
-        if (++context.documents > 10) fail("TOO_MANY_DOCUMENTS");
+        if (++context.documents > maxCount) fail("TOO_MANY_DOCUMENTS");
         const file = part.type === "file" && isObject(part.file) ? part.file : part;
         const source = part.type === "document" && isObject(part.source) ? part.source : null;
         let data = file.file_data;

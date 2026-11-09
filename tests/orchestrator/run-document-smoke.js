@@ -56,7 +56,7 @@ async function main() {
     PATH: process.env.PATH, HOME: folder, DB_TYPE: "sqlite", N8N_USER_FOLDER: path.join(folder, "user"),
     N8N_ENCRYPTION_KEY: "synthetic-document-smoke-key", N8N_DIAGNOSTICS_ENABLED: "false",
     N8N_RUNNERS_ENABLED: "true", N8N_RUNNERS_MODE: "internal", N8N_BLOCK_ENV_ACCESS_IN_NODE: "false",
-    NODE_FUNCTION_ALLOW_BUILTIN: "http,https,url", N8N_LOG_LEVEL: "info", N8N_TASKS_BROKER_PORT: "18093",
+    NODE_FUNCTION_ALLOW_BUILTIN: "fs,http,https,url", N8N_LOG_LEVEL: "info", N8N_TASKS_BROKER_PORT: "18093",
     N8N_SSRF_ALLOWED_IP_RANGES: "127.0.0.0/8", N8N_SSRF_ALLOWED_HOSTNAMES: "127.0.0.1",
     NO_PROXY: "*", N8N_DOCUMENT_TIKA_URL: process.env.GOVCHAT_DOCUMENT_TIKA_TEST_URL || base + "/tika",
     CRAWLER_ADMIN_BASE_URL: base,

@@ -27,16 +27,36 @@ Een scan zonder extraheerbare tekst moet als tekst-PDF worden aangeleverd.
 - Geen nieuwe publieke upload-/extractie-API, geheime sleutel of gedeelde opslag.
 - Bestaande eigendomscontrole en autorisatie van uploads blijven bij LibreChat.
 - Alleen de ingestelde interne Tika-URL krijgt bytes. Tika is niet publiek bereikbaar.
-- Maximaal 10 bijlagen, samen standaard 10 MiB en 120.000 teksttekens per beurt.
-- Eén extractietermijn voor de hele beurt: standaard 30 seconden.
+- Standaard 10 bijlagen, samen 10 MiB en 1.000.000 teksttekens per beurt.
+- Eén extractietermijn voor de hele beurt: standaard 60 seconden.
 - Native bytes worden vervangen door tekst en niet naar het tekstmodel doorgestuurd.
 - Diagnostiek bevat uitsluitend aantallen/status/foutcode, geen documentinhoud.
 - Bestandslabels behandelen de inhoud als bronmateriaal, niet als instructies.
 
-De opties in `.env.example` zijn `N8N_DOCUMENT_TIKA_URL`,
-`N8N_DOCUMENT_MAX_BYTES`, `N8N_DOCUMENT_MAX_CHARS` en `N8N_DOCUMENT_TIMEOUT_MS`.
-De Compose-configuratie geeft ze door aan n8n én de externe JavaScript-runner;
-de runner-allowlist bevat dezelfde namen.
+## Dynamisch instellen
+
+Ga naar **GovChat Admin → Orchestrator → Documentbijlagen**. Daar zijn het maximum
+aantal teksttekens, de gezamenlijke bestandsgrootte (bytes), het aantal bijlagen en
+de totale extractietijd (milliseconden) instelbaar. Opslaan werkt voor de volgende
+documentaanvraag: geen containerherstart of workflowpublicatie nodig.
+
+De beheer-API valideert gehele positieve getallen. Veiligheidsplafonds zijn
+4.000.000 teksttekens, 20 MiB, 50 bijlagen en 120 seconden. Deze grenzen zijn niet
+de contextlimiet van het model of de uploadlimiet van LibreChat/de proxy. Een hoger
+tekstmaximum kan meer tokens/kosten verbruiken; de modelcontext kan alsnog vol raken.
+
+De waarden staan onder `documents` in de bestaande orchestratorconfiguratie en
+worden atomisch gepubliceerd in de bestaande alleen-lezen directorymount. n8n leest
+de actuele publicatie bij iedere documentbeurt, zonder cache. Oude instellingen
+zonder documentvelden krijgen de nieuwe standaardwaarden; andere instellingen
+blijven behouden. Een corrupte publicatie wordt niet stilzwijgend genegeerd.
+
+Omgevingsdefaults in `.env.example` zijn `N8N_DOCUMENT_MAX_BYTES`,
+`N8N_DOCUMENT_MAX_CHARS`, `N8N_DOCUMENT_MAX_COUNT` en `N8N_DOCUMENT_TIMEOUT_MS`.
+De Compose-configuratie geeft die door aan de beheerapp, n8n en de externe runner.
+Een opgeslagen documentinstelling heeft voorrang op de omgevingsdefault.
+Omgevingswijzigingen zelf vereisen wel hercreatie. Alleen de vertrouwde interne
+Tika-URL blijft via `N8N_DOCUMENT_TIKA_URL` configureerbaar, niet via documentinvoer.
 
 ## Uitrollen
 
