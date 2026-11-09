@@ -28,6 +28,14 @@
               {
                 "name": "userId",
                 "type": "string"
+              },
+              {
+                "name": "operation",
+                "type": "string"
+              },
+              {
+                "name": "sourceImage",
+                "type": "string"
               }
             ]
           }
@@ -60,7 +68,7 @@
       },
       {
         "parameters": {
-          "jsCode": "const crypto = require('crypto');\nconst fs = require('fs');\nconst path = require('path');\nconst raw = $json || {};\nconst isObject = (value) => value && typeof value === 'object' && !Array.isArray(value);\nconst asString = (value) => typeof value === 'string' ? value.trim() : '';\nconst body = isObject(raw.body) ? raw.body : raw;\nconst headers = isObject(raw.headers) ? raw.headers : {};\nconst isWebhook = Object.keys(headers).length > 0 || Object.prototype.hasOwnProperty.call(raw, 'body');\n\nfunction safeEqual(a, b) {\n  const left = Buffer.from(String(a || ''), 'utf8');\n  const right = Buffer.from(String(b || ''), 'utf8');\n  return left.length === right.length && left.length > 0 && crypto.timingSafeEqual(left, right);\n}\n\nif (isWebhook) {\n  const expected = String($env.IMAGE_JOBS_WEBHOOK_TOKEN || $env.N8N_WEBHOOK_TOKEN || '').trim();\n  const headerToken = String(headers['x-govchat-token'] || headers['X-Govchat-Token'] || '').trim();\n  const auth = String(headers.authorization || headers.Authorization || '').trim();\n  const bearer = auth.toLowerCase().startsWith('bearer ') ? auth.slice(7).trim() : '';\n  if (!expected || !safeEqual(headerToken || bearer, expected)) throw new Error('Unauthorized webhook request');\n}\n\n// Webhook identity is accepted only from the service-authenticated internal caller;\n// tool executions may only inherit the trusted userId property, never a model argument.\nconst userId = isWebhook ? asString(body.user_id) : asString(raw.userId);\nif (!/^[A-Za-z0-9_-]{8,64}$/.test(userId)) throw new Error('Authenticated user context is missing');\n\n// Apply one rolling per-user budget across the internal webhook and agent-tool\n// entry points. A short exclusive lock prevents concurrent calls racing the cap.\nfunction reserveUserGeneration(ownerId) {\n  const root = path.resolve('/shared-images');\n  const stateDirectory = path.join(root, '.govchat-image-rate-limits');\n  fs.mkdirSync(stateDirectory, { recursive: true, mode: 0o700 });\n  fs.chmodSync(stateDirectory, 0o700);\n  const ownerKey = crypto.createHash('sha256').update(ownerId).digest('hex');\n  const statePath = path.join(stateDirectory, ownerKey + '.json');\n  const lockPath = path.join(stateDirectory, ownerKey + '.lock');\n  let lockFd;\n  let ownsLock = false;\n  try {\n    try {\n      lockFd = fs.openSync(lockPath, 'wx', 0o600);\n      ownsLock = true;\n    } catch (error) {\n      if (error.code !== 'EEXIST') throw error;\n      let ageMs;\n      try {\n        ageMs = Date.now() - fs.statSync(lockPath).mtimeMs;\n      } catch (statError) {\n        if (statError.code === 'ENOENT') throw new Error('Image generation is busy; retry shortly');\n        throw statError;\n      }\n      if (ageMs <= 30000) throw new Error('Image generation is busy; retry shortly');\n      fs.unlinkSync(lockPath);\n      lockFd = fs.openSync(lockPath, 'wx', 0o600);\n      ownsLock = true;\n    }\n\n    const now = Date.now();\n    let events = [];\n    if (fs.existsSync(statePath)) {\n      const parsed = JSON.parse(fs.readFileSync(statePath, 'utf8'));\n      if (!Array.isArray(parsed)) throw new Error('Image rate-limit state is invalid');\n      events = parsed.filter((time) => Number.isFinite(time) && time > now - 60 * 60 * 1000);\n    }\n    if (events.length >= 6) throw new Error('Image generation hourly limit reached');\n    events.push(now);\n    const tempPath = statePath + '.' + crypto.randomUUID() + '.tmp';\n    fs.writeFileSync(tempPath, JSON.stringify(events), { flag: 'wx', mode: 0o600 });\n    fs.renameSync(tempPath, statePath);\n  } finally {\n    if (lockFd !== undefined) fs.closeSync(lockFd);\n    if (ownsLock) {\n      try { fs.unlinkSync(lockPath); } catch (error) { if (error.code !== 'ENOENT') throw error; }\n    }\n  }\n}\nreserveUserGeneration(userId);\n\nfunction latestMessage(messages) {\n  if (!Array.isArray(messages)) return '';\n  for (let index = messages.length - 1; index >= 0; index -= 1) {\n    const message = messages[index];\n    if (!message) continue;\n    const content = Array.isArray(message.content)\n      ? message.content.map((part) => typeof part === 'string' ? part : asString(part?.text || part?.content)).filter(Boolean).join(' ')\n      : asString(message.content || message.text || message.prompt || message.input);\n    if (content.trim()) return content.trim();\n  }\n  return '';\n}\n\nlet prompt = asString(body.prompt || body.text || body.input || body.query || body.message || body.user_input || latestMessage(body.messages));\nprompt = prompt.replace(/[\\x00-\\x08\\x0B\\x0C\\x0E-\\x1F\\x7F]/g, '').trim();\nif (!prompt) throw new Error('Prompt is required');\nif (prompt.length > 2000) prompt = prompt.slice(0, 2000);\n\nif (String($env.N8N_ENABLE_IMAGE_TOOL || 'false').toLowerCase() !== 'true') {\n  throw new Error('Image generation is disabled');\n}\n\nconst baseRaw = String($env.N8N_LITELLM_IMAGE_BASE_URL || $env.LITELLM_URL || 'http://litellm:4000').trim();\nconst apiBase = baseRaw.replace(/\\/$/, '');\nconst apiKey = String($env.N8N_LITELLM_IMAGE_API_KEY || $env.LITELLM_API_KEY || '').trim();\nconst model = String($env.N8N_LITELLM_IMAGE_MODEL || 'gpt-image-1').trim();\nconst apiVersion = String($env.N8N_LITELLM_IMAGE_API_VERSION || '2024-02-01').trim();\nif (!apiKey) throw new Error('Image provider is not configured');\n\nconst isAzure = apiBase.toLowerCase().includes('/openai/deployments/');\nconst modelLower = model.toLowerCase();\nconst requestedSize = asString(body.size || raw.size).toLowerCase();\nconst requestedQuality = asString(body.quality || raw.quality).toLowerCase();\nconst sizeOptions = modelLower.includes('dall-e-3')\n  ? ['1024x1024', '1792x1024', '1024x1792']\n  : modelLower.includes('dall-e-2')\n    ? ['256x256', '512x512', '1024x1024']\n    : ['1024x1024', '1536x1024', '1024x1536'];\nconst size = sizeOptions.includes(requestedSize) ? requestedSize : sizeOptions[0];\nconst isDalle2 = modelLower.includes('dall-e-2');\nconst qualityOptions = modelLower.includes('dall-e-3') ? ['standard', 'hd'] : ['auto', 'low', 'medium', 'high'];\nconst quality = isDalle2\n  ? 'standard'\n  : requestedQuality === 'hd' && qualityOptions.includes('high')\n    ? 'high'\n    : qualityOptions.includes(requestedQuality) ? requestedQuality : qualityOptions[0];\nconst generateUrl = isAzure\n  ? apiBase + '/images/generations?api-version=' + encodeURIComponent(apiVersion)\n  : apiBase + '/v1/images/generations';\n// GPT Image always returns base64 and rejects DALL-E's response_format option.\nconst responseFormat = modelLower.startsWith('gpt-image-') ? {} : { response_format: 'b64_json' };\nconst requestBody = isAzure\n  ? { prompt, size, ...(isDalle2 ? {} : { quality }), ...responseFormat }\n  : { model, prompt, size, ...(isDalle2 ? {} : { quality }), ...responseFormat };\n\nreturn [{ json: { userId, prompt, size, quality, model, apiKey, isAzure, isAzureDeploymentPath: isAzure, generateUrl, requestBody } }];"
+          "jsCode": "const crypto = require('crypto');\nconst fs = require('fs');\nconst path = require('path');\nconst raw = $json || {};\nconst isObject = (value) => value && typeof value === 'object' && !Array.isArray(value);\nconst asString = (value) => typeof value === 'string' ? value.trim() : '';\nconst body = isObject(raw.body) ? raw.body : raw;\nconst headers = isObject(raw.headers) ? raw.headers : {};\nconst isWebhook = Object.keys(headers).length > 0 || Object.prototype.hasOwnProperty.call(raw, 'body');\n\nfunction safeEqual(a, b) {\n  const left = Buffer.from(String(a || ''), 'utf8');\n  const right = Buffer.from(String(b || ''), 'utf8');\n  return left.length === right.length && left.length > 0 && crypto.timingSafeEqual(left, right);\n}\n\nif (isWebhook) {\n  const expected = String($env.IMAGE_JOBS_WEBHOOK_TOKEN || $env.N8N_WEBHOOK_TOKEN || '').trim();\n  const headerToken = String(headers['x-govchat-token'] || headers['X-Govchat-Token'] || '').trim();\n  const auth = String(headers.authorization || headers.Authorization || '').trim();\n  const bearer = auth.toLowerCase().startsWith('bearer ') ? auth.slice(7).trim() : '';\n  if (!expected || !safeEqual(headerToken || bearer, expected)) throw new Error('Unauthorized webhook request');\n}\n\n// Webhook identity is accepted only from the service-authenticated internal caller;\n// tool executions may only inherit the trusted userId property, never a model argument.\nconst userId = isWebhook ? asString(body.user_id) : asString(raw.userId);\nif (!/^[A-Za-z0-9_-]{8,64}$/.test(userId)) throw new Error('Authenticated user context is missing');\n\n// Apply one rolling per-user budget across the internal webhook and agent-tool\n// entry points. A short exclusive lock prevents concurrent calls racing the cap.\nfunction reserveUserGeneration(ownerId) {\n  const root = path.resolve('/shared-images');\n  const stateDirectory = path.join(root, '.govchat-image-rate-limits');\n  fs.mkdirSync(stateDirectory, { recursive: true, mode: 0o700 });\n  fs.chmodSync(stateDirectory, 0o700);\n  const ownerKey = crypto.createHash('sha256').update(ownerId).digest('hex');\n  const statePath = path.join(stateDirectory, ownerKey + '.json');\n  const lockPath = path.join(stateDirectory, ownerKey + '.lock');\n  let lockFd;\n  let ownsLock = false;\n  try {\n    try {\n      lockFd = fs.openSync(lockPath, 'wx', 0o600);\n      ownsLock = true;\n    } catch (error) {\n      if (error.code !== 'EEXIST') throw error;\n      let ageMs;\n      try {\n        ageMs = Date.now() - fs.statSync(lockPath).mtimeMs;\n      } catch (statError) {\n        if (statError.code === 'ENOENT') throw new Error('Image generation is busy; retry shortly');\n        throw statError;\n      }\n      if (ageMs <= 30000) throw new Error('Image generation is busy; retry shortly');\n      fs.unlinkSync(lockPath);\n      lockFd = fs.openSync(lockPath, 'wx', 0o600);\n      ownsLock = true;\n    }\n\n    const now = Date.now();\n    let events = [];\n    if (fs.existsSync(statePath)) {\n      const parsed = JSON.parse(fs.readFileSync(statePath, 'utf8'));\n      if (!Array.isArray(parsed)) throw new Error('Image rate-limit state is invalid');\n      events = parsed.filter((time) => Number.isFinite(time) && time > now - 60 * 60 * 1000);\n    }\n    if (events.length >= 6) throw new Error('Image generation hourly limit reached');\n    events.push(now);\n    const tempPath = statePath + '.' + crypto.randomUUID() + '.tmp';\n    fs.writeFileSync(tempPath, JSON.stringify(events), { flag: 'wx', mode: 0o600 });\n    fs.renameSync(tempPath, statePath);\n  } finally {\n    if (lockFd !== undefined) fs.closeSync(lockFd);\n    if (ownsLock) {\n      try { fs.unlinkSync(lockPath); } catch (error) { if (error.code !== 'ENOENT') throw error; }\n    }\n  }\n}\nreserveUserGeneration(userId);\n\nfunction latestMessage(messages) {\n  if (!Array.isArray(messages)) return '';\n  for (let index = messages.length - 1; index >= 0; index -= 1) {\n    const message = messages[index];\n    if (!message) continue;\n    const content = Array.isArray(message.content)\n      ? message.content.map((part) => typeof part === 'string' ? part : asString(part?.text || part?.content)).filter(Boolean).join(' ')\n      : asString(message.content || message.text || message.prompt || message.input);\n    if (content.trim()) return content.trim();\n  }\n  return '';\n}\n\nlet prompt = asString(body.prompt || body.text || body.input || body.query || body.message || body.user_input || latestMessage(body.messages));\nprompt = prompt.replace(/[\\x00-\\x08\\x0B\\x0C\\x0E-\\x1F\\x7F]/g, '').trim();\nif (!prompt) throw new Error('Prompt is required');\nif (prompt.length > 2000) prompt = prompt.slice(0, 2000);\n\nif (String($env.N8N_ENABLE_IMAGE_TOOL || 'false').toLowerCase() !== 'true') {\n  throw new Error('Image generation is disabled');\n}\n\nconst baseRaw = String($env.N8N_LITELLM_IMAGE_BASE_URL || $env.LITELLM_URL || 'http://litellm:4000').trim();\nconst apiBase = baseRaw.replace(/\\/$/, '');\nconst apiKey = String($env.N8N_LITELLM_IMAGE_API_KEY || $env.LITELLM_API_KEY || '').trim();\nconst model = String($env.N8N_LITELLM_IMAGE_MODEL || 'gpt-image-1').trim();\nconst apiVersion = String($env.N8N_LITELLM_IMAGE_API_VERSION || '2024-02-01').trim();\nif (!apiKey) throw new Error('Image provider is not configured');\n\nconst isAzure = apiBase.toLowerCase().includes('/openai/deployments/');\nconst modelLower = model.toLowerCase();\nconst requestedSize = asString(body.size || raw.size).toLowerCase();\nconst requestedQuality = asString(body.quality || raw.quality).toLowerCase();\nconst sizeOptions = modelLower.includes('dall-e-3')\n  ? ['1024x1024', '1792x1024', '1024x1792']\n  : modelLower.includes('dall-e-2')\n    ? ['256x256', '512x512', '1024x1024']\n    : ['1024x1024', '1536x1024', '1024x1536'];\nconst size = sizeOptions.includes(requestedSize) ? requestedSize : sizeOptions[0];\nconst isDalle2 = modelLower.includes('dall-e-2');\nconst qualityOptions = modelLower.includes('dall-e-3') ? ['standard', 'hd'] : ['auto', 'low', 'medium', 'high'];\nconst quality = isDalle2\n  ? 'standard'\n  : requestedQuality === 'hd' && qualityOptions.includes('high')\n    ? 'high'\n    : qualityOptions.includes(requestedQuality) ? requestedQuality : qualityOptions[0];\nconst generateUrl = isAzure\n  ? apiBase + '/images/generations?api-version=' + encodeURIComponent(apiVersion)\n  : apiBase + '/v1/images/generations';\n// GPT Image always returns base64 and rejects DALL-E's response_format option.\nconst responseFormat = modelLower.startsWith('gpt-image-') ? {} : { response_format: 'b64_json' };\nconst requestBody = isAzure\n  ? { prompt, size, ...(isDalle2 ? {} : { quality }), ...responseFormat }\n  : { model, prompt, size, ...(isDalle2 ? {} : { quality }), ...responseFormat };\n\nreturn [{ json: { userId, prompt, size, quality, model, apiKey, isAzure, isAzureDeploymentPath: isAzure, generateUrl, requestBody, operation: asString(body.operation), sourceImage: asString(body.sourceImage) } }];"
         },
         "id": "PrepareImageRequest",
         "name": "Prepare Image Request",
@@ -111,7 +119,7 @@
       },
       {
         "parameters": {
-          "jsCode": "const crypto = require('crypto');\nconst fs = require('fs');\nconst path = require('path');\nconst prepare = $('Prepare Image Request').first().json || {};\nif ($json.error || (Number($json.statusCode || 0) >= 400)) {\n  throw new Error('Image generation service is temporarily unavailable');\n}\n\nconst first = Array.isArray($json.data) ? $json.data.find(Boolean) || {} : {};\nconst base64 = String(first.b64_json || '').trim();\nif (!base64 || base64.length < 100 || base64.length > 16 * 1024 * 1024 || !/^[A-Za-z0-9+/]+={0,2}$/.test(base64)) {\n  throw new Error('Image response payload is invalid');\n}\n\nconst image = Buffer.from(base64, 'base64');\nif (image.toString('base64') !== base64) throw new Error('Image response encoding is invalid');\nconst png = image.length >= 8 && image.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]));\nconst jpeg = image.length >= 3 && image[0] === 0xff && image[1] === 0xd8 && image[2] === 0xff;\nif (!png && !jpeg) throw new Error('Image response format is not permitted');\n\nconst userId = String(prepare.userId || '').trim();\nif (!/^[A-Za-z0-9_-]{8,64}$/.test(userId)) throw new Error('Authenticated user context is missing');\nconst root = path.resolve('/shared-images');\nconst userDirectory = path.resolve(root, userId);\nif (!userDirectory.startsWith(root + path.sep)) throw new Error('Invalid image storage owner');\nfs.mkdirSync(userDirectory, { recursive: true, mode: 0o700 });\nfs.chmodSync(userDirectory, 0o700);\nconst extension = png ? 'png' : 'jpg';\nconst fileName = 'generated-' + Date.now() + '-' + crypto.randomUUID() + '.' + extension;\nconst filePath = path.join(userDirectory, fileName);\nfs.writeFileSync(filePath, image, { flag: 'wx', mode: 0o600 });\n\nconst imageUrl = '/images/' + encodeURIComponent(userId) + '/' + fileName;\nconst markdown = '![gegenereerde afbeelding](' + imageUrl + ')';\nreturn [{ json: { response: markdown, image_url: imageUrl, markdown, user_id: userId, stored_file: fileName } }];"
+          "jsCode": "const crypto = require('crypto');\nconst fs = require('fs');\nconst path = require('path');\nconst prepare = $('Prepare Image Request').first().json || {};\nif ($json.error || (Number($json.statusCode || 0) >= 400)) {\n  throw new Error('Image generation service is temporarily unavailable');\n}\n\nconst first = Array.isArray($json.data) ? $json.data.find(Boolean) || {} : {};\nconst base64 = String(first.b64_json || '').trim();\nif (!base64 || base64.length < 100 || base64.length > 16 * 1024 * 1024 || !/^[A-Za-z0-9+/]+={0,2}$/.test(base64)) {\n  throw new Error('Image response payload is invalid');\n}\n\nconst image = Buffer.from(base64, 'base64');\nif (image.toString('base64') !== base64) throw new Error('Image response encoding is invalid');\nconst png = image.length >= 8 && image.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]));\nconst jpeg = image.length >= 3 && image[0] === 0xff && image[1] === 0xd8 && image[2] === 0xff;\nif (!png && !jpeg) throw new Error('Image response format is not permitted');\n\nconst userId = String(prepare.userId || '').trim();\nif (!/^[A-Za-z0-9_-]{8,64}$/.test(userId)) throw new Error('Authenticated user context is missing');\nconst root = path.resolve('/shared-images');\nconst userDirectory = path.resolve(root, userId);\nif (!userDirectory.startsWith(root + path.sep)) throw new Error('Invalid image storage owner');\nfs.mkdirSync(userDirectory, { recursive: true, mode: 0o700 });\nfor (const directory of [root, userDirectory]) { const stat = fs.lstatSync(directory); if (stat.isSymbolicLink() || !stat.isDirectory()) throw new Error('Image storage directory is unsafe'); }\nfs.chmodSync(userDirectory, 0o700);\nconst extension = png ? 'png' : 'jpg';\nconst fileName = 'generated-' + Date.now() + '-' + crypto.randomUUID() + '.' + extension;\nconst filePath = path.join(userDirectory, fileName);\nfs.writeFileSync(filePath, image, { flag: 'wx', mode: 0o600 });\n\nconst imageUrl = '/images/' + encodeURIComponent(userId) + '/' + fileName;\nconst markdown = '![gegenereerde afbeelding](' + imageUrl + ')';\nreturn [{ json: { response: markdown, image_url: imageUrl, markdown, user_id: userId, stored_file: fileName } }];"
         },
         "id": "BuildImageResponse",
         "name": "Build Image Response",
@@ -121,6 +129,395 @@
           -220,
           220
         ]
+      },
+      {
+        "id": "PrepareImageEdit",
+        "name": "Prepare Image Edit",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          -640,
+          220
+        ],
+        "parameters": {
+          "jsCode": "function validatedImageSource(source, owner, publicBase, fs, path) {\n  const maxBytes = 10 * 1024 * 1024;\n  if (!/^[A-Za-z0-9_-]{8,64}$/.test(owner)) throw new Error('Authenticated user context is missing');\n  if (typeof source !== 'string' || source.length > Math.ceil(maxBytes / 3) * 4 + 64) throw new Error('Invalid source image size');\n  let bytes;\n  let declared;\n  if (source.startsWith('data:')) {\n    const match = source.match(/^data:(image\\/(?:png|jpeg|webp));base64,([A-Za-z0-9+/]+={0,2})$/);\n    if (!match) throw new Error('Invalid source image encoding');\n    declared = match[1];\n    bytes = Buffer.from(match[2], 'base64');\n    if (bytes.toString('base64') !== match[2]) throw new Error('Invalid source image encoding');\n  } else {\n    let imagePath = source;\n    if (!source.startsWith('/images/')) {\n      // Exact configured public origin and prefix only; NEVER fetch a URL.\n      if (!publicBase || !/^https?:\\/\\//.test(publicBase)) throw new Error('External source images are not permitted');\n      const base = publicBase.replace(/\\/$/, '');\n      if (!source.startsWith(base + '/images/')) throw new Error('External source images are not permitted');\n      imagePath = source.slice(base.length);\n    }\n    const match = imagePath.match(/^\\/images\\/([A-Za-z0-9_-]{8,64})\\/(generated-[A-Za-z0-9-]+\\.(?:png|jpg|webp))$/);\n    if (!match || match[1] !== owner) throw new Error('Source image owner or path is invalid');\n    const root = '/shared-images';\n    const directory = path.join(root, owner);\n    for (const part of [root, directory]) {\n      const stat = fs.lstatSync(part);\n      if (!stat.isDirectory() || stat.isSymbolicLink()) throw new Error('Source image directory is unsafe');\n    }\n    const file = path.join(directory, match[2]);\n    if (fs.lstatSync(file).isSymbolicLink()) throw new Error('Source image symlink is not permitted');\n    const fd = fs.openSync(file, fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW);\n    try {\n      const stat = fs.fstatSync(fd);\n      if (!stat.isFile() || stat.size < 8 || stat.size > maxBytes) throw new Error('Invalid source image size');\n      // Bounded read even if a file grows after fstat.\n      bytes = Buffer.alloc(stat.size);\n      let offset = 0;\n      while (offset < bytes.length) {\n        const count = fs.readSync(fd, bytes, offset, bytes.length - offset, offset);\n        if (!count) throw new Error('Source image changed during read');\n        offset += count;\n      }\n    } finally { fs.closeSync(fd); }\n  }\n  if (bytes.length < 8 || bytes.length > maxBytes) throw new Error('Invalid source image size');\n  const png = bytes.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]));\n  const jpeg = bytes[0] === 255 && bytes[1] === 216 && bytes[2] === 255;\n  const webp = bytes.length >= 12 && bytes.toString('ascii', 0, 4) === 'RIFF' && bytes.toString('ascii', 8, 12) === 'WEBP';\n  const mimeType = png ? 'image/png' : jpeg ? 'image/jpeg' : webp ? 'image/webp' : '';\n  if (!mimeType || (declared && declared !== mimeType)) throw new Error('Source image format is not permitted');\n  return { bytes, mimeType, extension: png ? 'png' : jpeg ? 'jpg' : 'webp' };\n}\nfunction prepareImageEdit(input, env, fs, path) {\n  const operation = input.operation || 'generate';\n  if (!['edit', 'generate'].includes(operation)) throw new Error('Invalid image operation');\n  if (operation === 'generate') {\n    if (input.sourceImage) throw new Error('Unexpected source for image generation');\n    return { json: { ...input, operation } };\n  }\n  const model = String(input.model || '').toLowerCase();\n  const gpt = /^gpt-image-/.test(model);\n  const dalle2 = model === 'dall-e-2';\n  if (!gpt && !dalle2) throw new Error('Configured model does not support image edits');\n  const source = validatedImageSource(input.sourceImage, input.userId, String(env.PUBLIC_BASE_URL || ''), fs, path);\n  if (dalle2 && source.mimeType !== 'image/png') throw new Error('DALL-E 2 edits require PNG');\n  const requestBody = { ...input.requestBody };\n  const editUrl = input.generateUrl.replace('/images/generations', '/images/edits');\n  const { sourceImage, ...safeInput } = input;\n  return {\n    json: { ...safeInput, operation, editUrl, editRequestKind: (input.isAzure ? 'azure-' : '') + (gpt ? 'gpt' : 'dalle2'), editFields: Object.entries(requestBody).map(([name, value]) => ({ name, value: String(value) })) },\n    binary: { source: { data: source.bytes.toString('base64'), mimeType: source.mimeType, fileName: 'source.' + source.extension } },\n  };\n}\nreturn [prepareImageEdit($json, $env, require('fs'), require('path'))];"
+        }
+      },
+      {
+        "id": "RouteImageOperation",
+        "name": "Route Image Operation",
+        "type": "n8n-nodes-base.if",
+        "typeVersion": 2.2,
+        "position": [
+          -440,
+          220
+        ],
+        "parameters": {
+          "conditions": {
+            "options": {
+              "caseSensitive": true,
+              "leftValue": "",
+              "typeValidation": "strict",
+              "version": 2
+            },
+            "conditions": [
+              {
+                "id": "is-edit",
+                "leftValue": "={{ $json.operation }}",
+                "rightValue": "edit",
+                "operator": {
+                  "type": "string",
+                  "operation": "equals"
+                }
+              }
+            ],
+            "combinator": "and"
+          },
+          "options": {}
+        }
+      },
+      {
+        "parameters": {
+          "method": "POST",
+          "url": "={{ $json.editUrl }}",
+          "sendHeaders": true,
+          "headerParameters": {
+            "parameters": [
+              {
+                "name": "Authorization",
+                "value": "={{ $json.isAzureDeploymentPath ? '' : ('Bearer ' + $json.apiKey) }}"
+              },
+              {
+                "name": "api-key",
+                "value": "={{ $json.isAzureDeploymentPath ? $json.apiKey : '' }}"
+              }
+            ]
+          },
+          "sendBody": true,
+          "contentType": "multipart-form-data",
+          "bodyParameters": {
+            "parameters": [
+              {
+                "parameterType": "formBinaryData",
+                "name": "image",
+                "inputDataFieldName": "source"
+              },
+              {
+                "parameterType": "formData",
+                "name": "prompt",
+                "value": "={{ $json.requestBody.prompt }}"
+              },
+              {
+                "parameterType": "formData",
+                "name": "size",
+                "value": "={{ $json.requestBody.size }}"
+              },
+              {
+                "parameterType": "formData",
+                "name": "model",
+                "value": "={{ $json.requestBody.model }}"
+              },
+              {
+                "parameterType": "formData",
+                "name": "quality",
+                "value": "={{ $json.requestBody.quality }}"
+              }
+            ]
+          },
+          "options": {
+            "timeout": 180000
+          }
+        },
+        "id": "CallImageEditApi",
+        "name": "Call Image Edits API",
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.2,
+        "position": [
+          0,
+          0
+        ],
+        "continueOnFail": true
+      },
+      {
+        "id": "RouteImageEditModel",
+        "name": "Route Image Edit Model",
+        "type": "n8n-nodes-base.switch",
+        "typeVersion": 3.2,
+        "position": [
+          -220,
+          80
+        ],
+        "parameters": {
+          "rules": {
+            "values": [
+              {
+                "conditions": {
+                  "options": {
+                    "caseSensitive": true,
+                    "leftValue": "",
+                    "typeValidation": "strict",
+                    "version": 2
+                  },
+                  "conditions": [
+                    {
+                      "id": "gpt",
+                      "leftValue": "={{ $json.editRequestKind }}",
+                      "rightValue": "gpt",
+                      "operator": {
+                        "type": "string",
+                        "operation": "equals"
+                      }
+                    }
+                  ],
+                  "combinator": "and"
+                }
+              },
+              {
+                "conditions": {
+                  "options": {
+                    "caseSensitive": true,
+                    "leftValue": "",
+                    "typeValidation": "strict",
+                    "version": 2
+                  },
+                  "conditions": [
+                    {
+                      "id": "azure-gpt",
+                      "leftValue": "={{ $json.editRequestKind }}",
+                      "rightValue": "azure-gpt",
+                      "operator": {
+                        "type": "string",
+                        "operation": "equals"
+                      }
+                    }
+                  ],
+                  "combinator": "and"
+                }
+              },
+              {
+                "conditions": {
+                  "options": {
+                    "caseSensitive": true,
+                    "leftValue": "",
+                    "typeValidation": "strict",
+                    "version": 2
+                  },
+                  "conditions": [
+                    {
+                      "id": "dalle2",
+                      "leftValue": "={{ $json.editRequestKind }}",
+                      "rightValue": "dalle2",
+                      "operator": {
+                        "type": "string",
+                        "operation": "equals"
+                      }
+                    }
+                  ],
+                  "combinator": "and"
+                }
+              },
+              {
+                "conditions": {
+                  "options": {
+                    "caseSensitive": true,
+                    "leftValue": "",
+                    "typeValidation": "strict",
+                    "version": 2
+                  },
+                  "conditions": [
+                    {
+                      "id": "azure-dalle2",
+                      "leftValue": "={{ $json.editRequestKind }}",
+                      "rightValue": "azure-dalle2",
+                      "operator": {
+                        "type": "string",
+                        "operation": "equals"
+                      }
+                    }
+                  ],
+                  "combinator": "and"
+                }
+              }
+            ]
+          },
+          "options": {}
+        }
+      },
+      {
+        "parameters": {
+          "method": "POST",
+          "url": "={{ $json.editUrl }}",
+          "sendHeaders": true,
+          "headerParameters": {
+            "parameters": [
+              {
+                "name": "Authorization",
+                "value": "={{ $json.isAzureDeploymentPath ? '' : ('Bearer ' + $json.apiKey) }}"
+              },
+              {
+                "name": "api-key",
+                "value": "={{ $json.isAzureDeploymentPath ? $json.apiKey : '' }}"
+              }
+            ]
+          },
+          "sendBody": true,
+          "contentType": "multipart-form-data",
+          "bodyParameters": {
+            "parameters": [
+              {
+                "parameterType": "formBinaryData",
+                "name": "image",
+                "inputDataFieldName": "source"
+              },
+              {
+                "parameterType": "formData",
+                "name": "prompt",
+                "value": "={{ $json.requestBody.prompt }}"
+              },
+              {
+                "parameterType": "formData",
+                "name": "size",
+                "value": "={{ $json.requestBody.size }}"
+              },
+              {
+                "parameterType": "formData",
+                "name": "quality",
+                "value": "={{ $json.requestBody.quality }}"
+              }
+            ]
+          },
+          "options": {
+            "timeout": 180000
+          }
+        },
+        "id": "CallImageEditApi1",
+        "name": "Call Image Edits API (azure-gpt)",
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.2,
+        "position": [
+          0,
+          160
+        ],
+        "continueOnFail": true
+      },
+      {
+        "parameters": {
+          "method": "POST",
+          "url": "={{ $json.editUrl }}",
+          "sendHeaders": true,
+          "headerParameters": {
+            "parameters": [
+              {
+                "name": "Authorization",
+                "value": "={{ $json.isAzureDeploymentPath ? '' : ('Bearer ' + $json.apiKey) }}"
+              },
+              {
+                "name": "api-key",
+                "value": "={{ $json.isAzureDeploymentPath ? $json.apiKey : '' }}"
+              }
+            ]
+          },
+          "sendBody": true,
+          "contentType": "multipart-form-data",
+          "bodyParameters": {
+            "parameters": [
+              {
+                "parameterType": "formBinaryData",
+                "name": "image",
+                "inputDataFieldName": "source"
+              },
+              {
+                "parameterType": "formData",
+                "name": "prompt",
+                "value": "={{ $json.requestBody.prompt }}"
+              },
+              {
+                "parameterType": "formData",
+                "name": "size",
+                "value": "={{ $json.requestBody.size }}"
+              },
+              {
+                "parameterType": "formData",
+                "name": "model",
+                "value": "={{ $json.requestBody.model }}"
+              },
+              {
+                "parameterType": "formData",
+                "name": "response_format",
+                "value": "={{ $json.requestBody.response_format }}"
+              }
+            ]
+          },
+          "options": {
+            "timeout": 180000
+          }
+        },
+        "id": "CallImageEditApi2",
+        "name": "Call Image Edits API (dalle2)",
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.2,
+        "position": [
+          0,
+          320
+        ],
+        "continueOnFail": true
+      },
+      {
+        "parameters": {
+          "method": "POST",
+          "url": "={{ $json.editUrl }}",
+          "sendHeaders": true,
+          "headerParameters": {
+            "parameters": [
+              {
+                "name": "Authorization",
+                "value": "={{ $json.isAzureDeploymentPath ? '' : ('Bearer ' + $json.apiKey) }}"
+              },
+              {
+                "name": "api-key",
+                "value": "={{ $json.isAzureDeploymentPath ? $json.apiKey : '' }}"
+              }
+            ]
+          },
+          "sendBody": true,
+          "contentType": "multipart-form-data",
+          "bodyParameters": {
+            "parameters": [
+              {
+                "parameterType": "formBinaryData",
+                "name": "image",
+                "inputDataFieldName": "source"
+              },
+              {
+                "parameterType": "formData",
+                "name": "prompt",
+                "value": "={{ $json.requestBody.prompt }}"
+              },
+              {
+                "parameterType": "formData",
+                "name": "size",
+                "value": "={{ $json.requestBody.size }}"
+              },
+              {
+                "parameterType": "formData",
+                "name": "response_format",
+                "value": "={{ $json.requestBody.response_format }}"
+              }
+            ]
+          },
+          "options": {
+            "timeout": 180000
+          }
+        },
+        "id": "CallImageEditApi3",
+        "name": "Call Image Edits API (azure-dalle2)",
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.2,
+        "position": [
+          0,
+          480
+        ],
+        "continueOnFail": true
       }
     ],
     "connections": {
@@ -150,7 +547,7 @@
         "main": [
           [
             {
-              "node": "Call Images API",
+              "node": "Prepare Image Edit",
               "type": "main",
               "index": 0
             }
@@ -167,13 +564,120 @@
             }
           ]
         ]
+      },
+      "Prepare Image Edit": {
+        "main": [
+          [
+            {
+              "node": "Route Image Operation",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Route Image Operation": {
+        "main": [
+          [
+            {
+              "node": "Route Image Edit Model",
+              "type": "main",
+              "index": 0
+            }
+          ],
+          [
+            {
+              "node": "Call Images API",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Call Image Edits API": {
+        "main": [
+          [
+            {
+              "node": "Build Image Response",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Route Image Edit Model": {
+        "main": [
+          [
+            {
+              "node": "Call Image Edits API",
+              "type": "main",
+              "index": 0
+            }
+          ],
+          [
+            {
+              "node": "Call Image Edits API (azure-gpt)",
+              "type": "main",
+              "index": 0
+            }
+          ],
+          [
+            {
+              "node": "Call Image Edits API (dalle2)",
+              "type": "main",
+              "index": 0
+            }
+          ],
+          [
+            {
+              "node": "Call Image Edits API (azure-dalle2)",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Call Image Edits API (azure-gpt)": {
+        "main": [
+          [
+            {
+              "node": "Build Image Response",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Call Image Edits API (dalle2)": {
+        "main": [
+          [
+            {
+              "node": "Build Image Response",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Call Image Edits API (azure-dalle2)": {
+        "main": [
+          [
+            {
+              "node": "Build Image Response",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
       }
     },
     "settings": {
       "executionOrder": "v1",
       "callerPolicy": "workflowsFromSameOwner",
       "saveDataSuccessExecution": "none",
-      "saveManualExecutions": false
+      "saveManualExecutions": false,
+      "saveDataErrorExecution": "none",
+      "saveExecutionProgress": false
     },
     "staticData": null,
     "meta": null,

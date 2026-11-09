@@ -13,7 +13,7 @@ function trustedImageUserId(request, expectedToken) {
   return userId;
 }
 
-const fields = ['prompt', 'size', 'quality', 'userId'];
+const fields = ['prompt', 'size', 'quality', 'userId', 'operation', 'sourceImage'];
 const trustedUserExpression = `={{ (${trustedImageUserId.toString()})($('Webhook Orchestrator').first().json, $env.N8N_WEBHOOK_TOKEN) }}`;
 
 function applyImageToolInputs(workflow) {
@@ -22,10 +22,12 @@ function applyImageToolInputs(workflow) {
   tool.parameters.workflowInputs = {
     mappingMode: 'defineBelow',
     value: {
-      prompt: "={{ $fromAI('prompt', 'Beschrijving van de te genereren afbeelding', 'string') }}",
+      prompt: "={{ $('Detect Image Messages').first().json.image_edit_context?.prompt || $fromAI('prompt', 'Beschrijving van de te genereren afbeelding', 'string') }}",
       size: "={{ $fromAI('size', 'Afbeeldingsformaat, standaard 1024x1024', 'string', '1024x1024') }}",
       quality: "={{ $fromAI('quality', 'Afbeeldingskwaliteit, standaard low', 'string', 'low') }}",
       userId: trustedUserExpression,
+      operation: "={{ $('Detect Image Messages').first().json.image_edit_context ? 'edit' : 'generate' }}",
+      sourceImage: "={{ $('Detect Image Messages').first().json.image_edit_context?.sourceImage || '' }}",
     },
     matchingColumns: [],
     schema: fields.map(id => ({ id, displayName: id, required: id === 'prompt' || id === 'userId',
