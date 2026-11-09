@@ -110,6 +110,32 @@ test("real route rejects every utility call when internal token is not configure
   assert.equal(result.body.error.code, "AUTH_NOT_CONFIGURED");
 });
 
+test("admin saves document limits into the live publication and the next document turn consumes them", async (t) => {
+  const server = await startServer(t);
+  const { normalizeDocumentContext } = require("../../scripts/n8n-document-context");
+  const { createTextPdf } = require("../fixtures/document-pdf");
+  const input = { body: { messages: [{ role: "user", content: [{ type: "file", file: {
+    filename: "synthetic-policy.pdf", file_data: "data:application/pdf;base64," + createTextPdf().toString("base64"),
+  } }] }] } };
+  const env = { N8N_ORCHESTRATOR_POLICY_FILE: path.join(server.publish, "orchestrator-config.json") };
+  const text = "A".repeat(214790);
+  const run = async () => (await normalizeDocumentContext(input, env, async () => text))[0].json;
+  assert.equal((await run()).documentContext.status, "ok");
+  const before = server.policy();
+  const saved = await server.request("/api/orchestrator/config", { documents: { max_chars: 120000 } }, { cookie: server.cookie });
+  assert.equal(saved.status, 200);
+  assert.equal((await run()).documentContext.code, "TEXT_TOO_LARGE");
+  assert.deepEqual(server.policy().tools, before.tools);
+  assert.equal(server.policy().image_data_url_max_chars, before.image_data_url_max_chars);
+  assert.equal((await server.request("/api/orchestrator/config", { documents: { max_chars: 4000001 } }, { cookie: server.cookie })).status, 400);
+  assert.equal(server.policy().documents.max_chars, 120000);
+  await server.request("/api/orchestrator/config", { documents: { max_chars: 2000000 } }, { cookie: server.cookie });
+  assert.equal((await run()).documentContext.status, "ok");
+  const page = await fetch(server.base + "/orchestrator-editor", { headers: { cookie: server.cookie } });
+  const html = await page.text();
+  for (const id of ["documentMaxChars", "documentMaxBytes", "documentMaxCount", "documentTimeoutMs"]) assert.ok(html.includes(`id="${id}"`));
+});
+
 test("full server keeps prompt out of public API, HTML seeds, publications and logs", async t => {
   const server = await startServer(t);
   const prompt = "PRIVATE-CANARY\n</script><img src=x onerror=alert(1)>\n${notExecuted()}";

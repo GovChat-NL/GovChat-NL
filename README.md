@@ -38,6 +38,9 @@ OpenHolidays API en tijd-/datumrekenen met tijdzones en zomer-/wintertijd.
 Ze staan standaard aan en worden beheerd via de Orchestrator-pagina van het
 beheerportaal. Zie [configuratie, ingebruikname en tests](docs/orchestrator-utility-tools.md).
 
+PDF- en documentbijlagen worden vóór de n8n-chatagent via Apache Tika omgezet naar
+begrensde tekstcontext. Zie [documentondersteuning, veilige uitrol en regressietests](docs/chat-document-context.md).
+
 ## Verbonden systemen
 
 | Systeem | Rol binnen GovChat-NL |
