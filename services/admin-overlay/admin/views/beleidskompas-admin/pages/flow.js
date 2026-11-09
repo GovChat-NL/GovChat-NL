@@ -14,7 +14,7 @@ const SEARCH_METHODS = [
 export function renderFlow({ store, render, markDirty }) {
   const steps = store.flow.steps;
   const changed = () => { markDirty(); render(); };
-  // Adds a new step at the end, collapsed.
+  // Adds a new step at the end and opens it.
   const addStep = () => {
     const id = `stap${Date.now().toString(36)}`;
     steps.push({
@@ -26,7 +26,9 @@ export function renderFlow({ store, render, markDirty }) {
       rag: { algorithm: "hybrid", top_k: 3, min_score: 0.08, tag_filter_mode: "any", required_tags: [] },
       substeps: [],
     });
+    store.ui.stepId = id;
     changed();
+    document.querySelector(".flow-step.is-open")?.scrollIntoView({ block: "start", behavior: "smooth" });
   };
 
   const notice = h(
