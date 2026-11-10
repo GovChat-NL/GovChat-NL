@@ -43,13 +43,12 @@ test("a configured step takes its texts and questions from the configuration, mi
   assert.equal(first.nr, 1);
   assert.equal(first.title, "Probleemanalyse");
   assert.equal(first.short, "Korte omschrijving");
-  assert.equal(first.info, "De volledige instructie");
+  assert.equal(first.info, "Korte omschrijving");
   assert.deepEqual(first.help, ["Vraag 1", "Vraag 2"]);
   assert.deepEqual(first.deep, ["Verdieping 1"]);
 
   assert.equal(second.id, "stap2");
   assert.equal(second.title, "Eigen titel");
-  // Without a prompt the description doubles as the longer text.
   assert.equal(second.info, "Eigen omschrijving");
   assert.deepEqual(second.help, defaults[1].help);
   assert.deepEqual(second.deep, defaults[1].deep);
