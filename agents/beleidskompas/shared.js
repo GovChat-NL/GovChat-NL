@@ -186,7 +186,7 @@ function selectSources(passages, queryBlob, ragSettings) {
 // invisible in any markdown renderer, and parsed back out client-side
 // (beleidskompas-api.js in the overlay has a matching parser) for the
 // citation-preview UI. The `answer` and `citations` fields
-// returned by runStep1 stay clean (used as-is by direct webhook callers
+// returned by runStep stay clean (used as-is by direct webhook callers
 // and the orchestrator JSON response).
 
 const CITATIONS_META_MARKER = 'BELEIDSKOMPAS-META';
