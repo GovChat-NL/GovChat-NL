@@ -20,11 +20,11 @@ function emptyResults(substeps) {
   return results;
 }
 
-// A message belongs to a substep (substepId) and is either part of the
-// conversation about it (conversation: true, what the user typed and the
-// answer to it) or a report and the request for it. An answer also says
-// which step gave it (agent), which can be another step than the substep's
-// when the question was about that step.
+// A message in the chat. A question the user typed and the answer to it
+// carry the substep the user was in (substepId); other messages, like the
+// case and the notices of the page, carry none. An answer also says which
+// step gave it (agent), which can be another step than the substep's when
+// the question was about that step.
 function createMessage(role, text, meta = {}) {
   const message = {
     role,
@@ -34,7 +34,6 @@ function createMessage(role, text, meta = {}) {
     retrieval_trace: meta.retrieval_trace || null,
     agent: meta.agent ? String(meta.agent) : null,
     substepId: String(meta.substepId || ""),
-    conversation: Boolean(meta.conversation),
   };
   if (meta.pending) message.pending = true;
   return message;
@@ -142,7 +141,15 @@ export function createStore(steps) {
   function talkedSinceReport(substepId) {
     const since = substepResult(substepId).updated_at;
     if (!since) return false;
-    return state.messages.some((m) => m.conversation && m.substepId === substepId && m.text && m.ts > since);
+    return state.messages.some((m) => m.substepId === substepId && m.text && m.ts > since);
+  }
+
+  /** Whether the card of a substep shows a different report than before the
+   *  request. `before` is the updated_at of the report the card showed then,
+   *  or "" when it showed none. */
+  function reportArrived(substepId, before) {
+    const now = substepResult(substepId).updated_at;
+    return Boolean(now) && now !== before;
   }
 
   function addMessage(role, text, meta) {
@@ -209,6 +216,7 @@ export function createStore(steps) {
     setCaseText,
     caseStarted,
     talkedSinceReport,
+    reportArrived,
     addMessage,
     replaceMessages,
     updateMessage,

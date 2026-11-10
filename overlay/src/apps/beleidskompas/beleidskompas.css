@@ -843,10 +843,6 @@
   overflow-wrap: anywhere;
 }
 
-.gc-bk-msg-more-head {
-  margin: 10px 0 2px;
-}
-
 .gc-bk-verdict {
   padding: 1px 8px;
   font-size: 11px;
@@ -978,24 +974,6 @@
   background: #1f2937;
 }
 
-/* The full report behind a disclosure in the chat. */
-.gc-bk-msg-more {
-  margin-top: 8px;
-}
-
-.gc-bk-msg-more > summary {
-  font-size: 12px;
-  font-weight: 600;
-  color: #1d4ed8;
-  cursor: pointer;
-}
-
-.gc-bk-msg-more > div {
-  margin-top: 6px;
-  padding-top: 6px;
-  border-top: 1px solid #e5e7eb;
-}
-
 .dark .gc-bk-advice-block {
   background: #1f2937;
   border-color: #374151;
@@ -1037,14 +1015,6 @@
   color: #bfdbfe;
   background: rgba(30, 58, 138, 0.35);
   border-color: #1e40af;
-}
-
-.dark .gc-bk-msg-more > summary {
-  color: #93c5fd;
-}
-
-.dark .gc-bk-msg-more > div {
-  border-top-color: #374151;
 }
 
 /* Visible focus for keyboard navigation. */

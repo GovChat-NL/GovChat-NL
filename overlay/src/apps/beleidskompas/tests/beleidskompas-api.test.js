@@ -36,7 +36,7 @@ test("composePrompt keeps what the user typed as it is, also when it looks like 
 
 test("readCaseState turns the state from the store into the case text, the cards and the chat", () => {
   const read = readCaseState({
-    case_text: { version: 2, text: "De casus." },
+    case_text: { version: 2, text: "De casus.", created_at: "2026-11-08T09:59:00.000Z" },
     reports: {
       "1.1": { text: "## Samenvatting\nEen.", citations: [{ id: "a" }], retrieval_trace: { algorithm: "hybrid" }, created_at: "2026-11-08T10:00:00.000Z" },
       "1.2": { text: "## Samenvatting\nTwee.", citations: [], retrieval_trace: null, created_at: "2026-11-08T10:05:00.000Z" },
@@ -50,9 +50,12 @@ test("readCaseState turns the state from the store into the case text, the cards
   assert.equal(read.caseText, "De casus.");
   assert.deepEqual(read.results["1.1"], { report_text: "## Samenvatting\nEen.", citations: [{ id: "a" }], retrieval_trace: { algorithm: "hybrid" }, updated_at: "2026-11-08T10:00:00.000Z" });
   assert.equal(read.lastReportSubstepId, "1.2");
+  // The chat starts with the case and then has the conversation; the
+  // reports stay on the cards.
   assert.deepEqual(read.messages, [
-    { role: "user", text: "Hoezo?", agent: null, substepId: "1.1", conversation: true, ts: "2026-11-08T10:01:00.000Z" },
-    { role: "assistant", text: "Daarom.", agent: "stap3", substepId: "1.1", conversation: true, ts: "2026-11-08T10:02:00.000Z" },
+    { role: "user", text: "De casus.", agent: null, substepId: "", ts: "2026-11-08T09:59:00.000Z" },
+    { role: "user", text: "Hoezo?", agent: null, substepId: "1.1", ts: "2026-11-08T10:01:00.000Z" },
+    { role: "assistant", text: "Daarom.", agent: "stap3", substepId: "1.1", ts: "2026-11-08T10:02:00.000Z" },
   ]);
 });
 

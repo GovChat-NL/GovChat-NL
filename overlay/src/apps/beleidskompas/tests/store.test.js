@@ -108,6 +108,28 @@ test("a case has begun once there is a case text, a message from the user or a r
   assert.equal(withReport.caseStarted(), false);
 });
 
+test("a report has arrived once the card has a newer one than before the request", () => {
+  const store = createStore(STEPS);
+  assert.equal(store.reportArrived("1.1", ""), false);
+
+  store.replaceResults({ "1.1": { report_text: "Een.", updated_at: "2026-11-08T10:00:00.000Z" } });
+  assert.equal(store.reportArrived("1.1", ""), true);
+  // The same report as before the request is not a new one.
+  assert.equal(store.reportArrived("1.1", "2026-11-08T10:00:00.000Z"), false);
+});
+
+test("only the conversation about a substep makes its report fall behind", () => {
+  const store = createStore(STEPS);
+  store.replaceResults({ "1.1": { report_text: "Een.", updated_at: "2026-11-08T10:00:00.000Z" } });
+  // A notice of the page carries no substep.
+  store.addMessage("assistant", "De opslag gaf een fout.", { ts: "2026-11-08T10:05:00.000Z" });
+  assert.equal(store.talkedSinceReport("1.1"), false);
+
+  store.addMessage("user", "Hoezo?", { substepId: "1.1", ts: "2026-11-08T10:06:00.000Z" });
+  assert.equal(store.talkedSinceReport("1.1"), true);
+  assert.equal(store.talkedSinceReport("1.2"), false);
+});
+
 test("the open case is remembered in sessionStorage, so a new store after a reload picks it up", () => {
   withSessionStorage((items) => {
     createStore(STEPS).setConversationId("abc-123");

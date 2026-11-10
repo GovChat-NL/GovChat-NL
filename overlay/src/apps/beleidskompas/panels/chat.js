@@ -1,12 +1,14 @@
 // The chat panel: the conversation with Beleidskompas, the feedback under an
 // answer and the composer. Every request to Beleidskompas goes through here.
 // That is the case and the messages the user types, and the reports the step
-// card asks for (requestReport). Redraws itself when the messages change.
+// card asks for (requestReport). The chat only shows what the user typed and
+// the answers to it; a report goes to the step card. Redraws itself when the
+// messages change.
 
 import { escapeHTML } from "../../../shared/html.js";
 import { requireElement } from "../../../shared/dom.js";
 import { composePrompt, sendBeleidskompasChatMessage, sendBeleidskompasFeedback } from "../beleidskompas-api.js";
-import { formatRichText, formatTime, normalizeCitations, parseAdvice, verdictClass } from "../format.js";
+import { formatRichText, formatTime, normalizeCitations } from "../format.js";
 import { citationButtonHTML, openCitationFromClick } from "../popups.js";
 
 /** A rating per answer, sent anonymously (no user or case id) to the
@@ -29,28 +31,6 @@ function feedbackHTML(message, index) {
     </div>`;
 }
 
-/** The full report is shown in the step card on the right, so the
- *  chat keeps only the summary and puts the rest behind a disclosure.
- *  Otherwise the same block of text would appear twice side by side. */
-function messageBodyHTML(message) {
-  if (message.role !== "assistant") return formatRichText(message.text);
-  const advice = parseAdvice(message.text);
-  if (!advice) return formatRichText(message.text);
-  const summary = advice.sections.find((s) => /samenvatting/i.test(s.heading)) || advice.sections[0];
-  // The sources are already shown as clickable chips under the message.
-  const rest = advice.sections.filter((s) => s !== summary && !/^bronnen$/i.test(s.heading) && s.text);
-  if (!rest.length) return formatRichText(summary.text);
-  const restHTML = rest
-    .map((s) => {
-      const badge = s.verdict
-        ? ` <span class="gc-bk-verdict ${verdictClass(s.verdict)}">${escapeHTML(s.verdict)}</span>`
-        : "";
-      return `<p class="gc-bk-msg-more-head"><span class="gc-bk-rich-h">${escapeHTML(s.heading)}</span>${badge}</p>${formatRichText(s.text)}`;
-    })
-    .join("");
-  return `${formatRichText(summary.text)}<details class="gc-bk-msg-more"><summary>Volledige uitwerking</summary><div>${restHTML}</div></details>`;
-}
-
 const CHART_ICON =
   '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/></svg>';
 
@@ -60,7 +40,7 @@ const CHART_ICON =
  *  the one they are in. */
 function messageHTML(m, idx, stepLabel) {
   const isUser = m.role === "user";
-  const label = !isUser && m.conversation && m.agent ? stepLabel(m.agent) : "";
+  const label = !isUser && m.agent ? stepLabel(m.agent) : "";
   return `
     <div class="gc-bk-msg-row ${isUser ? "is-user" : "is-assistant"}">
       <div class="gc-bk-msg-col">
@@ -73,7 +53,7 @@ function messageHTML(m, idx, stepLabel) {
           <div class="gc-bk-msg-text">${
             m.pending && !m.text
               ? '<span class="gc-bk-typing-dots"><span></span><span></span><span></span></span>'
-              : messageBodyHTML(m)
+              : formatRichText(m.text)
           }</div>
           ${Array.isArray(m.citations) && m.citations.length
             ? `<div class="gc-bk-citations">${m.citations.map(citationButtonHTML).join("")}</div>`
@@ -147,53 +127,61 @@ export function setupChat(store, { refreshState }) {
    *
    *  If the user typed a `message`, Beleidskompas answers it in the chat.
    *  If there is no message, Beleidskompas writes the report of the
-   *  substep. The answer appears in the chat. After that the cards are
-   *  filled from the store: a report lands on the card of its substep,
-   *  even if the user has gone to another substep in the meantime. An
-   *  error message is not a report, so the store does not have it and the
-   *  card stays as it was; the user can try again.
+   *  substep, and the report goes to the step card, not to the chat. After
+   *  the answer the cards are filled from the store, so a report lands on
+   *  the card of its substep, even if the user has gone to another substep
+   *  in the meantime.
    *
    *  `caseDescription` is only passed with the first message, which is the
-   *  case. The user's bubble then shows the case. Otherwise the bubble
-   *  shows the message, or the name of the substep when the user clicked a
-   *  button. While a request is under way, a new one is not sent. */
+   *  case. That message asks for a report too, but the user typed it, so
+   *  the case does show in the chat. While a request is under way, a new
+   *  one is not sent. */
   async function ask(substep, message, caseDescription) {
     if (state.asking) return;
-    const conversing = Boolean(message);
     const shown = caseDescription || message || `Deelstap ${substep.id}: ${substep.title}`;
     const text = composePrompt({ substep, caseText: state.caseText, message, shown });
-    store.addMessage("user", shown, { substepId: substep.id, conversation: conversing });
+    if (message) store.addMessage("user", message, { substepId: substep.id });
+    else if (caseDescription) store.addMessage("user", caseDescription);
+    // Without text, the answer bubble shows typing dots until the answer
+    // arrives.
+    const pendingMessage = message ? store.addMessage("assistant", "", { pending: true, substepId: substep.id }) : null;
     setComposerDisabled(true);
     store.setAsking(substep.id);
 
-    // An empty answer bubble. Without text, the bubble shows typing dots
-    // until the answer arrives.
-    const pendingMessage = store.addMessage("assistant", "", { pending: true, substepId: substep.id, conversation: conversing });
-
     const conversationIdBeforeRequest = state.conversationId;
+    const reportBefore = store.substepResult(substep.id).updated_at;
     try {
       const result = await requestOrchestrator(text);
-      store.updateMessage(pendingMessage, {
-        pending: false,
-        text: String(result.answer || "").trim(),
-        citations: normalizeCitations(result.citations),
-        retrieval_trace: result.retrieval_trace || null,
-        agent: result.agent || null,
-      });
+      if (pendingMessage) {
+        store.updateMessage(pendingMessage, {
+          pending: false,
+          text: String(result.answer || "").trim(),
+          citations: normalizeCitations(result.citations),
+          retrieval_trace: result.retrieval_trace || null,
+          agent: result.agent || null,
+        });
+      }
       if (state.conversationId === conversationIdBeforeRequest) store.changed("conversation");
-      // The answer is in the chat by now. When the store cannot be read,
-      // only the cards are behind, so that is a message of its own and not
-      // an error in place of the answer.
+      const conversationId = state.conversationId;
+      // When the store cannot be read, only the cards are behind, so that
+      // is a message of its own and not an error in place of the answer.
       try {
-        await refreshState(state.conversationId);
+        await refreshState(conversationId);
       } catch (err) {
         store.addMessage("assistant", `Kon de stand van de casus niet ophalen (${String(err?.message || err)}). Open de casus opnieuw om de kaarten bij te werken.`);
       }
+      // Beleidskompas answers a report request that went wrong (the store
+      // gave an error, the step failed) with a normal answer that explains
+      // it. The page cannot tell that answer from a report, but the store
+      // then has no new report for the substep. So the answer goes to the
+      // chat, where the user sees it.
+      if (!pendingMessage && state.conversationId === conversationId && !store.reportArrived(substep.id, reportBefore)) {
+        store.addMessage("assistant", result.answer);
+      }
     } catch (err) {
-      store.updateMessage(pendingMessage, {
-        pending: false,
-        text: `Beleidskompas niet bereikbaar of fout: ${String(err?.message || err)}. Probeer het opnieuw of open een nieuwe chat.`,
-      });
+      const failure = `Beleidskompas niet bereikbaar of fout: ${String(err?.message || err)}. Probeer het opnieuw of open een nieuwe chat.`;
+      if (pendingMessage) store.updateMessage(pendingMessage, { pending: false, text: failure });
+      else store.addMessage("assistant", failure);
     } finally {
       store.setAsking("");
       setComposerDisabled(false);

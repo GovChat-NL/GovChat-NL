@@ -249,9 +249,10 @@ export async function fetchCaseState(caseId) {
 
 /** Turns the state from the store into what the screen works with: the
  *  case text, the report per substep (`results`, in the shape of the step
- *  cards), the conversation as chat messages and the substep with the
- *  newest report (`lastReportSubstepId`), so a reopened case continues
- *  there. */
+ *  cards), the chat messages and the substep with the newest report
+ *  (`lastReportSubstepId`), so a reopened case continues there. The chat
+ *  is the case followed by the conversation, as it was before the case was
+ *  closed. */
 export function readCaseState(state) {
   const results = {};
   let lastReportSubstepId = "";
@@ -264,17 +265,16 @@ export function readCaseState(state) {
       lastReportSubstepId = substepId;
     }
   }
-  // A turn is what the user typed or the answer to it, so it is always
-  // part of the conversation (never a report).
-  const messages = (state?.turns || []).map((t) => ({
+  const caseText = String(state?.case_text?.text || "");
+  const caseMessage = caseText ? [{ role: "user", text: caseText, agent: null, substepId: "", ts: state.case_text.created_at }] : [];
+  const turns = (state?.turns || []).map((t) => ({
     role: t.role,
     text: String(t.text || ""),
     agent: t.role === "assistant" ? t.step_id || null : null,
     substepId: t.asked_from || "",
-    conversation: true,
     ts: t.created_at,
   }));
-  return { caseText: String(state?.case_text?.text || ""), results, messages, lastReportSubstepId };
+  return { caseText, results, messages: [...caseMessage, ...turns], lastReportSubstepId };
 }
 
 /** The user's own cases from the store, newest first, so a case can be
