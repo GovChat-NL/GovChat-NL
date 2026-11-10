@@ -756,7 +756,7 @@ function writeBeleidskompasState(state) {
 
 function publishBeleidskompasLiveConfig(flow) {
   const normalized = normalizeBeleidskompasFlow(flow);
-  // The file is public; the prompts are instructions for the assistant only.
+  // beleidskompas-config.json is public, so drop the step prompts: they are for the assistant only.
   for (const step of normalized.steps) delete step.prompt;
   writeJSON(BELEIDSKOMPAS_LIVE_FILE, normalized);
 }
