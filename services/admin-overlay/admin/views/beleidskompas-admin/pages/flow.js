@@ -162,7 +162,13 @@ function stepEditor(step, { store, markDirty, render }) {
     "div",
     { class: "stack" },
     texts,
-    card("Documenten", search, docList),
+    // MOCK #2: saved with the step, but retrieval does not read them yet (ADMIN_UI_FUTURE_WORK.md §2).
+    card(
+      ["Documenten ", h("span", { class: "badge badge-mock", title: "Wordt opgeslagen, maar de assistent gebruikt dit nog niet" }, "Mock")],
+      h("p", { class: "field-hint" }, "Zoekmethode en documentkeuze worden opgeslagen, maar de assistent gebruikt ze nog niet."),
+      search,
+      docList,
+    ),
     card("Substappen", substeps),
     h(
       "div",
