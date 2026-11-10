@@ -206,7 +206,7 @@ textarea.input { resize: vertical; line-height: 1.45; }
 .inline-controls { display: flex; gap: 24px; align-items: center; flex-wrap: wrap; }
 .doc-checks { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 10px; padding-top: 4px; }
 .substeps { display: flex; flex-direction: column; gap: 8px; align-items: flex-start; }
-.substep { display: grid; grid-template-columns: 40px 1fr 2fr 26px; gap: 8px; align-items: center; width: 100%; }
+.substep { display: grid; grid-template-columns: 40px 1fr 26px; gap: 8px; align-items: start; width: 100%; padding-bottom: 8px; border-bottom: 1px solid var(--line); }
 .substep-id { color: var(--muted); font-family: var(--mono); font-size: 12px; }
 
 /* ── Feedback ─────────────────────────────────────── */
