@@ -36,7 +36,8 @@ function openPool(env = process.env) {
   const settings = connectionSettings(env);
   if (!settings.host) return null;
   const { Pool } = require("pg");
-  const pool = new Pool({ ...settings, max: 5 });
+  // 10 seconds is how long n8n waits for the store.
+  const pool = new Pool({ ...settings, max: 5, connectionTimeoutMillis: 5000, query_timeout: 10000 });
   // An idle connection that breaks, for example when the database restarts,
   // is reported here. Without a listener pg throws the error and the whole
   // service stops; with one, the pool opens a new connection on the next
