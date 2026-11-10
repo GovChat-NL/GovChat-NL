@@ -307,7 +307,7 @@ async function runOrchestrator(ctx) {
   if (parts.caseText) await write('case_text', () => store.setCaseText({ caseId, userId, text: parts.caseText }));
   let context = parts;
   stored.read = false;
-  const state = await store.getState({ caseId, userId, maxTurns: 20 });
+  const state = await store.getState({ caseId, userId, maxTurns: 100 });
   if (state.ok && state.payload) {
     context = Object.assign({}, parts, contextFromState(state.payload, { substepId: parts.substepId, forReport: !parts.message, summaries }));
     stored.read = true;
