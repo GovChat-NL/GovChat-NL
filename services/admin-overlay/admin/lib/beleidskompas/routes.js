@@ -91,11 +91,12 @@ function createBeleidskompasHandlers({ store, internalToken, resolveUser }) {
 
     listCases: (req) => handle(req, () => store.listCases({ userId: userOf(req), limit: q(req).limit })),
 
+    // The orchestrator also reads new cases, so an unknown case is empty
+    // here. For the page it stays a 404.
     getCase: (req) =>
       handle(req, async () => {
         const state = await store.getState({ caseId: p(req).id, userId: userOf(req), maxTurns: q(req).max_turns });
-        if (!state) throw new StoreError(404, "Unknown case");
-        return state;
+        return state || { id: p(req).id, case_text: null, reports: {}, turns: [] };
       }),
 
     setText: (req) => handle(req, () => store.setCaseText({ caseId: p(req).id, userId: userOf(req), text: b(req).text })),

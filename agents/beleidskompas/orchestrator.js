@@ -301,9 +301,6 @@ async function runOrchestrator(ctx) {
     : activeStepId;
 
   // The case text goes to the store first, so the state read next has it.
-  // The state gives the step the case text, the reports and the
-  // conversation. Before the first answer the store does not know the case
-  // yet (404); then the step gets only the case text the page sent.
   // The user's message is written after the state is read, so the
   // conversation the step gets does not already contain it. Writing before
   // the step answers keeps the message even when the step fails.
@@ -314,8 +311,8 @@ async function runOrchestrator(ctx) {
   if (state.ok && state.payload) {
     context = Object.assign({}, parts, contextFromState(state.payload, { substepId: parts.substepId, forReport: !parts.message, summaries }));
     stored.read = true;
-  } else if (state.status !== 404) {
-    stored.errors.push(`state: ${state.error}`);
+  } else {
+    stored.errors.push(`state: ${state.error || 'no state in the answer'}`);
   }
   if (parts.message) await write('user_turn', () => store.addTurn({ caseId, userId, role: 'user', askedFrom: parts.substepId || null, text: parts.message }));
   // An error so far means the step would answer without the state of the

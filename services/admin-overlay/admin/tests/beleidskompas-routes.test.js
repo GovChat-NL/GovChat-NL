@@ -36,14 +36,14 @@ test("without a store or a token the endpoints answer 503, not 401", async () =>
   assert.equal((await noToken.listCases(withToken({}))).status, 503);
 });
 
-test("getCase passes the case, the user from the query and the turn limit to the store, and answers 404 for no case", async () => {
+test("getCase passes the case, the user from the query and the turn limit to the store, and answers an empty state for an unknown case", async () => {
   const store = fakeStore({ getState: (args) => (args.caseId === "conv-1" ? { id: "conv-1", reports: {} } : null) });
   const handlers = createBeleidskompasHandlers({ store, internalToken: TOKEN });
   const found = await handlers.getCase(withToken({ params: { id: "conv-1" }, query: { user_id: "user-a", max_turns: "20" } }));
   assert.deepEqual(found, { status: 200, body: { id: "conv-1", reports: {} } });
   assert.deepEqual(store.calls[0], { name: "getState", args: { caseId: "conv-1", userId: "user-a", maxTurns: "20" } });
   const missing = await handlers.getCase(withToken({ params: { id: "conv-9" }, query: { user_id: "user-a" } }));
-  assert.deepEqual(missing, { status: 404, body: { error: "Unknown case" } });
+  assert.deepEqual(missing, { status: 200, body: { id: "conv-9", case_text: null, reports: {}, turns: [] } });
 });
 
 test("the writes take the user and the fields from the body", async () => {

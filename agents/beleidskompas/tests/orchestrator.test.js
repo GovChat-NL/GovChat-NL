@@ -26,12 +26,14 @@ function pageMessage(request, shown) {
  *  every step webhook with a JSON that names the path). `requests` collects
  *  what was sent, in order. */
 let storeState = null;
+let storeCaseText = null;
 // When set, store calls whose url matches this pattern fail with HTTP 500.
 let storeFails = null;
 
 function withServer(modelReply, fn) {
   const requests = [];
   storeState = null;
+  storeCaseText = null;
   storeFails = null;
   return new Promise((resolve, reject) => {
     const server = http.createServer((req, res) => {
@@ -46,14 +48,12 @@ function withServer(modelReply, fn) {
         } else if (req.url.endsWith('/v1/chat/completions')) {
           res.end(JSON.stringify({ choices: [{ message: { content: modelReply } }] }));
         } else if (req.url.startsWith('/api/beleidskompas/') && req.method === 'GET') {
-          // The store: the state of the case, or 404 when the test gave none.
-          if (!storeState) {
-            res.statusCode = 404;
-            res.end(JSON.stringify({ error: 'Unknown case' }));
-          } else {
-            res.end(JSON.stringify(storeState));
-          }
+          // The store: the state the test gave, or else an empty state with
+          // the case text written so far, like the real store.
+          const caseText = storeCaseText ? { version: 1, text: storeCaseText } : null;
+          res.end(JSON.stringify(storeState || { case_text: caseText, reports: {}, turns: [] }));
         } else if (req.url.startsWith('/api/beleidskompas/')) {
+          if (req.url.endsWith('/text')) storeCaseText = JSON.parse(body).text;
           // The store: every write succeeds with a version or a sequence number.
           res.end(JSON.stringify({ version: 1, seq: 1 }));
         } else if (req.url.endsWith('/beleidskompas-step-stap1') && !(body && JSON.parse(body).message)) {
@@ -211,7 +211,7 @@ test('runOrchestrator refuses a message from the page that names no known step',
 test('a report request writes the case text and the report to the store', async () => {
   await withServer('1', async (baseUrl, requests) => {
     const result = await runOrchestrator({ input: bridgeInput(pageMessage({ substep_id: '1.3', case_text: 'Laadpalen.' })), env: STORE_ENV(baseUrl), summaries: SUMMARIES, fetchImpl: global.fetch });
-    assert.deepEqual(result.store, { enabled: true, read: false, written: ['case_text', 'report'], errors: [] });
+    assert.deepEqual(result.store, { enabled: true, read: true, written: ['case_text', 'report'], errors: [] });
     const text = requests.find((r) => r.url === '/api/beleidskompas/cases/conv-1/text');
     assert.deepEqual(text.body, { user_id: 'user-a', text: 'Laadpalen.' });
     const report = requests.find((r) => r.url === '/api/beleidskompas/cases/conv-1/reports');
@@ -372,10 +372,10 @@ test('a question from LibreChat\'s own chat gets the case and the conversation f
   });
 });
 
-test('without a case in the store yet, the step gets the case text from the page and no reports, and that is not an error', async () => {
+test('a new case gets an empty state with only the case text from the page, and that is not an error', async () => {
   await withServer('1', async (baseUrl, requests) => {
     const result = await runOrchestrator({ input: bridgeInput(pageMessage({ substep_id: '1.3', case_text: 'De casus van de pagina.' })), env: STORE_ENV(baseUrl), summaries: SUMMARIES, fetchImpl: global.fetch });
-    assert.equal(result.store.read, false);
+    assert.equal(result.store.read, true);
     assert.deepEqual(result.store.errors, []);
     const sent = requests.find((r) => r.url === '/webhook/beleidskompas-step-stap1').body;
     assert.equal(sent.case_text, 'De casus van de pagina.');
