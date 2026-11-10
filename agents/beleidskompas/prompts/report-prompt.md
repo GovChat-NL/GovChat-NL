@@ -1,6 +1,6 @@
 {{role}}
 
-Werk de deelstappen in deze volgorde uit. Staat er een gesprek over de deelstap bij, verwerk dan wat de gebruiker daarin heeft aangedragen.
+Werk de deelstappen in deze volgorde uit. Staat er een gesprek over de casus bij, verwerk dan wat de gebruiker daarin over deze deelstappen heeft aangedragen.
 
 {{substeps}}
 

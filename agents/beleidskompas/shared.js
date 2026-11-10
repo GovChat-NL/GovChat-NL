@@ -543,7 +543,7 @@ function buildUserPrompt({ caseText, findings, conversation, message, citations 
   return [
     caseText && `Casus:\n${caseText}`,
     findings && `Bevindingen tot nu toe:\n${findings}`,
-    conversation && `Gesprek over deze deelstap tot nu toe:\n${conversation}`,
+    conversation && `Gesprek over deze casus tot nu toe:\n${conversation}`,
     message && `Bericht van de gebruiker:\n${message}`,
     sources,
   ]
