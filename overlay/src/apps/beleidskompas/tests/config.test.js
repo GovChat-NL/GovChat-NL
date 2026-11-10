@@ -11,10 +11,19 @@ test("the step configuration wins over the app's config, which wins over the def
   assert.equal(defaults.title, "");
   assert.ok(defaults.specialistTeam.length > 0);
   assert.equal(defaults.sources.length, 5);
-  assert.deepEqual(defaults.steps.map((s) => s.id), ["stap1", "stap2", "stap3", "stap4"]);
+  assert.deepEqual(
+    defaults.steps.map((s) => s.id),
+    ["stap1", "stap2", "stap3", "stap4"],
+  );
 
   const config = buildConfig(
-    { config: { title: " Uit apps.json ", specialist_team: "Team A", sources: ["Bron 1"] } },
+    {
+      config: {
+        title: " Uit apps.json ",
+        specialist_team: "Team A",
+        sources: ["Bron 1"],
+      },
+    },
     { title: "Uit de stappenconfig", disclaimer: " Let op ", sources: [] },
   );
   assert.equal(config.title, "Uit de stappenconfig");
@@ -33,7 +42,10 @@ test("a configured step takes its texts and questions from the configuration, mi
         title: " Probleemanalyse ",
         description: "Korte omschrijving",
         prompt: "De volledige instructie",
-        substeps: [{ title: "Vraag 1", description: "Verdieping 1" }, { title: "Vraag 2" }],
+        substeps: [
+          { title: "Vraag 1", description: "Verdieping 1" },
+          { title: "Vraag 2" },
+        ],
       },
       { title: "Eigen titel", description: "Eigen omschrijving" },
     ],
@@ -43,7 +55,6 @@ test("a configured step takes its texts and questions from the configuration, mi
   assert.equal(first.nr, 1);
   assert.equal(first.title, "Probleemanalyse");
   assert.equal(first.short, "Korte omschrijving");
-  // The prompt is an instruction for the assistant, never shown to users.
   assert.equal(first.info, "Korte omschrijving");
   assert.deepEqual(first.help, ["Vraag 1", "Vraag 2"]);
   assert.deepEqual(first.deep, ["Verdieping 1"]);
