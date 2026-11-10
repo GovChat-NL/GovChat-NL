@@ -1,71 +1,51 @@
-# Beleidskompas template versioning on Postgres: spec
+# Beleidskompas versioning on Postgres: spec
 
-Source: the "Template versioning with versioned documents" guide (reference test environment,
-PostgreSQL 17 + Express + `pg`, verified 2026-11-06) plus the decisions below taken for this
-repository on 2026-11-06.
+## Goal
+Store Beleidskompas templates, versions and documents in Postgres instead of `beleidskompas-state.json`, without changing how the admin UI looks or behaves.
 
-## The model (from the guide)
-
-A template is a complete configuration set: a title, steps with prompts, and a list of documents.
-Each save inside a template inserts a new version row; nothing updates a version row afterwards.
-A version holds a full copy of the configuration (`snapshot jsonb`), so rolling back means pointing
-at an older row.
-
-Two pointers say which version is in use:
-
-- `templates.live_version_id`: the template's current (newest) version. Each save moves it.
-- `live`: one row that says which template and version users get. Moving it publishes.
-
-A document is stored once, identified by the SHA-256 of its bytes. A version lists its documents in
-`version_documents`, so each version pins an exact set. Copying a version into a new template copies
-the links, not the bytes.
+## Model
+- A **template** is a full configuration: title, steps with prompts, documents.
+- Every save inserts a new **version** (`snapshot jsonb`). Versions are never updated.
+- A **document** is stored once, keyed by the SHA-256 of its bytes. A version lists its documents in `version_documents`.
+- Two pointers:
+  - `templates.live_version_id`: the template's newest version (the "Live" badge in the editor). Every save moves it.
+  - `live` (one row): the template and version end users get. The migration or seed sets it. Saving a new version of that template republishes it.
 
 ```sql
 templates          (id, name, live_version_id, created_from_version_id, created_at)
-template_versions  (id, template_id, version, note, snapshot jsonb, created_at,
-                    UNIQUE (template_id, version))
-documents          (id, sha256 UNIQUE, filename, content_type, size, content bytea, created_at)
-version_documents  (version_id, document_id, PRIMARY KEY (version_id, document_id))
-live               (key PRIMARY KEY DEFAULT 'live', template_id, version_id)
+template_versions  (id, template_id, version, note, created_by, snapshot jsonb, created_at)
+documents          (id, sha256 UNIQUE, filename, content_type, size, preview_text, content bytea, created_at)
+version_documents  (version_id, document_id)
+live               (key, template_id, version_id)
+settings           (key, data jsonb)
 ```
 
-| Operation | What it writes |
+| Action | Result |
 |---|---|
-| Create template | A `templates` row, then version 1 through `saveVersion`. |
-| Save | A new version with the edited snapshot and the current version's document list. |
-| Upload document | The file row if its hash is new, then a new version with the current list plus that document. |
-| Remove document | A new version with the current list minus that document. The file row stays. |
-| Select live | Moves both pointers to an existing version and publishes. No new version. |
-| Save as new template | A new template whose version 1 copies the source version's snapshot and document links. `created_from_version_id` records the source. |
+| Create template | New template, version 1 |
+| Save / restore old version | New version with the edited or old snapshot |
+| Upload / remove document | New version with the document list changed |
+| Save as new template | New template whose version 1 copies the source version |
 
-`saveVersion` is the only function that writes versions: one transaction inserts the version row,
-its document links and the pointer update. If the saved template is the live one, the new version
-is published at once. Uploads hash the body and let `ON CONFLICT (sha256)` handle duplicates.
-`publishLive` is where the real publish step lives (page config and n8n workflow files).
+All version writes go through `saveVersion`, in one transaction.
 
-## Decisions for this repository (2026-11-06)
+## Decisions
+1. Restoring an old version saves it as a new version.
+2. No server-side drafts. Unsaved edits stay in the browser tab.
+3. Step document ids are stored in the snapshot (`steps[].document_ids`).
+4. Renaming a document is a plain update, not a new version.
+5. Tables live in the `beleidskompas` schema of the existing pgvector database, created at startup.
+6. `beleidskompas-state.json` is imported once as template "SiS 4.0". Export/import stay.
+7. The existing publish step stays as it is.
+8. Feedback is untouched. Settings move to a one-row table.
 
-Scope is a coupling job: give the existing admin UI (branch `feature/beleidskompas-versioning`,
-`services/admin-overlay/admin/views/beleidskompas-admin/`) a versioning-safe Postgres backend.
-Do not change how the UI looks or behaves. Later work: a dedicated deploy view that picks the live
-template + version, pushing workflows into n8n, feedback carrying template and version ids.
+Code is plain SQL with `pg` and Express, no ORM, in `admin/beleidskompas/` (`api/` for routes, `db/` for schema and store).
 
-1. Rollback: no UI change. "Herstellen als nieuwe versie" saves the old snapshot as a new version.
-   The `live` pointer move ("Select live") gets no UI yet; the migration sets it once.
-2. Draft: unsaved edits live in the browser tab only. No draft rows. The server-side draft is dropped.
-3. Documents: a library per template. The "Actief in dit template" toggle is membership in the
-   template's current version. Each step selects documents from the library: the step's document
-   ids are stored inside the step in the snapshot (`steps[].document_ids`), the one field the UI
-   does not have yet.
-4. Rename: a plain update of `documents.filename`, no versioning of names.
-5. Database: a `beleidskompas` schema inside the existing pgvector Postgres (`pgvector` compose
-   service, database `${POSTGRES_DB}`). No new container.
-6. Existing data: the current `beleidskompas-state.json` is imported once at first start as the
-   template "SiS 4.0". Export/import stay: export dumps one template in that same JSON shape,
-   import creates a template from such a file.
-7. n8n push: later. The existing publish step (write `beleidskompas-config.json`, regenerate the
-   workflow files and manifest) stays as it is and runs when the live template gets a new version.
-8. Feedback and settings: untouched. Settings move to a one-row table so the state file can go.
+## Demo data
+`BELEIDSKOMPAS_DEV_SEED=true` loads `seed.sql` into an empty database. `make replenish-beleidskompas-db` wipes everything and reseeds, after a confirmation.
 
-Mindset: minimal effective code. Standard packages (`pg`, Express), plain SQL, schema applied with
-`CREATE TABLE IF NOT EXISTS` at startup, no ORM. Every line is maintenance.
+## Not yet
+- Moving the global `live` pointer to another template or version (no UI or endpoint).
+- Pushing workflows to n8n on publish.
+- Feedback that records template and version ids.
+- Export/import keep only the current documents, not earlier versions'.
