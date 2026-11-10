@@ -3459,12 +3459,10 @@ server.on("upgrade", (req, socket, head) => {
   });
 });
 
-// The service only listens once Beleidskompas has its database, so a
-// migration that fails stops the service instead of going unnoticed.
-beleidskompas.start(app, { resolveUser: resolveUserFromVerifiedRefreshToken }).catch((err) => {
-  console.error(`[govchat-admin] Beleidskompas failed to start: ${err.message}`);
-  process.exit(1);
-}).then(() => server.listen(PORT, "0.0.0.0", () => {
+// Beleidskompas reaches its database in the background (see
+// lib/beleidskompas/index.js), so the service listens straight away.
+beleidskompas.start(app, { resolveUser: resolveUserFromVerifiedRefreshToken });
+server.listen(PORT, "0.0.0.0", () => {
   console.log(`[govchat-admin] Running on http://0.0.0.0:${PORT}`);
   console.log(`[govchat-admin] Data directory: ${DATA_DIR}`);
   console.log(`[govchat-admin] Publish directory: ${PUBLISH_DIR}`);
@@ -3479,4 +3477,4 @@ beleidskompas.start(app, { resolveUser: resolveUserFromVerifiedRefreshToken }).c
   console.log(
     `[govchat-admin] Realtime STT bridge: /api/realtime-stt (provider=${REALTIME_STT_PROVIDER_DEFAULT})`,
   );
-}));
+});

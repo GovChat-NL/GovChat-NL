@@ -18,8 +18,9 @@
  * express. mount() ties them to an express app; only there is express
  * loaded.
  *
- * Every endpoint answers JSON. An error from the store (400, 403, 404)
- * becomes the HTTP status; anything else is a 500 with a generic message.
+ * Every endpoint answers JSON. An error from the store (400, 403, 404, or
+ * 503 while the database is not ready yet) becomes the HTTP status;
+ * anything else is a 500 with a generic message.
  */
 
 const { StoreError } = require("./store");

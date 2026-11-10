@@ -924,9 +924,12 @@ services:
       - ./overlay/defaults:/app/defaults:ro
     profiles:
       - admin-overlay
+    # Started after the Beleidskompas database, but not held up by it: the
+    # service keeps trying to reach it, and the rest of the service works
+    # without it (see services/admin-overlay/admin/lib/beleidskompas/index.js).
     depends_on:
       beleidskompas-postgres:
-        condition: service_healthy
+        condition: service_started
     networks:
       - librechat-net
 
