@@ -78,7 +78,6 @@ function stepEditor(step, { store, markDirty, render }) {
     "div",
     { class: "stack-sm" },
     field("Titel", bound(step, "title", { onInput: markDirty })),
-    field("Beschrijving", bound(step, "description", { multiline: true, rows: 2, onInput: markDirty })),
     field("Systeemprompt", bound(step, "prompt", { multiline: true, rows: 6, onInput: markDirty }), "Instructie voor de assistent in deze stap."),
   );
 
@@ -121,8 +120,12 @@ function stepEditor(step, { store, markDirty, render }) {
         "div",
         { class: "substep" },
         h("span", { class: "substep-id" }, sub.id),
-        bound(sub, "title", { onInput: markDirty }),
-        bound(sub, "description", { onInput: markDirty }),
+        h(
+          "div",
+          { class: "stack-sm" },
+          field("Titel", bound(sub, "title", { onInput: markDirty })),
+          field("Instructies", bound(sub, "prompt", { multiline: true, rows: 3, onInput: markDirty })),
+        ),
         h("button", { class: "icon-btn is-danger", "aria-label": "Substap verwijderen", onClick: () => { step.substeps.splice(i, 1); markDirty(); render(); } }, icon("trash", 14)),
       ),
     ),
@@ -132,7 +135,7 @@ function stepEditor(step, { store, markDirty, render }) {
         class: "btn btn-small btn-secondary",
         onClick: () => {
           const idx = store.flow.steps.indexOf(step) + 1;
-          step.substeps = [...(step.substeps || []), { id: `${idx}.${(step.substeps?.length || 0) + 1}`, title: "", description: "" }];
+          step.substeps = [...(step.substeps || []), { id: `${idx}.${(step.substeps?.length || 0) + 1}`, title: "", prompt: "" }];
           markDirty();
           render();
           const row = document.querySelector(".flow-step.is-open .substep:last-of-type");

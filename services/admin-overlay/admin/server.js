@@ -660,6 +660,7 @@ function normalizeBeleidskompasFlow(input) {
         id: String(sub?.id || `${idx + 1}.${subIdx + 1}`).trim() || `${idx + 1}.${subIdx + 1}`,
         title: String(sub?.title || `Substap ${subIdx + 1}`).trim() || `Substap ${subIdx + 1}`,
         description: String(sub?.description || "").trim(),
+        prompt: String(sub?.prompt || "").trim(),
       })),
     };
   });
