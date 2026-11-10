@@ -41,7 +41,7 @@ export function renderFlow({ store, render, markDirty }) {
     { class: "notice notice-info" },
     icon("info", 14),
     "Titels, beschrijvingen en substappen verschijnen op de Beleidskompas-pagina zodra de versie live staat (Deploy). " +
-      "Instructies, algemene regels, zoekinstellingen en de documenten per stap worden opgeslagen in het template, maar de assistent leest ze nog niet.",
+      "Instructies, opmaakregels, zoekinstellingen en de documenten per stap worden opgeslagen in het template, maar de assistent leest ze nog niet.",
   );
 
   const list = flowList({
@@ -69,7 +69,7 @@ export function renderFlow({ store, render, markDirty }) {
 
   // One list for the whole flow, like rules.md on the agent side ({{rules}} in every step's prompt).
   const rules = card(
-    "Algemene regels",
+    "Opmaakregels",
     field("Regels voor alle stappen", bound(store.flow, "rules", { multiline: true, rows: 6, onInput: markDirty }), "Eén regel per regel. Gelden voor elke stap."),
   );
 
@@ -131,6 +131,7 @@ function stepEditor(step, { store, markDirty, render }) {
           { class: "stack-sm" },
           field("Titel", bound(sub, "title", { onInput: markDirty })),
           field("Instructies", bound(sub, "prompt", { multiline: true, rows: 3, onInput: markDirty })),
+          field("Antwoord format", bound(sub, "answer_format", { multiline: true, rows: 3, onInput: markDirty })),
         ),
         h("button", { class: "icon-btn is-danger", "aria-label": "Substap verwijderen", onClick: () => { step.substeps.splice(i, 1); markDirty(); render(); } }, icon("trash", 14)),
       ),
@@ -141,7 +142,7 @@ function stepEditor(step, { store, markDirty, render }) {
         class: "btn btn-small btn-secondary",
         onClick: () => {
           const idx = store.flow.steps.indexOf(step) + 1;
-          step.substeps = [...(step.substeps || []), { id: `${idx}.${(step.substeps?.length || 0) + 1}`, title: "", prompt: "" }];
+          step.substeps = [...(step.substeps || []), { id: `${idx}.${(step.substeps?.length || 0) + 1}`, title: "", prompt: "", answer_format: "" }];
           markDirty();
           render();
           const row = document.querySelector(".flow-step.is-open .substep:last-of-type");
