@@ -1,7 +1,7 @@
 # Convenience wrapper around the docker compose stack.
 # Run `make help` for the list of targets.
 
-COMPOSE := docker compose
+COMPOSE := docker compose --profile admin-overlay
 
 .PHONY: help env up up-n8n down logs reload-workflows rebuild rebuild-admin check test-beleidskompas test-beleidskompas-db generate-workflows
 
@@ -11,7 +11,7 @@ help: ## Show this help
 env: ## Create .env from .env.example if it doesn't exist yet
 	@test -f .env || (cp .env.example .env && echo "Created .env - fill in the required secrets (see README.md)")
 
-up: env ## Start the full stack
+up: env ## Start the full stack, including the overlay admin
 	$(COMPOSE) up -d
 
 up-n8n: env ## Start only n8n and LiteLLM (to test workflows without the full UI)
@@ -28,7 +28,7 @@ reload-workflows: ## Re-import and publish the workflows from agents/n8n/workflo
 	$(COMPOSE) wait n8n-bootstrap
 	$(COMPOSE) restart n8n
 
-rebuild: generate-workflows ## Regenerate the workflows, rebuild the images and restart the whole stack with the workflows re-imported (keeps the data)
+rebuild: generate-workflows ## Regenerate the workflows, rebuild the images and restart the whole stack, including the overlay admin, with the workflows re-imported (keeps the data)
 	$(COMPOSE) down
 	AGENTS_BOOTSTRAP_FORCE=true $(COMPOSE) up -d --build
 	$(COMPOSE) wait n8n-bootstrap
