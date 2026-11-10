@@ -3,7 +3,7 @@
 
 COMPOSE := docker compose --profile admin-overlay
 
-.PHONY: help env up up-n8n down logs reload-workflows rebuild rebuild-admin check test-beleidskompas test-beleidskompas-db generate-workflows
+.PHONY: help env up down logs reload-workflows rebuild rebuild-admin check test-beleidskompas test-beleidskompas-db generate-workflows
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z0-9_-]+:.*## ' $(MAKEFILE_LIST) | sed -E 's/:.*## /: /' | sort
@@ -13,9 +13,6 @@ env: ## Create .env from .env.example if it doesn't exist yet
 
 up: env ## Start the full stack, including the overlay admin
 	$(COMPOSE) up -d
-
-up-n8n: env ## Start only n8n and LiteLLM (to test workflows without the full UI)
-	$(COMPOSE) up -d n8n-postgres litellm-postgres litellm n8n n8n-runners
 
 down: ## Stop and remove all containers and the network (keeps the data volumes and /opt/librechat)
 	$(COMPOSE) down
