@@ -3,7 +3,7 @@
 /**
  * Beleidskompas step 4 ("Governance-inrichting"): which substeps it has, and
  * where their prompts are. Each prompt file holds the instruction for the
- * model and, at the end, the example of the answer. runStep in shared.js
+ * model and, at the end, the answer format. runStep in shared.js
  * works through all substeps in one model call.
  *
  * In n8n this is the Code node "Build Step 4 Answer" in the workflow

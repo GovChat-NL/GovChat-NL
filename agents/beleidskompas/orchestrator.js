@@ -345,7 +345,6 @@ async function runOrchestrator(ctx) {
           caseId,
           userId,
           substepId,
-          content: result.structured || {},
           text: result.answer,
           citations: result.citations,
           retrievalTrace: result.retrieval_trace,

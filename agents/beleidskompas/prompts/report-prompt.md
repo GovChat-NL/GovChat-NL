@@ -7,5 +7,15 @@ Werk de deelstappen in deze volgorde uit. Staat er een gesprek over de deelstap 
 Algemene regels:
 {{rules}}
 
-Antwoord UITSLUITEND met een geldig JSON-object, zonder markdown-codeblok, met precies deze velden en sleutels. Hieronder staat per veld de betekenis in plaats van de waarde:
-{{answer_format}}
+Antwoord in markdown, zonder codeblok, met precies deze kopjes (van de vorm "### Kopje") in deze volgorde. Heeft een onderdeel hieronder een vetgedrukte naam, schrijf het dan ook zo: "**Naam:** tekst". Tekst zonder naam schrijf je zonder naam. Een lijst is een opsomming met "- " op eigen regels. Een oordeel krijgt een eigen kopje met als eerste regel "**Oordeel:** <waarde>". Hieronder staat per onderdeel de betekenis in plaats van de waarde:
+
+### Samenvatting casus
+korte, feitelijke samenvatting van de casus
+
+{{substep_format}}
+
+### Redenering
+de redenering, stap voor stap, genummerd
+
+### Aannames en ontbrekende informatie
+- aannames en ontbrekende informatie

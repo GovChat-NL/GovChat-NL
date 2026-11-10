@@ -34,9 +34,9 @@ test("the store against a real Postgres", { skip: !enabled && "set BELEIDSKOMPAS
     assert.deepEqual(await store.setCaseText({ caseId: "conv-1", userId: "user-a", text: "De casus." }), { version: 1, unchanged: true });
     assert.deepEqual(await store.setCaseText({ caseId: "conv-1", userId: "user-a", text: "De casus, aangevuld." }), { version: 2, unchanged: false });
 
-    assert.deepEqual(await store.addReport({ caseId: "conv-1", userId: "user-a", substepId: "1.1", content: { a: 1 }, text: "Rapport 1.1 v1", citations: [{ id: "doc-1" }] }), { version: 1 });
-    assert.deepEqual(await store.addReport({ caseId: "conv-1", userId: "user-a", substepId: "1.1", content: { a: 2 }, text: "Rapport 1.1 v2" }), { version: 2 });
-    assert.deepEqual(await store.addReport({ caseId: "conv-1", userId: "user-a", substepId: "1.2", content: { b: 1 }, text: "Rapport 1.2" }), { version: 1 });
+    assert.deepEqual(await store.addReport({ caseId: "conv-1", userId: "user-a", substepId: "1.1", text: "Rapport 1.1 v1", citations: [{ id: "doc-1" }] }), { version: 1 });
+    assert.deepEqual(await store.addReport({ caseId: "conv-1", userId: "user-a", substepId: "1.1", text: "Rapport 1.1 v2" }), { version: 2 });
+    assert.deepEqual(await store.addReport({ caseId: "conv-1", userId: "user-a", substepId: "1.2", text: "Rapport 1.2" }), { version: 1 });
 
     assert.deepEqual(await store.addTurn({ caseId: "conv-1", userId: "user-a", role: "user", askedFrom: "1.1", text: "Welke instrumenten?" }), { seq: 1 });
     assert.deepEqual(await store.addTurn({ caseId: "conv-1", userId: "user-a", role: "assistant", stepId: "stap3", askedFrom: "1.1", text: "Subsidie of verordening." }), { seq: 2 });
@@ -48,7 +48,7 @@ test("the store against a real Postgres", { skip: !enabled && "set BELEIDSKOMPAS
     assert.equal(state.case_text.text, "De casus, aangevuld.");
     assert.deepEqual(Object.keys(state.reports).sort(), ["1.1", "1.2"]);
     assert.equal(state.reports["1.1"].version, 2, "the newest version of a report counts");
-    assert.deepEqual(state.reports["1.1"].content, { a: 2 });
+    assert.equal(state.reports["1.1"].text, "Rapport 1.1 v2");
     assert.deepEqual(state.reports["1.1"].citations, []);
     assert.deepEqual(state.turns.map((t) => [t.seq, t.role, t.step_id]), [[1, "user", null], [2, "assistant", "stap3"]]);
 

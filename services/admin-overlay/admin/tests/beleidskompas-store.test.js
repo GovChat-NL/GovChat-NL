@@ -39,7 +39,7 @@ test("a case id taken by another user cannot be written to, and reads as unknown
   const db = fakeDatabase({ "FROM cases WHERE id": ownedBy(CASE) });
   const store = createStore(db.query);
   await assert.rejects(store.ensureCase({ id: "conv-1", userId: "user-b" }), (err) => err instanceof StoreError && err.status === 403);
-  await assert.rejects(store.addReport({ caseId: "conv-1", userId: "user-b", substepId: "1.1", content: {}, text: "x" }), (err) => err.status === 403);
+  await assert.rejects(store.addReport({ caseId: "conv-1", userId: "user-b", substepId: "1.1", text: "x" }), (err) => err.status === 403);
   await assert.rejects(store.addTurn({ caseId: "conv-1", userId: "user-b", role: "user", text: "hoi" }), (err) => err.status === 403);
   await assert.rejects(store.setTitle({ caseId: "conv-1", userId: "user-b", title: "x" }), (err) => err.status === 404);
   assert.equal(await store.getState({ caseId: "conv-1", userId: "user-b" }), null);
@@ -64,22 +64,21 @@ test("setCaseText adds a version, but not when the text equals the newest versio
   assert.ok(db.calls.some((c) => c.sql.startsWith("UPDATE cases SET updated_at")));
 });
 
-test("addReport stores the structured content, the rendered text and the citations as a new version", async () => {
+test("addReport stores the text and the citations as a new version", async () => {
   const db = fakeDatabase({ "FROM cases WHERE id": ownedBy(CASE), "INSERT INTO reports": [{ version: 1 }] });
   const store = createStore(db.query);
   const result = await store.addReport({
     caseId: "conv-1",
     userId: "user-a",
     substepId: "1.1",
-    content: { substeps: { "1.1": { probleem: "x" } } },
     text: "**Stap 1**",
     citations: [{ id: "doc-1" }],
     retrievalTrace: { algorithm: "needle" },
   });
   assert.deepEqual(result, { version: 1 });
   const insert = db.calls.find((c) => c.sql.startsWith("INSERT INTO reports"));
-  assert.deepEqual(insert.params, ["conv-1", "1.1", JSON.stringify({ substeps: { "1.1": { probleem: "x" } } }), "**Stap 1**", JSON.stringify([{ id: "doc-1" }]), JSON.stringify({ algorithm: "needle" })]);
-  await assert.rejects(store.addReport({ caseId: "conv-1", userId: "user-a", substepId: "1.1", content: "geen object", text: "x" }), (err) => err.status === 400);
+  assert.deepEqual(insert.params, ["conv-1", "1.1", "**Stap 1**", JSON.stringify([{ id: "doc-1" }]), JSON.stringify({ algorithm: "needle" })]);
+  await assert.rejects(store.addReport({ caseId: "conv-1", userId: "user-a", substepId: "1.1", text: "" }), (err) => err.status === 400);
 });
 
 test("an insert that collides on the version number is tried once more", async () => {
@@ -92,7 +91,7 @@ test("an insert that collides on the version number is tried once more", async (
       return [{ version: 2 }];
     },
   });
-  assert.deepEqual(await createStore(db.query).addReport({ caseId: "conv-1", userId: "user-a", substepId: "1.1", content: {}, text: "x" }), { version: 2 });
+  assert.deepEqual(await createStore(db.query).addReport({ caseId: "conv-1", userId: "user-a", substepId: "1.1", text: "x" }), { version: 2 });
   assert.equal(attempts, 2);
 });
 
@@ -111,8 +110,8 @@ test("getState puts the newest case text, the newest report per substep and the 
     "FROM cases WHERE id": ownedBy({ ...CASE, title: "Beleidskompas - Laadpalen" }),
     "FROM case_texts": [{ version: 2, text: "De casus.", created_at: "t1" }],
     "FROM reports": [
-      { substep_id: "1.1", version: 3, content: { a: 1 }, text: "Rapport 1.1", citations: [], retrieval_trace: null, created_at: "t2" },
-      { substep_id: "1.2", version: 1, content: { b: 2 }, text: "Rapport 1.2", citations: [{ id: "d" }], retrieval_trace: { x: 1 }, created_at: "t3" },
+      { substep_id: "1.1", version: 3, text: "Rapport 1.1", citations: [], retrieval_trace: null, created_at: "t2" },
+      { substep_id: "1.2", version: 1, text: "Rapport 1.2", citations: [{ id: "d" }], retrieval_trace: { x: 1 }, created_at: "t3" },
     ],
     "FROM conversation_turns": [
       { seq: 1, role: "user", step_id: null, asked_from: "1.1", text: "Vraag", created_at: "t4" },

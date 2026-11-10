@@ -93,20 +93,19 @@ function createStore(query) {
     return { version: inserted.rows[0].version, unchanged: false };
   }
 
-  /** Stores a report of a substep as a new version. `content` is the
-   *  structured answer of the model, `text` the rendered report. Creates
-   *  the case when needed, like setCaseText. */
-  async function addReport({ caseId, userId, substepId, content, text, citations, retrievalTrace }) {
+  /** Stores a report of a substep as a new version: the text the page
+   *  shows and its citations. Creates the case when needed, like
+   *  setCaseText. */
+  async function addReport({ caseId, userId, substepId, text, citations, retrievalTrace }) {
     const substep = requireText(substepId, "substep id");
     const rendered = requireText(text, "report text");
-    if (!content || typeof content !== "object" || Array.isArray(content)) throw new StoreError(400, "report content must be an object");
     const { id } = await ensureCase({ id: caseId, userId });
     const { rows } = await withOneRetry(() =>
       query(
-        `INSERT INTO reports (case_id, substep_id, version, content, text, citations, retrieval_trace)
-         SELECT $1, $2, COALESCE(MAX(version), 0) + 1, $3::jsonb, $4, $5::jsonb, $6::jsonb FROM reports WHERE case_id = $1 AND substep_id = $2
+        `INSERT INTO reports (case_id, substep_id, version, text, citations, retrieval_trace)
+         SELECT $1, $2, COALESCE(MAX(version), 0) + 1, $3, $4::jsonb, $5::jsonb FROM reports WHERE case_id = $1 AND substep_id = $2
          RETURNING version`,
-        [id, substep, JSON.stringify(content), rendered, JSON.stringify(Array.isArray(citations) ? citations : []), retrievalTrace ? JSON.stringify(retrievalTrace) : null],
+        [id, substep, rendered, JSON.stringify(Array.isArray(citations) ? citations : []), retrievalTrace ? JSON.stringify(retrievalTrace) : null],
       ),
     );
     await touch(id);
@@ -150,7 +149,7 @@ function createStore(query) {
     const [texts, reports, turns] = await Promise.all([
       query("SELECT version, text, created_at FROM case_texts WHERE case_id = $1 ORDER BY version DESC LIMIT 1", [row.id]),
       query(
-        `SELECT DISTINCT ON (substep_id) substep_id, version, content, text, citations, retrieval_trace, created_at
+        `SELECT DISTINCT ON (substep_id) substep_id, version, text, citations, retrieval_trace, created_at
          FROM reports WHERE case_id = $1 ORDER BY substep_id, version DESC`,
         [row.id],
       ),
@@ -165,7 +164,6 @@ function createStore(query) {
     for (const r of reports.rows) {
       byId[r.substep_id] = {
         version: r.version,
-        content: r.content,
         text: r.text,
         citations: r.citations || [],
         retrieval_trace: r.retrieval_trace || null,

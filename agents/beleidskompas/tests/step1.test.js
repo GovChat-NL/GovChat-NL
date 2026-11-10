@@ -6,58 +6,34 @@ const http = require('node:http');
 const fs = require('node:fs');
 const path = require('node:path');
 
-const {
-  parseCitationsMetaBlock,
-  parseAgentJson,
-  buildReportPrompt,
-  emptyStructured,
-  missingParts,
-  composeAnswerText,
-  runStep,
-} = require('../shared');
+const { parseCitationsMetaBlock, buildReportPrompt, composeReport, askedStep, runStep } = require('../shared');
 const { STEP } = require('../steps/step1');
 
-/** A complete model reply for step 1, as the tests expect the model to give. */
-function modelReply() {
-  return {
-    case_summary: 'Drie gemeenten vragen provinciale bijdrage aan laadinfrastructuur in het buitengebied.',
-    substeps: {
-      '1.1': {
-        Probleem: 'Geen laadinfrastructuur in het buitengebied.',
-        'Primaire oorzaken': ['Lage dichtheid'],
-        Symptomen: ['Beperkte toegang'],
-        'Ontbrekende perspectieven of actoren': ['Netbeheerder'],
-      },
-      '1.2': {
-        'Toets per criterium': ['Marktfalen: aanwezig ja; marktpartijen investeren niet; verbeteringskans hoog'],
-        'Bevoegdheid van de provincie': 'ja',
-        'Samenvattend oordeel': 'Interventie gerechtvaardigd.',
-      },
-      '1.3': {
-        Belanghebbenden: ['Gemeenten, overheid, belang: bereikbaarheid, invloed hoog, risico laag, bijdrage positief, niet-risicovol'],
-        'Wettelijke taak van de provincie': 'ja',
-        Beleidsurgentie: 'hoog',
-      },
-      '1.4': {
-        'Publiek doel': 'Toegang tot deelmobiliteit',
-        'Beleidsdoelen van Provinciale Staten': [],
-        'Koppeling met de programmabegroting': [],
-        'ESG-relaties': [],
-        'Mate van bijdrage': 'matig',
-        Toelichting: 'Beperkte bronnen.',
-      },
-      '1.5': {
-        'Publiek belang': { oordeel: 'ja', toelichting: 'Marktfalen: marktpartijen investeren niet in het buitengebied.' },
-        'Provinciaal belang': { oordeel: 'beperkt', toelichting: 'Past binnen de energietransitietaak.' },
-        'Urgentie en maatschappelijke impact': 'urgentie 0.7, impact 0.6',
-        Eindadvies: 'positief',
-        Motivering: 'Beide toetsen positief.',
-      },
-    },
-    reasoning: '1. Probleem benoemd.\n2. Criteria getoetst.',
-    assumptions_missing_info: ['Standpunt netbeheerder ontbreekt.'],
-  };
-}
+/** A model reply for substep 1.5, in the markdown the report prompt asks for. */
+const MODEL_REPLY = [
+  '### Samenvatting casus',
+  'Drie gemeenten vragen provinciale bijdrage aan laadinfrastructuur in het buitengebied.',
+  '',
+  '### Publiek belang',
+  '**Oordeel:** ja',
+  '',
+  'Marktfalen: marktpartijen investeren niet in het buitengebied.',
+  '',
+  '### Provinciaal belang',
+  '**Oordeel:** beperkt',
+  '',
+  'Past binnen de energietransitietaak.',
+  '',
+  '### Integrale afweging',
+  '**Eindadvies:** positief',
+  '',
+  '### Redenering',
+  '1. Probleem benoemd.',
+  '2. Criteria getoetst.',
+  '',
+  '### Aannames en ontbrekende informatie',
+  '- Standpunt netbeheerder ontbreekt.',
+].join('\n');
 
 const passages = JSON.parse(
   fs.readFileSync(path.join(__dirname, '..', 'fixtures', 'source-passages.json'), 'utf-8'),
@@ -74,94 +50,49 @@ function webhookInput(body, token) {
   };
 }
 
-test('parseAgentJson parses a plain JSON response', () => {
-  const { structured, parse_warning } = parseAgentJson(
-    JSON.stringify({
-      case_summary: 'x',
-      public_interest: { verdict: 'ja', explanation: 'y' },
-      provincial_interest: { verdict: 'ja', explanation: 'z' },
-      reasoning: 'r',
-      assumptions_missing_info: [],
-    }),
-    STEP,
-  );
-  assert.equal(parse_warning, false);
-  assert.equal(structured.case_summary, 'x');
+test('a substep prompt file holds the instruction and, after "Antwoord in deze vorm:", the answer format', () => {
+  const substep = STEP.substeps[0];
+  assert.ok(substep.format.startsWith('### Probleemdefinitie'), 'the answer format starts with the heading of the substep');
+  assert.ok(substep.format.includes('**Primaire oorzaken:**'));
+  assert.ok(!substep.instruction.includes('Antwoord in deze vorm'), 'the answer format is not part of the instruction');
+  assert.ok(substep.instruction.endsWith('?'), 'the instruction ends with its last question');
 });
 
-test('parseAgentJson unwraps a markdown-fenced JSON response', () => {
-  const { structured, parse_warning } = parseAgentJson('```json\n{"case_summary":"x","reasoning":"r"}\n```', STEP);
-  assert.equal(parse_warning, false);
-  assert.equal(structured.case_summary, 'x');
-});
-
-test('parseAgentJson falls back gracefully on unparsable text', () => {
-  const { structured, parse_warning } = parseAgentJson('dit is geen json', STEP);
-  assert.equal(parse_warning, true);
-  assert.equal(structured.reasoning, 'dit is geen json');
-  // The empty shape has every substep and field, so composing never fails.
-  assert.equal(structured.substeps['1.5']['Publiek belang'].oordeel, 'onduidelijk');
-  assert.deepEqual(structured.substeps['1.1']['Primaire oorzaken'], []);
-});
-
-test('a substep prompt file ends with the example the model is asked for', () => {
-  assert.deepEqual(Object.keys(STEP.substeps[0].example), ['Probleem', 'Primaire oorzaken', 'Symptomen', 'Ontbrekende perspectieven of actoren']);
-  assert.ok(!STEP.substeps[0].instruction.includes('```'), 'the example is not part of the instruction');
-  assert.ok(STEP.substeps[0].instruction.endsWith('?'), 'the instruction ends with its last question');
-});
-
-test('missingParts names the parts of the answer the model left out', () => {
-  const reply = modelReply();
-  delete reply.substeps['1.1'].Symptomen;
-  delete reply.substeps['1.5'];
-  const notes = missingParts(STEP, reply);
-  assert.equal(notes.length, 1 + 5);
-  assert.match(notes[0], /"Symptomen" \(deelstap 1\.1\)/);
-});
-
-test('buildReportPrompt names every substep, every field and the answer format', () => {
+test('buildReportPrompt holds every substep, its answer format and the fixed sections', () => {
   const prompt = buildReportPrompt(STEP);
-  for (const needle of ['Deelstap 1.1: Probleemdefinitie', 'Deelstap 1.5: Integrale afweging', '"oordeel": "ja | nee | onduidelijk"', '"case_summary"', 'geldig JSON-object']) {
-    assert.ok(prompt.includes(needle), `expected the prompt to include "${needle}"`);
-  }
-});
-
-test('composeAnswerText includes a heading per substep, the verdicts, and the fixed sections', () => {
-  const text = composeAnswerText(STEP, modelReply(), [{ rank: 1, filename: 'SiS 4.0 Strategisch kader', score: 0.2 }]);
   for (const needle of [
+    'Deelstap 1.1: Probleemdefinitie',
+    'Deelstap 1.5: Integrale afweging',
     '### Samenvatting casus',
     '### Probleemdefinitie',
-    '### Overheidsinterventie',
-    '### Stakeholderanalyse',
-    '### Provinciaal doel',
-    '### Publiek belang',
-    '### Provinciaal belang',
-    '### Integrale afweging',
+    '### Publiek belang\n**Oordeel:** ja | nee | onduidelijk',
     '### Redenering',
     '### Aannames en ontbrekende informatie',
-    '### Bronnen',
-    'ondersteunend concept',
   ]) {
-    assert.ok(text.includes(needle), `expected answer text to include "${needle}"`);
+    assert.ok(prompt.includes(needle), `expected the prompt to include "${needle}"`);
   }
-  assert.match(text, /^\*\*Primaire oorzaken:\*\*\n- Lage dichtheid$/m, 'a list field is a labelled bullet list');
-  assert.match(text, /^\*\*Eindadvies:\*\* positief$/m, 'a choice field is a labelled value');
+  assert.ok(!/\{\{\w+\}\}/.test(prompt), 'every placeholder is filled in');
 });
 
-test('composeAnswerText renders markdown that also reads well in LibreChat itself', () => {
-  const text = composeAnswerText(STEP, modelReply(), [{ rank: 1, filename: 'SiS 4.0 Strategisch kader', score: 0.207 }]);
-
-  assert.match(text, /^\*\*Stap 1 · Publiek en provinciaal belang\*\*$/m, 'step label on the first line');
-  assert.match(text, /^### Publiek belang$/m, 'sections use markdown headings');
-  assert.match(text, /^\*\*Oordeel:\*\* ja$/m, 'verdict is a bold label');
-  assert.match(text, /^1\. \*\*SiS 4.0 Strategisch kader\*\* - relevantie 0\.207$/m, 'sources are listed with their relevance');
-  assert.ok(!/^## /m.test(text), 'no h2 headings left (they render oversized in a chat bubble)');
+test('buildReportPrompt for one substep holds only the answer format of that substep', () => {
+  const prompt = buildReportPrompt(askedStep(STEP, '1.1'));
+  assert.ok(prompt.includes('### Probleemdefinitie'));
+  assert.ok(!prompt.includes('### Publiek belang'));
 });
 
-test('composeAnswerText says so when no source passed the relevance threshold, and copes with a bare reply', () => {
-  const text = composeAnswerText(STEP, { case_summary: 'X' }, []);
-  assert.match(text, /### Bronnen\n- geen bronnen boven de relevantiedrempel/);
-  assert.match(text, /^\*\*Oordeel:\*\* onduidelijk$/m, 'a missing verdict reads as unclear');
+test('composeReport puts the step heading above the reply and the sources and disclaimer below it', () => {
+  const text = composeReport(askedStep(STEP, '1.5'), MODEL_REPLY, [{ rank: 1, filename: 'SiS 4.0 Strategisch kader', score: 0.207 }]);
+  assert.match(text, /^\*\*Stap 1 · Publiek en provinciaal belang · 1\.5 Integrale afweging\*\*$/m, 'step label on the first line');
+  assert.ok(text.includes(MODEL_REPLY), 'the reply is kept as it is');
+  assert.match(text, /^### Bronnen\n1\. \*\*SiS 4.0 Strategisch kader\*\* - relevantie 0\.207$/m, 'sources are listed with their relevance');
+  assert.match(text, /\n---\n.*ondersteunend concept/, 'the disclaimer comes last, after a rule');
+});
+
+test('composeReport unwraps a reply in a code block, reads an empty reply as unknown, and says when there are no sources', () => {
+  assert.ok(composeReport(STEP, '```markdown\n### Samenvatting casus\nX\n```', []).includes('\n\n### Samenvatting casus\nX\n\n'));
+  const empty = composeReport(STEP, '', []);
+  assert.match(empty, /\*\*\n\nonbekend\n\n/);
+  assert.match(empty, /### Bronnen\n- geen bronnen boven de relevantiedrempel/);
 });
 
 // --- A local stand-in for LiteLLM ---
@@ -184,20 +115,20 @@ function withMockLiteLLM(handler, fn) {
 }
 
 /** Runs `fn(baseUrl)` against a LiteLLM stand-in that answers every call
- *  with `reply` (an object, sent as the model's JSON text). */
+ *  with `reply` as the model's text. */
 function withModelReply(reply, fn) {
   return withMockLiteLLM((req, res) => {
     let body = '';
     req.on('data', (c) => (body += c));
     req.on('end', () => {
       res.writeHead(200, { 'content-type': 'application/json' });
-      res.end(JSON.stringify({ choices: [{ message: { content: JSON.stringify(reply) } }] }));
+      res.end(JSON.stringify({ choices: [{ message: { content: reply } }] }));
     });
   }, fn);
 }
 
 test('runStep text field carries the same citations as the structured citations field', async () => {
-  await withModelReply(modelReply(), async (baseUrl) => {
+  await withModelReply(MODEL_REPLY, async (baseUrl) => {
     const result = await runStep(STEP, {
       input: webhookInput(sampleCase),
       env: { LITELLM_URL: baseUrl, LITELLM_API_KEY: 'test-key' },
@@ -231,7 +162,7 @@ test('runStep returns a clear ok:false error for a wrong webhook token (never th
 });
 
 test('runStep accepts the request the orchestrator sends (case_text, findings, Authorization bearer)', async () => {
-  await withModelReply(modelReply(), async (baseUrl) => {
+  await withModelReply(MODEL_REPLY, async (baseUrl) => {
   const result = await runStep(STEP, {
     input: {
       body: {
@@ -278,7 +209,7 @@ test('runStep refuses to answer without a language model, with a message for the
 });
 
 test('runStep handles a very short case without crashing', async () => {
-  await withModelReply(modelReply(), async (baseUrl) => {
+  await withModelReply(MODEL_REPLY, async (baseUrl) => {
     const result = await runStep(STEP, {
       input: webhookInput(shortCase),
       env: { LITELLM_URL: baseUrl, LITELLM_API_KEY: 'test-key' },
@@ -287,42 +218,33 @@ test('runStep handles a very short case without crashing', async () => {
     });
 
     assert.equal(result.ok, true);
-    assert.ok(result.structured.disclaimer.length > 0);
     assert.ok(result.answer.includes('Aannames en ontbrekende informatie'));
   });
 });
 
-test('runStep calls the configured LLM endpoint and parses its structured JSON reply', async () => {
-  const mockReply = modelReply();
-
+test('runStep sends the report prompt to the configured LLM endpoint and returns the report', async () => {
+  let systemPrompt = '';
   await withMockLiteLLM(
     (req, res) => {
       let body = '';
       req.on('data', (c) => (body += c));
       req.on('end', () => {
-        const parsedReq = JSON.parse(body);
-        assert.ok(Array.isArray(parsedReq.messages));
+        systemPrompt = JSON.parse(body).messages[0].content;
         res.writeHead(200, { 'content-type': 'application/json' });
-        res.end(
-          JSON.stringify({
-            choices: [{ message: { content: JSON.stringify(mockReply) } }],
-          }),
-        );
+        res.end(JSON.stringify({ choices: [{ message: { content: MODEL_REPLY } }] }));
       });
     },
     async (baseUrl) => {
       const result = await runStep(STEP, {
-        input: webhookInput(sampleCase),
+        input: webhookInput({ ...sampleCase, substep_id: '1.5' }),
         env: { LITELLM_URL: baseUrl, LITELLM_API_KEY: 'test-key' },
         passages,
         fetchImpl: global.fetch,
       });
 
       assert.equal(result.ok, true);
-      assert.equal(result.parse_warning, false);
-      assert.equal(result.structured.case_summary, mockReply.case_summary);
-      assert.equal(result.structured.substeps['1.5']['Publiek belang'].oordeel, 'ja');
-      assert.equal(result.structured.substeps['1.5']['Provinciaal belang'].oordeel, 'beperkt');
+      assert.equal(result.mode, 'report');
+      assert.ok(systemPrompt.includes('### Publiek belang\n**Oordeel:** ja | nee | onduidelijk'), 'the model gets the answer format of the substep');
       assert.match(result.answer, /^### Publiek belang\n\*\*Oordeel:\*\* ja$/m);
       assert.ok(result.citations.length > 0);
     },

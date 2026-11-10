@@ -27,22 +27,17 @@ function readPrompt(relativePath) {
   return fs.readFileSync(path.join(PROMPTS_DIR, relativePath), 'utf-8').trim();
 }
 
-/** A substep's prompt file: the instruction, and at the end, after
- *  "Antwoord in deze vorm:", a ```json block with the example answer. The
- *  example is what the model is asked to return and what the code uses to
- *  check and show the answer, so it has to be valid JSON. */
+/** A substep's prompt file: the instruction, and after "Antwoord in deze
+ *  vorm:" the answer format, the markdown headings the model answers with.
+ *  The answer format goes into the report prompt as it is written. */
 function readSubstepPrompt(relativePath) {
   const text = readPrompt(relativePath);
-  const match = /\n```json\s*\n([\s\S]*?)\n```\s*$/.exec(text);
-  if (!match) throw new Error(`${relativePath} has no \`\`\`json example at the end`);
-  let example;
-  try {
-    example = JSON.parse(match[1]);
-  } catch (err) {
-    throw new Error(`${relativePath}: the example is not valid JSON (${err.message})`);
-  }
-  const instruction = text.slice(0, match.index).replace(/\n*Antwoord in deze vorm:\s*$/, '').trim();
-  return { instruction, example };
+  const match = /\n\s*Antwoord in deze vorm:\s*\n/.exec(text);
+  if (!match) throw new Error(`${relativePath} has no "Antwoord in deze vorm:" before its answer format`);
+  const instruction = text.slice(0, match.index).trim();
+  const format = text.slice(match.index + match[0].length).trim();
+  if (!format) throw new Error(`${relativePath} has no answer format after "Antwoord in deze vorm:"`);
+  return { instruction, format };
 }
 
 const REPORT_PROMPT_TEMPLATE = readPrompt('report-prompt.md');
@@ -190,7 +185,7 @@ function selectSources(passages, queryBlob, ragSettings) {
 // store, it's appended to the message text as a trailing HTML comment:
 // invisible in any markdown renderer, and parsed back out client-side
 // (beleidskompas-api.js in the overlay has a matching parser) for the
-// citation-preview UI. The `answer`/`structured`/`citations` fields
+// citation-preview UI. The `answer` and `citations` fields
 // returned by runStep1 stay clean (used as-is by direct webhook callers
 // and the orchestrator JSON response).
 
@@ -465,41 +460,19 @@ async function buildTitleResponse({ titleSource, env, fetchImpl, httpModule, htt
 //
 // A step definition (see steps/) is data: its id, number and title, the
 // sentence that tells the model its role, and its substeps. A substep has
-// an instruction for the model and an example of the answer, both from its
-// file in prompts/. The example is the contract: its keys are the parts of
-// the answer (and the labels on the page), and the shape of each value says
-// what it is: a string is text, an array is a list, an object with
-// "oordeel" is a verdict, shown on the page as a heading of its own with a
-// badge. From that the functions below make the system prompt, the shape of
-// an empty answer, and the answer text with a heading per substep.
-
-function isVerdict(value) {
-  return Boolean(value) && typeof value === 'object' && !Array.isArray(value) && 'oordeel' in value;
-}
-
-/** The answer format the model is asked for: the fixed fields, and per
- *  substep the example from its prompt file. */
-function answerFormat(step) {
-  return JSON.stringify(
-    {
-      case_summary: 'korte, feitelijke samenvatting van de casus',
-      substeps: Object.fromEntries(step.substeps.map((substep) => [substep.id, substep.example])),
-      reasoning: 'de redenering, stap voor stap',
-      assumptions_missing_info: ['aannames en ontbrekende informatie'],
-    },
-    null,
-    2,
-  );
-}
+// an instruction for the model and an answer format, both from its file in
+// prompts/. The answer format is markdown: a "### " heading per part of the
+// page, and a heading whose first line is "**Oordeel:**" becomes a badge.
 
 /** Fills a prompt template with what a step provides: its role, its
- *  substeps with their instructions, the rules, and the answer format. */
+ *  substeps with their instructions, the rules, and the answer formats of
+ *  the substeps. */
 function fillTemplate(template, step) {
   const values = {
     role: step.role,
     substeps: step.substeps.map((substep) => `Deelstap ${substep.id}: ${substep.title}\n${substep.instruction}`).join('\n\n'),
     rules: COMMON_RULES.map((rule) => '- ' + rule).join('\n'),
-    answer_format: answerFormat(step),
+    substep_format: step.substeps.map((substep) => substep.format).join('\n\n'),
   };
   return template.replace(/\{\{(\w+)\}\}/g, (match, key) => (key in values ? values[key] : match));
 }
@@ -515,83 +488,12 @@ function buildConversationPrompt(step) {
   return fillTemplate(CONVERSATION_PROMPT_TEMPLATE, step);
 }
 
-/** The value of a part of the answer when nothing can be said about it,
- *  in the shape its example has. */
-function emptyValue(example) {
-  if (Array.isArray(example)) return [];
-  if (isVerdict(example)) return { oordeel: 'onduidelijk', toelichting: '' };
-  return '';
-}
-
-/** The answer when the model's reply is not JSON: every part empty, the
- *  raw reply kept as the reasoning. */
-function emptyStructured(step, rawText) {
-  return {
-    case_summary: '',
-    substeps: Object.fromEntries(
-      step.substeps.map((substep) => [
-        substep.id,
-        Object.fromEntries(Object.entries(substep.example).map(([label, example]) => [label, emptyValue(example)])),
-      ]),
-    ),
-    reasoning: rawText || 'Het taalmodel gaf geen bruikbare output terug.',
-    assumptions_missing_info: ['Kon het modelantwoord niet als JSON verwerken; ruwe tekst is opgenomen in het redeneerveld.'],
-  };
-}
-
-/** The parts of the answer the model left out, as notes for the reader. */
-function missingParts(step, structured) {
-  const answers = structured && structured.substeps && typeof structured.substeps === 'object' ? structured.substeps : {};
-  return step.substeps.flatMap((substep) => {
-    const given = answers[substep.id] && typeof answers[substep.id] === 'object' ? answers[substep.id] : {};
-    return Object.keys(substep.example)
-      .filter((label) => !(label in given))
-      .map((label) => `Het taalmodel gaf geen antwoord voor "${label}" (deelstap ${substep.id}).`);
-  });
-}
-
 // The answer text is markdown: a heading per section. It is not only what
 // the Beleidskompas page shows; LibreChat stores it as the chat message, so
 // it has to read well on its own, sources included.
 
-function asList(value) {
-  if (Array.isArray(value)) return value.map((v) => String(v)).filter(Boolean);
-  const text = String(value || '').trim();
-  return text ? [text] : [];
-}
-
-function bullets(items) {
-  return items.length ? items.map((item) => '- ' + item).join('\n') : '- geen';
-}
-
 function section(title, body) {
   return `### ${title}\n${body}`;
-}
-
-/** One part of a substep's answer under the substep heading. `alone`: it is
- *  the substep's only part, so it needs no label. */
-function partText(label, example, value, alone) {
-  if (Array.isArray(example)) return `**${label}:**\n${bullets(asList(value))}`;
-  const text = String(value == null ? '' : value).trim() || 'onbekend';
-  return alone ? text : `**${label}:** ${text}`;
-}
-
-/** The sections of one substep: a verdict gets a heading of its own with an
- *  "**Oordeel:**" line (the page turns that into a badge); the other parts
- *  go together under the substep's heading, in the order of the example. */
-function substepSections(substep, answer) {
-  const given = answer && typeof answer === 'object' ? answer : {};
-  const parts = Object.entries(substep.example);
-  const verdictSections = parts
-    .filter(([, example]) => isVerdict(example))
-    .map(([label]) => {
-      const value = isVerdict(given[label]) ? given[label] : {};
-      const explanation = String(value.toelichting || '').trim();
-      return section(label, `**Oordeel:** ${String(value.oordeel || 'onduidelijk')}` + (explanation ? `\n\n${explanation}` : ''));
-    });
-  const others = parts.filter(([, example]) => !isVerdict(example));
-  if (!others.length) return verdictSections;
-  return [...verdictSections, section(substep.title, others.map(([label, example]) => partText(label, example, given[label], others.length === 1)).join('\n\n'))];
 }
 
 function sourcesText(citations) {
@@ -614,16 +516,15 @@ function askedStep(step, substepId) {
   return substep ? { ...step, substeps: [substep], substep } : null;
 }
 
-function composeAnswerText(step, structured, citations) {
-  const s = structured && typeof structured === 'object' ? structured : {};
-  const answers = s.substeps && typeof s.substeps === 'object' ? s.substeps : {};
+/** The report as the page shows it: the step heading, the model's reply,
+ *  the sources and the disclaimer. A reply wrapped in a code block is
+ *  unwrapped, and an empty reply reads as "onbekend". */
+function composeReport(step, reply, citations) {
+  const text = String(reply || '').trim().replace(/^```(?:markdown|md)?\s*\n([\s\S]*?)\n```$/i, '$1').trim();
   const substep = step.substep ? ` · ${step.substep.id} ${step.substep.title}` : '';
   return [
     `**Stap ${step.nr} · ${step.title}${substep}**`,
-    section('Samenvatting casus', String(s.case_summary || '').trim() || 'onbekend'),
-    ...step.substeps.flatMap((substep) => substepSections(substep, answers[substep.id])),
-    section('Redenering', String(s.reasoning || '').trim() || 'onbekend'),
-    section('Aannames en ontbrekende informatie', bullets(asList(s.assumptions_missing_info))),
+    text || 'onbekend',
     section('Bronnen', sourcesText(Array.isArray(citations) ? citations : [])),
     `---\n${DISCLAIMER}`,
   ].join('\n\n');
@@ -650,22 +551,6 @@ function buildUserPrompt({ caseText, findings, conversation, message, citations 
     .join('\n\n');
 }
 
-/** Reads the model's reply as JSON, also when it is wrapped in a markdown
- *  code block. When that fails, the answer is the step's empty shape with
- *  the raw reply as the reasoning, and parse_warning is set. */
-function parseAgentJson(rawText, step) {
-  const text = String(rawText || '').trim();
-  const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/i);
-  const candidate = fenced ? fenced[1].trim() : text;
-  try {
-    const parsed = JSON.parse(candidate);
-    if (parsed && typeof parsed === 'object') return { structured: parsed, parse_warning: false };
-  } catch (_) {
-    // fall through
-  }
-  return { structured: emptyStructured(step, text), parse_warning: true };
-}
-
 /** What the Code node of every step workflow runs.
  *
  *  `step` is the step's definition (see steps/): its id, number, title,
@@ -675,8 +560,7 @@ function parseAgentJson(rawText, step) {
  *  the settings from `$env`, `ctx.passages` the source passages to search,
  *  and the rest the means to send HTTP. In order: check the token, read the
  *  fields, find the relevant passages, ask the model, and then either
- *  return its answer to the message as it is, or compose the report
- *  from its JSON. */
+ *  return its answer to the message as it is, or compose the report. */
 async function runStep(step, ctx) {
   const { input, env, passages, fetchImpl, httpModule, httpsModule, urlModule } = ctx;
   const raw = input || {};
@@ -758,12 +642,7 @@ async function runStep(step, ctx) {
     };
   }
 
-  const parsed = parseAgentJson(rawAnswer, asked);
-  const structured = parsed.structured;
-  const missing = missingParts(asked, structured);
-  if (missing.length) structured.assumptions_missing_info = [...asList(structured.assumptions_missing_info), ...missing];
-  structured.disclaimer = DISCLAIMER;
-  const answer = composeAnswerText(asked, structured, citations);
+  const answer = composeReport(asked, rawAnswer, citations);
 
   return {
     ok: true,
@@ -771,13 +650,11 @@ async function runStep(step, ctx) {
     substep_id: substepId || null,
     asked_from: askedFrom,
     mode: 'report',
-    parse_warning: parsed.parse_warning,
     answer,
     // What the chat pipeline delivers: the bridge reads `text`, not
     // `answer`, so the citations and the retrieval trace travel along in the
     // invisible block appended here (see appendCitationsMetaBlock).
     text: appendCitationsMetaBlock(answer, citations, retrieval_trace, { agent: step.id, asked_from: askedFrom }),
-    structured,
     citations,
     retrieval_trace,
   };
@@ -808,23 +685,13 @@ module.exports = {
   CONVERSATION_PROMPT_TEMPLATE,
   ORCHESTRATOR_PROMPT_TEMPLATE,
   COMMON_RULES,
-  isVerdict,
-  answerFormat,
   fillTemplate,
   buildReportPrompt,
   buildConversationPrompt,
-  emptyValue,
-  emptyStructured,
-  missingParts,
-  asList,
-  bullets,
   section,
-  partText,
-  substepSections,
   sourcesText,
   askedStep,
-  composeAnswerText,
+  composeReport,
   buildUserPrompt,
-  parseAgentJson,
   runStep,
 };

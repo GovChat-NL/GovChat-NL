@@ -84,9 +84,9 @@ function createStoreClient({ env, fetchImpl, httpModule, httpsModule, urlModule 
     enabled,
     setCaseText: ({ caseId, userId, text }) => send('PUT', `${casePath(caseId)}/text`, { body: { user_id: userId, text } }),
     setTitle: ({ caseId, userId, title }) => send('PUT', `${casePath(caseId)}/title`, { body: { user_id: userId, title } }),
-    addReport: ({ caseId, userId, substepId, content, text, citations, retrievalTrace }) =>
+    addReport: ({ caseId, userId, substepId, text, citations, retrievalTrace }) =>
       send('POST', `${casePath(caseId)}/reports`, {
-        body: { user_id: userId, substep_id: substepId, content, text, citations, retrieval_trace: retrievalTrace },
+        body: { user_id: userId, substep_id: substepId, text, citations, retrieval_trace: retrievalTrace },
       }),
     addTurn: ({ caseId, userId, role, stepId, askedFrom, text }) =>
       send('POST', `${casePath(caseId)}/turns`, { body: { user_id: userId, role, step_id: stepId, asked_from: askedFrom, text } }),

@@ -53,9 +53,9 @@ test("the writes take the user and the fields from the body", async () => {
   assert.deepEqual(await handlers.setText(withToken({ params: { id: "conv-1" }, body: { user_id: "user-a", text: "De casus." } })), { status: 200, body: { version: 1, unchanged: false } });
   assert.deepEqual(store.calls[0].args, { caseId: "conv-1", userId: "user-a", text: "De casus." });
 
-  const report = await handlers.addReport(withToken({ params: { id: "conv-1" }, body: { user_id: "user-a", substep_id: "1.1", content: { a: 1 }, text: "Rapport", citations: [{ id: "d" }], retrieval_trace: { x: 1 } } }));
+  const report = await handlers.addReport(withToken({ params: { id: "conv-1" }, body: { user_id: "user-a", substep_id: "1.1", text: "Rapport", citations: [{ id: "d" }], retrieval_trace: { x: 1 } } }));
   assert.deepEqual(report, { status: 200, body: { version: 2 } });
-  assert.deepEqual(store.calls[1].args, { caseId: "conv-1", userId: "user-a", substepId: "1.1", content: { a: 1 }, text: "Rapport", citations: [{ id: "d" }], retrievalTrace: { x: 1 } });
+  assert.deepEqual(store.calls[1].args, { caseId: "conv-1", userId: "user-a", substepId: "1.1", text: "Rapport", citations: [{ id: "d" }], retrievalTrace: { x: 1 } });
 
   const turn = await handlers.addTurn(withToken({ params: { id: "conv-1" }, body: { user_id: "user-a", role: "assistant", step_id: "stap3", asked_from: "1.1", text: "Antwoord" } }));
   assert.deepEqual(turn, { status: 200, body: { seq: 3 } });

@@ -21,12 +21,11 @@ CREATE TABLE case_texts (
   PRIMARY KEY (case_id, version)
 );
 
--- content is the structured answer of the model, text the rendered report.
+-- text is the report as the page shows it.
 CREATE TABLE reports (
   case_id TEXT NOT NULL REFERENCES cases(id) ON DELETE CASCADE,
   substep_id TEXT NOT NULL,
   version INTEGER NOT NULL,
-  content JSONB NOT NULL,
   text TEXT NOT NULL,
   citations JSONB NOT NULL DEFAULT '[]'::jsonb,
   retrieval_trace JSONB,

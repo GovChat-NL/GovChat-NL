@@ -111,7 +111,6 @@ function createBeleidskompasHandlers({ store, internalToken, resolveUser }) {
           caseId: p(req).id,
           userId: userOf(req),
           substepId: b(req).substep_id,
-          content: b(req).content,
           text: b(req).text,
           citations: b(req).citations,
           retrievalTrace: b(req).retrieval_trace,

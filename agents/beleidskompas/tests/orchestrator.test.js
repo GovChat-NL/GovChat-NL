@@ -58,7 +58,7 @@ function withServer(modelReply, fn) {
           res.end(JSON.stringify({ version: 1, seq: 1 }));
         } else if (req.url.endsWith('/beleidskompas-step-stap1') && !(body && JSON.parse(body).message)) {
           // A report from step 1, in the shape runStep returns.
-          res.end(JSON.stringify({ ok: true, mode: 'report', step_id: 'stap1', substep_id: '1.3', structured: { substeps: { '1.3': { a: 1 } } }, citations: [{ id: 'doc-1' }], retrieval_trace: { algorithm: 'needle' }, text: 'Rapport 1.3', answer: 'Rapport 1.3' }));
+          res.end(JSON.stringify({ ok: true, mode: 'report', step_id: 'stap1', substep_id: '1.3', citations: [{ id: 'doc-1' }], retrieval_trace: { algorithm: 'needle' }, text: 'Rapport 1.3', answer: 'Rapport 1.3' }));
         } else {
           const stepId = (/beleidskompas-step-(stap\d)/.exec(req.url) || [])[1] || null;
           res.end(JSON.stringify({ ok: true, mode: 'conversation', step_id: stepId, text: `antwoord van ${req.url}`, answer: `antwoord van ${req.url}` }));
@@ -215,7 +215,7 @@ test('a report request writes the case text and the report to the store', async 
     const text = requests.find((r) => r.url === '/api/beleidskompas/cases/conv-1/text');
     assert.deepEqual(text.body, { user_id: 'user-a', text: 'Laadpalen.' });
     const report = requests.find((r) => r.url === '/api/beleidskompas/cases/conv-1/reports');
-    assert.deepEqual(report.body, { user_id: 'user-a', substep_id: '1.3', content: { substeps: { '1.3': { a: 1 } } }, text: 'Rapport 1.3', citations: [{ id: 'doc-1' }], retrieval_trace: { algorithm: 'needle' } });
+    assert.deepEqual(report.body, { user_id: 'user-a', substep_id: '1.3', text: 'Rapport 1.3', citations: [{ id: 'doc-1' }], retrieval_trace: { algorithm: 'needle' } });
     // The case text is written before the step is asked, the report after.
     const order = requests.map((r) => r.url);
     assert.ok(order.indexOf('/api/beleidskompas/cases/conv-1/text') < order.indexOf('/webhook/beleidskompas-step-stap1'));
