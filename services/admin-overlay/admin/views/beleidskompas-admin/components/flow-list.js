@@ -10,7 +10,8 @@ export function flowList({ steps, expandedId, onToggle, renderEditor, onMove, on
       return h(
         "li",
         { class: `flow-step${open ? " is-open" : ""}` },
-        h("span", { class: "flow-num", "aria-hidden": "true" }, String(idx + 1)),
+        // Mouse shortcut for the title button, which stays the one keyboard/screen-reader toggle.
+        h("span", { class: "flow-num", "aria-hidden": "true", onClick: () => onToggle(open ? null : step.id) }, String(idx + 1)),
         h(
           "div",
           { class: "flow-card" },
