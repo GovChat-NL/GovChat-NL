@@ -6,10 +6,10 @@ const http = require("http");
 const path = require("path");
 const sharp = require("sharp");
 const { WebSocket, WebSocketServer } = require("ws");
-const { createDb } = require("./beleidskompas/db");
-const { createStore } = require("./beleidskompas/store");
-const { createService } = require("./beleidskompas/service");
-const { createBeleidskompasRouter } = require("./beleidskompas/routes");
+const { createDb } = require("./beleidskompas/db/db");
+const { createStore } = require("./beleidskompas/db/store");
+const { createService } = require("./beleidskompas/api/service");
+const { createBeleidskompasRouter } = require("./beleidskompas/api/routes");
 
 const app = express();
 const PORT = process.env.PORT || 3002;
@@ -77,7 +77,7 @@ const BELEIDSKOMPAS_FEEDBACK_MAX = 500;
 const BELEIDSKOMPAS_WORKFLOWS_DIR_NAME = "beleidskompas-workflows";
 const BELEIDSKOMPAS_HOOFDAGENT_WEBHOOK_PATH_DEFAULT = "beleidskompas-hoofdagent";
 const BELEIDSKOMPAS_N8N_BASE_URL = String(process.env.BELEIDSKOMPAS_N8N_BASE_URL || "http://n8n:5678").replace(/\/$/, "");
-// Demo/dev: when the database has no templates, load beleidskompas/seed.sql instead of the bare default template.
+// Demo/dev: when the database has no templates, load beleidskompas/db/seed.sql instead of the bare default template.
 const BELEIDSKOMPAS_DEV_SEED = String(process.env.BELEIDSKOMPAS_DEV_SEED || "false").toLowerCase() === "true";
 const BELEIDSKOMPAS_N8N_WEBHOOK_TOKEN = String(process.env.BELEIDSKOMPAS_N8N_WEBHOOK_TOKEN || process.env.N8N_WEBHOOK_TOKEN || "").trim();
 const DEFAULT_BELEIDSKOMPAS_SETTINGS = {
@@ -1024,7 +1024,7 @@ async function startBeleidskompas() {
       fs.renameSync(statePath, `${statePath}.migrated`);
       console.log(`[init] ${BELEIDSKOMPAS_STATE_FILE} geïmporteerd in de database en hernoemd naar .migrated`);
     } else if (BELEIDSKOMPAS_DEV_SEED) {
-      await db.query(fs.readFileSync(path.join(__dirname, "beleidskompas", "seed.sql"), "utf8"));
+      await db.query(fs.readFileSync(path.join(__dirname, "beleidskompas", "db", "seed.sql"), "utf8"));
       await store.saveSettings(DEFAULT_BELEIDSKOMPAS_SETTINGS);
       console.log("[init] BELEIDSKOMPAS_DEV_SEED: voorbeelddata uit seed.sql geladen");
     } else {

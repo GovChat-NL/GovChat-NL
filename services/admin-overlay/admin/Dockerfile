@@ -6,7 +6,7 @@ COPY package.json ./
 RUN npm install --omit=dev
 
 COPY server.js ./
-COPY beleidskompas/*.js beleidskompas/schema.sql beleidskompas/seed.sql ./beleidskompas/
+COPY beleidskompas/ ./beleidskompas/
 COPY views/ ./views/
 COPY defaults/ ./defaults/
 
