@@ -1,4 +1,4 @@
-// Flow builder: the template's steps, each with its texts, system prompt, search settings and documents.
+// Flow builder: the template's steps, each with its texts, instructions, search settings and documents; plus the rules for all steps.
 import * as api from "../api.js";
 import { h, icon, card, field, bound, reveal } from "../dom.js";
 import { flowList } from "../components/flow-list.js";
@@ -41,7 +41,7 @@ export function renderFlow({ store, render, markDirty }) {
     { class: "notice notice-info" },
     icon("info", 14),
     "Titels, beschrijvingen en substappen verschijnen op de Beleidskompas-pagina zodra de versie live staat (Deploy). " +
-      "Prompts, zoekinstellingen en de documenten per stap worden opgeslagen in het template, maar de assistent leest ze nog niet.",
+      "Instructies, algemene regels, zoekinstellingen en de documenten per stap worden opgeslagen in het template, maar de assistent leest ze nog niet.",
   );
 
   const list = flowList({
@@ -67,7 +67,13 @@ export function renderFlow({ store, render, markDirty }) {
     renderEditor: (step) => stepEditor(step, { store, markDirty, render }),
   });
 
-  return { content: h("div", { class: "stack" }, notice, list) };
+  // One list for the whole flow, like rules.md on the agent side ({{rules}} in every step's prompt).
+  const rules = card(
+    "Algemene regels",
+    field("Regels voor alle stappen", bound(store.flow, "rules", { multiline: true, rows: 6, onInput: markDirty }), "Eén regel per regel. Gelden voor elke stap."),
+  );
+
+  return { content: h("div", { class: "stack" }, notice, rules, list) };
 }
 
 function stepEditor(step, { store, markDirty, render }) {
@@ -78,7 +84,7 @@ function stepEditor(step, { store, markDirty, render }) {
     "div",
     { class: "stack-sm" },
     field("Titel", bound(step, "title", { onInput: markDirty })),
-    field("Systeemprompt", bound(step, "prompt", { multiline: true, rows: 6, onInput: markDirty }), "Instructie voor de assistent in deze stap."),
+    field("Instructies", bound(step, "prompt", { multiline: true, rows: 6, onInput: markDirty }), "Instructie voor de assistent in deze stap."),
   );
 
   const search = h(

@@ -676,6 +676,7 @@ function normalizeBeleidskompasFlow(input) {
     webhook_token: String(src.webhook_token || fallback.webhook_token || "").trim(),
     disclaimer: String(src.disclaimer || fallback.disclaimer).trim() || fallback.disclaimer,
     specialist_team: String(src.specialist_team ?? fallback.specialist_team).trim(),
+    rules: String(src.rules ?? "").trim(),
     sources: normalizeTags(src.sources || fallback.sources),
     steps,
   };
