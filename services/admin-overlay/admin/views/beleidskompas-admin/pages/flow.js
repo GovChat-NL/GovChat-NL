@@ -131,7 +131,7 @@ function stepEditor(step, { store, markDirty, render }) {
           { class: "stack-sm" },
           field("Titel", bound(sub, "title", { onInput: markDirty })),
           field("Instructies", bound(sub, "prompt", { multiline: true, rows: 3, onInput: markDirty })),
-          field("Antwoord format", bound(sub, "answer_format", { multiline: true, rows: 3, onInput: markDirty })),
+          field("Vereiste antwoordstructuur", bound(sub, "answer_format", { multiline: true, rows: 3, onInput: markDirty })),
         ),
         h("button", { class: "icon-btn is-danger", "aria-label": "Substap verwijderen", onClick: () => { step.substeps.splice(i, 1); markDirty(); render(); } }, icon("trash", 18)),
       ),
