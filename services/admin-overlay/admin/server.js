@@ -448,80 +448,6 @@ function normalizeBeleidskompasDocuments(input) {
   }));
 }
 
-function tokenizePolicyText(value) {
-  return String(value || "")
-    .toLowerCase()
-    .normalize("NFKD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .replace(/[^a-z0-9\s]/g, " ")
-    .split(/\s+/)
-    .map((w) => w.trim())
-    .filter((w) => w.length > 2);
-}
-
-function selectBeleidskompasRagDocs({ step, question = "", caseText = "", stepFields = {}, documents = [] }) {
-  const rag = normalizeStepRagSettings(step?.rag || {}, step || {});
-  const requiredTags = normalizeTags(rag.required_tags || []).map((t) => t.toLowerCase());
-  const modeAll = String(rag.tag_filter_mode || "any").toLowerCase() === "all";
-
-  const qBlob = [
-    question,
-    caseText,
-    stepFields?.problem,
-    stepFields?.causes,
-    stepFields?.symptoms,
-    stepFields?.perspectives,
-    stepFields?.references,
-  ]
-    .filter(Boolean)
-    .join(" ");
-  const queryWords = [...new Set(tokenizePolicyText(qBlob))];
-
-  const scored = normalizeBeleidskompasDocuments(documents)
-    .map((doc) => {
-      const tags = normalizeTags(doc.tags || []).map((t) => t.toLowerCase());
-      if (requiredTags.length) {
-        const tagMatch = modeAll ? requiredTags.every((t) => tags.includes(t)) : requiredTags.some((t) => tags.includes(t));
-        if (!tagMatch) return null;
-      }
-
-      const text = String(doc.preview_text || "").trim();
-      if (!text) return null;
-      const words = tokenizePolicyText(text);
-      if (!words.length) return null;
-
-      const wordSet = new Set(words);
-      const overlap = queryWords.filter((w) => wordSet.has(w)).length;
-      const overlapRatio = queryWords.length ? overlap / queryWords.length : 0;
-      const density = overlap / Math.max(24, words.length);
-      const lowerText = text.toLowerCase();
-      const needleHits = queryWords.reduce((acc, w) => (lowerText.includes(w) ? acc + 1 : acc), 0);
-      const needleScore = queryWords.length ? needleHits / queryWords.length : 0;
-      const haystackScore = overlapRatio * 0.7 + density * 0.3;
-
-      let score = needleScore * 0.55 + haystackScore * 0.45;
-      if (rag.algorithm === "needle") score = needleScore;
-      if (rag.algorithm === "haystack") score = haystackScore;
-
-      return {
-        id: doc.id,
-        filename: doc.filename,
-        tags: normalizeTags(doc.tags || []),
-        score,
-        preview: text.slice(0, 420),
-      };
-    })
-    .filter(Boolean)
-    .filter((d) => d.score >= Number(rag.min_score || 0))
-    .sort((a, b) => b.score - a.score)
-    .slice(0, Math.max(1, Number(rag.top_k || 3)));
-
-  return {
-    rag,
-    docs: scored,
-  };
-}
-
 function defaultBeleidskompasFlow() {
   return {
     title: "Beleidskompas",
@@ -558,16 +484,18 @@ function defaultBeleidskompasFlow() {
           required_tags: ["Beleid", "Governance"],
         },
         substeps: [
-          { id: "1.1", title: "Casus context", description: "Afbakening van de opgave en context." },
-          { id: "1.2", title: "Toetsing publiek", description: "Is er aantoonbaar publiek belang?" },
-          { id: "1.3", title: "Toetsing provinciaal", description: "Valt dit onder provinciaal belang/mandaat?" },
+          { id: "1.1", title: "Probleemdefinitie", description: "Probleem, oorzaken en symptomen." },
+          { id: "1.2", title: "Overheidsinterventie", description: "Is overheidsingrijpen gerechtvaardigd?" },
+          { id: "1.3", title: "Stakeholderanalyse", description: "Belanghebbenden, belangen en invloed." },
+          { id: "1.4", title: "Provinciaal doel", description: "Aansluiting op provinciale beleidsdoelen." },
+          { id: "1.5", title: "Integrale afweging", description: "Oordeel over publiek en provinciaal belang." },
         ],
       },
       {
         id: "stap2",
         workflow_id: "govchat-beleidskompas-step-stap2",
         webhook_path: "beleidskompas-step-stap2",
-        title: "Rolbepaling",
+        title: "Rolbepaling provincie",
         description:
           "Kies passende provinciale rol(len): regulerend, regisserend, stimulerend of faciliterend.",
         prompt:
@@ -581,8 +509,7 @@ function defaultBeleidskompasFlow() {
           required_tags: ["Governance"],
         },
         substeps: [
-          { id: "2.1", title: "Rolopties", description: "Verken geschikte rollen." },
-          { id: "2.2", title: "Afweging", description: "Weeg effectiviteit, risico en legitimiteit." },
+          { id: "2.1", title: "Rolbepaling", description: "Welke rol past de provincie, en waarom?" },
         ],
       },
       {
@@ -603,9 +530,10 @@ function defaultBeleidskompasFlow() {
           required_tags: ["Beleid", "Compliance"],
         },
         substeps: [
-          { id: "3.1", title: "Selectie", description: "Kies realistische instrumenten." },
-          { id: "3.2", title: "Weging", description: "Onderbouw score en risico per optie." },
-          { id: "3.3", title: "Voorkeur", description: "Motiveer voorkeursinstrument en alternatieven." },
+          { id: "3.1", title: "Sturingsbepaling", description: "Mate van sturing bij de gekozen rol." },
+          { id: "3.2", title: "Instrumentarium", description: "Instrumenten bij rol, sturing en probleem." },
+          { id: "3.3", title: "Afwegingskader", description: "Meest geschikte samenwerkingsvorm." },
+          { id: "3.4", title: "Gevolgenanalyse", description: "Gevolgen per instrument en de nuloptie." },
         ],
       },
       {
@@ -626,14 +554,23 @@ function defaultBeleidskompasFlow() {
           required_tags: ["Governance", "Compliance"],
         },
         substeps: [
-          { id: "4.1", title: "Sturing", description: "Eigenaarschap, mandaat en besluitvorming." },
-          { id: "4.2", title: "Toezicht", description: "Toetsing, escalatie en verantwoording." },
-          { id: "4.3", title: "KPI’s", description: "Monitorings- en rapportageafspraken." },
+          { id: "4.1", title: "Good governance-principes", description: "Sturing, toezicht, beheersing en verantwoording." },
+          { id: "4.2", title: "Organisatorische governance", description: "Organisatorische inrichting van goed bestuur." },
+          { id: "4.3", title: "Governance-richtlijnen", description: "Concrete richtlijnen per component." },
         ],
       },
     ],
   };
 }
+
+// The default substeps from before they followed steps.json. A saved step that still has exactly
+// these gets the current default substeps; any other substeps stay as the admin saved them.
+const OLD_DEFAULT_SUBSTEPS = {
+  stap1: "1.1 Casus context|1.2 Toetsing publiek|1.3 Toetsing provinciaal",
+  stap2: "2.1 Rolopties|2.2 Afweging",
+  stap3: "3.1 Selectie|3.2 Weging|3.3 Voorkeur",
+  stap4: "4.1 Sturing|4.2 Toezicht|4.3 KPI’s",
+};
 
 function normalizeBeleidskompasFlow(input) {
   const fallback = defaultBeleidskompasFlow();
@@ -642,21 +579,30 @@ function normalizeBeleidskompasFlow(input) {
 
   const steps = stepsRaw.map((step, idx) => {
     const fb = fallback.steps[Math.min(idx, fallback.steps.length - 1)] || fallback.steps[0];
-    const substepsRaw = Array.isArray(step?.substeps) ? step.substeps : fb.substeps;
+    let substepsRaw = Array.isArray(step?.substeps) ? step.substeps : fb.substeps;
+    const oldDefault = OLD_DEFAULT_SUBSTEPS[step?.id];
+    if (oldDefault && oldDefault === substepsRaw.map((s) => `${s?.id} ${s?.title}`).join("|")) {
+      substepsRaw = fallback.steps.find((s) => s.id === step.id).substeps;
+    }
     const workflowMeta = buildStepWorkflowMeta(step, idx);
     return {
       id: String(step?.id || fb.id || `stap${idx + 1}`).trim() || `stap${idx + 1}`,
       workflow_id: workflowMeta.workflow_id,
       webhook_path: workflowMeta.webhook_path,
       title: String(step?.title || fb.title || `Stap ${idx + 1}`).trim() || `Stap ${idx + 1}`,
-      description: String(step?.description || fb.description || "").trim(),
-      prompt: String(step?.prompt || fb.prompt || "").trim(),
+      // An empty string is the admin's choice; defaults only fill fields that are missing.
+      description: String(step?.description ?? fb.description ?? "").trim(),
+      prompt: String(step?.prompt ?? fb.prompt ?? "").trim(),
       doc_tags: normalizeTags(step?.doc_tags || fb.doc_tags),
+      // Documents picked in the Flow builder; nothing reads them yet. Missing = not picked yet.
+      document_ids: Array.isArray(step?.document_ids) ? [...new Set(step.document_ids.map(String))] : undefined,
       rag: normalizeStepRagSettings(step?.rag || fb.rag || {}, step || fb),
       substeps: substepsRaw.map((sub, subIdx) => ({
         id: String(sub?.id || `${idx + 1}.${subIdx + 1}`).trim() || `${idx + 1}.${subIdx + 1}`,
         title: String(sub?.title || `Substap ${subIdx + 1}`).trim() || `Substap ${subIdx + 1}`,
         description: String(sub?.description || "").trim(),
+        prompt: String(sub?.prompt || "").trim(),
+        answer_format: String(sub?.answer_format || "").trim(),
       })),
     };
   });
@@ -672,6 +618,7 @@ function normalizeBeleidskompasFlow(input) {
     webhook_token: String(src.webhook_token || fallback.webhook_token || "").trim(),
     disclaimer: String(src.disclaimer || fallback.disclaimer).trim() || fallback.disclaimer,
     specialist_team: String(src.specialist_team || fallback.specialist_team).trim() || fallback.specialist_team,
+    rules: String(src.rules ?? "").trim(),
     sources: normalizeTags(src.sources || fallback.sources),
     steps,
   };
@@ -755,11 +702,15 @@ function writeBeleidskompasState(state) {
   return normalized;
 }
 
+// beleidskompas-config.json is public (nginx serves it without auth), so it holds only what the
+// Beleidskompas page reads (buildConfig in overlay/src/apps/beleidskompas/config.js) plus the step titles.
+function publicBeleidskompasConfig(flow) {
+  const { title, disclaimer, specialist_team, steps } = normalizeBeleidskompasFlow(flow);
+  return { title, disclaimer, specialist_team, steps: steps.map(({ id, title, description }) => ({ id, title, description })) };
+}
+
 function publishBeleidskompasLiveConfig(flow) {
-  const normalized = normalizeBeleidskompasFlow(flow);
-  // beleidskompas-config.json is public, so drop the step prompts: they are for the assistant only.
-  for (const step of normalized.steps) delete step.prompt;
-  writeJSON(BELEIDSKOMPAS_LIVE_FILE, normalized);
+  writeJSON(BELEIDSKOMPAS_LIVE_FILE, publicBeleidskompasConfig(flow));
 }
 
 function ensureBeleidskompasWorkflowsDir() {
@@ -2668,11 +2619,15 @@ app.get("/apps-editor", requireAuth, (req, res) => {
   });
 });
 
+// Beleidskompas admin UI: a shell page plus its ES modules and CSS.
 app.get("/beleidskompas-editor", requireAuth, (req, res) => {
-  sendView(res, "beleidskompas-editor.html", {
-    jsonData: JSON.stringify(readBeleidskompasState()),
-  });
+  sendView(res, "beleidskompas-admin.html");
 });
+app.use(
+  "/beleidskompas-admin/assets",
+  requireAuth,
+  express.static(path.join(__dirname, "views", "beleidskompas-admin"), { maxAge: 0 }),
+);
 
 // ── Admin API endpoints (auth required) ────────────────────────────
 app.post("/api/config/help-content", requireAuth, (req, res) => {
@@ -2763,19 +2718,6 @@ app.post("/api/beleidskompas/import", requireAuth, (req, res) => {
   }
 });
 
-app.post("/api/beleidskompas/draft", requireAuth, (req, res) => {
-  try {
-    const state = readBeleidskompasState();
-    const flow = normalizeBeleidskompasFlow(req.body?.flow || req.body || state.draft);
-    state.draft = flow;
-    const saved = writeBeleidskompasState(state);
-    const workflow_manifest = syncBeleidskompasWorkflowFiles(saved);
-    return res.json({ ok: true, draft: saved.draft, workflow_manifest });
-  } catch (err) {
-    return res.status(400).json({ error: String(err?.message || err) });
-  }
-});
-
 app.post("/api/beleidskompas/settings", requireAuth, (req, res) => {
   try {
     const state = readBeleidskompasState();
@@ -2809,26 +2751,30 @@ app.post("/api/beleidskompas/publish", requireAuth, (req, res) => {
     const state = readBeleidskompasState();
     const flow = normalizeBeleidskompasFlow(req.body?.flow || state.draft || state.live);
     const note = String(req.body?.note || "").trim();
+    // live: false saves a new version without deploying it (deploy goes through /rollback/:versionId).
+    const goLive = req.body?.live !== false;
     const versionId = `v${Date.now()}`;
     const who = "System Administrator";
     const publishedAt = new Date().toISOString();
 
-    for (const v of state.versions) v.is_live = false;
+    if (goLive) for (const v of state.versions) v.is_live = false;
     const version = {
       id: versionId,
       published_at: publishedAt,
       published_by: who,
       note,
-      is_live: true,
+      is_live: goLive,
       snapshot: cloneJSON(flow),
     };
     state.versions.unshift(version);
-    state.live_version_id = versionId;
-    state.live = cloneJSON(flow);
     state.draft = cloneJSON(flow);
+    if (goLive) {
+      state.live_version_id = versionId;
+      state.live = cloneJSON(flow);
+    }
 
     const saved = writeBeleidskompasState(state);
-    publishBeleidskompasLiveConfig(saved.live);
+    if (goLive) publishBeleidskompasLiveConfig(saved.live);
     const workflow_manifest = syncBeleidskompasWorkflowFiles(saved);
     return res.json({ ok: true, version, live: saved.live, workflow_manifest });
   } catch (err) {
@@ -2853,43 +2799,6 @@ app.post("/api/beleidskompas/rollback/:versionId", requireAuth, (req, res) => {
   publishBeleidskompasLiveConfig(saved.live);
   const workflow_manifest = syncBeleidskompasWorkflowFiles(saved);
   return res.json({ ok: true, live: saved.live, version_id: versionId, workflow_manifest });
-});
-
-app.get("/api/beleidskompas/workflows/status", requireAuth, (req, res) => {
-  const state = readBeleidskompasState();
-  const source = String(req.query?.source || "draft").trim().toLowerCase();
-  const flow =
-    source === "live"
-      ? normalizeBeleidskompasFlow(state.live || state.draft || defaultBeleidskompasFlow())
-      : normalizeBeleidskompasFlow(state.draft || state.live || defaultBeleidskompasFlow());
-  const manifest = readBeleidskompasWorkflowManifest();
-  const expectedStepCount = Array.isArray(flow.steps) ? flow.steps.length : 0;
-  const mappedStepCount = Array.isArray(manifest?.steps) ? manifest.steps.length : 0;
-  const stepMismatch = expectedStepCount !== mappedStepCount;
-
-  return res.json({
-    ok: true,
-    n8n_base_url: BELEIDSKOMPAS_N8N_BASE_URL,
-    token_configured: Boolean(BELEIDSKOMPAS_N8N_WEBHOOK_TOKEN),
-    step_count_expected: expectedStepCount,
-    step_count_mapped: mappedStepCount,
-    step_mismatch: stepMismatch,
-    manifest: manifest || null,
-  });
-});
-
-app.post("/api/beleidskompas/workflows/sync", requireAuth, (req, res) => {
-  try {
-    const state = readBeleidskompasState();
-    const useLive = String(req.body?.source || "").trim().toLowerCase() === "live";
-    const flow = useLive
-      ? normalizeBeleidskompasFlow(state.live || defaultBeleidskompasFlow())
-      : normalizeBeleidskompasFlow(state.draft || state.live || defaultBeleidskompasFlow());
-    const manifest = syncBeleidskompasWorkflowFiles({ ...state, draft: flow });
-    return res.json({ ok: true, source: useLive ? "live" : "draft", manifest });
-  } catch (err) {
-    return res.status(500).json({ error: String(err?.message || err) });
-  }
 });
 
 app.get("/api/beleidskompas/documents", requireAuth, (req, res) => {
@@ -2953,16 +2862,6 @@ app.patch("/api/beleidskompas/documents/:docId", requireAuth, (req, res) => {
   return res.json({ ok: true, document: { ...current, content_base64: undefined }, workflow_manifest });
 });
 
-app.get("/api/beleidskompas/documents/:docId/preview", requireAuth, (req, res) => {
-  const docId = String(req.params.docId || "").trim();
-  if (!docId) return res.status(400).json({ error: "docId ontbreekt" });
-
-  const state = readBeleidskompasState();
-  const doc = state.documents.find((d) => String(d.id || "") === docId);
-  if (!doc) return res.status(404).json({ error: "Document niet gevonden" });
-  return res.json({ ok: true, preview_text: String(doc.preview_text || "") });
-});
-
 app.get("/api/beleidskompas/documents/:docId/download", requireAuth, (req, res) => {
   const docId = String(req.params.docId || "").trim();
   if (!docId) return res.status(400).json({ error: "docId ontbreekt" });
@@ -2991,49 +2890,6 @@ app.delete("/api/beleidskompas/documents/:docId", requireAuth, (req, res) => {
   const saved = writeBeleidskompasState(state);
   const workflow_manifest = syncBeleidskompasWorkflowFiles(saved);
   return res.json({ ok: true, removed: docId, workflow_manifest });
-});
-
-app.post("/api/beleidskompas/rag/query", requireAuth, (req, res) => {
-  try {
-    const state = readBeleidskompasState();
-    const flow = normalizeBeleidskompasFlow(state.draft || state.live || defaultBeleidskompasFlow());
-    const stepId = String(req.body?.step_id || "").trim();
-    let step = Array.isArray(flow.steps) ? flow.steps.find((s) => String(s?.id || "") === stepId) : null;
-    if (!step) step = Array.isArray(flow.steps) ? flow.steps[0] : null;
-    if (!step) return res.status(400).json({ error: "Geen stappen geconfigureerd" });
-
-    const result = selectBeleidskompasRagDocs({
-      step,
-      question: String(req.body?.question || ""),
-      caseText: String(req.body?.case_text || ""),
-      stepFields: req.body?.step_fields && typeof req.body.step_fields === "object" ? req.body.step_fields : {},
-      documents: state.documents || [],
-    });
-
-    return res.json({
-      ok: true,
-      step_id: String(step.id || stepId),
-      rag: result.rag,
-      citations: result.docs.map((d, i) => ({
-        rank: i + 1,
-        id: d.id,
-        filename: d.filename,
-        score: Number(d.score.toFixed(4)),
-        tags: d.tags,
-        preview: d.preview,
-      })),
-      trace: {
-        algorithm: result.rag.algorithm,
-        top_k: result.rag.top_k,
-        min_score: result.rag.min_score,
-        tag_filter_mode: result.rag.tag_filter_mode,
-        required_tags: result.rag.required_tags,
-        matched_docs: result.docs.length,
-      },
-    });
-  } catch (err) {
-    return res.status(400).json({ error: String(err?.message || err) });
-  }
 });
 
 app.get("/api/transcript-sessions", requireLibreChatUser, (req, res) => {
