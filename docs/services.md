@@ -18,7 +18,6 @@ De hoofdconfiguratie staat in [`docker-compose.yml`](../docker-compose.yml). Zon
 | `n8n-postgres` | Slaat n8n-gegevens en -instellingen op. |
 | `mongodb` | Slaat de gegevens van LibreChat op. |
 | `redis` | Levert sessie- en cacheopslag voor LibreChat. |
-| `beleidskompas-postgres` | Slaat de casussen van Beleidskompas op: de casustekst, de uitwerkingen en het gesprek. Alleen de beheeromgeving praat ermee. |
 | `meilisearch` | Ondersteunt het zoeken binnen LibreChat. |
 | `qdrant` | Interne vectoropslag voor de daarvoor ingerichte workflows. De container heeft geen gepubliceerde hostpoort. |
 | `govchat-retention` | Ruimt gegevens op volgens het ingestelde bewaarbeleid; zie [`retention-policy.md`](retention-policy.md). |
@@ -32,7 +31,7 @@ De hoofdconfiguratie staat in [`docker-compose.yml`](../docker-compose.yml). Zon
 | --- | --- | --- |
 | `rag` | `pgvector`, `rag-api` | Optionele documentzoekfunctie. |
 | `admin` | `pgvector`, `pgadmin` | Beheer van de optionele RAG-database. |
-| `admin-overlay` | `govchat-overlay-admin` | Experimentele GovChat-beheerinterface; standaard uitgeschakeld. Nodig voor Beleidskompas. |
+| `admin-overlay` | `govchat-overlay-admin` | Experimentele GovChat-beheerinterface; standaard uitgeschakeld. |
 
 Een profiel start je alleen wanneer de bijbehorende functie is ingericht. Bijvoorbeeld:
 

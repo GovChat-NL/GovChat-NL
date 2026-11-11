@@ -55,7 +55,7 @@
   color: #2563eb;
 }
 
-/* Steps on the left, then the chat, then the report: the same reading
+/* Steps on the left, then the chat, then the elaboration: the same reading
    order as the previous Beleidskompas assistant. */
 .gc-bk-grid {
   display: grid;
@@ -329,14 +329,6 @@
   color: #374151;
 }
 
-.gc-bk-msg-step {
-  font-size: 11px;
-  color: #4b5563;
-  background: #f3f4f6;
-  border-radius: 999px;
-  padding: 1px 8px;
-}
-
 .gc-bk-msg-text {
   font-size: 13px;
   line-height: 1.5;
@@ -345,23 +337,6 @@
 
 .gc-bk-pre {
   display: block;
-  white-space: pre-wrap;
-}
-
-/* Lists in the text of a report or an answer (see formatRichText). */
-.gc-bk-list {
-  margin: 4px 0 1.5em;
-  padding-left: 20px;
-  list-style: revert;
-}
-
-.gc-bk-list:last-child {
-  margin-bottom: 0;
-}
-
-.gc-bk-list li {
-  margin: 4px 0;
-  padding-left: 2px;
   white-space: pre-wrap;
 }
 
@@ -532,6 +507,12 @@
   padding: 12px;
 }
 
+.gc-bk-form-short {
+  font-size: 12px;
+  line-height: 1.45;
+  color: #4b5563;
+}
+
 .gc-bk-step-status {
   font-size: 11px;
   color: #6b7280;
@@ -548,66 +529,6 @@
 
 .gc-bk-step-text.is-placeholder {
   color: #6b7280;
-}
-
-/* The report that is being written again, until the new one arrives. */
-.gc-bk-step-text.is-replacing {
-  opacity: 0.4;
-  transition: opacity 0.2s;
-}
-
-/* The notice on the step card while its report is being written. */
-.gc-bk-busy {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 12px 14px;
-  font-size: 13px;
-  color: #1e3a8a;
-  background: #eff6ff;
-  border: 1px solid #bfdbfe;
-  border-radius: 10px;
-}
-
-.gc-bk-busy[hidden] {
-  display: none;
-}
-
-.gc-bk-busy strong {
-  font-weight: 600;
-}
-
-.gc-bk-busy .gc-bk-typing-dots span {
-  width: 7px;
-  height: 7px;
-  background: #2563eb;
-}
-
-/* A small turning circle: in the report button and next to the substep in
-   the stepper while its report is being written. */
-.gc-bk-spinner {
-  display: inline-block;
-  width: 12px;
-  height: 12px;
-  margin-right: 8px;
-  vertical-align: -2px;
-  border: 2px solid currentColor;
-  border-right-color: transparent;
-  border-radius: 50%;
-  animation: gc-bk-spin 0.8s linear infinite;
-}
-
-.gc-bk-step-link .gc-bk-spinner {
-  width: 10px;
-  height: 10px;
-  margin: 0 0 0 6px;
-  color: #2563eb;
-}
-
-@keyframes gc-bk-spin {
-  to {
-    transform: rotate(360deg);
-  }
 }
 
 .gc-bk-step-meta {
@@ -628,7 +549,21 @@
   border-top: 1px solid #e5e7eb;
 }
 
-#gc-bk-request-report {
+#gc-bk-save-step {
+  padding: 8px 12px;
+  font-size: 12px;
+  color: #0f172a;
+  background: #e2e8f0;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+#gc-bk-save-step:hover {
+  background: #cbd5e1;
+}
+
+#gc-bk-next-step {
   flex: 1;
   padding: 8px 12px;
   font-size: 12px;
@@ -640,48 +575,13 @@
   cursor: pointer;
 }
 
-#gc-bk-request-report:hover:not(:disabled) {
+#gc-bk-next-step:hover:not(:disabled) {
   background: #166534;
 }
 
-#gc-bk-request-report:disabled {
+#gc-bk-next-step:disabled {
   opacity: 0.5;
   cursor: not-allowed;
-}
-
-/* While it is working, the button stays at full strength, so it reads as
-   busy rather than unavailable. */
-#gc-bk-request-report.is-working:disabled {
-  opacity: 1;
-  cursor: progress;
-}
-
-#gc-bk-redo {
-  padding: 8px 12px;
-  font-size: 12px;
-  color: #0f172a;
-  background: #e2e8f0;
-  border: none;
-  border-radius: 8px;
-  cursor: pointer;
-}
-
-#gc-bk-redo:hover:not(:disabled) {
-  background: #cbd5e1;
-}
-
-#gc-bk-redo:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-.gc-bk-step-stale {
-  margin-bottom: 8px;
-  padding: 6px 10px;
-  font-size: 12px;
-  color: #92400e;
-  background: #fef3c7;
-  border-radius: 8px;
 }
 
 /* --- Stepper (left column) ---------------------------------------------- */
@@ -781,20 +681,6 @@
   color: #2563eb;
 }
 
-.gc-bk-step-link.is-substep.is-active {
-  color: #2563eb;
-  font-weight: 600;
-}
-
-.gc-bk-step-link.is-substep.is-done {
-  color: #15803d;
-}
-
-.gc-bk-startup-error {
-  margin: 24px;
-  color: #b91c1c;
-}
-
 .gc-bk-recent-cases {
   flex-shrink: 0;
   padding-top: 8px;
@@ -857,7 +743,7 @@
   margin-top: 8px;
 }
 
-/* "## heading" lines from the Beleidskompas report (see formatRichText). */
+/* "## heading" lines from the Beleidskompas elaboration (see formatRichText). */
 .gc-bk-rich-h {
   font-weight: 700;
   color: #0f172a;
@@ -867,7 +753,7 @@
   color: #f9fafb;
 }
 
-/* --- Report per step: sections with a verdict (see parseAdvice) -------- */
+/* --- Elaboration per step: sections with a verdict (see parseAdvice) ---- */
 
 .gc-bk-advice {
   display: flex;
@@ -919,6 +805,10 @@
   line-height: 1.5;
   color: #1f2937;
   overflow-wrap: anywhere;
+}
+
+.gc-bk-msg-more-head {
+  margin: 10px 0 2px;
 }
 
 .gc-bk-verdict {
@@ -1052,6 +942,24 @@
   background: #1f2937;
 }
 
+/* The full elaboration behind a disclosure in the chat. */
+.gc-bk-msg-more {
+  margin-top: 8px;
+}
+
+.gc-bk-msg-more > summary {
+  font-size: 12px;
+  font-weight: 600;
+  color: #1d4ed8;
+  cursor: pointer;
+}
+
+.gc-bk-msg-more > div {
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px solid #e5e7eb;
+}
+
 .dark .gc-bk-advice-block {
   background: #1f2937;
   border-color: #374151;
@@ -1093,6 +1001,14 @@
   color: #bfdbfe;
   background: rgba(30, 58, 138, 0.35);
   border-color: #1e40af;
+}
+
+.dark .gc-bk-msg-more > summary {
+  color: #93c5fd;
+}
+
+.dark .gc-bk-msg-more > div {
+  border-top-color: #374151;
 }
 
 /* Visible focus for keyboard navigation. */
@@ -1280,26 +1196,7 @@
   color: #e5e7eb;
 }
 
-.dark .gc-bk-msg-step {
-  color: #d1d5db;
-  background: #374151;
-}
-
 .dark .gc-bk-chat-compose,
-.dark #gc-bk-redo {
-  color: #f9fafb;
-  background: #374151;
-}
-
-.dark #gc-bk-redo:hover:not(:disabled) {
-  background: #4b5563;
-}
-
-.dark .gc-bk-step-stale {
-  color: #fde68a;
-  background: #451a03;
-}
-
 .dark .gc-bk-step-foot {
   border-top-color: #374151;
 }
@@ -1324,18 +1221,17 @@
   color: #e5e7eb;
 }
 
-.dark .gc-bk-busy {
-  color: #bfdbfe;
-  background: rgba(30, 58, 138, 0.35);
-  border-color: #1e40af;
+.dark .gc-bk-form-short {
+  color: #d1d5db;
 }
 
-.dark .gc-bk-busy .gc-bk-typing-dots span {
-  background: #93c5fd;
+.dark #gc-bk-save-step {
+  color: #f9fafb;
+  background: #374151;
 }
 
-.dark .gc-bk-step-link .gc-bk-spinner {
-  color: #93c5fd;
+.dark #gc-bk-save-step:hover {
+  background: #4b5563;
 }
 
 .dark .gc-bk-step-group-head:hover {
@@ -1363,14 +1259,6 @@
 
 .dark .gc-bk-step-link.is-title {
   color: #e5e7eb;
-}
-
-.dark .gc-bk-step-link.is-substep.is-active {
-  color: #93c5fd;
-}
-
-.dark .gc-bk-step-link.is-substep.is-done {
-  color: #4ade80;
 }
 
 .dark .gc-bk-recent-cases {
@@ -1409,14 +1297,5 @@
 @media (max-width: 768px) {
   .gc-bk-grid {
     grid-template-columns: 1fr;
-  }
-}
-
-/* No movement for people who turned animations off; the notice and the
-   button text still say that a report is being written. */
-@media (prefers-reduced-motion: reduce) {
-  .gc-bk-typing-dots span,
-  .gc-bk-spinner {
-    animation: none;
   }
 }

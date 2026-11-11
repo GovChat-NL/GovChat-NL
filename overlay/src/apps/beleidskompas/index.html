@@ -58,7 +58,7 @@
       <div id="gc-bk-chat-log" class="gc-bk-chat-log" role="log" aria-live="polite" aria-label="Gesprek"></div>
       <div class="gc-bk-chat-compose">
         <div class="gc-bk-compose-field">
-          <input id="gc-bk-chat-input" type="text" placeholder="Beschrijf je casus" aria-label="Je casus, of een aanvulling bij de deelstap" />
+          <input id="gc-bk-chat-input" type="text" placeholder="Stel een vraag..." aria-label="Stel een vraag over je casus" />
           <button id="gc-bk-send" type="button" title="Verzenden" aria-label="Verzenden"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"/></svg></button>
         </div>
       </div>
@@ -68,22 +68,21 @@
       <div class="gc-bk-card-head">
         <h2 id="gc-bk-form-title"></h2>
         <div class="gc-bk-step-nav">
-          <button id="gc-bk-prev" type="button" title="Vorige deelstap" aria-label="Vorige deelstap"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7"/></svg></button>
-          <button id="gc-bk-next" type="button" title="Volgende deelstap" aria-label="Volgende deelstap"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7"/></svg></button>
+          <button id="gc-bk-prev" type="button" title="Vorige stap" aria-label="Vorige stap"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7"/></svg></button>
+          <button id="gc-bk-next" type="button" title="Volgende stap" aria-label="Volgende stap"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7"/></svg></button>
           <button id="gc-bk-step-info" class="gc-bk-info-badge" type="button" title="Toelichting bij deze stap" aria-label="Toelichting bij deze stap">i</button>
         </div>
       </div>
       <div class="gc-bk-step-body">
+        <div id="gc-bk-form-short" class="gc-bk-form-short"></div>
         <div id="gc-bk-report-status" class="gc-bk-step-status"></div>
-        <div id="gc-bk-report-stale" class="gc-bk-step-stale" hidden>Er is sinds deze uitwerking over deze deelstap gesproken. Werk opnieuw uit om dat te verwerken.</div>
-        <div id="gc-bk-report-busy" class="gc-bk-busy" role="status" hidden></div>
         <div id="gc-bk-report-body" class="gc-bk-step-text"></div>
         <div id="gc-bk-report-sources" class="gc-bk-citations"></div>
         <div id="gc-bk-report-meta" class="gc-bk-step-meta"></div>
       </div>
       <div class="gc-bk-step-foot">
-        <button id="gc-bk-redo" type="button" hidden>Opnieuw uitwerken</button>
-        <button id="gc-bk-request-report" type="button">Deze deelstap uitwerken</button>
+        <button id="gc-bk-save-step" type="button">Markeer stap gereed</button>
+        <button id="gc-bk-next-step" type="button">Volgende stap</button>
       </div>
     </section>
   </div>

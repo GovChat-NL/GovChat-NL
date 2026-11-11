@@ -41,14 +41,14 @@ De installatie bevat onder andere workflows voor:
 - **Live transcriptie** — zet audio om naar tekst via de geconfigureerde spraak- en modeldiensten.
 - **Afbeeldingsgeneratie** — optioneel in te schakelen.
 - **OpenBesluitvorming** — workflows voor zoeken en werken met besluitvormingsinformatie; de organisatie configureert zelf de gegevensbron en toegang.
-- **Beleidskompas** — ondersteunt beleidsafwegingen in vier stappen (SiS 4.0), op een eigen pagina. De gebruiker werkt een casus deelstap voor deelstap uit. Beleidskompas bewaart elke casus in een eigen database.
+- **Beleidskompas** — ondersteunt beleidsafwegingen in vier stappen (SiS 4.0), op een eigen pagina. Stap 1 is uitgewerkt, de andere stappen zijn in ontwikkeling.
 
 Na het inloggen komt de gebruiker op een startscherm, met een tegel voor de chat en voor elke app.
 
 ## Snel starten
 
 1. Installeer Docker Engine met de Compose-plugin.
-2. Maak een lokale `.env` op basis van [`.env.example`](.env.example) en vul sterke, unieke wachtwoorden, tokens en providergegevens in. Voor Beleidskompas zijn dat ook `BELEIDSKOMPAS_POSTGRES_PASSWORD`, het wachtwoord van zijn database, en `BELEIDSKOMPAS_STORE_TOKEN`, waarmee n8n de casussen opslaat via de beheeromgeving. Deel of commit dit bestand niet.
+2. Maak een lokale `.env` op basis van [`.env.example`](.env.example) en vul sterke, unieke wachtwoorden, tokens en providergegevens in. Deel of commit dit bestand niet.
 3. Haal de GovChat-bridge op naast deze repository:
 
    ```sh
@@ -58,13 +58,11 @@ Na het inloggen komt de gebruiker op een startscherm, met een tegel voor de chat
 4. Controleer de Compose-instellingen en start de toepassing:
 
    ```sh
-   docker compose --env-file .env --profile admin-overlay config --quiet
-   docker compose --env-file .env --profile admin-overlay up -d
+   docker compose --env-file .env config --quiet
+   docker compose --env-file .env up -d
    ```
 
-   Het profiel `admin-overlay` start de beheeromgeving. Beleidskompas heeft die nodig, want de casussen worden daar opgeslagen. Zonder de beheeromgeving beantwoordt Beleidskompas geen berichten.
-
-De [`Makefile`](Makefile) bundelt de gebruikelijke commando's, zoals `make up` om de toepassing te starten. Die start de beheeromgeving altijd mee. Met `make help` zie je ze allemaal.
+De [`Makefile`](Makefile) bundelt de gebruikelijke commando's, zoals `make up` om de toepassing te starten. Met `make help` zie je ze allemaal.
 
 Lees daarna de [omgevingsvariabelen](https://govchat-nl.github.io/docs/handleidingen/librechat-omgevingsvariabelen), de [snelle start](https://govchat-nl.github.io/docs/handleidingen/librechat-pre-release) en het [overzicht van de containers](docs/services.md). Open poorten, SSO, secrets, gegevensbewaring en back-ups moeten bij de eigen organisatie-inrichting passen.
 

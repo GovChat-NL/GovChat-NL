@@ -394,31 +394,6 @@ services:
       - librechat-net
 
   # ---------------------------------------------------------------------------
-  #  Beleidskompas PostgreSQL - de stand van elke casus: casustekst,
-  #  uitwerkingen per deelstap (met versies) en het gesprek.
-  #  Alleen govchat-overlay-admin praat ermee; n8n en de pagina gaan via
-  #  de HTTP-API van die service.
-  #  De data staat in een Docker-volume, net als die van MongoDB en n8n.
-  # ---------------------------------------------------------------------------
-  beleidskompas-postgres:
-    image: postgres:16-alpine
-    container_name: librechat-beleidskompas-postgres
-    restart: unless-stopped
-    environment:
-      POSTGRES_DB: beleidskompas
-      POSTGRES_USER: beleidskompas
-      POSTGRES_PASSWORD: ${BELEIDSKOMPAS_POSTGRES_PASSWORD}
-    volumes:
-      - beleidskompas-postgres-data:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U beleidskompas -d beleidskompas"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-    networks:
-      - librechat-net
-
-  # ---------------------------------------------------------------------------
   #  LiteLLM - modelrouter/proxy
   #  Secrets/keys komen direct uit .env
   # ---------------------------------------------------------------------------
@@ -578,8 +553,6 @@ services:
       N8N_LITELLM_IMAGE_API_KEY: ${N8N_LITELLM_IMAGE_API_KEY:-${LITELLM_API_KEY}}
       N8N_LITELLM_IMAGE_MODEL: ${N8N_LITELLM_IMAGE_MODEL:-gpt-image-1}
       N8N_WEBHOOK_TOKEN: ${N8N_WEBHOOK_TOKEN}
-      BELEIDSKOMPAS_STORE_URL: ${BELEIDSKOMPAS_STORE_URL:-http://govchat-overlay-admin:3002}
-      BELEIDSKOMPAS_STORE_TOKEN: ${BELEIDSKOMPAS_STORE_TOKEN}
       PUBLIC_BASE_URL: ${PUBLIC_BASE_URL}
       CRAWLER_ADMIN_BASE_URL: ${CRAWLER_ADMIN_BASE_URL:-http://govchat-overlay-admin:3002}
       CRAWLER_INTERNAL_TOKEN: ${CRAWLER_INTERNAL_TOKEN:-${N8N_WEBHOOK_TOKEN}}
@@ -639,8 +612,6 @@ services:
       NODE_FUNCTION_ALLOW_BUILTIN: fs,path,crypto,http,https,url
       LITELLM_URL: ${LITELLM_URL}
       LITELLM_API_KEY: ${LITELLM_API_KEY}
-      BELEIDSKOMPAS_STORE_URL: ${BELEIDSKOMPAS_STORE_URL:-http://govchat-overlay-admin:3002}
-      BELEIDSKOMPAS_STORE_TOKEN: ${BELEIDSKOMPAS_STORE_TOKEN}
       AZURE_OPENAI_STT_API_BASE: ${AZURE_OPENAI_STT_API_BASE}
       AZURE_OPENAI_STT_API_VERSION: ${AZURE_OPENAI_STT_API_VERSION}
       AZURE_OPENAI_STT_API_KEY: ${AZURE_OPENAI_STT_API_KEY}
@@ -651,7 +622,6 @@ services:
       PUBLIC_BASE_URL: ${PUBLIC_BASE_URL}
       N8N_RUNNERS_AUTO_SHUTDOWN_TIMEOUT: "30"
       N8N_RUNNERS_TASK_TIMEOUT: "180"
-      N8N_RUNNERS_MAX_CONCURRENCY: "20"
       N8N_RUNNERS_LAUNCHER_LOG_LEVEL: warn
     volumes:
       - /opt/librechat/images:/shared-images
@@ -895,9 +865,6 @@ services:
       - PUBLISH_DIR=/publish
       - BELEIDSKOMPAS_N8N_BASE_URL=${BELEIDSKOMPAS_N8N_BASE_URL:-http://n8n:5678}
       - BELEIDSKOMPAS_N8N_WEBHOOK_TOKEN=${BELEIDSKOMPAS_N8N_WEBHOOK_TOKEN:-${N8N_WEBHOOK_TOKEN}}
-      - BELEIDSKOMPAS_DB_HOST=beleidskompas-postgres
-      - BELEIDSKOMPAS_DB_PASSWORD=${BELEIDSKOMPAS_POSTGRES_PASSWORD}
-      - BELEIDSKOMPAS_STORE_TOKEN=${BELEIDSKOMPAS_STORE_TOKEN}
       - IMAGE_JOBS_ENABLED=${IMAGE_JOBS_ENABLED:-false}
       - IMAGE_JOBS_WEBHOOK_URL=${IMAGE_JOBS_WEBHOOK_URL:-http://n8n:5678/webhook/image-generator}
       - IMAGE_JOBS_WEBHOOK_TOKEN=${IMAGE_JOBS_WEBHOOK_TOKEN:-${N8N_WEBHOOK_TOKEN}}
@@ -925,12 +892,6 @@ services:
       - ./overlay/defaults:/app/defaults:ro
     profiles:
       - admin-overlay
-    # Started after the Beleidskompas database, but not held up by it: the
-    # service keeps trying to reach it, and the rest of the service works
-    # without it (see services/admin-overlay/admin/lib/beleidskompas/index.js).
-    depends_on:
-      beleidskompas-postgres:
-        condition: service_started
     networks:
       - librechat-net
 
@@ -969,4 +930,3 @@ volumes:
   n8n-postgres-data:
   qdrant-storage:
   qdrant-snapshot-cache:
-  beleidskompas-postgres-data:

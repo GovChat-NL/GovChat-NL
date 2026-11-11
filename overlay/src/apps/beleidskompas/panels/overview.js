@@ -1,12 +1,12 @@
 // The overview of the steps with their status, and the switch between the
 // overview and the workspace. The overview redraws itself when the active
-// step or a report changes.
+// step or an elaboration changes.
 
 import { escapeHTML } from "../../../shared/html.js";
 import { requireElement } from "../../../shared/dom.js";
 
 export function setupOverview(store) {
-  const { steps } = store;
+  const { state, steps } = store;
   const overviewEl = requireElement("gc-bk-overview");
   const overviewCardsEl = requireElement("gc-bk-overview-cards");
   const workspaceEl = requireElement("gc-bk-workspace");
@@ -16,7 +16,7 @@ export function setupOverview(store) {
     overviewCardsEl.innerHTML = steps
       .map((s, idx) => {
         const done = store.stepDone(s.id);
-        const isActive = s === store.activeStep();
+        const isActive = idx === state.activeStep;
         const status = done ? "Uitgewerkt" : isActive ? "Actief" : "Open";
         const statusClass = done ? "is-done" : isActive ? "is-active" : "";
         return `

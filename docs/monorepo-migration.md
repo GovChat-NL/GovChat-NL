@@ -6,7 +6,7 @@
 |---|---|---|
 | Current local stack checkout root (`GovChat-NL-LibreChat/`) | `GovChat-NL` repository root | Kept in place: Compose entrypoints, LibreChat config, Nginx, stack overlay, LiteLLM, n8n runtime settings, tests, fixtures, scripts and deployment docs retain root-relative paths. |
 | `GovChat-NL-Agents` repository | [`agents/`](../agents/) | Workflow exports and agent documentation. Bootstrap reads `agents/n8n/workflows` from the monorepo. |
-| `GovChat-AdminOverlay` repository | [`services/admin-overlay/`](../services/admin-overlay/) | Keeps standalone source and provenance. Compose builds `services/admin-overlay/admin` only when the `admin-overlay` profile is enabled; it is WIP and off by default. Beleidskompas needs it, because it keeps the Beleidskompas cases, so start the stack with `--profile admin-overlay` when Beleidskompas is used. |
+| `GovChat-AdminOverlay` repository | [`services/admin-overlay/`](../services/admin-overlay/) | Keeps standalone source and provenance. Compose builds `services/admin-overlay/admin` only when the `admin-overlay` profile is enabled; it is WIP and off by default. |
 | Stack-owned bridge model configuration | [`bridge/models.json`](../bridge/models.json) | Deployment config only, not bridge service source. |
 | `n8n-openai-bridge` repository | External repository | Separate GovChat-NL-maintained service with its own releases and tests. Standard Compose builds its `main` branch directly. |
 
