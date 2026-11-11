@@ -1,8 +1,8 @@
 const { test, before, after } = require("node:test");
 const assert = require("node:assert/strict");
-const { createDb } = require("./db");
-const { createStore } = require("./store");
-
+const connection = require("../db/connection");
+const { createTemplateStore } = require("../lib/beleidskompas/template-store");
+const { isUniqueViolation } = require("../lib/beleidskompas/store-errors");
 const { skip, openTestPool } = require("./db-fixture");
 
 const opts = { skip };
@@ -12,8 +12,8 @@ before(async () => {
   if (skip) return;
   const fixture = await openTestPool("beleidskompas_store_test");
   close = fixture.close;
-  db = createDb(fixture.pool);
-  store = createStore(db);
+  db = { query: (sql, params) => fixture.pool.query(sql, params), transaction: (fn) => connection.transaction(fixture.pool, fn) };
+  store = createTemplateStore(db);
 });
 after(async () => { if (close) await close(); });
 
@@ -101,7 +101,7 @@ test("createTemplate copies document links, not bytes", opts, async () => {
   assert.equal(await store.getCurrent(999999), null);
 });
 
-test("concurrent saves: the second gets status 409", opts, async () => {
+test("concurrent saves: both succeed, the second one with the next version number", opts, async () => {
   const { template } = await store.createTemplate({ name: "C", snapshot: {}, documentIds: [], note: "" });
   // Hold back both inserts until each has started, so they really overlap.
   let release;
@@ -122,9 +122,23 @@ test("concurrent saves: the second gets status 409", opts, async () => {
   release();
   await gate;
   const results = await saves;
-  const rejected = results.filter((r) => r.status === "rejected");
-  assert.equal(rejected.length, 1);
-  assert.equal(rejected[0].reason.status, 409);
+  assert.deepEqual(results.map((r) => r.status), ["fulfilled", "fulfilled"]);
+  assert.deepEqual(results.map((r) => r.value.version.version).sort(), [2, 3]);
+});
+
+test("transaction rolls back on throw", opts, async () => {
+  const before = (await db.query("SELECT count(*)::int AS n FROM templates")).rows[0].n;
+  await assert.rejects(db.transaction(async (q) => {
+    await q("INSERT INTO templates (name) VALUES ($1)", ["x"]);
+    throw new Error("boom");
+  }));
+  assert.equal((await db.query("SELECT count(*)::int AS n FROM templates")).rows[0].n, before);
+});
+
+test("isUniqueViolation recognises a duplicate key", opts, async () => {
+  const insert = () => db.query("INSERT INTO documents (sha256, filename, content_type, size, content) VALUES ('dup', 'x', 'text/plain', 1, 'x')");
+  await insert();
+  await assert.rejects(insert(), isUniqueViolation);
 });
 
 test("settings round-trip", opts, async () => {

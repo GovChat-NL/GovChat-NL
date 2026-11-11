@@ -1,9 +1,11 @@
-// Business logic shared by the Beleidskompas routes. No Express here: everything
+// Business logic shared by the Beleidskompas admin routes. No Express here: everything
 // that needs the store or the live-publish step is injected, so it can be tested
 // with fakes.
 
-function createService({ store }) {
-  const notFound = (message) => Object.assign(new Error(message), { status: 404 });
+const { StoreError } = require("./store-errors");
+
+function createTemplateService({ store }) {
+  const notFound = (message) => new StoreError(404, message);
 
   async function getCurrentOr404(templateId) {
     const current = await store.getCurrent(templateId);
@@ -29,4 +31,4 @@ function createService({ store }) {
   return { notFound, getCurrentOr404, setTemplateDocument, findTemplateDocument };
 }
 
-module.exports = { createService };
+module.exports = { createTemplateService };

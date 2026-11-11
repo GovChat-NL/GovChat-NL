@@ -2,8 +2,7 @@
 const { test, before, after } = require("node:test");
 const assert = require("node:assert/strict");
 const express = require("express");
-const { createBeleidskompasRouter } = require("./routes");
-const { createService } = require("./service");
+const { createAdminRouter } = require("../lib/beleidskompas/admin-routes");
 
 const calls = [];
 const current = { versionId: 7, snapshot: { title: "T", steps: [] }, documentIds: [1] };
@@ -34,8 +33,7 @@ before(async () => {
   const app = express();
   app.use(express.json());
   const requireAuth = (req, res, next) => (authed ? next() : res.status(401).json({ error: "auth" }));
-  const service = createService({ store });
-  app.use("/api/beleidskompas", createBeleidskompasRouter({ store, service, requireAuth, flow }));
+  app.use("/api/beleidskompas", createAdminRouter({ store, requireAuth, flow }));
   await new Promise((resolve) => { server = app.listen(0, "127.0.0.1", resolve); });
   base = `http://127.0.0.1:${server.address().port}/api/beleidskompas`;
 });

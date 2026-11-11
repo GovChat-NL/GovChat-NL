@@ -92,4 +92,22 @@ async function migrate(pool) {
   }
 }
 
-module.exports = { MIGRATIONS_DIR, connectionSettings, openPool, listMigrations, applyMigrations, migrate };
+/** Runs `fn` in one transaction on one connection from `pool`. `fn` gets a
+ *  `query(sql, params)` that runs on that connection. The transaction is
+ *  committed when `fn` returns and rolled back when it throws. */
+async function transaction(pool, fn) {
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    const result = await fn((sql, params) => client.query(sql, params));
+    await client.query("COMMIT");
+    return result;
+  } catch (err) {
+    await client.query("ROLLBACK").catch(() => {});
+    throw err;
+  } finally {
+    client.release();
+  }
+}
+
+module.exports = { MIGRATIONS_DIR, connectionSettings, openPool, listMigrations, applyMigrations, migrate, transaction };

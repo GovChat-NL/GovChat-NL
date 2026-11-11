@@ -1,13 +1,16 @@
 const express = require("express");
 
-// All /api/beleidskompas/* routes. Mounted by server.js:
-//   router.use("/api/beleidskompas", createBeleidskompasRouter({ ... }));
+const { createTemplateService } = require("./template-service");
+
+// The admin routes under /api/beleidskompas (templates, versions, documents, settings, workflows).
+// Mounted by lib/beleidskompas/index.js; the case routes of n8n and the page are in case-routes.js.
 //
 // Dependencies are passed in so this module does not reach into server.js globals.
-//   store, service    data access and shared logic (beleidskompas/store.js, service.js)
+//   store             the template store (template-store.js)
 //   requireAuth       the admin auth middleware
 //   flow              flow/workflow helpers that still live in server.js
-function createBeleidskompasRouter({ store, service, requireAuth, flow }) {
+function createAdminRouter({ store, requireAuth, flow }) {
+  const service = createTemplateService({ store });
   const { getCurrentOr404, setTemplateDocument, findTemplateDocument } = service;
   const {
     DEFAULT_BELEIDSKOMPAS_SETTINGS, normalizeBeleidskompasFlow, defaultBeleidskompasFlow,
@@ -298,4 +301,4 @@ function createBeleidskompasRouter({ store, service, requireAuth, flow }) {
   return router;
 }
 
-module.exports = { createBeleidskompasRouter };
+module.exports = { createAdminRouter };

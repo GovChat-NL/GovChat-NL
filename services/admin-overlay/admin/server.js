@@ -8,10 +8,6 @@ const sharp = require("sharp");
 const { WebSocket, WebSocketServer } = require("ws");
 const beleidskompas = require("./lib/beleidskompas");
 const dbConnection = require("./db/connection");
-const { createDb } = require("./beleidskompas/db/db");
-const { createStore } = require("./beleidskompas/db/store");
-const { createService } = require("./beleidskompas/api/service");
-const { createBeleidskompasRouter } = require("./beleidskompas/api/routes");
 
 const app = express();
 const PORT = process.env.PORT || 3002;
@@ -79,7 +75,7 @@ const BELEIDSKOMPAS_FEEDBACK_MAX = 500;
 const BELEIDSKOMPAS_WORKFLOWS_DIR_NAME = "beleidskompas-workflows";
 const BELEIDSKOMPAS_ORCHESTRATOR_WEBHOOK_PATH_DEFAULT = "beleidskompas-orchestrator";
 const BELEIDSKOMPAS_N8N_BASE_URL = String(process.env.BELEIDSKOMPAS_N8N_BASE_URL || "http://n8n:5678").replace(/\/$/, "");
-// Demo/dev: when the database has no templates, load beleidskompas/db/seed.sql instead of the bare default template.
+// Demo/dev: when the database has no templates, load db/seed.sql instead of the bare default template.
 const BELEIDSKOMPAS_DEV_SEED = String(process.env.BELEIDSKOMPAS_DEV_SEED || "false").toLowerCase() === "true";
 const BELEIDSKOMPAS_N8N_WEBHOOK_TOKEN = String(process.env.BELEIDSKOMPAS_N8N_WEBHOOK_TOKEN || process.env.N8N_WEBHOOK_TOKEN || "").trim();
 const DEFAULT_BELEIDSKOMPAS_SETTINGS = {
@@ -88,16 +84,14 @@ const DEFAULT_BELEIDSKOMPAS_SETTINGS = {
   require_human_validation: true,
   default_model: "govchat-default",
 };
-// One pool for everything of Beleidskompas, on the beleidskompas-postgres database: the cases
-// (lib/beleidskompas) and the templates (beleidskompas/). Null without BELEIDSKOMPAS_DB_HOST.
-const beleidskompasPool = dbConnection.openPool();
-const db = createDb(beleidskompasPool);
-const store = createStore(db);
-let beleidskompasReady = false;
 const TRANSCRIPT_AUTH_DEBUG = String(process.env.TRANSCRIPT_AUTH_DEBUG || "false").toLowerCase() === "true";
 const LIBRECHAT_JWT_REFRESH_SECRET = String(process.env.JWT_REFRESH_SECRET || process.env.JWT_SECRET || "").trim();
 
 // Active sessions (in-memory, resets on restart)
+// The one pool for everything of Beleidskompas (cases and templates), on the beleidskompas-postgres
+// database. Null without BELEIDSKOMPAS_DB_HOST.
+const beleidskompasPool = dbConnection.openPool();
+
 const sessions = new Map();
 const imageJobs = new Map();
 const imageJobQueue = [];
@@ -1013,7 +1007,7 @@ function publishAll() {
 }
 
 async function publishLive() {
-  const live = await store.getLive();
+  const live = await templateStore.getLive();
   if (!live) {
     console.warn("[publish] Geen live Beleidskompas-versie; niets gepubliceerd");
     return null;
@@ -1030,8 +1024,9 @@ function normalizeLegacyState(state) {
   return out;
 }
 
-// Fills the template tables when they are empty. Runs once the migrations have been applied.
-async function initBeleidskompas() {
+// Fills the template tables when they are empty. Runs once the migrations have been applied
+// (see lib/beleidskompas/index.js), with the template store and the database.
+async function initBeleidskompas({ store, db }) {
   if ((await store.listTemplates()).length) {
     console.log("[init] Beleidskompas database bevat al templates, import overgeslagen");
   } else {
@@ -1044,7 +1039,7 @@ async function initBeleidskompas() {
       fs.renameSync(statePath, `${statePath}.migrated`);
       console.log(`[init] ${BELEIDSKOMPAS_STATE_FILE} geïmporteerd in de database en hernoemd naar .migrated`);
     } else if (BELEIDSKOMPAS_DEV_SEED) {
-      await db.query(fs.readFileSync(path.join(__dirname, "beleidskompas", "db", "seed.sql"), "utf8"));
+      await db.query(fs.readFileSync(path.join(__dirname, "db", "seed.sql"), "utf8"));
       await store.saveSettings(DEFAULT_BELEIDSKOMPAS_SETTINGS);
       console.log("[init] BELEIDSKOMPAS_DEV_SEED: voorbeelddata uit seed.sql geladen");
     } else {
@@ -1057,7 +1052,6 @@ async function initBeleidskompas() {
     }
   }
   await publishLive();
-  beleidskompasReady = true;
 }
 
 function readCrawlerConfig() {
@@ -2595,8 +2589,8 @@ app.get("/dashboard", requireAuth, async (req, res) => {
     const appsData = readJSON("apps.json");
     const crawlerConfig = readCrawlerConfig();
     const orchestratorConfig = readOrchestratorConfig();
-    const templates = await store.listTemplates();
-    const live = await store.getLive();
+    const templates = await templateStore.listTemplates();
+    const live = await templateStore.getLive();
     const helpSections = helpData?.sections?.length || 0;
     const appCount = appsData?.apps?.length || 0;
     const beleidskompasStepCount = live?.snapshot?.steps?.length || 0;
@@ -2677,32 +2671,23 @@ app.post("/api/config/apps", requireAuth, (req, res) => {
 });
 
 
-// The case endpoints (lib/beleidskompas) are mounted first and answer 503 themselves until their
-// store is ready. The admin endpoints below do the same until the templates are initialised.
-const beleidskompasStarted = beleidskompas.start(app, { resolveUser: resolveUserFromVerifiedRefreshToken }, process.env, {
-  openPool: () => beleidskompasPool,
-});
-beleidskompasStarted
-  .then((caseStore) => {
-    if (!caseStore) return console.error("[init] Beleidskompas database niet geconfigureerd (BELEIDSKOMPAS_DB_HOST ontbreekt)");
-    return initBeleidskompas();
-  })
-  .catch((err) => console.error("[init] Beleidskompas initialiseren mislukt:", err));
-
-const beleidskompasService = createService({ store });
-app.use(
-  "/api/beleidskompas",
-  (req, res, next) => (beleidskompasReady ? next() : res.status(503).json({ error: "Beleidskompas database is nog niet beschikbaar" })),
-  createBeleidskompasRouter({
-    store,
-    service: beleidskompasService,
+// Beleidskompas: one database (beleidskompas-postgres), two stores, all endpoints under
+// /api/beleidskompas. lib/beleidskompas/index.js applies the migrations on the pool, runs
+// initBeleidskompas and mounts the case endpoints (n8n, the page) and the admin endpoints.
+// Everything answers 503 until the database is ready. `templateStore` does the same.
+const { templates: templateStore } = beleidskompas.start(
+  app,
+  {
+    pool: beleidskompasPool,
+    resolveUser: resolveUserFromVerifiedRefreshToken,
     requireAuth,
+    init: initBeleidskompas,
     flow: {
       DEFAULT_BELEIDSKOMPAS_SETTINGS, normalizeBeleidskompasFlow, defaultBeleidskompasFlow,
       readBeleidskompasWorkflowManifest, selectBeleidskompasRagDocs, normalizeLegacyState, publishLive,
       n8nBaseUrl: BELEIDSKOMPAS_N8N_BASE_URL, n8nWebhookToken: BELEIDSKOMPAS_N8N_WEBHOOK_TOKEN,
     },
-  }),
+  },
 );
 
 // ── Beleidskompas user feedback ──────────────────────────────────

@@ -2,7 +2,7 @@
 # Wipe the Beleidskompas templates, versions and documents and load the demo seed data again.
 # The cases of the users are left alone.
 #
-# Runs replenish.sql and seed.sql (services/admin-overlay/admin/beleidskompas/db/)
+# Runs replenish.sql and seed.sql (services/admin-overlay/admin/db/)
 # in one transaction inside the beleidskompas-postgres container, so a failure keeps the old data.
 # The tables come from the migrations the admin applies at startup, so start the admin once first.
 # Then restarts the admin so it republishes the live Beleidskompas config.
@@ -14,7 +14,7 @@ set -eu
 
 cd "$(dirname "$0")/.."
 
-SQL_DIR=services/admin-overlay/admin/beleidskompas/db
+SQL_DIR=services/admin-overlay/admin/db
 COMPOSE="docker compose --profile admin-overlay"
 
 if [ "${1:-}" != "--yes" ]; then

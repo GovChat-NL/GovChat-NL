@@ -9,7 +9,7 @@
 -- Plain SQL: run it in any client (VS Code query window, psql -f, ...) against the
 -- database used by the admin service.
 --
--- Prerequisite: the tables from db/migrations/0002-templates.sql must exist. The admin
+-- Prerequisite: the tables from migration 0002-templates.sql must exist. The admin
 -- service creates them on startup, in the beleidskompas-postgres database.
 --
 -- Safe to run more than once: it does nothing if the template already exists.

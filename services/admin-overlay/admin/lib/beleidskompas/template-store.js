@@ -1,10 +1,21 @@
+"use strict";
+
+/**
+ * The template store: the templates of the Beleidskompas admin, their versions, the reference
+ * documents, which version is live, and the settings. The tables are in
+ * db/migrations/0002-templates.sql. The cases of the users are in case-store.js.
+ *
+ * createTemplateStore takes `db`: `{ query(sql, params), transaction(fn) }`, where `fn` gets a
+ * `query` that runs on one connection (see transaction in db/connection.js).
+ */
+
 const crypto = require("crypto");
-const { isUniqueViolation } = require("./db");
+const { StoreError, isUniqueViolation, withOneRetry } = require("./store-errors");
 
 const DOC_COLUMNS = "d.id, d.filename, d.content_type AS mime_type, d.size AS size_bytes, d.created_at AS uploaded_at, d.preview_text";
 const docRow = ({ uploaded_at, ...rest }) => ({ ...rest, uploaded_at: uploaded_at.toISOString() });
 
-function createStore(db) {
+function createTemplateStore(db) {
   // templates.live_version_id is the template's newest version (what the editor opens and what every save moves).
   // The API reports "live" from the `live` row instead: the version end users get, null for the other templates.
   async function listTemplates() {
@@ -57,11 +68,12 @@ function createStore(db) {
     return t.id;
   }
 
+  // Two saves that take the same version number at once: the second one is tried again with the next number.
   async function saveVersion(templateId, snapshot, documentIds, note, createdBy) {
     try {
-      return await db.transaction((q) => insertVersion(q, templateId, snapshot, documentIds, note, createdBy));
+      return await withOneRetry(() => db.transaction((q) => insertVersion(q, templateId, snapshot, documentIds, note, createdBy)));
     } catch (err) {
-      if (isUniqueViolation(err)) throw Object.assign(new Error("Gelijktijdige wijziging, probeer opnieuw"), { status: 409 });
+      if (isUniqueViolation(err)) throw new StoreError(409, "Gelijktijdige wijziging, probeer opnieuw");
       throw err;
     }
   }
@@ -164,4 +176,4 @@ function createStore(db) {
   };
 }
 
-module.exports = { createStore };
+module.exports = { createTemplateStore };

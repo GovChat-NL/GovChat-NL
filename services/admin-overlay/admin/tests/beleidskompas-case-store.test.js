@@ -3,11 +3,12 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 
-const { StoreError, createStore } = require("../lib/beleidskompas/store");
+const { StoreError } = require("../lib/beleidskompas/store-errors");
+const { createCaseStore } = require("../lib/beleidskompas/case-store");
 
 /** A stand-in for the database: answers each query from `answers`, keyed by
  *  a fragment of the SQL, and records every call. Whether the SQL itself is
- *  right is checked against a real Postgres in beleidskompas-db.test.js. */
+ *  right is checked against a real Postgres in beleidskompas-case-store-db.test.js. */
 function fakeDatabase(answers) {
   const calls = [];
   async function query(sql, params) {
@@ -29,7 +30,7 @@ function ownedBy(row) {
 
 test("ensureCase creates the case once and returns it", async () => {
   const db = fakeDatabase({ "FROM cases WHERE id": ownedBy(CASE) });
-  const row = await createStore(db.query).ensureCase({ id: " conv-1 ", userId: "user-a" });
+  const row = await createCaseStore(db.query).ensureCase({ id: " conv-1 ", userId: "user-a" });
   assert.equal(row.id, "conv-1");
   assert.match(db.calls[0].sql, /INSERT INTO cases .* ON CONFLICT \(id\) DO NOTHING/);
   assert.deepEqual(db.calls[0].params, ["conv-1", "user-a"]);
@@ -37,7 +38,7 @@ test("ensureCase creates the case once and returns it", async () => {
 
 test("a case id taken by another user cannot be written to, and reads as unknown", async () => {
   const db = fakeDatabase({ "FROM cases WHERE id": ownedBy(CASE) });
-  const store = createStore(db.query);
+  const store = createCaseStore(db.query);
   await assert.rejects(store.ensureCase({ id: "conv-1", userId: "user-b" }), (err) => err instanceof StoreError && err.status === 403);
   await assert.rejects(store.addReport({ caseId: "conv-1", userId: "user-b", substepId: "1.1", text: "x" }), (err) => err.status === 403);
   await assert.rejects(store.addTurn({ caseId: "conv-1", userId: "user-b", role: "user", text: "hoi" }), (err) => err.status === 403);
@@ -53,7 +54,7 @@ test("setCaseText adds a version, but not when the text equals the newest versio
     "SELECT version, text FROM case_texts": [{ version: 2, text: "De casus." }],
     "INSERT INTO case_texts": [{ version: 3 }],
   });
-  const store = createStore(db.query);
+  const store = createCaseStore(db.query);
   assert.deepEqual(await store.setCaseText({ caseId: "conv-1", userId: "user-a", text: "  De casus.  " }), { version: 2, unchanged: true });
   assert.ok(!db.calls.some((c) => c.sql.startsWith("INSERT INTO case_texts")));
 
@@ -66,7 +67,7 @@ test("setCaseText adds a version, but not when the text equals the newest versio
 
 test("addReport stores the text and the citations as a new version", async () => {
   const db = fakeDatabase({ "FROM cases WHERE id": ownedBy(CASE), "INSERT INTO reports": [{ version: 1 }] });
-  const store = createStore(db.query);
+  const store = createCaseStore(db.query);
   const result = await store.addReport({
     caseId: "conv-1",
     userId: "user-a",
@@ -91,13 +92,13 @@ test("an insert that collides on the version number is tried once more", async (
       return [{ version: 2 }];
     },
   });
-  assert.deepEqual(await createStore(db.query).addReport({ caseId: "conv-1", userId: "user-a", substepId: "1.1", text: "x" }), { version: 2 });
+  assert.deepEqual(await createCaseStore(db.query).addReport({ caseId: "conv-1", userId: "user-a", substepId: "1.1", text: "x" }), { version: 2 });
   assert.equal(attempts, 2);
 });
 
 test("addTurn numbers the turns, creates the case when needed, and only accepts user and assistant", async () => {
   const db = fakeDatabase({ "FROM cases WHERE id": ownedBy(CASE), "INSERT INTO conversation_turns": [{ seq: 4 }] });
-  const store = createStore(db.query);
+  const store = createCaseStore(db.query);
   assert.deepEqual(await store.addTurn({ caseId: "conv-1", userId: "user-a", role: "assistant", stepId: "stap3", askedFrom: "1.3", text: "Antwoord." }), { seq: 4 });
   assert.match(db.calls[0].sql, /INSERT INTO cases .* ON CONFLICT \(id\) DO NOTHING/);
   const insert = db.calls.find((c) => c.sql.startsWith("INSERT INTO conversation_turns"));
@@ -118,7 +119,7 @@ test("getState puts the newest case text, the newest report per substep and the 
       { seq: 2, role: "assistant", step_id: "stap3", asked_from: "1.1", text: "Antwoord", created_at: "t5" },
     ],
   });
-  const state = await createStore(db.query).getState({ caseId: "conv-1", userId: "user-a", maxTurns: 50 });
+  const state = await createCaseStore(db.query).getState({ caseId: "conv-1", userId: "user-a", maxTurns: 50 });
   assert.equal(state.title, "Beleidskompas - Laadpalen");
   assert.deepEqual(state.case_text, { version: 2, text: "De casus.", created_at: "t1" });
   assert.deepEqual(Object.keys(state.reports), ["1.1", "1.2"]);
@@ -131,7 +132,7 @@ test("getState puts the newest case text, the newest report per substep and the 
 
 test("listCases returns the cases of one user, newest first, with a capped limit", async () => {
   const db = fakeDatabase({ "FROM cases WHERE user_id": [{ id: "conv-2", title: null, created_at: "t", updated_at: "t" }] });
-  const cases = await createStore(db.query).listCases({ userId: "user-a", limit: 1000 });
+  const cases = await createCaseStore(db.query).listCases({ userId: "user-a", limit: 1000 });
   assert.deepEqual(cases, [{ id: "conv-2", title: null, created_at: "t", updated_at: "t" }]);
   assert.deepEqual(db.calls[0].params, ["user-a", 200]);
 });

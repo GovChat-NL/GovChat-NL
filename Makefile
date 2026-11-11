@@ -52,8 +52,7 @@ replenish-beleidskompas-db: env ## Wipe the Beleidskompas templates and reload t
 test-beleidskompas-db: ## Run the Beleidskompas stores (cases and templates) against the real database, inside the admin container (the stack must be running)
 	$(COMPOSE) run --rm --no-deps -e BELEIDSKOMPAS_DB_TEST=true \
 		-v ./services/admin-overlay/admin/tests:/app/tests:ro \
-		-v ./services/admin-overlay/admin/beleidskompas:/app/beleidskompas:ro \
-		govchat-overlay-admin node --test tests/beleidskompas-db.test.js beleidskompas/db/db.test.js beleidskompas/db/store.test.js
+		govchat-overlay-admin node --test tests/beleidskompas-case-store-db.test.js tests/beleidskompas-template-store.test.js
 
 generate-workflows: ## Regenerate the Beleidskompas workflows (orchestrator and the steps) from agents/beleidskompas
 	cd agents/beleidskompas && node generate-workflow.js
