@@ -41,6 +41,13 @@ beheerportaal. Zie [configuratie, ingebruikname en tests](docs/orchestrator-util
 PDF- en documentbijlagen worden vóór de n8n-chatagent via Apache Tika omgezet naar
 begrensde tekstcontext. Zie [documentondersteuning, veilige uitrol en regressietests](docs/chat-document-context.md).
 
+### OpenBesluitvorming Limburg: volledige document-ingest
+
+Een afzonderlijke, opt-in worker verwerkt volledige documenten en bijlagen met
+Tika-fallback, behoud van bronmetadata, hervatbare checkpoints en duurzame retries.
+Er start geen ingest of planning bij het opstarten van Compose. Zie
+[de operatorhandleiding voor fresh/resume/status/retry en de begrensde livevalidatie](docs/openbesluitvorming-ingestion.md).
+
 ## Verbonden systemen
 
 | Systeem | Rol binnen GovChat-NL |

@@ -33,7 +33,7 @@ function limburgPublicLinks(payload) {
 function renderWorkflows(directory) {
   const fs = require('node:fs');
   const path = require('node:path');
-  const helper = limburgPublicLinks.toString();
+  const helper = limburgPublicLinks.toString().replace(/\r\n/g, '\n');
   const markerStart = '// BEGIN LIMBURG PUBLIC LINKS';
   const markerEnd = '// END LIMBURG PUBLIC LINKS';
   for (const [file, nodeName] of [
@@ -50,6 +50,9 @@ function renderWorkflows(directory) {
     if (start !== -1) {
       const end = code.indexOf(markerEnd, start);
       if (end === -1) throw new Error('Incomplete helper marker');
+      // The high-recall search export maintains its own richer helper. Do not
+      // downgrade it to this legacy backfill helper during workflow rendering.
+      if (file.includes('search')) continue;
       code = code.slice(0, start) + code.slice(end + markerEnd.length + 1);
     }
     code = markerStart + '\n' + helper + '\n' + markerEnd + '\n' + code;

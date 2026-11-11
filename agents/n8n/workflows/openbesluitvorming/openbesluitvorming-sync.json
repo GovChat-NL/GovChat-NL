@@ -1,7 +1,7 @@
 {
   "id": "govchat-openbesluitvorming-sync",
   "name": "OpenBesluitvorming - Incremental Sync",
-  "description": "Inactive generic six-hour delta synchronisation. It only runs after the initial snapshot checkpoint is complete, consumes the documented /api/export/changes feed from the durable changes cursor, upserts changed documents through the document worker, deletes tombstoned document vectors, and commits its delta cursor only after both operations succeed.",
+  "description": "RETIRED unsafe legacy n8n ingestion. No scheduler. Use the opt-in openbesluitvorming-ingest Compose worker; see docs/openbesluitvorming-ingestion.md. Nodes retained for historical reference only.",
   "active": false,
   "settings": {
     "executionOrder": "v1",
@@ -23,27 +23,7 @@
     },
     {
       "parameters": {
-        "rule": {
-          "interval": [
-            {
-              "field": "cronExpression",
-              "expression": "0 0 0,6,12,18 * * *"
-            }
-          ]
-        }
-      },
-      "id": "ob-sync-002",
-      "name": "1. Sync At 00 06 12 18 UTC",
-      "type": "n8n-nodes-base.scheduleTrigger",
-      "typeVersion": 1.2,
-      "position": [
-        -1220,
-        100
-      ]
-    },
-    {
-      "parameters": {
-        "jsCode": "// Set these values to the same source, collection and checkpoint used by the initial snapshot workflow.\nconst sourceKey = 'your_organisation';\nconst collection = 'openbesluitvorming';\nconst checkpointId = '00000000-0000-5000-8000-000000000001';\nreturn [{ json: { runId: `openbesluitvorming-sync-${Date.now()}`, sourceKey, collection, checkpointId, qdrantBase: 'http://qdrant:6333', vectorSize: 3072, changesLimit: 500 } }];"
+        "jsCode": "throw new Error('Legacy ingestion retired: use the durable openbesluitvorming-ingest Compose worker. See docs/openbesluitvorming-ingestion.md.');"
       },
       "id": "ob-sync-003",
       "name": "2. Configure Delta Sync",
@@ -425,17 +405,6 @@
         [
           {
             "node": "12. Commit Delta Cursor Only After Apply",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "1. Sync At 00 06 12 18 UTC": {
-      "main": [
-        [
-          {
-            "node": "2. Configure Delta Sync",
             "type": "main",
             "index": 0
           }

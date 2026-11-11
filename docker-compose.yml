@@ -823,6 +823,49 @@ services:
     networks:
       - librechat-net
 
+  # One-shot operator worker. No daemon, scheduler, or ingestion on compose up.
+  openbesluitvorming-ingest:
+    build:
+      context: ./services/openbesluitvorming-ingest
+    image: govchat-openbesluitvorming-ingest:local
+    profiles:
+      - openbesluitvorming-ingest
+    restart: "no"
+    init: true
+    depends_on:
+      qdrant:
+        condition: service_healthy
+      litellm:
+        condition: service_healthy
+      tika:
+        condition: service_started
+    environment:
+      LITELLM_URL: ${LITELLM_URL:-http://litellm:4000}
+      LITELLM_API_KEY: ${LITELLM_API_KEY}
+      OBV_QDRANT_URL: http://qdrant:6333
+      OBV_TIKA_URL: http://tika:9998/tika
+      OBV_EMBEDDING_MODEL: ${OBV_EMBEDDING_MODEL:-govchat-embedding}
+      OBV_ATTACHMENT_MAX_BYTES: ${OBV_ATTACHMENT_MAX_BYTES:-67108864}
+      OBV_DOCUMENT_MAX_CHARS: ${OBV_DOCUMENT_MAX_CHARS:-10000000}
+      OBV_ATTACHMENT_HOSTS: ${OBV_ATTACHMENT_HOSTS:-}
+      OBV_HTTP_TIMEOUT_SECONDS: ${OBV_HTTP_TIMEOUT_SECONDS:-120}
+      OBV_HTTP_ATTEMPTS: ${OBV_HTTP_ATTEMPTS:-4}
+      OBV_JOB_MAX_ATTEMPTS: ${OBV_JOB_MAX_ATTEMPTS:-3}
+    volumes:
+      - openbesluitvorming-ingest-state:/state
+    networks:
+      - librechat-net
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    mem_limit: 1g
+    logging:
+      driver: local
+      options:
+        max-size: 10m
+        max-file: "5"
+
   # ---------------------------------------------------------------------------
   #  pgvector 0.8.0 (pg16) - Vector extensie voor RAG embeddings
   #  pg16 omdat de data directory al geinitialiseerd is met pg16
@@ -1014,3 +1057,4 @@ volumes:
   n8n-postgres-data:
   qdrant-storage:
   qdrant-snapshot-cache:
+  openbesluitvorming-ingest-state:
