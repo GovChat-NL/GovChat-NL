@@ -1,9 +1,9 @@
 // All data access for the Beleidskompas admin UI lives here.
 // Each function is marked:
 //   WIRED: calls the admin server (server.js), the data is real.
-//   MOCK:  no backend yet; sample or in-memory data. The number points to a section of
-//          ADMIN_UI_FUTURE_WORK.md, private notes kept locally for now (gitignored),
-//          on what is missing and which ADO item covers it.
+//   MOCK:  no backend yet; sample or in-memory data. The number says what is mocked:
+//          #1 several templates, #2 documents read by the assistant, #4 the version a
+//          feedback item belongs to, #5 the answer a feedback item is about.
 
 import { MOCK_TEMPLATES, REAL_TEMPLATE, mockAnswerText } from "./mock-data.js";
 
@@ -113,7 +113,7 @@ export const deleteDocument = (id) => request("DELETE", `${BASE}/documents/${enc
 export const downloadUrl = (id) => `${BASE}/documents/${encodeURIComponent(id)}/download`;
 
 // WIRED: the step's documents are saved in the template (step.document_ids) on publish.
-// The assistant does not read document_ids yet (ADMIN_UI_FUTURE_WORK.md §2).
+// MOCK #2: the assistant does not read document_ids yet.
 export const stepDocumentIds = (step) => new Set(step.document_ids || []);
 
 // ── Feedback ───────────────────────────────────────────────────────
