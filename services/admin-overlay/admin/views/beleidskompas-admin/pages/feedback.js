@@ -23,23 +23,21 @@ export function renderFeedback({ store, render }) {
     return { subtitle: "Alle templates", content: h("p", { class: "muted" }, "Feedback laden…") };
   }
 
-  const templateOptions = [
-    { value: "all", label: "Alle templates" },
-    ...store.templates.map((t) => ({
-      group: t.name,
-      options: [
-        { value: `t:${t.id}`, label: `${t.name}: alle versies` },
-        ...[...t.versions]
-          .sort((a, b) => b.published_at.localeCompare(a.published_at))
-          .map((v) => ({ value: `v:${t.id}:${v.id}`, label: `${t.name} ${versionLabel(t, v.id)}${v.id === t.live_version_id ? " (live)" : ""}` })),
-      ],
-    })),
+  const templateOptions = [{ value: "all", label: "Alle templates" }, ...store.templates.map((t) => ({ value: t.id, label: t.name }))];
+  const tpl = store.templates.find((t) => String(t.id) === String(ui.fbTemplate));
+  const versionOptions = [
+    { value: "all", label: "Alle versies" },
+    ...[...(tpl?.versions || [])]
+      .sort((a, b) => b.published_at.localeCompare(a.published_at))
+      .map((v) => ({ value: v.id, label: `${versionLabel(tpl, v.id)}${v.id === tpl.live_version_id ? " (live)" : ""}` })),
   ];
 
   const filters = h(
     "div",
     { class: "filter-bar" },
-    dropdown({ label: "Template", value: ui.fbTemplate, options: templateOptions, onChange: (v) => { ui.fbTemplate = v; render(); } }),
+    dropdown({ label: "Template", value: ui.fbTemplate, options: templateOptions, onChange: (v) => { ui.fbTemplate = v; ui.fbVersion = "all"; render(); } }),
+    // Versions belong to one template, so this filter needs a template first.
+    dropdown({ label: "Versie", value: ui.fbVersion, options: versionOptions, disabled: !tpl, onChange: (v) => { ui.fbVersion = v; render(); } }),
     dropdown({ label: "Periode", value: ui.fbPeriod, options: PERIODS, onChange: (v) => { ui.fbPeriod = v; render(); } }),
     ui.fbPeriod === "custom"
       ? [
@@ -50,7 +48,7 @@ export function renderFeedback({ store, render }) {
     h("button", { class: "btn btn-secondary filter-refresh", onClick: () => { store.feedback = null; render(); } }, "Vernieuwen"),
   );
 
-  const items = store.feedback.filter((i) => matchesTemplate(i, ui.fbTemplate) && matchesPeriod(i, ui));
+  const items = store.feedback.filter((i) => matchesTemplate(i, ui) && matchesPeriod(i, ui));
   const up = items.filter((i) => i.rating === "up").length;
   const stats = h(
     "div",
@@ -68,7 +66,7 @@ export function renderFeedback({ store, render }) {
     : h("p", { class: "empty" }, "Geen feedback voor deze filters.");
 
   return {
-    subtitle: subtitleFor(ui.fbTemplate, store),
+    subtitle: subtitleFor(ui, store),
     content: h("div", { class: "stack" }, store.feedbackError ? h("p", { class: "error" }, `Feedback laden mislukt: ${store.feedbackError}`) : null, filters, stats, results),
   };
 }

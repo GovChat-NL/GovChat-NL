@@ -10,16 +10,15 @@ export function finder({ files, selectedFile, onFile, preview, path }) {
           h(
             "li",
             {
-              class: `finder-item${f.id === selectedFile ? " is-selected" : ""}${f.muted ? " is-muted" : ""}`,
+              class: `finder-item${f.id === selectedFile ? " is-selected" : ""}`,
               role: "option",
               tabindex: "0",
               "aria-selected": f.id === selectedFile ? "true" : "false",
-              onClick: (e) => { if (!e.target.closest(".toggle")) onFile(f.id); },
+              onClick: () => onFile(f.id),
               onKeydown: (e) => { if (e.key === "Enter") onFile(f.id); },
             },
             icon("file", 15),
             h("span", { class: "finder-name", title: f.name }, f.name),
-            f.trailing || null,
           ),
         )
       : h("li", { class: "finder-empty" }, "Nog geen documenten"),

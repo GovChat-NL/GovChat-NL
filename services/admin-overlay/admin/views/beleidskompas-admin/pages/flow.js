@@ -1,10 +1,9 @@
-// Flow builder: the template's steps, each with its texts, system prompt, search settings and documents.
+// Flow builder: the template's steps, each with its texts, instructions, search settings and documents; plus the rules for all steps.
 import * as api from "../api.js";
-import { h, icon, card, field, bound } from "../dom.js";
+import { h, icon, card, field, bound, reveal } from "../dom.js";
 import { flowList } from "../components/flow-list.js";
 import { dropdown } from "../components/dropdown.js";
 import { toggle } from "../components/toggle.js";
-import { template } from "../app.js";
 
 const SEARCH_METHODS = [
   { value: "hybrid", label: "Hybride (aanbevolen)" },
@@ -12,10 +11,30 @@ const SEARCH_METHODS = [
   { value: "haystack", label: "Haystack: brede context" },
 ];
 
+// The step's <li> in the rendered list (index in store.flow.steps).
+const stepEl = (idx) => document.querySelectorAll(".flow-list > .flow-step")[idx];
+
 export function renderFlow({ store, render, markDirty }) {
-  const tpl = template();
   const steps = store.flow.steps;
   const changed = () => { markDirty(); render(); };
+  // Adds a new step at the end and opens it.
+  const addStep = () => {
+    const id = `stap${Date.now().toString(36)}`;
+    steps.push({
+      id,
+      title: `Nieuwe stap ${steps.length + 1}`,
+      description: "",
+      prompt: "",
+      doc_tags: [],
+      rag: { algorithm: "hybrid", top_k: 3, min_score: 0.08, tag_filter_mode: "any", required_tags: [] },
+      substeps: [],
+    });
+    store.ui.stepId = id;
+    changed();
+    const el = stepEl(steps.length - 1);
+    reveal(el);
+    el?.querySelector(".flow-editor input")?.focus({ preventScroll: true });
+  };
 
   const notice = h(
     "p",
@@ -28,39 +47,36 @@ export function renderFlow({ store, render, markDirty }) {
   const list = flowList({
     steps,
     expandedId: store.ui.stepId,
-    onToggle: (id) => { store.ui.stepId = id; render(); },
+    onToggle: (id) => {
+      store.ui.stepId = id;
+      render();
+      if (id) reveal(stepEl(steps.findIndex((s) => s.id === id)));
+    },
     onMove: (idx, delta) => {
       const [step] = steps.splice(idx, 1);
       steps.splice(idx + delta, 0, step);
       changed();
+      reveal(stepEl(idx + delta));
     },
     onRemove: (idx) => {
       if (!confirm(`Stap “${steps[idx].title}” verwijderen?`)) return;
       steps.splice(idx, 1);
       changed();
     },
-    onAdd: () => {
-      const n = steps.length + 1;
-      const id = `stap${Date.now().toString(36)}`;
-      steps.push({
-        id,
-        title: `Nieuwe stap ${n}`,
-        description: "",
-        prompt: "",
-        doc_tags: [],
-        rag: { algorithm: "hybrid", top_k: 3, min_score: 0.08, tag_filter_mode: "any", required_tags: [] },
-        substeps: [],
-      });
-      store.ui.stepId = id;
-      changed();
-    },
-    renderEditor: (step) => stepEditor(step, { tpl, store, markDirty, render }),
+    onAdd: addStep,
+    renderEditor: (step) => stepEditor(step, { store, markDirty, render }),
   });
 
-  return { content: h("div", { class: "stack" }, notice, list) };
+  // One list for the whole flow, like rules.md on the agent side ({{rules}} in every step's prompt).
+  const rules = card(
+    "Opmaakregels",
+    field("Regels voor alle stappen", bound(store.flow, "rules", { multiline: true, rows: 6, onInput: markDirty }), "Eén regel per regel. Gelden voor elke stap."),
+  );
+
+  return { content: h("div", { class: "stack" }, notice, rules, list) };
 }
 
-function stepEditor(step, { tpl, store, markDirty, render }) {
+function stepEditor(step, { store, markDirty, render }) {
   step.rag = step.rag || {};
   const docIds = api.getStepDocumentIds(step);
 
@@ -68,8 +84,7 @@ function stepEditor(step, { tpl, store, markDirty, render }) {
     "div",
     { class: "stack-sm" },
     field("Titel", bound(step, "title", { onInput: markDirty })),
-    field("Beschrijving", bound(step, "description", { multiline: true, rows: 2, onInput: markDirty })),
-    field("Systeemprompt", bound(step, "prompt", { multiline: true, rows: 6, onInput: markDirty }), "Instructie voor de assistent in deze stap."),
+    field("Instructies", bound(step, "prompt", { multiline: true, rows: 6, onInput: markDirty }), "Instructie voor de assistent in deze stap."),
   );
 
   const search = h(
@@ -87,8 +102,8 @@ function stepEditor(step, { tpl, store, markDirty, render }) {
   const docList = h(
     "div",
     { class: "doc-checks" },
-    docs.length
-      ? docs.map((d) =>
+    store.documents.length
+      ? store.documents.map((d) =>
           toggle({
             form: "check",
             checked: docIds.has(String(d.id)),
@@ -96,7 +111,7 @@ function stepEditor(step, { tpl, store, markDirty, render }) {
             onChange: (v) => { api.setStepDocument(step, d.id, v); markDirty(); },
           }),
         )
-      : h("p", { class: "muted" }, "Geen actieve documenten in de bibliotheek van dit template."),
+      : h("p", { class: "muted" }, "Nog geen documenten in de Documentenbibliotheek."),
   );
 
   const substeps = h(
@@ -107,9 +122,14 @@ function stepEditor(step, { tpl, store, markDirty, render }) {
         "div",
         { class: "substep" },
         h("span", { class: "substep-id" }, sub.id),
-        bound(sub, "title", { onInput: markDirty }),
-        bound(sub, "description", { onInput: markDirty }),
-        h("button", { class: "icon-btn is-danger", "aria-label": "Substap verwijderen", onClick: () => { step.substeps.splice(i, 1); markDirty(); render(); } }, icon("trash", 14)),
+        h(
+          "div",
+          { class: "stack-sm" },
+          field("Titel", bound(sub, "title", { onInput: markDirty })),
+          field("Instructies", bound(sub, "prompt", { multiline: true, rows: 3, onInput: markDirty })),
+          field("Antwoord format", bound(sub, "answer_format", { multiline: true, rows: 3, onInput: markDirty })),
+        ),
+        h("button", { class: "icon-btn is-danger", "aria-label": "Substap verwijderen", onClick: () => { step.substeps.splice(i, 1); markDirty(); render(); } }, icon("trash", 18)),
       ),
     ),
     h(
@@ -118,9 +138,12 @@ function stepEditor(step, { tpl, store, markDirty, render }) {
         class: "btn btn-small btn-secondary",
         onClick: () => {
           const idx = store.flow.steps.indexOf(step) + 1;
-          step.substeps = [...(step.substeps || []), { id: `${idx}.${(step.substeps?.length || 0) + 1}`, title: "", description: "" }];
+          step.substeps = [...(step.substeps || []), { id: `${idx}.${(step.substeps?.length || 0) + 1}`, title: "", prompt: "", answer_format: "" }];
           markDirty();
           render();
+          const row = document.querySelector(".flow-step.is-open .substep:last-of-type");
+          reveal(row);
+          row?.querySelector("input")?.focus({ preventScroll: true });
         },
       },
       icon("plus", 14),
@@ -128,26 +151,38 @@ function stepEditor(step, { tpl, store, markDirty, render }) {
     ),
   );
 
-  const advanced = h(
-    "details",
-    { class: "advanced" },
-    h("summary", {}, "Geavanceerd"),
-    h(
-      "div",
-      { class: "form-grid" },
-      // Step id, workflow id and webhook path are not shown: they link the step to n8n and feedback.
-      // Editing them safely needs a fixed internal id first (private notes, ADMIN_UI_FUTURE_WORK.md §9).
-      field("Aantal passages (top_k)", bound(step.rag, "top_k", { type: "number", onInput: markDirty })),
-      field("Minimale score (0–1)", bound(step.rag, "min_score", { type: "number", onInput: markDirty })),
-    ),
-  );
-
+  // Not shown: step id, workflow id and webhook path link the step to n8n and feedback, and editing
+  // them safely needs a fixed internal id first (private notes, ADMIN_UI_FUTURE_WORK.md §9).
+  // rag.top_k and rag.min_score stay in the template as they are.
   return h(
     "div",
     { class: "stack" },
     texts,
-    card("Documenten", search, docList),
+    // MOCK #2: saved with the step, but retrieval does not read them yet (ADMIN_UI_FUTURE_WORK.md §2).
+    card(
+      ["Documenten ", h("span", { class: "badge badge-mock", title: "Wordt opgeslagen, maar de assistent gebruikt dit nog niet" }, "Mock")],
+      h("p", { class: "field-hint" }, "Zoekmethode en documentkeuze worden opgeslagen, maar de assistent gebruikt ze nog niet."),
+      search,
+      docList,
+    ),
     card("Substappen", substeps),
-    advanced,
+    h(
+      "div",
+      { class: "flow-editor-foot" },
+      // Edits are already in the working copy; this only closes the step. The server gets them with "Opslaan als nieuwe versie".
+      h(
+        "button",
+        {
+          class: "btn btn-primary",
+          title: "Bewaart de stap in je wijzigingen; opslaan op de server doe je met “Opslaan als nieuwe versie”",
+          onClick: () => {
+            store.ui.stepId = null;
+            render();
+            reveal(stepEl(store.flow.steps.indexOf(step)));
+          },
+        },
+        "Stap opslaan",
+      ),
+    ),
   );
 }

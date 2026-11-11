@@ -1,14 +1,14 @@
 import { h, icon } from "../dom.js";
 
 // GitHub-style selector (like the branch picker): a button that opens a filterable list.
-export function templateSelector({ templates, currentId, onSelect, onNew }) {
-  const current = templates.find((t) => t.id === currentId) || templates[0];
+export function templateSelector({ templates, currentId, meta, onSelect, onNew }) {
+  const current = templates.find((t) => t.id === currentId) || null;
   const wrap = h("div", { class: "tpl-select" });
   const button = h(
     "button",
     { class: "tpl-button", "aria-haspopup": "listbox", "aria-expanded": "false" },
     icon("branch", 14),
-    h("span", { class: "tpl-button-label" }, "Template: ", h("strong", {}, current?.name || "—")),
+    h("span", { class: "tpl-button-label" }, current ? ["Template: ", h("strong", {}, current.name), meta ? ` · ${meta}` : null] : h("strong", {}, "Kies een template")),
     icon("chevronDown", 12),
   );
   const filter = h("input", { class: "tpl-filter", type: "search", placeholder: "Zoek een template…", "aria-label": "Zoek een template" });
@@ -19,12 +19,9 @@ export function templateSelector({ templates, currentId, onSelect, onNew }) {
     h("div", { class: "tpl-popover-title" }, "Kies een template"),
     filter,
     list,
-    h(
-      "button",
-      { class: "tpl-new", onClick: () => { close(); onNew?.(); } },
-      icon("plus", 14),
-      "Nieuw template op basis van huidige…",
-    ),
+    onNew
+      ? h("button", { class: "tpl-new", onClick: () => { close(); onNew(); } }, icon("plus", 14), "Nieuw template op basis van huidige…")
+      : null,
   );
 
   const renderList = () => {

@@ -8,8 +8,8 @@ Store Beleidskompas templates, versions and documents in Postgres instead of `be
 - Every save inserts a new **version** (`snapshot jsonb`). Versions are never updated.
 - A **document** is stored once, keyed by the SHA-256 of its bytes. A version lists its documents in `version_documents`.
 - Two pointers:
-  - `templates.live_version_id`: the template's newest version (the "Live" badge in the editor). Every save moves it.
-  - `live` (one row): the template and version end users get. The migration or seed sets it. Saving a new version of that template republishes it.
+  - `templates.live_version_id`: the template's newest version. Every save moves it, and the editor opens it. The API does not report it as "live".
+  - `live` (one row): the template and version end users get. The migration or seed sets it, and the Deploy page moves it (`POST /templates/:id/versions/:versionId/deploy`, which also runs the publish step). Saving a version never changes it, so a save does not go live until it is deployed. The API reports `live_version_id` and `is_live` from this row, and `null` for templates that are not live.
 
 ```sql
 templates          (id, name, live_version_id, created_from_version_id, created_at)
@@ -45,7 +45,6 @@ Code is plain SQL with `pg` and Express, no ORM, in `admin/beleidskompas/` (`api
 `BELEIDSKOMPAS_DEV_SEED=true` loads `seed.sql` into an empty database. `make replenish-beleidskompas-db` wipes everything and reseeds, after a confirmation.
 
 ## Not yet
-- Moving the global `live` pointer to another template or version (no UI or endpoint).
 - Pushing workflows to n8n on publish.
 - Feedback that records template and version ids.
 - Export/import keep only the current documents, not earlier versions'.

@@ -5,21 +5,28 @@ const DOC_COLUMNS = "d.id, d.filename, d.content_type AS mime_type, d.size AS si
 const docRow = ({ uploaded_at, ...rest }) => ({ ...rest, uploaded_at: uploaded_at.toISOString() });
 
 function createStore(db) {
+  // templates.live_version_id is the template's newest version (what the editor opens and what every save moves).
+  // The API reports "live" from the `live` row instead: the version end users get, null for the other templates.
   async function listTemplates() {
-    const { rows: templates } = await db.query("SELECT id, name, live_version_id FROM templates ORDER BY id");
+    const { rows: templates } = await db.query("SELECT id, name FROM templates ORDER BY id");
     const { rows: versions } = await db.query(
       "SELECT id, template_id, created_at, created_by, note, snapshot FROM template_versions ORDER BY version DESC");
-    return templates.map((t) => ({
-      ...t,
-      versions: versions.filter((v) => v.template_id === t.id).map((v) => ({
-        id: v.id,
-        published_at: v.created_at.toISOString(),
-        published_by: v.created_by,
-        note: v.note,
-        is_live: v.id === t.live_version_id,
-        snapshot: v.snapshot,
-      })),
-    }));
+    const { rows: [live] } = await db.query("SELECT template_id, version_id FROM live");
+    return templates.map((t) => {
+      const liveVersionId = live && live.template_id === t.id ? live.version_id : null;
+      return {
+        ...t,
+        live_version_id: liveVersionId,
+        versions: versions.filter((v) => v.template_id === t.id).map((v) => ({
+          id: v.id,
+          published_at: v.created_at.toISOString(),
+          published_by: v.created_by,
+          note: v.note,
+          is_live: v.id === liveVersionId,
+          snapshot: v.snapshot,
+        })),
+      };
+    });
   }
 
   async function getCurrent(templateId) {
@@ -41,8 +48,7 @@ function createStore(db) {
     await q("INSERT INTO version_documents (version_id, document_id) SELECT $1, unnest($2::int[])",
       [v.id, [...new Set(documentIds)]]);
     await q("UPDATE templates SET live_version_id = $1 WHERE id = $2", [v.id, templateId]);
-    const live = await q("UPDATE live SET version_id = $1 WHERE template_id = $2", [v.id, templateId]);
-    return { version: v, isLive: live.rowCount > 0 };
+    return { version: v };
   }
 
   async function insertTemplate(q, name, createdFromVersionId) {

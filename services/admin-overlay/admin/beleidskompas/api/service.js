@@ -2,7 +2,7 @@
 // that needs the store or the live-publish step is injected, so it can be tested
 // with fakes.
 
-function createService({ store, publishLive }) {
+function createService({ store }) {
   const notFound = (message) => Object.assign(new Error(message), { status: 404 });
 
   async function getCurrentOr404(templateId) {
@@ -11,16 +11,15 @@ function createService({ store, publishLive }) {
     return current;
   }
 
-  // Saves a new version of the template with the document added or removed; returns the workflow manifest when live.
+  // Saves a new version of the template with the document added or removed. It does not go live: that is the Deploy page.
   async function setTemplateDocument(templateId, docId, active, label, filename) {
     const current = await getCurrentOr404(templateId);
     const doc = await store.getDocument(docId);
     if (!doc) throw notFound("Document niet gevonden");
     const others = current.documentIds.filter((x) => x !== docId);
     if (!active && others.length === current.documentIds.length) throw notFound("Document niet actief in dit template");
-    const { isLive } = await store.saveVersion(
+    await store.saveVersion(
       templateId, current.snapshot, active ? [...others, docId] : others, `${label}: ${filename || doc.filename}`);
-    return isLive ? publishLive() : null;
   }
 
   async function findTemplateDocument(templateId, docId) {

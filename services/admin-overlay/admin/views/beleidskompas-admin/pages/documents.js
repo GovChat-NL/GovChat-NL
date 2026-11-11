@@ -44,7 +44,10 @@ export function renderDocuments({ store, render }) {
     try {
       for (const file of uploadInput.files || []) await api.uploadDocument(tpl.id, file);
       toast("Document(en) geüpload", "success");
+      // Select and preview the (first) uploaded document.
+      if (uploaded[0]) ui.docId = uploaded[0].id;
       await reloadDocs();
+      document.querySelector(".finder-item.is-selected")?.scrollIntoView({ block: "nearest" });
     } catch (err) {
       toast(`Uploaden mislukt: ${err.message}`, "error");
     } finally {
@@ -60,7 +63,13 @@ export function renderDocuments({ store, render }) {
   const content = finder({
     files,
     selectedFile: selected?.id ?? null,
-    onFile: (id) => { ui.docId = id; render(); },
+    onFile: (id) => {
+      // The redraw rebuilds the list (and starts the new preview at the top); keep the list where it was.
+      const listTop = document.querySelector(".finder-files")?.scrollTop || 0;
+      ui.docId = id;
+      render();
+      document.querySelector(".finder-files").scrollTop = listTop;
+    },
     preview,
     path: ["Documentenbibliotheek", selected?.filename].filter(Boolean),
   });
@@ -85,8 +94,8 @@ function docPreview(doc, { tpl, store, reloadDocs }) {
         class: "btn btn-small btn-secondary",
         disabled: readOnly,
         onClick: async () => {
-          const name = await askText({ title: "Document hernoemen", label: "Bestandsnaam", placeholder: doc.filename, confirm: "Hernoemen", required: true });
-          if (!name) return;
+          const name = await askText({ title: "Document hernoemen", label: "Bestandsnaam", value: doc.filename, confirm: "Hernoemen", required: true });
+          if (!name || name === doc.filename) return;
           try {
             await api.updateDocument(tpl.id, doc.id, { filename: name });
             await reloadDocs();

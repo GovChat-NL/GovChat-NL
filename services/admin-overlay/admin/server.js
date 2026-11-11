@@ -652,12 +652,15 @@ function normalizeBeleidskompasFlow(input) {
       description: String(step?.description ?? fb.description ?? "").trim(),
       prompt: String(step?.prompt ?? fb.prompt ?? "").trim(),
       doc_tags: normalizeTags(step?.doc_tags || fb.doc_tags),
+      // Documents picked in the Flow builder. Retrieval still uses doc_tags; missing = not picked yet.
+      document_ids: Array.isArray(step?.document_ids) ? [...new Set(step.document_ids.map(String))] : undefined,
       rag: normalizeStepRagSettings(step?.rag || fb.rag || {}, step || fb),
-      document_ids: Array.isArray(step?.document_ids) ? step.document_ids.map(String) : [],
       substeps: substepsRaw.map((sub, subIdx) => ({
         id: String(sub?.id || `${idx + 1}.${subIdx + 1}`).trim() || `${idx + 1}.${subIdx + 1}`,
         title: String(sub?.title || `Substap ${subIdx + 1}`).trim() || `Substap ${subIdx + 1}`,
         description: String(sub?.description || "").trim(),
+        prompt: String(sub?.prompt || "").trim(),
+        answer_format: String(sub?.answer_format || "").trim(),
       })),
     };
   });
@@ -673,6 +676,7 @@ function normalizeBeleidskompasFlow(input) {
     webhook_token: String(src.webhook_token || fallback.webhook_token || "").trim(),
     disclaimer: String(src.disclaimer || fallback.disclaimer).trim() || fallback.disclaimer,
     specialist_team: String(src.specialist_team ?? fallback.specialist_team).trim(),
+    rules: String(src.rules ?? "").trim(),
     sources: normalizeTags(src.sources || fallback.sources),
     steps,
   };
@@ -2655,7 +2659,8 @@ app.post("/api/config/apps", requireAuth, (req, res) => {
   }
 });
 
-const beleidskompasService = createService({ store, publishLive });
+
+const beleidskompasService = createService({ store });
 app.use(
   "/api/beleidskompas",
   createBeleidskompasRouter({

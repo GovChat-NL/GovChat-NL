@@ -27,14 +27,8 @@ const ICONS = {
   folder: "M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z",
   flow: "M6 3v12 M18 9a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z M6 21a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z M18 9a9 9 0 0 1-9 9",
   chat: "M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2Z",
-  grid: "M3 3h7v7H3Z M14 3h7v7h-7Z M14 14h7v7h-7Z M3 14h7v7H3Z",
-  book: "M4 19.5A2.5 2.5 0 0 1 6.5 17H20 M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2Z",
-  globe: "M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20Z M2 12h20 M12 2a15 15 0 0 1 0 20 M12 2a15 15 0 0 0 0 20",
-  cpu: "M6 6h12v12H6Z M9 1v3 M15 1v3 M9 20v3 M15 20v3 M20 9h3 M20 14h3 M1 9h3 M1 14h3",
   home: "M3 10 12 3l9 7v10a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1Z",
-  logout: "M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4 M16 17l5-5-5-5 M21 12H9",
   file: "M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z M14 2v6h6",
-  chevronRight: "M9 18l6-6-6-6",
   chevronDown: "M6 9l6 6 6-6",
   check: "M20 6 9 17l-5-5",
   plus: "M12 5v14 M5 12h14",
@@ -65,6 +59,21 @@ export function icon(name, size = 16) {
   path.setAttribute("d", ICONS[name] || "");
   svg.append(path);
   return svg;
+}
+
+// Reveal rule: after a click shows new content, scroll the content pane just enough to show it,
+// but never past its top, so its header (with the button that was clicked) stays visible.
+// Nothing moves when it is already in view. Honours the OS "reduce motion" setting.
+export function reveal(el, margin = 12) {
+  const pane = document.getElementById("body");
+  if (!el || !pane) return;
+  const p = pane.getBoundingClientRect();
+  const r = el.getBoundingClientRect();
+  const toTop = r.top - p.top - margin;
+  const by = toTop < 0 ? toTop : Math.max(0, Math.min(r.bottom - p.bottom + margin, toTop));
+  if (!by) return;
+  const smooth = !matchMedia("(prefers-reduced-motion: reduce)").matches;
+  pane.scrollBy({ top: by, behavior: smooth ? "smooth" : "auto" });
 }
 
 export function formatDate(iso, withTime = true) {
@@ -106,9 +115,11 @@ export function bound(obj, key, { multiline = false, rows = 3, type = "text", on
 }
 
 // Small modal asking for one line of text. Resolves to the text, or null when cancelled.
-export function askText({ title, label, placeholder = "", confirm = "OK", required = false }) {
+// value prefills the input, with the cursor at the start.
+export function askText({ title, label, placeholder = "", value = "", confirm = "OK", required = false }) {
   return new Promise((resolve) => {
     const input = h("input", { class: "input", type: "text", placeholder, "aria-label": label, required });
+    input.value = value;
     const dialog = h(
       "dialog",
       { class: "dialog" },
@@ -120,7 +131,8 @@ export function askText({ title, label, placeholder = "", confirm = "OK", requir
         h(
           "div",
           { class: "dialog-actions" },
-          h("button", { class: "btn btn-secondary", value: "cancel", formnovalidate: true }, "Annuleren"),
+          // type "button": Enter submits with the first submit button, which must be the confirm button.
+          h("button", { class: "btn btn-secondary", type: "button", onClick: () => dialog.close("cancel") }, "Annuleren"),
           h("button", { class: "btn btn-primary", value: "ok" }, confirm),
         ),
       ),
@@ -131,6 +143,7 @@ export function askText({ title, label, placeholder = "", confirm = "OK", requir
     });
     document.body.append(dialog);
     dialog.showModal();
+    input.setSelectionRange(0, 0);
   });
 }
 

@@ -36,6 +36,15 @@ export const saveSettings = (settings) => request("POST", `${BASE}/settings`, se
 // WIRED: POST /api/beleidskompas/templates/:id/versions. Saves the flow as a new version; published when the template is live.
 export const publishVersion = (templateId, flow, note) => request("POST", `${BASE}/templates/${templateId}/versions`, { flow, note });
 
+// WIRED: POST /api/beleidskompas/templates/:id/versions/:versionId/deploy makes an existing version live (the Deploy page).
+// MOCK #1: for a sample template the live version changes in this browser tab only.
+export function deployVersion(tpl, versionId) {
+  if (!tpl.mock) return request("POST", `${BASE}/templates/${tpl.id}/versions/${encodeURIComponent(versionId)}/deploy`);
+  tpl.live_version_id = versionId;
+  for (const v of tpl.versions) v.is_live = v.id === versionId;
+  return Promise.resolve({ ok: true });
+}
+
 // WIRED: GET /api/beleidskompas/templates/:id/export (one template as JSON)
 export const exportUrl = (templateId) => `${BASE}/templates/${templateId}/export`;
 

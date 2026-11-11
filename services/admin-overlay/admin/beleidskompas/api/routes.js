@@ -1,7 +1,7 @@
 const express = require("express");
 
 // All /api/beleidskompas/* routes. Mounted by server.js:
-//   app.use("/api/beleidskompas", createBeleidskompasRouter({ ... }));
+//   router.use("/api/beleidskompas", createBeleidskompasRouter({ ... }));
 //
 // Dependencies are passed in so this module does not reach into server.js globals.
 //   store, service    data access and shared logic (beleidskompas/store.js, service.js)
@@ -31,6 +31,7 @@ function createBeleidskompasRouter({ store, service, requireAuth, flow }) {
     }
   });
 
+
   router.post("/templates", requireAuth, async (req, res) => {
     try {
       const name = String(req.body?.name || "").trim();
@@ -56,10 +57,27 @@ function createBeleidskompasRouter({ store, service, requireAuth, flow }) {
     try {
       const id = templateIdParam(req);
       const current = await getCurrentOr404(id);
-      const { version, isLive } = await store.saveVersion(
+      const { version } = await store.saveVersion(
         id, normalizeBeleidskompasFlow(req.body?.flow), current.documentIds, String(req.body?.note || ""));
-      const workflow_manifest = isLive ? await publishLive() : null;
-      return res.json({ ok: true, version, workflow_manifest });
+      return res.json({ ok: true, version });
+    } catch (err) {
+      return res.status(err.status || 400).json({ error: String(err?.message || err) });
+    }
+  });
+
+  // Makes an existing version the live one (the Deploy page) and regenerates the workflow files.
+  router.post("/templates/:id/versions/:versionId/deploy", requireAuth, async (req, res) => {
+    try {
+      const id = templateIdParam(req);
+      const versionId = Number(req.params.versionId);
+      const template = (await store.listTemplates()).find((t) => t.id === id);
+      if (!template) return res.status(404).json({ error: "Template niet gevonden" });
+      if (!template.versions.some((v) => Number(v.id) === versionId)) {
+        return res.status(404).json({ error: "Versie niet gevonden" });
+      }
+      await store.setLive(id, versionId);
+      const workflow_manifest = await publishLive();
+      return res.json({ ok: true, live: { template_id: id, version_id: versionId }, workflow_manifest });
     } catch (err) {
       return res.status(err.status || 400).json({ error: String(err?.message || err) });
     }
@@ -88,15 +106,8 @@ function createBeleidskompasRouter({ store, service, requireAuth, flow }) {
     }
   });
 
-  router.post("/import", requireAuth, async (req, res) => {
-    try {
-      const incoming = req.body && typeof req.body === "object" ? req.body : {};
-      const { templateId } = await store.importLegacyState(normalizeLegacyState(incoming), String(incoming.name || "Import"));
-      return res.json({ ok: true, template_id: templateId });
-    } catch (err) {
-      return res.status(err.status || 400).json({ error: String(err?.message || err) });
-    }
-  });
+
+
 
   router.post("/settings", requireAuth, async (req, res) => {
     try {
@@ -183,8 +194,8 @@ function createBeleidskompasRouter({ store, service, requireAuth, flow }) {
 
       await getCurrentOr404(id);
       const { id: docId, reused } = await store.upsertDocument({ filename, contentType: mimeType, bytes, previewText });
-      const workflow_manifest = await setTemplateDocument(id, docId, true, "Document toegevoegd", filename);
-      return res.status(201).json({ ok: true, document: await findTemplateDocument(id, docId), reused, workflow_manifest });
+      await setTemplateDocument(id, docId, true, "Document toegevoegd", filename);
+      return res.status(201).json({ ok: true, document: await findTemplateDocument(id, docId), reused });
     } catch (err) {
       return res.status(err.status || 400).json({ error: String(err?.message || err) });
     }

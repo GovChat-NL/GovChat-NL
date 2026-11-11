@@ -25,10 +25,11 @@ test("createTemplate writes version 1 and saveVersion numbers upward", opts, asy
   assert.equal(version.version, 1);
   const v2 = await store.saveVersion(template.id, { title: "A2", steps: [] }, [], "edit");
   assert.equal(v2.version.version, 2);
-  assert.equal(v2.isLive, false);
+  assert.equal((await store.getCurrent(template.id)).versionId, v2.version.id);
   const [t] = await store.listTemplates();
-  assert.equal(t.live_version_id, v2.version.id);
-  assert.equal(t.versions[0].is_live, true);
+  // Nothing is deployed yet, so no version is live; saving never makes one live.
+  assert.equal(t.live_version_id, null);
+  assert.equal(t.versions[0].is_live, false);
   assert.equal(t.versions[1].is_live, false);
   assert.deepEqual(t.versions[0].snapshot, { title: "A2", steps: [] });
   assert.equal(typeof t.versions[0].published_at, "string");
@@ -63,24 +64,30 @@ test("renameDocument changes the filename", opts, async () => {
   assert.equal((await store.getDocument(d.id)).filename, "renamed.txt");
 });
 
-test("saving the live template publishes the new version; other saves leave live alone", opts, async () => {
+test("saving never moves the live pointer; setLive does", opts, async () => {
   const d = await doc("live-doc");
   const d2 = await doc("live-doc-2");
   const { template, version } = await store.createTemplate({ name: "L", snapshot: { v: 1 }, documentIds: [d.id], note: "" });
   await store.setLive(template.id, version.id);
   const saved = await store.saveVersion(template.id, { v: 2 }, [d.id, d2.id], "");
-  assert.equal(saved.isLive, true);
   const live = await store.getLive();
   assert.equal(live.template_id, template.id);
-  assert.equal(live.version_id, saved.version.id);
-  assert.deepEqual(live.snapshot, { v: 2 });
-  assert.deepEqual(live.documents.map((x) => x.id), [d.id, d2.id]);
+  assert.equal(live.version_id, version.id);
+  assert.deepEqual(live.snapshot, { v: 1 });
+  assert.deepEqual(live.documents.map((x) => x.id), [d.id]);
   assert.equal("active" in live.documents[0], false);
 
-  const other = await store.createTemplate({ name: "Other", snapshot: {}, documentIds: [], note: "" });
-  const otherSave = await store.saveVersion(other.template.id, { other: true }, [], "");
-  assert.equal(otherSave.isLive, false);
-  assert.deepEqual(await store.getLive(), live);
+  const listed = (await store.listTemplates()).find((t) => t.id === template.id);
+  assert.equal(listed.live_version_id, version.id);
+  assert.deepEqual(listed.versions.filter((v) => v.is_live).map((v) => v.id), [version.id]);
+  const other = (await store.listTemplates()).find((t) => t.id !== template.id);
+  assert.equal(other.live_version_id, null);
+
+  await store.setLive(template.id, saved.version.id);
+  const moved = await store.getLive();
+  assert.equal(moved.version_id, saved.version.id);
+  assert.deepEqual(moved.snapshot, { v: 2 });
+  assert.deepEqual(moved.documents.map((x) => x.id), [d.id, d2.id]);
 });
 
 test("createTemplate copies document links, not bytes", opts, async () => {
