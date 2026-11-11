@@ -925,9 +925,6 @@ services:
       - /opt/librechat/overlay/data:/data
       - /opt/librechat/overlay/publish:/publish
       - ./overlay/defaults:/app/defaults:ro
-    depends_on:
-      pgvector:
-        condition: service_healthy
     profiles:
       - admin-overlay
     # Started after the Beleidskompas database, but not held up by it: the
