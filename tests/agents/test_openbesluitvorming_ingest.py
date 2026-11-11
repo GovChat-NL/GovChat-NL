@@ -21,6 +21,41 @@ DETAIL = json.loads((FIXTURE.parent / 'openbesluitvorming-limburg-detail.json').
 HEADERS = {'X-Has-More': 'true', 'X-Next-Cursor': RECORDS[-1]['entity_id'], 'X-Changes-Cursor': '111032'}
 
 
+class AttachmentWireUrlTests(unittest.TestCase):
+    def test_spaces_unicode_and_signed_query_preserve_existing_escapes(self):
+        raw = 'https://fsn1.your-objectstorage.com/docs/Reactie Partij é.pdf?sig=a%2Fb+c==&name=brief 1'
+        expected = 'https://fsn1.your-objectstorage.com/docs/Reactie%20Partij%20%C3%A9.pdf?sig=a%2Fb+c==&name=brief%201'
+        self.assertEqual(obv.validate_attachment_url(raw), expected)
+        self.assertEqual(obv.validate_attachment_url(expected), expected)
+
+    def test_invalid_controls_and_ports_fail_as_typed_download_errors(self):
+        for raw in ('https://api1.ibabs.eu/a\nb', 'https://api1.ibabs.eu/a\tb',
+                    'https://api1.ibabs.eu:bad/file', None):
+            with self.subTest(raw=raw), self.assertRaises(obv.IngestError) as caught:
+                obv.validate_attachment_url(raw)
+            self.assertEqual(caught.exception.stage, 'download')
+
+    def test_redirects_encode_filenames_without_bypassing_allowlist(self):
+        req = obv.urllib.request.Request('https://api1.ibabs.eu/file')
+        redirect = obv.SafeRedirect().redirect_request(req, None, 302, 'Found', {},
+            'https://fsn1.your-objectstorage.com/docs/brief é.pdf')
+        self.assertEqual(redirect.full_url,
+            'https://fsn1.your-objectstorage.com/docs/brief%20%C3%A9.pdf')
+
+    def test_download_transport_receives_encoded_url(self):
+        seen = []
+        class Opener:
+            def open(self, req, **kwargs):
+                seen.append(req.full_url)
+                response = io.BytesIO(b'%PDF-fixture')
+                response.headers = {'Content-Type': 'application/pdf'}
+                return response
+        with patch.object(obv.urllib.request, 'build_opener', return_value=Opener()), patch.object(obv.time, 'sleep'):
+            body, _ = obv.Http().request('https://fsn1.your-objectstorage.com/docs/brief 1.pdf', attachment=True)
+        self.assertEqual(body, b'%PDF-fixture')
+        self.assertEqual(seen, ['https://fsn1.your-objectstorage.com/docs/brief%201.pdf'])
+
+
 class Encoder:
     def encode(self, text, **kwargs):
         return list(text.encode('utf-8'))

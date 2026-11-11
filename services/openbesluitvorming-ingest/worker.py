@@ -103,12 +103,23 @@ def public_links(entity_id, reference, original, existing=None):
 
 
 def validate_attachment_url(url):
-    u = urllib.parse.urlsplit(url)
+    if not isinstance(url, str) or any(ord(c) < 32 or ord(c) == 127 for c in url):
+        raise IngestError('invalid_attachment_url', 'download')
+    try:
+        u = urllib.parse.urlsplit(url)
+        port = u.port
+    except ValueError:
+        raise IngestError('invalid_attachment_url', 'download') from None
     extra = set(filter(None, os.getenv('OBV_ATTACHMENT_HOSTS', '').split(',')))
     if (u.scheme != 'https' or u.hostname not in ATTACHMENT_HOSTS | extra
-            or u.username or u.password or u.port not in (None, 443)):
+            or u.username or u.password or port not in (None, 443)):
         raise IngestError('attachment_url_not_allowlisted', 'download')
-    return url
+    # Source object-storage paths include literal spaces and Unicode filenames.
+    # Encode only the wire URL; retain the exact source URL in metadata. Preserve
+    # existing escapes and signed-query delimiters without decoding/reordering.
+    return urllib.parse.urlunsplit((u.scheme, u.netloc,
+        urllib.parse.quote(u.path, safe="/%:@!$&'()*+,;=-._~"),
+        urllib.parse.quote(u.query, safe="%/:?@!$&'()*+,;=-._~"), u.fragment))
 
 
 class SafeRedirect(urllib.request.HTTPRedirectHandler):
@@ -117,7 +128,7 @@ class SafeRedirect(urllib.request.HTTPRedirectHandler):
         self.pace = pace
 
     def redirect_request(self, req, fp, code, msg, headers, newurl):
-        validate_attachment_url(newurl)
+        newurl = validate_attachment_url(newurl)
         if self.pace:
             self.pace()
         return super().redirect_request(req, fp, code, msg, headers, newurl)
@@ -153,7 +164,7 @@ class Http:
 
     def request(self, url, method='GET', data=None, headers=None, max_bytes=64 * 1024 * 1024, attachment=False):
         if attachment:
-            validate_attachment_url(url)
+            url = validate_attachment_url(url)
         hdr = {'User-Agent': 'GovChat-NL-OpenBesluitvorming-Ingest/1.0', **(headers or {})}
         if isinstance(data, dict):
             data = json.dumps(data, ensure_ascii=False, allow_nan=False).encode()

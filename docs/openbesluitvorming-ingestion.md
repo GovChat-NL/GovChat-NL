@@ -36,6 +36,28 @@ to the pre-launch validation and benchmark stages, not the current state.
 - Optimized ingestion regressions: 55 passed. Search/probe regressions after
   restoring Docker: 18 passed, including live-Qdrant filtering.
 
+Operational follow-up at **2026-11-11 20:10 UTC**: the ingest remained running with
+**3,939 indexed documents across 198 queued pages**. Fifteen documents had entered
+dead-letter state for size budgets, empty/invalid source downloads, or Tika/OCR
+extraction failures; these remain explicitly recorded and require investigation
+before declaring the corpus complete. They have not been silently discarded.
+
+After Docker/WSL restarted, additional virtual-disk space was reclaimed: the Docker
+data file measured **116.12 GiB**, down from **339.76 GiB**, while Ubuntu remained
+at **31.32 GiB**. A final host check reported **496.26 GiB physically free on C:**,
+approximately **486 GiB more than before the maintenance**. This was virtual-disk
+space reclamation, not deletion of user files or Docker datasets.
+
+An early object-storage URL issue was fixed after the first pages exposed literal
+spaces in attachment filenames. Network requests now percent-encode spaces and
+Unicode without decoding existing escapes or reordering signed query parameters;
+raw source URLs remain unchanged in stored provenance. Invalid controls/ports
+produce typed download errors. Four regressions were added (**59 ingestion tests
+passed**). Seven early URL failures were explicitly requeued, and the same run
+resumed in a rebuilt worker at **18:05:17 UTC**. The stopped pre-fix container was
+renamed **govchat-obv-full-run-before-url-fix** to preserve its logs; it is not an
+additional running worker. All monitoring continues to target **govchat-obv-full-run**.
+
 ### Follow progress without starting another ingest
 
 Double-click [`openbesluitvorming-progress.cmd`](../scripts/openbesluitvorming-progress.cmd)
