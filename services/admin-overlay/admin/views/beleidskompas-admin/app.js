@@ -36,14 +36,17 @@ export const store = {
 
 export const template = () => store.templates.find((t) => t.id === store.templateId) || null;
 
-// Version labels count from the oldest version: v1, v2, …
+// tpl.versions is newest first (api.listTemplates sorts it). Labels count from the oldest: v1, v2, …
 export function versionLabel(tpl, versionId) {
-  const ordered = [...(tpl?.versions || [])].sort((a, b) => a.published_at.localeCompare(b.published_at));
-  const idx = ordered.findIndex((v) => v.id === versionId);
-  return idx < 0 ? "onbekende versie" : `v${idx + 1}`;
+  const idx = tpl.versions.findIndex((v) => v.id === versionId);
+  return idx < 0 ? "onbekende versie" : `v${tpl.versions.length - idx}`;
 }
 
-export const newestVersion = (tpl) => [...tpl.versions].sort((a, b) => b.published_at.localeCompare(a.published_at))[0];
+export const newestVersion = (tpl) => tpl.versions[0];
+
+// Dropdown options for a template's versions, newest first, with the live one marked.
+export const versionOptions = (tpl) =>
+  tpl.versions.map((v) => ({ value: v.id, label: `${versionLabel(tpl, v.id)}${v.id === tpl.live_version_id ? " (live)" : ""}` }));
 
 // The editor always works on the newest saved version, live or not.
 function flowOf(tpl) {
@@ -137,7 +140,7 @@ export const dirtyFlag = () =>
   h("span", { id: "dirty-flag", class: "dirty-flag", hidden: !store.dirty }, " · niet-opgeslagen wijzigingen");
 
 function subtitleFor(def) {
-  if (!def.editor) return def.subtitle;
+  if (!def.editor) return null;
   const tpl = template();
   return ["Template ", h("strong", {}, tpl.name), ` · ${versionStatus(tpl)}`, dirtyFlag()];
 }

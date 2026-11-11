@@ -2,17 +2,13 @@
 import * as api from "../api.js";
 import { h, icon, card, toast, formatDate } from "../dom.js";
 import { dropdown } from "../components/dropdown.js";
-import { versionLabel, newestVersion } from "../app.js";
+import { versionLabel, newestVersion, versionOptions } from "../app.js";
 
 export function renderDeploy({ store, render, reload }) {
   const ui = store.ui;
   const tpl = store.templates.find((t) => t.id === ui.depTemplate) || store.templates.find((t) => t.id === store.templateId) || store.templates[0];
   const version = tpl.versions.find((v) => v.id === ui.depVersion) || newestVersion(tpl);
   const live = tpl.versions.find((v) => v.id === tpl.live_version_id);
-
-  const versionOptions = [...tpl.versions]
-    .sort((a, b) => b.published_at.localeCompare(a.published_at))
-    .map((v) => ({ value: v.id, label: `${versionLabel(tpl, v.id)}${v.id === tpl.live_version_id ? " (live)" : ""}` }));
 
   const filters = h(
     "div",
@@ -23,7 +19,7 @@ export function renderDeploy({ store, render, reload }) {
       options: store.templates.map((t) => ({ value: t.id, label: t.name })),
       onChange: (v) => { ui.depTemplate = v; ui.depVersion = null; render(); },
     }),
-    dropdown({ label: "Versie", value: version.id, options: versionOptions, onChange: (v) => { ui.depVersion = v; render(); } }),
+    dropdown({ label: "Versie", value: version.id, options: versionOptions(tpl), onChange: (v) => { ui.depVersion = v; render(); } }),
   );
 
   const describe = (v) => (v ? `${versionLabel(tpl, v.id)} · opgeslagen ${formatDate(v.published_at)}${v.note ? ` · ${v.note}` : ""}` : "—");

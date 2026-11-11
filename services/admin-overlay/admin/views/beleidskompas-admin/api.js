@@ -66,7 +66,10 @@ export function listTemplates(state) {
     live_version_id: state.live_version_id,
     versions: state.versions,
   };
-  return [real, ...MOCK_TEMPLATES];
+  const templates = [real, ...MOCK_TEMPLATES];
+  // Newest version first; the rest of the UI relies on this order.
+  for (const t of templates) t.versions.sort((a, b) => b.published_at.localeCompare(a.published_at));
+  return templates;
 }
 
 // MOCK #1: "Opslaan als nieuw template" only adds the template to this browser tab.
@@ -116,13 +119,8 @@ export const deleteDocument = (id) => request("DELETE", `${BASE}/documents/${enc
 export const downloadUrl = (id) => `${BASE}/documents/${encodeURIComponent(id)}/download`;
 
 // WIRED: the step's documents are saved in the template (step.document_ids) on publish.
-// Steps saved before that field existed start from the documents sharing a tag with the step.
 // The assistant does not read document_ids yet (ADMIN_UI_FUTURE_WORK.md §2).
-export function stepDocumentIds(step, documents) {
-  if (Array.isArray(step.document_ids)) return new Set(step.document_ids);
-  const stepTags = new Set((step.doc_tags || []).map((t) => t.toLowerCase()));
-  return new Set(documents.filter((d) => (d.tags || []).some((t) => stepTags.has(t.toLowerCase()))).map((d) => d.id));
-}
+export const stepDocumentIds = (step) => new Set(step.document_ids || []);
 
 // ── Feedback ───────────────────────────────────────────────────────
 
@@ -133,9 +131,9 @@ export function stepDocumentIds(step, documents) {
 export async function listFeedback(templates) {
   const data = await request("GET", "/api/beleidskompas-feedback");
   const real = templates.find((t) => !t.mock);
-  const byDate = [...(real?.versions || [])].sort((a, b) => a.published_at.localeCompare(b.published_at));
+  const versions = real?.versions || []; // newest first
   const realItems = (data.items || []).map((item) => {
-    const version = [...byDate].reverse().find((v) => v.published_at <= item.created_at) || byDate[0];
+    const version = versions.find((v) => v.published_at <= item.created_at) || versions.at(-1);
     return {
       ...item,
       template_id: real?.id,
