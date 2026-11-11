@@ -1,5 +1,5 @@
 // Sample data for the parts of the admin UI that have no backend yet.
-// Only api.js imports this file. MOCK #n refers to ADMIN_UI_FUTURE_WORK.md (private, local notes for now).
+// Only api.js imports this file. MOCK #n: see the legend at the top of api.js.
 
 const daysAgo = (n) => new Date(Date.now() - n * 86400000).toISOString();
 

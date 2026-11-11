@@ -156,13 +156,13 @@ function stepEditor(step, { store, markDirty, render }) {
   );
 
   // Not shown: step id, workflow id and webhook path link the step to n8n and feedback, and editing
-  // them safely needs a fixed internal id first (private notes, ADMIN_UI_FUTURE_WORK.md §9).
+  // them safely needs a fixed internal id first.
   // rag.top_k and rag.min_score stay in the template as they are.
   return h(
     "div",
     { class: "stack" },
     texts,
-    // MOCK #2: saved with the step, but retrieval does not read them yet (ADMIN_UI_FUTURE_WORK.md §2).
+    // MOCK #2: saved with the step, but retrieval does not read them yet.
     card(
       ["Documenten ", h("span", { class: "badge badge-mock", title: "Wordt opgeslagen, maar de assistent gebruikt dit nog niet" }, "Mock")],
       h("p", { class: "field-hint" }, "Zoekmethode en documentkeuze worden opgeslagen, maar de assistent gebruikt ze nog niet."),
