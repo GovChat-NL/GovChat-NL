@@ -348,6 +348,23 @@
   white-space: pre-wrap;
 }
 
+/* Lists in the text of a report or an answer (see formatRichText). */
+.gc-bk-list {
+  margin: 4px 0 1.5em;
+  padding-left: 20px;
+  list-style: revert;
+}
+
+.gc-bk-list:last-child {
+  margin-bottom: 0;
+}
+
+.gc-bk-list li {
+  margin: 4px 0;
+  padding-left: 2px;
+  white-space: pre-wrap;
+}
+
 .gc-bk-msg-time {
   margin-top: 3px;
   font-size: 10px;
