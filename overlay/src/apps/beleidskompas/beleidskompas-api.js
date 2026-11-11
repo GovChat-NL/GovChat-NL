@@ -1,7 +1,9 @@
-// Talking to the Beleidskompas endpoint of LibreChat. Beleidskompas is a
-// LibreChat custom endpoint ("govchat-beleidskompas" in librechat.yaml), so
-// a case is an ordinary LibreChat conversation: stored in MongoDB and listed
-// like any other chat.
+// Talking to Beleidskompas from the browser. Messages go through LibreChat:
+// Beleidskompas is a LibreChat custom endpoint ("govchat-beleidskompas" in
+// librechat.yaml), so a case is a LibreChat conversation and the case id is
+// its conversationId. The state of a case (the case text, the reports and
+// the conversation) is kept by the Beleidskompas store, which the page
+// reads through /govchat-api/beleidskompas/.
 //
 // Sending a message takes two calls: POST /api/agents/chat/:endpoint returns
 // a {streamId} at once, and the reply arrives via SSE on
@@ -10,6 +12,10 @@
 import { getLibreChatAuthToken, librechatFetch, newClientMessageId } from "../../shared/librechat-api.js";
 
 const BELEIDSKOMPAS_ENDPOINT = "govchat-beleidskompas";
+// nginx forwards this to the store's "my cases" API, which answers with
+// the cases of the logged-in user only (it reads who that is from the
+// LibreChat cookie).
+const STORE_URL = "/govchat-api/beleidskompas";
 const NO_PARENT_MESSAGE_ID = "00000000-0000-0000-0000-000000000000";
 
 /** Extracts the assistant's text from a LibreChat message object. LibreChat
@@ -30,17 +36,21 @@ const CITATIONS_META_LABEL = "beleidskompas-meta";
 
 /** n8n-openai-bridge only forwards plain text to LibreChat, so the citations
  *  and the retrieval trace travel along as a trailing markdown link
- *  definition (appendCitationsMetaBlock in agents/beleidskompas/logic.js),
+ *  definition (appendCitationsMetaBlock in agents/beleidskompas/shared.js),
  *  which no markdown view shows. This splits it back out; safe to call on
  *  text that never had one. */
 export function parseCitationsMetaBlock(text) {
   const raw = String(text || "");
-  const empty = { displayText: raw.trim(), citations: [], retrieval_trace: null };
+  const empty = { displayText: raw.trim(), citations: [], retrieval_trace: null, agent: null, asked_from: null };
 
+  // `agent` is the id of the step that answered, `asked_from` the substep
+  // the user was in when asking; both are null for older messages.
   const shape = (parsed, displayText) => ({
     displayText,
     citations: Array.isArray(parsed.citations) ? parsed.citations : [],
     retrieval_trace: parsed.retrieval_trace || null,
+    agent: parsed.agent ? String(parsed.agent) : null,
+    asked_from: parsed.asked_from ? String(parsed.asked_from) : null,
   });
 
   const defMarker = `[${CITATIONS_META_LABEL}]: data:application/json;base64,`;
@@ -71,22 +81,6 @@ export function parseCitationsMetaBlock(text) {
   }
 }
 
-/** Extracts the text of an `on_message_delta` SSE event, if any. This
- *  workflow does one blocking LLM call (no true token-by-token streaming),
- *  so in practice there is exactly one such event, carrying the complete
- *  answer - but it arrives before the `final` event, which is otherwise
- *  the first sign of life the UI gets after a ~1-20s wait. */
-function extractDeltaText(payload) {
-  if (!payload || payload.event !== "on_message_delta") return null;
-  const parts = payload.data?.delta?.content;
-  if (!Array.isArray(parts)) return null;
-  const text = parts
-    .filter((p) => p && p.type === "text" && typeof p.text === "string")
-    .map((p) => p.text)
-    .join("");
-  return text || null;
-}
-
 /** Sends a rating for an answer to the admin, which stores it anonymously:
  *  no user or conversation id, only the rating, an optional comment and
  *  the step it is about. */
@@ -99,23 +93,37 @@ export async function sendBeleidskompasFeedback({ rating, comment, stepId }) {
   if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
 }
 
-/** The only channel to the backend is the chat message's plain text, so the
- *  context of a question (the step, what was found so far and the known
- *  sources) is composed into one labeled text. */
-export function composePrompt({ step, priorReports, currentReport, sources, question }) {
-  const lines = [`Stap: ${step.id} (${step.title})`];
-  const findings = String(priorReports || currentReport || "").trim();
-  if (findings) lines.push(`Casus/eerdere bevindingen: ${findings}`);
-  if (sources.length) lines.push(`Bekende bronnen: ${sources.join("; ")}`);
-  lines.push(`Vraag: ${String(question || "").trim()}`);
-  return lines.join("\n");
+const REQUEST_META_LABEL = "beleidskompas-request";
+
+/** The only channel to the orchestrator is the chat message, so what the
+ *  orchestrator needs to know about a request travels behind the visible
+ *  text of the message, in a markdown link definition with base64 JSON
+ *  (the way the citations travel behind an answer, see
+ *  parseCitationsMetaBlock): the substep, the case text and the message
+ *  the user typed. A markdown view does not show the definition, and what
+ *  the user typed sits inside the JSON, so it can never be mistaken for
+ *  one of those fields. `shown` is the visible text, what the chat of
+ *  LibreChat shows for this message. The reports and the conversation so
+ *  far are not sent along: the orchestrator reads those from the store. A
+ *  typed message means a conversation turn. Without one, Beleidskompas
+ *  writes the report of the substep. */
+export function composePrompt({ substep, caseText, message, shown }) {
+  const request = { substep_id: substep.id, case_text: String(caseText || "").trim(), message: String(message || "").trim() };
+  const visible = String(shown || "").trim() || request.message || `Deelstap ${substep.id}: ${substep.title}`;
+  return `${visible}\n\n[${REQUEST_META_LABEL}]: data:application/json;base64,${base64Utf8(JSON.stringify(request))}`;
+}
+
+/** btoa only takes bytes, so the text goes through UTF-8 first. */
+function base64Utf8(text) {
+  let binary = "";
+  for (const byte of new TextEncoder().encode(text)) binary += String.fromCharCode(byte);
+  return btoa(binary);
 }
 
 /** Sends one message to the Beleidskompas custom endpoint and waits for
- *  the full reply via SSE. Returns { conversationId, messageId, text }.
- *  `onDelta(displayText)` fires as soon as the answer text is available,
- *  ahead of the final (persisted) event, for a typewriter-reveal effect. */
-export async function sendBeleidskompasChatMessage({ text, conversationId, parentMessageId, onDelta }) {
+ *  the full reply via SSE. Returns { conversationId, messageId, text,
+ *  citations, retrieval_trace, agent }. */
+export async function sendBeleidskompasChatMessage({ text, conversationId, parentMessageId }) {
   const messageId = newClientMessageId();
   const startResp = await librechatFetch("/api/agents/chat/" + BELEIDSKOMPAS_ENDPOINT, {
     method: "POST",
@@ -189,9 +197,6 @@ export async function sendBeleidskompasChatMessage({ text, conversationId, paren
       }
       if (payload?.final) {
         finalPayload = payload;
-      } else if (typeof onDelta === "function") {
-        const deltaText = extractDeltaText(payload);
-        if (deltaText) onDelta(parseCitationsMetaBlock(deltaText).displayText);
       }
     }
     if (finalPayload) break;
@@ -207,47 +212,80 @@ export async function sendBeleidskompasChatMessage({ text, conversationId, paren
   }
 
   const responseMessage = finalPayload.responseMessage || {};
-  const { displayText, citations, retrieval_trace } = parseCitationsMetaBlock(extractMessageText(responseMessage));
+  const { displayText, citations, retrieval_trace, agent } = parseCitationsMetaBlock(extractMessageText(responseMessage));
   return {
     conversationId: finalPayload?.conversation?.conversationId || streamId,
     messageId: responseMessage.messageId || null,
     text: displayText,
     citations,
     retrieval_trace,
+    agent,
   };
 }
 
-/** Reads back a previously-persisted Beleidskompas conversation so a page
- *  reload can resume the same case instead of starting over. */
-export async function fetchBeleidskompasHistory(conversationId) {
+/** The id of the last message of a LibreChat conversation. LibreChat links
+ *  every message to the one before it. The page sends that id along with
+ *  the next message; without it, the next message would start a new
+ *  branch in the conversation as LibreChat shows it. */
+export async function fetchLastMessageId(conversationId) {
   const resp = await librechatFetch(`/api/messages/${encodeURIComponent(conversationId)}`, { method: "GET" });
-  if (!resp.ok) throw new Error(`Kon casusgeschiedenis niet ophalen (HTTP ${resp.status}).`);
+  if (!resp.ok) throw new Error(`Kon het gesprek niet ophalen (HTTP ${resp.status}).`);
   const messages = await resp.json().catch(() => []);
-  return (Array.isArray(messages) ? messages : [])
+  const last = (Array.isArray(messages) ? messages : [])
     .slice()
     .sort((a, b) => new Date(a.createdAt || 0) - new Date(b.createdAt || 0))
-    .map((m) => {
-      if (m.isCreatedByUser) {
-        return { messageId: m.messageId, role: "user", text: String(m.text || "").trim(), citations: [], retrieval_trace: null, ts: m.createdAt || new Date().toISOString() };
-      }
-      const { displayText, citations, retrieval_trace } = parseCitationsMetaBlock(extractMessageText(m));
-      return { messageId: m.messageId, role: "assistant", text: displayText, citations, retrieval_trace, ts: m.createdAt || new Date().toISOString() };
-    });
+    .pop();
+  return (last && last.messageId) || null;
 }
 
-/** Lists the user's own recent Beleidskompas cases (LibreChat conversations
- *  for this endpoint), newest first, so a case can be reopened without
- *  needing its conversationId to already be in sessionStorage. */
-export async function listRecentBeleidskompasConversations(limit) {
-  const resp = await librechatFetch(`/api/convos?limit=${encodeURIComponent(limit || 20)}`, { method: "GET" });
+/** The state of a case as the store keeps it: the newest case text, the
+ *  newest report per substep and the turns of the conversation. Throws
+ *  when the case is not in the store or belongs to another user. */
+export async function fetchCaseState(caseId) {
+  const resp = await fetch(`${STORE_URL}/cases/${encodeURIComponent(caseId)}`, { cache: "no-store" });
+  if (!resp.ok) throw new Error(`Kon de stand van de casus niet ophalen (HTTP ${resp.status}).`);
+  return resp.json();
+}
+
+/** Turns the state from the store into what the screen works with: the
+ *  case text, the report per substep (`results`, in the shape of the step
+ *  cards), the chat messages and the substep with the newest report
+ *  (`lastReportSubstepId`), so a reopened case continues there. The chat
+ *  is the case followed by the conversation, as it was before the case was
+ *  closed. */
+export function readCaseState(state) {
+  const results = {};
+  let lastReportSubstepId = "";
+  let newest = "";
+  for (const [substepId, report] of Object.entries(state?.reports || {})) {
+    const updatedAt = String(report.created_at || "");
+    results[substepId] = { report_text: String(report.text || ""), citations: report.citations || [], retrieval_trace: report.retrieval_trace || null, updated_at: updatedAt };
+    if (updatedAt >= newest) {
+      newest = updatedAt;
+      lastReportSubstepId = substepId;
+    }
+  }
+  const caseText = String(state?.case_text?.text || "");
+  const caseMessage = caseText ? [{ role: "user", text: caseText, agent: null, substepId: "", ts: state.case_text.created_at }] : [];
+  const turns = (state?.turns || []).map((t) => ({
+    role: t.role,
+    text: String(t.text || ""),
+    agent: t.role === "assistant" ? t.step_id || null : null,
+    substepId: t.asked_from || "",
+    ts: t.created_at,
+  }));
+  return { caseText, results, messages: [...caseMessage, ...turns], lastReportSubstepId };
+}
+
+/** The user's own cases from the store, newest first, so a case can be
+ *  reopened without its id already being in sessionStorage. */
+export async function listBeleidskompasCases(limit) {
+  const resp = await fetch(`${STORE_URL}/cases?limit=${encodeURIComponent(limit || 20)}`, { cache: "no-store" });
   if (!resp.ok) throw new Error(`Kon casuslijst niet ophalen (HTTP ${resp.status}).`);
-  const data = await resp.json().catch(() => ({}));
-  const conversations = Array.isArray(data?.conversations) ? data.conversations : [];
-  return conversations
-    .filter((c) => c && c.endpoint === BELEIDSKOMPAS_ENDPOINT)
-    .map((c) => ({
-      conversationId: c.conversationId,
-      title: parseCitationsMetaBlock(String(c.title || "").trim()).displayText || "Naamloze casus",
-      updatedAt: c.updatedAt || c.createdAt || null,
-    }));
+  const cases = await resp.json().catch(() => []);
+  return (Array.isArray(cases) ? cases : []).map((c) => ({
+    conversationId: c.id,
+    title: String(c.title || "").trim() || "Naamloze casus",
+    updatedAt: c.updated_at || c.created_at || null,
+  }));
 }

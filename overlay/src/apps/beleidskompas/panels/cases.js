@@ -4,7 +4,7 @@
 
 import { escapeAttr, escapeHTML } from "../../../shared/html.js";
 import { requireElement } from "../../../shared/dom.js";
-import { fetchBeleidskompasHistory, listRecentBeleidskompasConversations } from "../beleidskompas-api.js";
+import { fetchCaseState, fetchLastMessageId, listBeleidskompasCases, readCaseState } from "../beleidskompas-api.js";
 import { formatRelativeCaseDate } from "../format.js";
 
 export function setupCases(store) {
@@ -12,27 +12,37 @@ export function setupCases(store) {
   const recentCasesListEl = requireElement("gc-bk-recent-cases-list");
   const convoTitleEl = requireElement("gc-bk-convo-title");
 
-  /** Loads a case's full history into the current view - shared by the
-   *  "resume on reopen" path and clicking an entry in "Eerdere casussen". */
-  async function resumeConversation(conversationId) {
-    const history = await fetchBeleidskompasHistory(conversationId);
-    store.setConversationId(conversationId);
-    store.replaceMessages(history);
-    const lastUser = history.filter((m) => m.role === "user").slice(-1)[0];
-    const lastAssistant = history.filter((m) => m.role === "assistant").slice(-1)[0];
-    store.setLastMessageId((lastAssistant || lastUser || {}).messageId || null);
-    if (lastAssistant) {
-      store.setStepResult(store.activeStep().id, {
-        report_text: lastAssistant.text,
-        citations: lastAssistant.citations,
-        retrieval_trace: lastAssistant.retrieval_trace,
-        updated_at: lastAssistant.ts,
-      });
-    }
+  /** Puts the case text and the reports as the store has them on the
+   *  screen. Called after every answer, so the cards show what is stored
+   *  and not what the page thinks happened. The chat is left alone: it
+   *  already shows the conversation. */
+  async function refreshState(conversationId) {
+    const { caseText, results } = readCaseState(await fetchCaseState(conversationId));
+    // The user may have opened another case while the answer was under way.
+    if (state.conversationId !== conversationId) return;
+    store.setCaseText(caseText);
+    store.replaceResults(results);
   }
 
-  /** The heading of the chat card: the case title LibreChat generates, once
-   *  there is one, otherwise "Nieuw gesprek". */
+  /** Opens a case from the store - shared by the "resume on reopen" path
+   *  and clicking an entry in "Eerdere casussen". The chat shows the
+   *  conversation, the reports go to their substeps, and the substep with
+   *  the newest report becomes the active one, so the case continues where
+   *  it was left. */
+  async function resumeConversation(conversationId) {
+    const [caseState, lastMessageId] = await Promise.all([fetchCaseState(conversationId), fetchLastMessageId(conversationId)]);
+    const { caseText, results, messages, lastReportSubstepId } = readCaseState(caseState);
+    store.leaveCase();
+    store.setConversationId(conversationId);
+    store.setLastMessageId(lastMessageId);
+    store.replaceMessages([{ role: "assistant", text: "Casus geopend. Stel een vraag of werk een deelstap uit." }, ...messages]);
+    store.setCaseText(caseText);
+    if (lastReportSubstepId) store.setActiveSubstep(store.substeps.findIndex((s) => s.id === lastReportSubstepId));
+    store.replaceResults(results);
+  }
+
+  /** The heading of the chat card: the case title Beleidskompas gives
+   *  the case, once there is one, otherwise "Nieuw gesprek". */
   function setConversationTitle(title) {
     const clean = String(title || "").trim();
     convoTitleEl.textContent = clean || "Nieuw gesprek";
@@ -41,7 +51,7 @@ export function setupCases(store) {
 
   async function renderRecentCases() {
     try {
-      const cases = await listRecentBeleidskompasConversations(8);
+      const cases = await listBeleidskompasCases(8);
       if (!cases.length) {
         recentCasesListEl.innerHTML = '<div class="gc-bk-recent-cases-empty">Nog geen eerdere casussen.</div>';
         return;
@@ -76,5 +86,5 @@ export function setupCases(store) {
     renderRecentCases();
   });
 
-  return { resumeConversation };
+  return { resumeConversation, refreshState };
 }
