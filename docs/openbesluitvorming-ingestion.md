@@ -62,7 +62,11 @@ additional running worker. All monitoring continues to target **govchat-obv-full
 
 Double-click [`openbesluitvorming-progress.cmd`](../scripts/openbesluitvorming-progress.cmd)
 in Windows Explorer. It displays container state and durable counts, refreshing
-every 30 seconds. Closing the monitor does not stop the detached ingest. Indexed
+every 10 seconds. The Dutch dashboard prominently displays **GEINDEXEERD**,
+pending/processing/retry/dead-letter counts, fetched pages and recent throughput.
+It reads a consistent SQLite snapshot in read-only mode, without source API calls
+or changes to the running ingest. Node.js is required on the Windows host and is
+already available on this machine. Closing the monitor does not stop the detached ingest. Indexed
 documents are successful; pending/processing documents remain in progress, and
 retry/dead-letter counts are unresolved failures. Completion requires the terminal
 snapshot and no outstanding jobs: **complete=true** in status.
@@ -73,6 +77,17 @@ govchat-obv-full-run → Logs**, or run from this repository directory:
 ```bat
 scripts\openbesluitvorming-progress.cmd logs
 ```
+
+For a compact, continuously updating counter instead of per-document logs:
+
+```bat
+scripts\openbesluitvorming-progress.cmd --lines
+```
+
+The default double-click opens the full dashboard. An already open legacy log
+terminal remains a per-document log view; open the monitor again to use counters.
+The displayed "already discovered" count covers only fetched snapshot pages, not
+the full source corpus, so no overall completion percentage is invented.
 
 The logs show document identity, indexed/retry/dead-letter outcome and stage
 timings. No reliable percentage or full-run ETA is available before the source's
