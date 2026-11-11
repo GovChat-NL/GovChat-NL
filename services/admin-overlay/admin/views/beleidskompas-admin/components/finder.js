@@ -1,7 +1,7 @@
 import { h, icon } from "../dom.js";
 
-// macOS Finder column view: files on the left, a wide preview on the right, and a path bar along the bottom.
-export function finder({ files, selectedFile, onFile, preview, path }) {
+// macOS Finder column view: files on the left, a wide preview on the right.
+export function finder({ files, selectedFile, onFile, preview }) {
   const fileCol = h(
     "ul",
     { class: "finder-col finder-files", role: "listbox", "aria-label": "Documenten" },
@@ -28,10 +28,5 @@ export function finder({ files, selectedFile, onFile, preview, path }) {
     "div",
     { class: "finder" },
     h("div", { class: "finder-columns" }, fileCol, h("section", { class: "finder-preview", "aria-label": "Voorbeeld" }, preview)),
-    h(
-      "div",
-      { class: "finder-pathbar" },
-      path.map((p, i) => [i ? h("span", { class: "crumb-sep" }, "›") : null, h("span", {}, icon(i === path.length - 1 && selectedFile ? "file" : "folder", 12), p)]),
-    ),
   );
 }

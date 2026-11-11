@@ -3,7 +3,7 @@ import * as api from "../api.js";
 import { h, icon } from "../dom.js";
 import { dropdown } from "../components/dropdown.js";
 import { feedbackGroup } from "../components/feedback-row.js";
-import { versionLabel } from "../app.js";
+import { versionLabel, versionOptions } from "../app.js";
 
 const PERIODS = [
   { value: "7", label: "Laatste 7 dagen" },
@@ -25,19 +25,14 @@ export function renderFeedback({ store, render }) {
 
   const templateOptions = [{ value: "all", label: "Alle templates" }, ...store.templates.map((t) => ({ value: t.id, label: t.name }))];
   const tpl = store.templates.find((t) => t.id === ui.fbTemplate);
-  const versionOptions = [
-    { value: "all", label: "Alle versies" },
-    ...[...(tpl?.versions || [])]
-      .sort((a, b) => b.published_at.localeCompare(a.published_at))
-      .map((v) => ({ value: v.id, label: `${versionLabel(tpl, v.id)}${v.id === tpl.live_version_id ? " (live)" : ""}` })),
-  ];
+  const versionChoices = [{ value: "all", label: "Alle versies" }, ...(tpl ? versionOptions(tpl) : [])];
 
   const filters = h(
     "div",
     { class: "filter-bar" },
     dropdown({ label: "Template", value: ui.fbTemplate, options: templateOptions, onChange: (v) => { ui.fbTemplate = v; ui.fbVersion = "all"; render(); } }),
     // Versions belong to one template, so this filter needs a template first.
-    dropdown({ label: "Versie", value: ui.fbVersion, options: versionOptions, disabled: !tpl, onChange: (v) => { ui.fbVersion = v; render(); } }),
+    dropdown({ label: "Versie", value: ui.fbVersion, options: versionChoices, disabled: !tpl, onChange: (v) => { ui.fbVersion = v; render(); } }),
     dropdown({ label: "Periode", value: ui.fbPeriod, options: PERIODS, onChange: (v) => { ui.fbPeriod = v; render(); } }),
     ui.fbPeriod === "custom"
       ? [

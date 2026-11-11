@@ -78,7 +78,7 @@ export function renderFlow({ store, render, markDirty }) {
 
 function stepEditor(step, { store, markDirty, render }) {
   step.rag = step.rag || {};
-  const docIds = api.stepDocumentIds(step, store.documents);
+  const docIds = api.stepDocumentIds(step);
 
   const texts = h(
     "div",

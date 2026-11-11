@@ -120,7 +120,6 @@ textarea.input { resize: vertical; line-height: 1.45; }
 
 /* ── Toggles: switch and checkmark ────────────────── */
 .toggle { display: inline-flex; align-items: flex-start; gap: 9px; cursor: pointer; position: relative; }
-.toggle.is-disabled { opacity: .5; cursor: default; }
 .toggle input { position: absolute; opacity: 0; width: 1px; height: 1px; }
 .switch-track { flex: none; width: 32px; height: 19px; border-radius: 10px; background: #d9d9de; position: relative; transition: background .15s; }
 .switch-track::after { content: ""; position: absolute; top: 2px; left: 2px; width: 15px; height: 15px; border-radius: 50%; background: #fff; box-shadow: 0 1px 2px rgba(0,0,0,.25); transition: transform .15s; }
@@ -130,8 +129,7 @@ textarea.input { resize: vertical; line-height: 1.45; }
 .check-input:checked + .check-box { background: var(--select); border-color: var(--select); }
 .check-input:checked + .check-box::after { content: ""; width: 4px; height: 8px; border: solid #fff; border-width: 0 2px 2px 0; transform: translateY(-1px) rotate(45deg); }
 .toggle input:focus-visible + span { box-shadow: 0 0 0 3px rgba(47,111,219,.3); }
-.toggle-label { display: flex; flex-direction: column; gap: 1px; line-height: 1.35; }
-.toggle-hint { color: var(--muted); font-size: 12px; }
+.toggle-label { line-height: 1.35; }
 .toggle-list { display: flex; flex-direction: column; gap: 12px; }
 
 /* ── Dropdown (pop-up button) ─────────────────────── */
@@ -157,28 +155,18 @@ textarea.input { resize: vertical; line-height: 1.45; }
 .tpl-new { display: flex; align-items: center; gap: 6px; width: 100%; padding: 9px 12px; border: none; border-top: 1px solid var(--line); background: #fff; color: var(--select); cursor: pointer; text-align: left; }
 .tpl-new:hover { background: #f6f8fa; }
 
-/* ── Editor landing shortcuts ─────────────────────── */
-.shortcut-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; }
-.shortcut { display: flex; align-items: center; gap: 12px; padding: 14px; border: 1px solid var(--line); border-radius: var(--radius); background: #fff; }
-.shortcut:hover { border-color: var(--line-strong); box-shadow: 0 2px 8px rgba(0,0,0,.05); }
-.shortcut > span:nth-child(2) { display: flex; flex-direction: column; flex: 1; }
-.shortcut-icon { display: grid; place-items: center; width: 38px; height: 38px; border-radius: 9px; background: var(--accent-soft); color: var(--accent); }
-
 /* ── Finder ───────────────────────────────────────── */
 .finder { display: flex; flex-direction: column; height: calc(100vh - 200px); min-height: 420px; border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; }
 .finder-columns { display: grid; grid-template-columns: 280px 1fr; flex: 1; min-height: 0; }
 .finder-col { list-style: none; overflow-y: auto; padding: 6px; border-right: 1px solid var(--line); background: #fbfbfc; }
 .finder-item { display: flex; align-items: center; gap: 7px; padding: 5px 7px; border-radius: 5px; cursor: pointer; }
-.finder-item > svg:first-child { color: #4a8fe7; flex: none; }
-.finder-files .finder-item > svg:first-child { color: var(--muted); }
+.finder-item > svg:first-child { color: var(--muted); flex: none; }
 .finder-item:hover { background: rgba(0,0,0,.04); }
 .finder-item.is-selected { background: var(--select); color: #fff; }
 .finder-item.is-selected svg { color: #fff !important; }
 .finder-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .finder-empty { color: var(--muted); padding: 10px; }
 .finder-preview { overflow-y: auto; padding: 18px 22px; background: #fff; }
-.finder-pathbar { display: flex; align-items: center; gap: 6px; padding: 5px 12px; border-top: 1px solid var(--line); background: #f7f7f9; color: var(--muted); font-size: 12px; }
-.finder-pathbar span { display: inline-flex; align-items: center; gap: 4px; }
 .preview { display: flex; flex-direction: column; gap: 14px; }
 .preview-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
 .preview-head h2 { font-size: 16px; word-break: break-word; }

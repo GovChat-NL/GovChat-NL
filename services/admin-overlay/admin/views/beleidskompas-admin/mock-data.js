@@ -20,8 +20,8 @@ const omgevingsvisieFlow = {
       title: "Opgave en belang",
       description: "Welke ruimtelijke opgave speelt er, en waarom is de provincie aan zet?",
       prompt: "Bepaal de ruimtelijke opgave en het provinciaal belang volgens de Omgevingsvisie.",
-      doc_tags: ["Omgevingsvisie"],
-      rag: { algorithm: "hybrid", top_k: 3, min_score: 0.1, tag_filter_mode: "any", required_tags: [] },
+      document_ids: ["ov-doc-1"],
+      rag: { algorithm: "hybrid" },
       substeps: [{ id: "1.1", title: "Gebied", description: "Afbakening van het gebied." }],
     },
     {
@@ -29,8 +29,8 @@ const omgevingsvisieFlow = {
       title: "Rol en instrument",
       description: "Welke rol neemt de provincie en welk instrument past?",
       prompt: "Kies rol en instrument; verwijs naar de Omgevingsverordening.",
-      doc_tags: ["Verordening", "Instrumenten"],
-      rag: { algorithm: "needle", top_k: 4, min_score: 0.12, tag_filter_mode: "any", required_tags: [] },
+      document_ids: ["ov-doc-2", "ov-doc-3"],
+      rag: { algorithm: "needle" },
       substeps: [],
     },
     {
@@ -38,17 +38,16 @@ const omgevingsvisieFlow = {
       title: "Governance",
       description: "Wie beslist, wie voert uit en hoe wordt gemonitord?",
       prompt: "Beschrijf governance, besluitvorming en monitoring.",
-      doc_tags: [],
-      rag: { algorithm: "hybrid", top_k: 3, min_score: 0.08, tag_filter_mode: "any", required_tags: [] },
+      rag: { algorithm: "hybrid" },
       substeps: [],
     },
   ],
 };
 
 const ovDocs = [
-  { id: "ov-doc-1", filename: "Omgevingsvisie Limburg 2024.pdf", mime_type: "application/pdf", size_bytes: 4820000, uploaded_at: daysAgo(40), tags: ["Omgevingsvisie"], preview_text: "Voorbeelddocument (mock). De Omgevingsvisie beschrijft de ruimtelijke ambities van de provincie tot 2040." },
-  { id: "ov-doc-2", filename: "Omgevingsverordening.pdf", mime_type: "application/pdf", size_bytes: 2310000, uploaded_at: daysAgo(35), tags: ["Verordening"], preview_text: "Voorbeelddocument (mock). Regels voor de fysieke leefomgeving in Limburg." },
-  { id: "ov-doc-3", filename: "Instrumentenkoffer.md", mime_type: "text/markdown", size_bytes: 18400, uploaded_at: daysAgo(12), tags: ["Instrumenten"], preview_text: "Voorbeelddocument (mock).\n\n# Instrumenten\n- Subsidie\n- Regelgeving\n- Kennis en netwerk" },
+  { id: "ov-doc-1", filename: "Omgevingsvisie Limburg 2024.pdf", mime_type: "application/pdf", size_bytes: 4820000, uploaded_at: daysAgo(40), preview_text: "Voorbeelddocument (mock). De Omgevingsvisie beschrijft de ruimtelijke ambities van de provincie tot 2040." },
+  { id: "ov-doc-2", filename: "Omgevingsverordening.pdf", mime_type: "application/pdf", size_bytes: 2310000, uploaded_at: daysAgo(35), preview_text: "Voorbeelddocument (mock). Regels voor de fysieke leefomgeving in Limburg." },
+  { id: "ov-doc-3", filename: "Instrumentenkoffer.md", mime_type: "text/markdown", size_bytes: 18400, uploaded_at: daysAgo(12), preview_text: "Voorbeelddocument (mock).\n\n# Instrumenten\n- Subsidie\n- Regelgeving\n- Kennis en netwerk" },
 ];
 
 const ovFeedback = [

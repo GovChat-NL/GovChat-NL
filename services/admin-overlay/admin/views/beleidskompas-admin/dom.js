@@ -76,13 +76,10 @@ export function reveal(el, margin = 12) {
   pane.scrollBy({ top: by, behavior: smooth ? "smooth" : "auto" });
 }
 
-export function formatDate(iso, withTime = true) {
+export function formatDate(iso) {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return "—";
-  const opts = withTime
-    ? { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" }
-    : { day: "numeric", month: "short", year: "numeric" };
-  return d.toLocaleString("nl-NL", opts);
+  return d.toLocaleString("nl-NL", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
 }
 
 export function formatBytes(n) {
