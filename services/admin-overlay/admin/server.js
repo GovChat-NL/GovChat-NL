@@ -675,7 +675,7 @@ function normalizeBeleidskompasFlow(input) {
       BELEIDSKOMPAS_HOOFDAGENT_WEBHOOK_PATH_DEFAULT,
     webhook_token: String(src.webhook_token || fallback.webhook_token || "").trim(),
     disclaimer: String(src.disclaimer || fallback.disclaimer).trim() || fallback.disclaimer,
-    specialist_team: String(src.specialist_team ?? fallback.specialist_team).trim(),
+    specialist_team: String(src.specialist_team || fallback.specialist_team).trim() || fallback.specialist_team,
     rules: String(src.rules ?? "").trim(),
     sources: normalizeTags(src.sources || fallback.sources),
     steps,
@@ -684,6 +684,16 @@ function normalizeBeleidskompasFlow(input) {
 
 function publishBeleidskompasLiveConfig(flow) {
   const normalized = normalizeBeleidskompasFlow(flow);
+  // beleidskompas-config.json is public, so drop what is for the assistant only.
+  delete normalized.rules;
+  for (const step of normalized.steps) {
+    delete step.prompt;
+    delete step.document_ids;
+    for (const sub of step.substeps) {
+      delete sub.prompt;
+      delete sub.answer_format;
+    }
+  }
   writeJSON(BELEIDSKOMPAS_LIVE_FILE, normalized);
 }
 

@@ -44,7 +44,6 @@ export function renderEditor({ store, render, markDirty, selectTemplate, saveAsN
     ),
   );
 
-  const versions = [...tpl.versions].sort((a, b) => b.published_at.localeCompare(a.published_at));
   const versionsCard = card(
     "Versies",
     h("p", { class: "muted" }, "Kleine wijzigingen sla je op als nieuwe versie. Grotere, bewuste wijzigingen sla je op als nieuw template. Live zetten doe je via Deploy."),
@@ -55,7 +54,7 @@ export function renderEditor({ store, render, markDirty, selectTemplate, saveAsN
       h(
         "tbody",
         {},
-        versions.map((v) =>
+        tpl.versions.map((v) =>
           h(
             "tr",
             {},

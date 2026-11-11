@@ -37,7 +37,7 @@ export function renderDocuments({ store, render }) {
     };
   });
 
-  const preview = selected ? docPreview(selected, { tpl, store, reloadDocs, render }) : emptyPreview();
+  const preview = selected ? docPreview(selected, { tpl, store, reloadDocs }) : emptyPreview();
 
   const uploadInput = h("input", { type: "file", multiple: true, hidden: true });
   uploadInput.addEventListener("change", async () => {
@@ -71,7 +71,6 @@ export function renderDocuments({ store, render }) {
       document.querySelector(".finder-files").scrollTop = listTop;
     },
     preview,
-    path: ["Documentenbibliotheek", selected?.filename].filter(Boolean),
   });
 
   return { controls, content };

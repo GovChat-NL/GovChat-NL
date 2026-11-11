@@ -105,9 +105,9 @@ export function setStepDocument(step, docId, checked) {
 export async function listFeedback(templates) {
   const data = await request("GET", "/api/beleidskompas-feedback");
   const real = templates[0];
-  const byDate = [...(real?.versions || [])].sort((a, b) => a.published_at.localeCompare(b.published_at));
+  const versions = real?.versions || []; // newest first
   return (data.items || []).map((item) => {
-    const version = [...byDate].reverse().find((v) => v.published_at <= item.created_at) || byDate[0];
+    const version = versions.find((v) => v.published_at <= item.created_at) || versions.at(-1);
     return {
       ...item,
       template_id: real?.id,
