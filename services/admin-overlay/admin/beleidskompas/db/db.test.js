@@ -2,24 +2,20 @@ const { test, before, after } = require("node:test");
 const assert = require("node:assert/strict");
 const { createDb, isUniqueViolation } = require("./db");
 
-const url = process.env.BELEIDSKOMPAS_TEST_DATABASE_URL;
-const opts = url ? {} : { skip: "BELEIDSKOMPAS_TEST_DATABASE_URL not set" };
-let db;
+const { skip, openTestPool } = require("./db-fixture");
+
+const opts = { skip };
+let db, close;
 
 before(async () => {
-  if (!url) return;
-  const admin = createDb({ connectionString: url, schema: "public" });
-  await admin.query("DROP SCHEMA IF EXISTS beleidskompas_test CASCADE");
-  await admin.end();
-  db = createDb({ connectionString: url, schema: "beleidskompas_test" });
+  if (skip) return;
+  const fixture = await openTestPool("beleidskompas_db_test");
+  close = fixture.close;
+  db = createDb(fixture.pool);
 });
-after(async () => { if (db) await db.end(); });
+after(async () => { if (close) await close(); });
 
-test("applySchema is idempotent and sets the search_path", opts, async () => {
-  await db.applySchema();
-  await db.applySchema();
-  const { rows } = await db.query("SELECT current_schemas(false) AS s");
-  assert.ok(rows[0].s.includes("beleidskompas_test"));
+test("the migrations create the template tables", opts, async () => {
   const t = await db.query("SELECT count(*)::int AS n FROM templates");
   assert.equal(t.rows[0].n, 0);
 });

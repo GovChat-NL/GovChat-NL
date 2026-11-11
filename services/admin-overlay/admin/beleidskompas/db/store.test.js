@@ -3,20 +3,19 @@ const assert = require("node:assert/strict");
 const { createDb } = require("./db");
 const { createStore } = require("./store");
 
-const url = process.env.BELEIDSKOMPAS_TEST_DATABASE_URL;
-const opts = url ? {} : { skip: "BELEIDSKOMPAS_TEST_DATABASE_URL not set" };
-let db, store;
+const { skip, openTestPool } = require("./db-fixture");
+
+const opts = { skip };
+let close, db, store;
 
 before(async () => {
-  if (!url) return;
-  const admin = createDb({ connectionString: url, schema: "public" });
-  await admin.query("DROP SCHEMA IF EXISTS beleidskompas_store_test CASCADE");
-  await admin.end();
-  db = createDb({ connectionString: url, schema: "beleidskompas_store_test" });
-  await db.applySchema();
+  if (skip) return;
+  const fixture = await openTestPool("beleidskompas_store_test");
+  close = fixture.close;
+  db = createDb(fixture.pool);
   store = createStore(db);
 });
-after(async () => { if (db) await db.end(); });
+after(async () => { if (close) await close(); });
 
 const doc = (text) => store.upsertDocument({ filename: `${text}.txt`, contentType: "text/plain", bytes: Buffer.from(text), previewText: text });
 

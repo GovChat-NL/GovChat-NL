@@ -46,16 +46,14 @@ test-beleidskompas: ## Run the Beleidskompas unit tests: the workflows, the page
 	cd overlay/src/apps/beleidskompas && node --test
 	cd services/admin-overlay/admin && node --test
 
-test-admin: env ## Run the admin store tests inside the stack, against the pgvector database (starts pgvector if needed)
-	$(COMPOSE) --profile admin-overlay run --rm --build \
-		-v $(CURDIR)/services/admin-overlay/admin/beleidskompas:/app/beleidskompas:ro \
-		govchat-overlay-admin sh -c 'BELEIDSKOMPAS_TEST_DATABASE_URL=$$BELEIDSKOMPAS_DATABASE_URL node --test'
-
-replenish-beleidskompas-db: env ## Wipe the Beleidskompas database and reload the demo seed data (asks for confirmation)
+replenish-beleidskompas-db: env ## Wipe the Beleidskompas templates and reload the demo seed data (asks for confirmation)
 	scripts/replenish-beleidskompas-db.sh
 
-test-beleidskompas-db: ## Run the Beleidskompas store against the real database, inside the admin container (the stack must be running)
-	$(COMPOSE) run --rm --no-deps -e BELEIDSKOMPAS_DB_TEST=true -v ./services/admin-overlay/admin/tests:/app/tests:ro govchat-overlay-admin node --test tests/beleidskompas-db.test.js
+test-beleidskompas-db: ## Run the Beleidskompas stores (cases and templates) against the real database, inside the admin container (the stack must be running)
+	$(COMPOSE) run --rm --no-deps -e BELEIDSKOMPAS_DB_TEST=true \
+		-v ./services/admin-overlay/admin/tests:/app/tests:ro \
+		-v ./services/admin-overlay/admin/beleidskompas:/app/beleidskompas:ro \
+		govchat-overlay-admin node --test tests/beleidskompas-db.test.js beleidskompas/db/db.test.js beleidskompas/db/store.test.js
 
 generate-workflows: ## Regenerate the Beleidskompas workflows (orchestrator and the steps) from agents/beleidskompas
 	cd agents/beleidskompas && node generate-workflow.js

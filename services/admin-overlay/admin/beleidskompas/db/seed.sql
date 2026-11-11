@@ -4,19 +4,17 @@
 -- "Omgevingsvisie (voorbeeld)" with two versions (v2 is live) and three documents.
 --
 -- The admin loads this file by itself on startup when BELEIDSKOMPAS_DEV_SEED=true and the
--- database has no templates. To wipe the database and load it again: make replenish-beleidskompas-db
+-- database has no templates. To wipe the templates and load it again: make replenish-beleidskompas-db
 --
 -- Plain SQL: run it in any client (VS Code query window, psql -f, ...) against the
 -- database used by the admin service.
 --
--- Prerequisite: the tables from schema.sql must exist. The admin service creates
--- them on startup; on a database it has never started against, run schema.sql first.
+-- Prerequisite: the tables from db/migrations/0002-templates.sql must exist. The admin
+-- service creates them on startup, in the beleidskompas-postgres database.
 --
 -- Safe to run more than once: it does nothing if the template already exists.
 -- Not for production: it makes the example template the live one when no
 -- template is live yet, and it never touches an existing live row.
-
-SET search_path TO beleidskompas;
 
 DO $seed$
 DECLARE

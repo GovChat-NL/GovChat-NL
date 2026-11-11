@@ -139,13 +139,13 @@ Beveiligd met een wachtwoord via de `GOVCHAT_ADMIN_PASSWORD` environment variabl
 
 ## Beleidskompas: database
 
-Templates, versies en referentiedocumenten van het Beleidskompas staan in Postgres, in het schema `beleidskompas` van de pgvector-database. De verbinding stel je in met `BELEIDSKOMPAS_DATABASE_URL`; zonder die variabele bouwt docker compose de URL op uit `POSTGRES_*`. Het schema wordt bij het opstarten van de admin aangemaakt of bijgewerkt.
+Templates, versies en referentiedocumenten van het Beleidskompas staan, net als de casussen, in de aparte database `beleidskompas-postgres` (niet in pgvector, dat is van LibreChat). De verbinding stel je in met `BELEIDSKOMPAS_POSTGRES_PASSWORD`; de host is vast. De tabellen staan in `admin/db/migrations` en worden bij het opstarten van de admin aangemaakt of bijgewerkt (`0002-templates.sql` voor de templates).
 
 Bestaat er nog een `beleidskompas-state.json` in de data-map en is de database leeg, dan wordt die bij de eerste start eenmalig geïmporteerd als template "SiS 4.0" en hernoemd naar `beleidskompas-state.json.migrated`. Na een controle kun je dat bestand verwijderen.
 
 Export en import nemen de huidige set documenten van een template mee, niet de volledige documentgeschiedenis; het is dus geen back-up van de documentsets van eerdere versies.
 
-De tests van de store draaien met `make test-admin`, in een tijdelijke admin-container tegen de pgvector-database van de stack (pgvector wordt zo nodig gestart). De tests gebruiken eigen schema's (`beleidskompas_test`, `beleidskompas_store_test`) en laten het schema `beleidskompas` ongemoeid. Los van de stack: `node --test` in `admin/` met `BELEIDSKOMPAS_TEST_DATABASE_URL`; zonder die variabele worden de databasetests overgeslagen.
+De databasetests van de store draaien met `make test-beleidskompas-db`, in een tijdelijke admin-container tegen `beleidskompas-postgres` (de stack moet draaien). Elke test werkt in een eigen schema dat daarna wordt verwijderd; de data van de service blijft ongemoeid. Zonder `BELEIDSKOMPAS_DB_TEST=true` worden de databasetests overgeslagen, dus `node --test` in `admin/` werkt ook zonder database.
 
 ## Updaten naar nieuwe Open WebUI versie
 
