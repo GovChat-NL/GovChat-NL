@@ -1,7 +1,7 @@
 #!/usr/bin/env sh
 # Wipe the Beleidskompas database and load the demo seed data again.
 #
-# Runs replenish.sql, schema.sql and seed.sql (services/admin-overlay/admin/beleidskompas/)
+# Runs replenish.sql, schema.sql and seed.sql (services/admin-overlay/admin/beleidskompas/db/)
 # in one transaction inside the pgvector container, so a failure keeps the old data.
 # Then restarts the admin so it republishes the live Beleidskompas config.
 #
@@ -12,7 +12,7 @@ set -eu
 
 cd "$(dirname "$0")/.."
 
-SQL_DIR=services/admin-overlay/admin/beleidskompas
+SQL_DIR=services/admin-overlay/admin/beleidskompas/db
 COMPOSE="docker compose --profile admin-overlay"
 
 if [ "${1:-}" != "--yes" ]; then
