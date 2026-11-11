@@ -2,7 +2,7 @@
 const { test, before, after } = require("node:test");
 const assert = require("node:assert/strict");
 const express = require("express");
-const { createAdminRouter } = require("../lib/beleidskompas/admin-routes");
+const { createAdminRouter } = require("../lib/beleidskompas/routes/admin-routes");
 
 const calls = [];
 const current = { versionId: 7, snapshot: { title: "T", steps: [] }, documentIds: [1] };
