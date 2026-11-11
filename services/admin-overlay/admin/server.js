@@ -558,16 +558,18 @@ function defaultBeleidskompasFlow() {
           required_tags: ["Beleid", "Governance"],
         },
         substeps: [
-          { id: "1.1", title: "Casus context", description: "Afbakening van de opgave en context." },
-          { id: "1.2", title: "Toetsing publiek", description: "Is er aantoonbaar publiek belang?" },
-          { id: "1.3", title: "Toetsing provinciaal", description: "Valt dit onder provinciaal belang/mandaat?" },
+          { id: "1.1", title: "Probleemdefinitie", description: "Probleem, oorzaken en symptomen." },
+          { id: "1.2", title: "Overheidsinterventie", description: "Is overheidsingrijpen gerechtvaardigd?" },
+          { id: "1.3", title: "Stakeholderanalyse", description: "Belanghebbenden, belangen en invloed." },
+          { id: "1.4", title: "Provinciaal doel", description: "Aansluiting op provinciale beleidsdoelen." },
+          { id: "1.5", title: "Integrale afweging", description: "Oordeel over publiek en provinciaal belang." },
         ],
       },
       {
         id: "stap2",
         workflow_id: "govchat-beleidskompas-step-stap2",
         webhook_path: "beleidskompas-step-stap2",
-        title: "Rolbepaling",
+        title: "Rolbepaling provincie",
         description:
           "Kies passende provinciale rol(len): regulerend, regisserend, stimulerend of faciliterend.",
         prompt:
@@ -581,8 +583,7 @@ function defaultBeleidskompasFlow() {
           required_tags: ["Governance"],
         },
         substeps: [
-          { id: "2.1", title: "Rolopties", description: "Verken geschikte rollen." },
-          { id: "2.2", title: "Afweging", description: "Weeg effectiviteit, risico en legitimiteit." },
+          { id: "2.1", title: "Rolbepaling", description: "Welke rol past de provincie, en waarom?" },
         ],
       },
       {
@@ -603,9 +604,10 @@ function defaultBeleidskompasFlow() {
           required_tags: ["Beleid", "Compliance"],
         },
         substeps: [
-          { id: "3.1", title: "Selectie", description: "Kies realistische instrumenten." },
-          { id: "3.2", title: "Weging", description: "Onderbouw score en risico per optie." },
-          { id: "3.3", title: "Voorkeur", description: "Motiveer voorkeursinstrument en alternatieven." },
+          { id: "3.1", title: "Sturingsbepaling", description: "Mate van sturing bij de gekozen rol." },
+          { id: "3.2", title: "Instrumentarium", description: "Instrumenten bij rol, sturing en probleem." },
+          { id: "3.3", title: "Afwegingskader", description: "Meest geschikte samenwerkingsvorm." },
+          { id: "3.4", title: "Gevolgenanalyse", description: "Gevolgen per instrument en de nuloptie." },
         ],
       },
       {
@@ -626,14 +628,23 @@ function defaultBeleidskompasFlow() {
           required_tags: ["Governance", "Compliance"],
         },
         substeps: [
-          { id: "4.1", title: "Sturing", description: "Eigenaarschap, mandaat en besluitvorming." },
-          { id: "4.2", title: "Toezicht", description: "Toetsing, escalatie en verantwoording." },
-          { id: "4.3", title: "KPI’s", description: "Monitorings- en rapportageafspraken." },
+          { id: "4.1", title: "Good governance-principes", description: "Sturing, toezicht, beheersing en verantwoording." },
+          { id: "4.2", title: "Organisatorische governance", description: "Organisatorische inrichting van goed bestuur." },
+          { id: "4.3", title: "Governance-richtlijnen", description: "Concrete richtlijnen per component." },
         ],
       },
     ],
   };
 }
+
+// The default substeps from before they followed steps.json. A saved step that still has exactly
+// these gets the current default substeps; any other substeps stay as the admin saved them.
+const OLD_DEFAULT_SUBSTEPS = {
+  stap1: "1.1 Casus context|1.2 Toetsing publiek|1.3 Toetsing provinciaal",
+  stap2: "2.1 Rolopties|2.2 Afweging",
+  stap3: "3.1 Selectie|3.2 Weging|3.3 Voorkeur",
+  stap4: "4.1 Sturing|4.2 Toezicht|4.3 KPI’s",
+};
 
 function normalizeBeleidskompasFlow(input) {
   const fallback = defaultBeleidskompasFlow();
@@ -642,7 +653,11 @@ function normalizeBeleidskompasFlow(input) {
 
   const steps = stepsRaw.map((step, idx) => {
     const fb = fallback.steps[Math.min(idx, fallback.steps.length - 1)] || fallback.steps[0];
-    const substepsRaw = Array.isArray(step?.substeps) ? step.substeps : fb.substeps;
+    let substepsRaw = Array.isArray(step?.substeps) ? step.substeps : fb.substeps;
+    const oldDefault = OLD_DEFAULT_SUBSTEPS[step?.id];
+    if (oldDefault && oldDefault === substepsRaw.map((s) => `${s?.id} ${s?.title}`).join("|")) {
+      substepsRaw = fallback.steps.find((s) => s.id === step.id).substeps;
+    }
     const workflowMeta = buildStepWorkflowMeta(step, idx);
     return {
       id: String(step?.id || fb.id || `stap${idx + 1}`).trim() || `stap${idx + 1}`,

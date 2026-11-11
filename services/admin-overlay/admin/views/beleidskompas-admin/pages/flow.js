@@ -40,8 +40,8 @@ export function renderFlow({ store, render, markDirty }) {
     "p",
     { class: "notice notice-info" },
     icon("info", 14),
-    "Titels, beschrijvingen en substappen verschijnen op de Beleidskompas-pagina zodra de versie live staat (Deploy). " +
-      "Instructies, opmaakregels, zoekinstellingen en de documenten per stap worden opgeslagen in het template, maar de assistent leest ze nog niet.",
+    "Van de stappen verschijnt alleen de beschrijving op de Beleidskompas-pagina, zodra de versie live staat (Deploy). " +
+      "De stappen en substappen zelf komen uit de agentcode. De rest wordt opgeslagen in het template, maar de pagina en de assistent lezen het nog niet.",
   );
 
   const list = flowList({
@@ -84,6 +84,7 @@ function stepEditor(step, { store, markDirty, render }) {
     "div",
     { class: "stack-sm" },
     field("Titel", bound(step, "title", { onInput: markDirty })),
+    field("Beschrijving", bound(step, "description", { multiline: true, rows: 2, onInput: markDirty }), "Getoond in het overzicht en de uitleg van de stap op de Beleidskompas-pagina."),
     field("Instructies", bound(step, "prompt", { multiline: true, rows: 6, onInput: markDirty }), "Instructie voor de assistent in deze stap."),
   );
 
