@@ -651,6 +651,7 @@ services:
       PUBLIC_BASE_URL: ${PUBLIC_BASE_URL}
       N8N_RUNNERS_AUTO_SHUTDOWN_TIMEOUT: "30"
       N8N_RUNNERS_TASK_TIMEOUT: "180"
+      N8N_RUNNERS_MAX_CONCURRENCY: "20"
       N8N_RUNNERS_LAUNCHER_LOG_LEVEL: warn
     volumes:
       - /opt/librechat/images:/shared-images
