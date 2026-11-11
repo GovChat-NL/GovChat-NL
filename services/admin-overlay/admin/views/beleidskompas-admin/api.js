@@ -31,12 +31,6 @@ async function request(method, url, body) {
 // WIRED: GET /api/beleidskompas/state → { state, workflow_manifest }
 export const getState = () => request("GET", `${BASE}/state`);
 
-// WIRED: GET /api/beleidskompas/workflows/status
-export const getWorkflowStatus = () => request("GET", `${BASE}/workflows/status?source=live`);
-
-// WIRED: POST /api/beleidskompas/workflows/sync (regenerates the workflow files from the live template)
-export const syncWorkflows = () => request("POST", `${BASE}/workflows/sync`, { source: "live" });
-
 // WIRED: POST /api/beleidskompas/settings
 export const saveSettings = (settings) => request("POST", `${BASE}/settings`, settings);
 
