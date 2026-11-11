@@ -1,6 +1,6 @@
 # Beleidskompas admin: integration TODO
 
-What the admin UI saves that nothing reads yet, and what the backend merged with #32 (agents, orchestrator, case store) still needs from the admin. Each item names the UI place, the backend piece and what done means. Checked 2026-11-11 on `feature/admin-ui` (85db00a) plus `fix/admin-ui-review`.
+What the admin UI saves that nothing reads yet, and what the backend merged with #32 (agents, orchestrator, case store) still needs from the admin. Each item names the UI place, the backend piece and what done means. Checked 2026-11-11 on `feature/admin-ui` (8089d17).
 
 Paths are relative to `services/admin-overlay/admin/views/beleidskompas-admin/` unless stated.
 
