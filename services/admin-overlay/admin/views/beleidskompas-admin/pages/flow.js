@@ -25,8 +25,7 @@ export function renderFlow({ store, render, markDirty }) {
       title: `Nieuwe stap ${steps.length + 1}`,
       description: "",
       prompt: "",
-      doc_tags: [],
-      rag: { algorithm: "hybrid", top_k: 3, min_score: 0.08, tag_filter_mode: "any", required_tags: [] },
+      rag: { algorithm: "hybrid" },
       substeps: [],
     });
     store.ui.stepId = id;

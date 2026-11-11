@@ -448,80 +448,6 @@ function normalizeBeleidskompasDocuments(input) {
   }));
 }
 
-function tokenizePolicyText(value) {
-  return String(value || "")
-    .toLowerCase()
-    .normalize("NFKD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .replace(/[^a-z0-9\s]/g, " ")
-    .split(/\s+/)
-    .map((w) => w.trim())
-    .filter((w) => w.length > 2);
-}
-
-function selectBeleidskompasRagDocs({ step, question = "", caseText = "", stepFields = {}, documents = [] }) {
-  const rag = normalizeStepRagSettings(step?.rag || {}, step || {});
-  const requiredTags = normalizeTags(rag.required_tags || []).map((t) => t.toLowerCase());
-  const modeAll = String(rag.tag_filter_mode || "any").toLowerCase() === "all";
-
-  const qBlob = [
-    question,
-    caseText,
-    stepFields?.problem,
-    stepFields?.causes,
-    stepFields?.symptoms,
-    stepFields?.perspectives,
-    stepFields?.references,
-  ]
-    .filter(Boolean)
-    .join(" ");
-  const queryWords = [...new Set(tokenizePolicyText(qBlob))];
-
-  const scored = normalizeBeleidskompasDocuments(documents)
-    .map((doc) => {
-      const tags = normalizeTags(doc.tags || []).map((t) => t.toLowerCase());
-      if (requiredTags.length) {
-        const tagMatch = modeAll ? requiredTags.every((t) => tags.includes(t)) : requiredTags.some((t) => tags.includes(t));
-        if (!tagMatch) return null;
-      }
-
-      const text = String(doc.preview_text || "").trim();
-      if (!text) return null;
-      const words = tokenizePolicyText(text);
-      if (!words.length) return null;
-
-      const wordSet = new Set(words);
-      const overlap = queryWords.filter((w) => wordSet.has(w)).length;
-      const overlapRatio = queryWords.length ? overlap / queryWords.length : 0;
-      const density = overlap / Math.max(24, words.length);
-      const lowerText = text.toLowerCase();
-      const needleHits = queryWords.reduce((acc, w) => (lowerText.includes(w) ? acc + 1 : acc), 0);
-      const needleScore = queryWords.length ? needleHits / queryWords.length : 0;
-      const haystackScore = overlapRatio * 0.7 + density * 0.3;
-
-      let score = needleScore * 0.55 + haystackScore * 0.45;
-      if (rag.algorithm === "needle") score = needleScore;
-      if (rag.algorithm === "haystack") score = haystackScore;
-
-      return {
-        id: doc.id,
-        filename: doc.filename,
-        tags: normalizeTags(doc.tags || []),
-        score,
-        preview: text.slice(0, 420),
-      };
-    })
-    .filter(Boolean)
-    .filter((d) => d.score >= Number(rag.min_score || 0))
-    .sort((a, b) => b.score - a.score)
-    .slice(0, Math.max(1, Number(rag.top_k || 3)));
-
-  return {
-    rag,
-    docs: scored,
-  };
-}
-
 function defaultBeleidskompasFlow() {
   return {
     title: "Beleidskompas",
@@ -668,7 +594,7 @@ function normalizeBeleidskompasFlow(input) {
       description: String(step?.description ?? fb.description ?? "").trim(),
       prompt: String(step?.prompt ?? fb.prompt ?? "").trim(),
       doc_tags: normalizeTags(step?.doc_tags || fb.doc_tags),
-      // Documents picked in the Flow builder. Retrieval still uses doc_tags; missing = not picked yet.
+      // Documents picked in the Flow builder; nothing reads them yet. Missing = not picked yet.
       document_ids: Array.isArray(step?.document_ids) ? [...new Set(step.document_ids.map(String))] : undefined,
       rag: normalizeStepRagSettings(step?.rag || fb.rag || {}, step || fb),
       substeps: substepsRaw.map((sub, subIdx) => ({
@@ -776,19 +702,15 @@ function writeBeleidskompasState(state) {
   return normalized;
 }
 
+// beleidskompas-config.json is public (nginx serves it without auth), so it holds only what the
+// Beleidskompas page reads (buildConfig in overlay/src/apps/beleidskompas/config.js) plus the step titles.
+function publicBeleidskompasConfig(flow) {
+  const { title, disclaimer, specialist_team, steps } = normalizeBeleidskompasFlow(flow);
+  return { title, disclaimer, specialist_team, steps: steps.map(({ id, title, description }) => ({ id, title, description })) };
+}
+
 function publishBeleidskompasLiveConfig(flow) {
-  const normalized = normalizeBeleidskompasFlow(flow);
-  // beleidskompas-config.json is public, so drop what is for the assistant only.
-  delete normalized.rules;
-  for (const step of normalized.steps) {
-    delete step.prompt;
-    delete step.document_ids;
-    for (const sub of step.substeps) {
-      delete sub.prompt;
-      delete sub.answer_format;
-    }
-  }
-  writeJSON(BELEIDSKOMPAS_LIVE_FILE, normalized);
+  writeJSON(BELEIDSKOMPAS_LIVE_FILE, publicBeleidskompasConfig(flow));
 }
 
 function ensureBeleidskompasWorkflowsDir() {
@@ -2796,19 +2718,6 @@ app.post("/api/beleidskompas/import", requireAuth, (req, res) => {
   }
 });
 
-app.post("/api/beleidskompas/draft", requireAuth, (req, res) => {
-  try {
-    const state = readBeleidskompasState();
-    const flow = normalizeBeleidskompasFlow(req.body?.flow || req.body || state.draft);
-    state.draft = flow;
-    const saved = writeBeleidskompasState(state);
-    const workflow_manifest = syncBeleidskompasWorkflowFiles(saved);
-    return res.json({ ok: true, draft: saved.draft, workflow_manifest });
-  } catch (err) {
-    return res.status(400).json({ error: String(err?.message || err) });
-  }
-});
-
 app.post("/api/beleidskompas/settings", requireAuth, (req, res) => {
   try {
     const state = readBeleidskompasState();
@@ -2892,43 +2801,6 @@ app.post("/api/beleidskompas/rollback/:versionId", requireAuth, (req, res) => {
   return res.json({ ok: true, live: saved.live, version_id: versionId, workflow_manifest });
 });
 
-app.get("/api/beleidskompas/workflows/status", requireAuth, (req, res) => {
-  const state = readBeleidskompasState();
-  const source = String(req.query?.source || "draft").trim().toLowerCase();
-  const flow =
-    source === "live"
-      ? normalizeBeleidskompasFlow(state.live || state.draft || defaultBeleidskompasFlow())
-      : normalizeBeleidskompasFlow(state.draft || state.live || defaultBeleidskompasFlow());
-  const manifest = readBeleidskompasWorkflowManifest();
-  const expectedStepCount = Array.isArray(flow.steps) ? flow.steps.length : 0;
-  const mappedStepCount = Array.isArray(manifest?.steps) ? manifest.steps.length : 0;
-  const stepMismatch = expectedStepCount !== mappedStepCount;
-
-  return res.json({
-    ok: true,
-    n8n_base_url: BELEIDSKOMPAS_N8N_BASE_URL,
-    token_configured: Boolean(BELEIDSKOMPAS_N8N_WEBHOOK_TOKEN),
-    step_count_expected: expectedStepCount,
-    step_count_mapped: mappedStepCount,
-    step_mismatch: stepMismatch,
-    manifest: manifest || null,
-  });
-});
-
-app.post("/api/beleidskompas/workflows/sync", requireAuth, (req, res) => {
-  try {
-    const state = readBeleidskompasState();
-    const useLive = String(req.body?.source || "").trim().toLowerCase() === "live";
-    const flow = useLive
-      ? normalizeBeleidskompasFlow(state.live || defaultBeleidskompasFlow())
-      : normalizeBeleidskompasFlow(state.draft || state.live || defaultBeleidskompasFlow());
-    const manifest = syncBeleidskompasWorkflowFiles({ ...state, draft: flow });
-    return res.json({ ok: true, source: useLive ? "live" : "draft", manifest });
-  } catch (err) {
-    return res.status(500).json({ error: String(err?.message || err) });
-  }
-});
-
 app.get("/api/beleidskompas/documents", requireAuth, (req, res) => {
   const state = readBeleidskompasState();
   const docs = state.documents.map((d) => ({
@@ -2990,16 +2862,6 @@ app.patch("/api/beleidskompas/documents/:docId", requireAuth, (req, res) => {
   return res.json({ ok: true, document: { ...current, content_base64: undefined }, workflow_manifest });
 });
 
-app.get("/api/beleidskompas/documents/:docId/preview", requireAuth, (req, res) => {
-  const docId = String(req.params.docId || "").trim();
-  if (!docId) return res.status(400).json({ error: "docId ontbreekt" });
-
-  const state = readBeleidskompasState();
-  const doc = state.documents.find((d) => String(d.id || "") === docId);
-  if (!doc) return res.status(404).json({ error: "Document niet gevonden" });
-  return res.json({ ok: true, preview_text: String(doc.preview_text || "") });
-});
-
 app.get("/api/beleidskompas/documents/:docId/download", requireAuth, (req, res) => {
   const docId = String(req.params.docId || "").trim();
   if (!docId) return res.status(400).json({ error: "docId ontbreekt" });
@@ -3028,49 +2890,6 @@ app.delete("/api/beleidskompas/documents/:docId", requireAuth, (req, res) => {
   const saved = writeBeleidskompasState(state);
   const workflow_manifest = syncBeleidskompasWorkflowFiles(saved);
   return res.json({ ok: true, removed: docId, workflow_manifest });
-});
-
-app.post("/api/beleidskompas/rag/query", requireAuth, (req, res) => {
-  try {
-    const state = readBeleidskompasState();
-    const flow = normalizeBeleidskompasFlow(state.draft || state.live || defaultBeleidskompasFlow());
-    const stepId = String(req.body?.step_id || "").trim();
-    let step = Array.isArray(flow.steps) ? flow.steps.find((s) => String(s?.id || "") === stepId) : null;
-    if (!step) step = Array.isArray(flow.steps) ? flow.steps[0] : null;
-    if (!step) return res.status(400).json({ error: "Geen stappen geconfigureerd" });
-
-    const result = selectBeleidskompasRagDocs({
-      step,
-      question: String(req.body?.question || ""),
-      caseText: String(req.body?.case_text || ""),
-      stepFields: req.body?.step_fields && typeof req.body.step_fields === "object" ? req.body.step_fields : {},
-      documents: state.documents || [],
-    });
-
-    return res.json({
-      ok: true,
-      step_id: String(step.id || stepId),
-      rag: result.rag,
-      citations: result.docs.map((d, i) => ({
-        rank: i + 1,
-        id: d.id,
-        filename: d.filename,
-        score: Number(d.score.toFixed(4)),
-        tags: d.tags,
-        preview: d.preview,
-      })),
-      trace: {
-        algorithm: result.rag.algorithm,
-        top_k: result.rag.top_k,
-        min_score: result.rag.min_score,
-        tag_filter_mode: result.rag.tag_filter_mode,
-        required_tags: result.rag.required_tags,
-        matched_docs: result.docs.length,
-      },
-    });
-  } catch (err) {
-    return res.status(400).json({ error: String(err?.message || err) });
-  }
 });
 
 app.get("/api/transcript-sessions", requireLibreChatUser, (req, res) => {

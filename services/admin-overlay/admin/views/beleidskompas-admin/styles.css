@@ -103,8 +103,6 @@ textarea.input { resize: vertical; line-height: 1.45; }
 .notice { display: flex; align-items: center; gap: 8px; padding: 9px 12px; border-radius: 8px; font-size: 12.5px; }
 .notice svg { flex: none; }
 .notice-info { background: var(--accent-soft); color: var(--accent); }
-.notice-warn { background: #fff4e5; color: #9a4a00; }
-.notice-ok { background: #eaf6ee; color: #1f6e37; }
 .kv { display: grid; grid-template-columns: max-content 1fr; gap: 6px 16px; }
 .kv dt { color: var(--muted); }
 .kv-inline { grid-template-columns: max-content 1fr max-content 1fr; }
