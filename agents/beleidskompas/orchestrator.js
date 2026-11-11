@@ -22,9 +22,7 @@
  * (see store-client.js): the case text, the turns of the conversation, a
  * report and the title. It sees everything that is needed for that: the
  * conversation and the user from the bridge, what the page sent and what
- * the step answered. The steps know nothing of the store. A write that
- * fails never breaks the conversation; it is reported in the `store` field
- * of the answer, which n8n keeps with the execution.
+ * the step answered. The steps know nothing of the store.
  *
  * generate-workflow.js copies these functions, with the ones they use from
  * shared.js, into the Code node of beleidskompas-orchestrator.json, so the

@@ -6,11 +6,10 @@
  * services/admin-overlay/admin/lib/beleidskompas/routes.js).
  *
  * Every call carries the store token and names the user the case belongs
- * to. A call never throws: the store must not break the conversation, so a
- * failure comes back as `{ ok: false, error }` and the orchestrator reports
- * it in its own answer. Without BELEIDSKOMPAS_STORE_URL or the token the
- * client is disabled and every call answers `{ ok: false, error:
- * 'Store disabled' }` without sending anything.
+ * to. A call never throws; a failure comes back as `{ ok: false, error }`.
+ * Without BELEIDSKOMPAS_STORE_URL or the token the client is disabled and
+ * every call answers `{ ok: false, error: 'Store disabled' }` without
+ * sending anything.
  *
  * generate-workflow.js copies these functions into the Code node of the
  * orchestrator workflow, so the code that runs in n8n is this code.
