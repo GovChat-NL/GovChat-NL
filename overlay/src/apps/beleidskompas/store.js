@@ -62,6 +62,11 @@ export function createStore(steps) {
     // (otherwise it is a question in the chat).
     asking: "",
     askingReport: false,
+    // Goes up each time the screen leaves the open case, for a new session
+    // or another case. A request remembers the number it started under, so
+    // an answer that arrives after the user moved on is not put on the
+    // screen of another case.
+    session: 0,
     conversationId: readStoredConversationId(),
     lastMessageId: null,
     messages: [createMessage("assistant", "Hallo! Ik ben je beleidsassistent. Beschrijf je casus en ik help je stap voor stap.")],
@@ -196,10 +201,23 @@ export function createStore(steps) {
     changed("conversation");
   }
 
-  function startNewSession() {
-    state.lastMessageId = null;
+  /** A request still under way belongs to the case the screen leaves, so
+   *  the screen no longer waits for it. */
+  function forgetRequest() {
+    state.session += 1;
     state.asking = "";
     state.askingReport = false;
+  }
+
+  /** The screen leaves the open case, to open another one. */
+  function leaveCase() {
+    forgetRequest();
+    changed("steps");
+  }
+
+  function startNewSession() {
+    forgetRequest();
+    state.lastMessageId = null;
     state.caseText = "";
     state.results = emptyResults(substeps);
     state.activeSubstep = 0;
@@ -233,6 +251,7 @@ export function createStore(steps) {
     updateMessage,
     setLastMessageId,
     setConversationId,
+    leaveCase,
     startNewSession,
   };
 }

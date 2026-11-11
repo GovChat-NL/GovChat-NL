@@ -104,23 +104,18 @@ export function setupChat(store, { refreshState }) {
     });
 
     if (!result.text) throw new Error("Beleidskompas gaf geen antwoord terug");
-    if (result.conversationId) store.setConversationId(result.conversationId);
-    if (result.messageId) store.setLastMessageId(result.messageId);
-
-    return { answer: result.text, citations: result.citations, retrieval_trace: result.retrieval_trace, agent: result.agent };
-  }
-
-  function setComposerDisabled(disabled) {
-    sendBtn.disabled = disabled;
-    chatInputEl.disabled = disabled;
+    return result;
   }
 
   /** The text field is for the case at the start, and for the conversation
-   *  about the substep shown after that. */
+   *  about the substep shown after that. It waits while a request is under
+   *  way. */
   function renderComposer() {
     chatInputEl.placeholder = store.caseStarted()
       ? `Stel een vraag of reageer op deelstap ${store.activeSubstep().id}`
       : "Beschrijf je casus";
+    sendBtn.disabled = Boolean(state.asking);
+    chatInputEl.disabled = Boolean(state.asking);
   }
 
   /** Sends a request about `substep` to Beleidskompas.
@@ -135,7 +130,12 @@ export function setupChat(store, { refreshState }) {
    *  `caseDescription` is only passed with the first message, which is the
    *  case. That message asks for a report too, but the user typed it, so
    *  the case does show in the chat. While a request is under way, a new
-   *  one is not sent. */
+   *  one is not sent.
+   *
+   *  The user may start a new session or open another case while the
+   *  request is under way. Its answer then belongs to a case that is no
+   *  longer on the screen, so it is dropped here; the store keeps it with
+   *  its own case. */
   async function ask(substep, message, caseDescription) {
     if (state.asking) return;
     const shown = caseDescription || message || `Deelstap ${substep.id}: ${substep.title}`;
@@ -145,28 +145,38 @@ export function setupChat(store, { refreshState }) {
     // Without text, the answer bubble shows typing dots until the answer
     // arrives.
     const pendingMessage = message ? store.addMessage("assistant", "", { pending: true, substepId: substep.id }) : null;
-    setComposerDisabled(true);
     store.setAsking(substep.id, { report: !message });
 
-    const conversationIdBeforeRequest = state.conversationId;
+    const session = state.session;
+    const stillOpen = () => state.session === session;
     const reportBefore = store.substepResult(substep.id).updated_at;
     try {
       const result = await requestOrchestrator(text);
+      if (!stillOpen()) {
+        // The answer stays off the screen, but its case may be new or has
+        // just changed, so the list of cases is refreshed.
+        store.changed("conversation");
+        return;
+      }
+      const conversationIdBefore = state.conversationId;
+      if (result.conversationId) store.setConversationId(result.conversationId);
+      if (result.messageId) store.setLastMessageId(result.messageId);
+      // A new conversation id already refreshes the list of cases; for the
+      // same id the list is refreshed here, for its new date.
+      if (state.conversationId === conversationIdBefore) store.changed("conversation");
       if (pendingMessage) {
         store.updateMessage(pendingMessage, {
           pending: false,
-          text: String(result.answer || "").trim(),
+          text: String(result.text || "").trim(),
           citations: normalizeCitations(result.citations),
           retrieval_trace: result.retrieval_trace || null,
           agent: result.agent || null,
         });
       }
-      if (state.conversationId === conversationIdBeforeRequest) store.changed("conversation");
-      const conversationId = state.conversationId;
       // When the store cannot be read, only the cards are behind, so that
       // is a message of its own and not an error in place of the answer.
       try {
-        await refreshState(conversationId);
+        await refreshState(state.conversationId);
       } catch (err) {
         store.addMessage("assistant", `Kon de stand van de casus niet ophalen (${String(err?.message || err)}). Open de casus opnieuw om de kaarten bij te werken.`);
       }
@@ -175,17 +185,19 @@ export function setupChat(store, { refreshState }) {
       // it. The page cannot tell that answer from a report, but the store
       // then has no new report for the substep. So the answer goes to the
       // chat, where the user sees it.
-      if (!pendingMessage && state.conversationId === conversationId && !store.reportArrived(substep.id, reportBefore)) {
-        store.addMessage("assistant", result.answer);
+      if (!pendingMessage && stillOpen() && !store.reportArrived(substep.id, reportBefore)) {
+        store.addMessage("assistant", result.text);
       }
     } catch (err) {
+      if (!stillOpen()) return;
       const failure = `Beleidskompas niet bereikbaar of fout: ${String(err?.message || err)}. Probeer het opnieuw of open een nieuwe chat.`;
       if (pendingMessage) store.updateMessage(pendingMessage, { pending: false, text: failure });
       else store.addMessage("assistant", failure);
     } finally {
-      store.setAsking("");
-      setComposerDisabled(false);
-      chatInputEl.focus();
+      if (stillOpen()) {
+        store.setAsking("");
+        chatInputEl.focus();
+      }
     }
   }
 

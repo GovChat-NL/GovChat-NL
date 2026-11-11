@@ -32,6 +32,7 @@ export function setupCases(store) {
   async function resumeConversation(conversationId) {
     const [caseState, lastMessageId] = await Promise.all([fetchCaseState(conversationId), fetchLastMessageId(conversationId)]);
     const { caseText, results, messages, lastReportSubstepId } = readCaseState(caseState);
+    store.leaveCase();
     store.setConversationId(conversationId);
     store.setLastMessageId(lastMessageId);
     store.replaceMessages([{ role: "assistant", text: "Casus geopend. Stel een vraag of werk een deelstap uit." }, ...messages]);
