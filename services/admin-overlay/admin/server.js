@@ -6,6 +6,7 @@ const http = require("http");
 const path = require("path");
 const sharp = require("sharp");
 const { WebSocket, WebSocketServer } = require("ws");
+const beleidskompas = require("./lib/beleidskompas");
 
 const app = express();
 const PORT = process.env.PORT || 3002;
@@ -71,7 +72,7 @@ const BELEIDSKOMPAS_LIVE_FILE = "beleidskompas-config.json";
 const BELEIDSKOMPAS_FEEDBACK_FILE = "beleidskompas-feedback.json";
 const BELEIDSKOMPAS_FEEDBACK_MAX = 500;
 const BELEIDSKOMPAS_WORKFLOWS_DIR_NAME = "beleidskompas-workflows";
-const BELEIDSKOMPAS_HOOFDAGENT_WEBHOOK_PATH_DEFAULT = "beleidskompas-hoofdagent";
+const BELEIDSKOMPAS_ORCHESTRATOR_WEBHOOK_PATH_DEFAULT = "beleidskompas-orchestrator";
 const BELEIDSKOMPAS_N8N_BASE_URL = String(process.env.BELEIDSKOMPAS_N8N_BASE_URL || "http://n8n:5678").replace(/\/$/, "");
 const BELEIDSKOMPAS_N8N_WEBHOOK_TOKEN = String(process.env.BELEIDSKOMPAS_N8N_WEBHOOK_TOKEN || process.env.N8N_WEBHOOK_TOKEN || "").trim();
 const TRANSCRIPT_AUTH_DEBUG = String(process.env.TRANSCRIPT_AUTH_DEBUG || "false").toLowerCase() === "true";
@@ -524,8 +525,8 @@ function selectBeleidskompasRagDocs({ step, question = "", caseText = "", stepFi
 function defaultBeleidskompasFlow() {
   return {
     title: "Beleidskompas",
-    orchestrator_workflow_id: "govchat-beleidskompas-hoofdagent",
-    orchestrator_webhook_path: BELEIDSKOMPAS_HOOFDAGENT_WEBHOOK_PATH_DEFAULT,
+    orchestrator_workflow_id: "govchat-beleidskompas-orchestrator",
+    orchestrator_webhook_path: BELEIDSKOMPAS_ORCHESTRATOR_WEBHOOK_PATH_DEFAULT,
     webhook_token: String(BELEIDSKOMPAS_N8N_WEBHOOK_TOKEN || "").trim(),
     disclaimer:
       "Deze toepassing is een ondersteunend hulpmiddel en vervangt geen menselijke besluitvorming.",
@@ -663,11 +664,11 @@ function normalizeBeleidskompasFlow(input) {
   return {
     title: String(src.title || fallback.title).trim() || fallback.title,
     orchestrator_workflow_id:
-      String(src.orchestrator_workflow_id || fallback.orchestrator_workflow_id || "govchat-beleidskompas-hoofdagent").trim() ||
-      "govchat-beleidskompas-hoofdagent",
+      String(src.orchestrator_workflow_id || fallback.orchestrator_workflow_id || "govchat-beleidskompas-orchestrator").trim() ||
+      "govchat-beleidskompas-orchestrator",
     orchestrator_webhook_path:
-      String(src.orchestrator_webhook_path || fallback.orchestrator_webhook_path || BELEIDSKOMPAS_HOOFDAGENT_WEBHOOK_PATH_DEFAULT).trim() ||
-      BELEIDSKOMPAS_HOOFDAGENT_WEBHOOK_PATH_DEFAULT,
+      String(src.orchestrator_webhook_path || fallback.orchestrator_webhook_path || BELEIDSKOMPAS_ORCHESTRATOR_WEBHOOK_PATH_DEFAULT).trim() ||
+      BELEIDSKOMPAS_ORCHESTRATOR_WEBHOOK_PATH_DEFAULT,
     webhook_token: String(src.webhook_token || fallback.webhook_token || "").trim(),
     disclaimer: String(src.disclaimer || fallback.disclaimer).trim() || fallback.disclaimer,
     specialist_team: String(src.specialist_team || fallback.specialist_team).trim() || fallback.specialist_team,
@@ -904,10 +905,10 @@ function buildBeleidskompasStepWorkflow(flow, step, idx, documentsInput = []) {
 
 function buildBeleidskompasHoofdagentWorkflow(flow) {
   const orchestratorWorkflowId =
-    String(flow?.orchestrator_workflow_id || "govchat-beleidskompas-hoofdagent").trim() || "govchat-beleidskompas-hoofdagent";
+    String(flow?.orchestrator_workflow_id || "govchat-beleidskompas-orchestrator").trim() || "govchat-beleidskompas-orchestrator";
   const orchestratorWebhookPath =
-    String(flow?.orchestrator_webhook_path || BELEIDSKOMPAS_HOOFDAGENT_WEBHOOK_PATH_DEFAULT).trim() ||
-    BELEIDSKOMPAS_HOOFDAGENT_WEBHOOK_PATH_DEFAULT;
+    String(flow?.orchestrator_webhook_path || BELEIDSKOMPAS_ORCHESTRATOR_WEBHOOK_PATH_DEFAULT).trim() ||
+    BELEIDSKOMPAS_ORCHESTRATOR_WEBHOOK_PATH_DEFAULT;
   const steps = Array.isArray(flow?.steps) ? flow.steps : [];
   return {
     id: orchestratorWorkflowId,
@@ -1028,7 +1029,7 @@ function syncBeleidskompasWorkflowFiles(flowInput) {
   });
 
   const hoofd = buildBeleidskompasHoofdagentWorkflow(flow);
-  const hoofdFile = `${String(hoofd.id || "govchat-beleidskompas-hoofdagent")}.json`;
+  const hoofdFile = `${String(hoofd.id || "govchat-beleidskompas-orchestrator")}.json`;
   fs.writeFileSync(path.join(dir, hoofdFile), `${JSON.stringify([hoofd], null, 2)}\n`, "utf-8");
 
   const manifest = {
@@ -1036,8 +1037,8 @@ function syncBeleidskompasWorkflowFiles(flowInput) {
     n8n_base_url: BELEIDSKOMPAS_N8N_BASE_URL,
     webhook_token_configured: Boolean(BELEIDSKOMPAS_N8N_WEBHOOK_TOKEN),
     orchestrator: {
-      workflow_id: String(flow.orchestrator_workflow_id || hoofd.id || "govchat-beleidskompas-hoofdagent"),
-      webhook_path: String(flow.orchestrator_webhook_path || BELEIDSKOMPAS_HOOFDAGENT_WEBHOOK_PATH_DEFAULT),
+      workflow_id: String(flow.orchestrator_workflow_id || hoofd.id || "govchat-beleidskompas-orchestrator"),
+      webhook_path: String(flow.orchestrator_webhook_path || BELEIDSKOMPAS_ORCHESTRATOR_WEBHOOK_PATH_DEFAULT),
       file: `${BELEIDSKOMPAS_WORKFLOWS_DIR_NAME}/${hoofdFile}`,
     },
     steps: stepFiles,
@@ -3458,6 +3459,9 @@ server.on("upgrade", (req, socket, head) => {
   });
 });
 
+// Beleidskompas reaches its database in the background (see
+// lib/beleidskompas/index.js), so the service listens straight away.
+beleidskompas.start(app, { resolveUser: resolveUserFromVerifiedRefreshToken });
 server.listen(PORT, "0.0.0.0", () => {
   console.log(`[govchat-admin] Running on http://0.0.0.0:${PORT}`);
   console.log(`[govchat-admin] Data directory: ${DATA_DIR}`);
