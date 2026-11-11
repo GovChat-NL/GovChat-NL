@@ -1,6 +1,6 @@
 const express = require("express");
 
-const { createTemplateService } = require("./template-service");
+const { createTemplateService } = require("../template-service");
 
 // The admin routes under /api/beleidskompas (templates, versions, documents, settings, workflows).
 // Mounted by lib/beleidskompas/index.js; the case routes of n8n and the page are in case-routes.js.

@@ -37,7 +37,7 @@ const db = require("../../db/connection");
 const { createCaseStore } = require("./case-store");
 const { createTemplateStore } = require("./template-store");
 const { StoreError } = require("./store-errors");
-const routes = require("./case-routes");
+const routes = require("./routes/case-routes");
 
 // How long to wait before the next attempt to reach the database: after the
 // first failure, the second, and so on. The last one repeats.
@@ -95,7 +95,7 @@ function start(app, { pool, resolveUser, requireAuth, flow, init } = {}, env = p
   routes.mount(app, { store: pool ? waitingStore(CASE_STORE_FUNCTIONS, () => caseStore) : null, internalToken, resolveUser });
   if (requireAuth && flow) {
     // Loaded here, so the rest of this file (and its tests) load without express.
-    const { createAdminRouter } = require("./admin-routes");
+    const { createAdminRouter } = require("./routes/admin-routes");
     const notReady = (req, res, next) =>
       adminReady ? next() : res.status(503).json({ error: "Beleidskompas database is nog niet beschikbaar" });
     app.use("/api/beleidskompas", notReady, createAdminRouter({ store: templates, requireAuth, flow }));
