@@ -8,8 +8,8 @@ export const REAL_TEMPLATE = { id: "sis40", name: "SiS 4.0", mock: false };
 
 const omgevingsvisieFlow = {
   title: "Beleidskompas Omgevingsvisie",
-  orchestrator_workflow_id: "govchat-beleidskompas-hoofdagent",
-  orchestrator_webhook_path: "beleidskompas-hoofdagent",
+  orchestrator_workflow_id: "govchat-beleidskompas-orchestrator",
+  orchestrator_webhook_path: "beleidskompas-orchestrator",
   webhook_token: "",
   disclaimer: "Voorbeeldtemplate: deze configuratie is niet opgeslagen op de server.",
   specialist_team: "Betrek de omgevingsjurist bij ruimtelijke besluiten.",
