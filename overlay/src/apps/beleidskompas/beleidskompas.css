@@ -532,12 +532,6 @@
   padding: 12px;
 }
 
-.gc-bk-form-short {
-  font-size: 12px;
-  line-height: 1.45;
-  color: #4b5563;
-}
-
 .gc-bk-step-status {
   font-size: 11px;
   color: #6b7280;
@@ -1342,10 +1336,6 @@
 
 .dark .gc-bk-step-link .gc-bk-spinner {
   color: #93c5fd;
-}
-
-.dark .gc-bk-form-short {
-  color: #d1d5db;
 }
 
 .dark .gc-bk-step-group-head:hover {

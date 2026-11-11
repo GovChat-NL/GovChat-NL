@@ -45,7 +45,6 @@ export function setupStepCard(store, { specialistTeam, requestReport }) {
   const { state, substeps } = store;
   const stepInfoBtn = requireElement("gc-bk-step-info");
   const formTitleEl = requireElement("gc-bk-form-title");
-  const formShortEl = requireElement("gc-bk-form-short");
   const prevBtn = requireElement("gc-bk-prev");
   const nextBtn = requireElement("gc-bk-next");
   const reportBtn = requireElement("gc-bk-request-report");
@@ -62,7 +61,6 @@ export function setupStepCard(store, { specialistTeam, requestReport }) {
     const step = substep.step;
     const data = store.substepResult(substep.id);
     formTitleEl.textContent = `Stap ${step.nr} · ${step.title} · ${substep.id} ${substep.title}`;
-    formShortEl.textContent = step.short || "";
     reportStatusEl.textContent = data.report_text ? `Uitwerking beschikbaar voor deelstap ${substep.id}.` : "";
     staleEl.hidden = !store.talkedSinceReport(substep.id);
 
