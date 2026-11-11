@@ -25,7 +25,9 @@
         "HOME",
         "N8N_WEBHOOK_TOKEN",
         "LITELLM_URL",
-        "LITELLM_API_KEY"
+        "LITELLM_API_KEY",
+        "BELEIDSKOMPAS_STORE_URL",
+        "BELEIDSKOMPAS_STORE_TOKEN"
       ],
       "env-overrides": {
         "NODE_FUNCTION_ALLOW_BUILTIN": "fs,path,crypto,url,http,https",

@@ -1,4 +1,4 @@
 {
   "govchat-orchestrator": "http://n8n:5678/webhook/orchestrator",
-  "govchat-beleidskompas": "http://n8n:5678/webhook/beleidskompas-hoofdagent"
+  "govchat-beleidskompas": "http://n8n:5678/webhook/beleidskompas-orchestrator"
 }

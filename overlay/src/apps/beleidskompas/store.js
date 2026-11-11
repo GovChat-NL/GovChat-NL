@@ -1,25 +1,30 @@
-// The state of the Beleidskompas screen: the messages, the active step, the
-// open conversation and the elaboration per step. Every change goes through
-// a method here, which tells the parts of the screen that show it to redraw
-// (subscribe/changed), so code that changes the state does not need to know
-// which parts show it.
+// The state of the Beleidskompas screen: the case, the messages, the active
+// substep, the open conversation and the report per substep. Every change goes
+// through a method here, which tells the parts of the screen that show it to
+// redraw (subscribe/changed), so code that changes the state does not need
+// to know which parts show it.
 
 import { normalizeCitations } from "./format.js";
 
 const CONVERSATION_STORAGE_KEY = "gc_bk_conversation_id";
 
-function emptyStepState() {
+function emptyResult() {
   return { report_text: "", citations: [], retrieval_trace: null, updated_at: "" };
 }
 
-function emptyStepStates(steps) {
-  const states = {};
-  steps.forEach((s) => {
-    states[s.id] = emptyStepState();
+function emptyResults(substeps) {
+  const results = {};
+  substeps.forEach((s) => {
+    results[s.id] = emptyResult();
   });
-  return states;
+  return results;
 }
 
+// A message in the chat. A question the user typed and the answer to it
+// carry the substep the user was in (substepId); other messages, like the
+// case and the notices of the page, carry none. An answer also says which
+// step gave it (agent), which can be another step than the substep's when
+// the question was about that step.
 function createMessage(role, text, meta = {}) {
   const message = {
     role,
@@ -27,6 +32,8 @@ function createMessage(role, text, meta = {}) {
     ts: meta.ts || new Date().toISOString(),
     citations: normalizeCitations(meta.citations),
     retrieval_trace: meta.retrieval_trace || null,
+    agent: meta.agent ? String(meta.agent) : null,
+    substepId: String(meta.substepId || ""),
   };
   if (meta.pending) message.pending = true;
   return message;
@@ -41,12 +48,29 @@ function readStoredConversationId() {
 }
 
 export function createStore(steps) {
+  // Every substep in the order of the steps, each with its step, so the
+  // screen can walk through them with one index.
+  const substeps = steps.flatMap((step) => step.substeps.map((substep) => ({ ...substep, step })));
+
   const state = {
-    activeStep: 0,
+    // The case as the user described it; sent with every request.
+    caseText: "",
+    activeSubstep: 0,
+    // The id of the substep a request to Beleidskompas is under way for, or
+    // "" when none is; no second request starts until it is answered.
+    // askingReport says whether that request asks for the substep's report
+    // (otherwise it is a question in the chat).
+    asking: "",
+    askingReport: false,
+    // Goes up each time the screen leaves the open case, for a new session
+    // or another case. A request remembers the number it started under, so
+    // an answer that arrives after the user moved on is not put on the
+    // screen of another case.
+    session: 0,
     conversationId: readStoredConversationId(),
     lastMessageId: null,
     messages: [createMessage("assistant", "Hallo! Ik ben je beleidsassistent. Beschrijf je casus en ik help je stap voor stap.")],
-    steps: emptyStepStates(steps),
+    results: emptyResults(substeps),
   };
 
   const listeners = new Map();
@@ -60,26 +84,86 @@ export function createStore(steps) {
     topics.forEach((topic) => (listeners.get(topic) || []).forEach((listener) => listener()));
   }
 
-  function activeStep() {
-    return steps[state.activeStep] || steps[0];
+  function activeSubstep() {
+    return substeps[state.activeSubstep] || substeps[0];
   }
 
-  function setActiveStep(index) {
-    state.activeStep = Math.max(0, Math.min(steps.length - 1, Number(index) || 0));
+  function activeStep() {
+    return activeSubstep().step;
+  }
+
+  function setActiveSubstep(index) {
+    state.activeSubstep = Math.max(0, Math.min(substeps.length - 1, Number(index) || 0));
     changed("steps");
   }
 
-  function stepResult(stepId) {
-    return state.steps[stepId] || emptyStepState();
+  /** Opens a step at its first substep. */
+  function setActiveStep(stepIndex) {
+    const step = steps[Math.max(0, Math.min(steps.length - 1, Number(stepIndex) || 0))];
+    setActiveSubstep(substeps.findIndex((s) => s.step === step));
+  }
+
+  function substepResult(substepId) {
+    return state.results[substepId] || emptyResult();
+  }
+
+  function substepDone(substepId) {
+    return Boolean(String(substepResult(substepId).report_text || "").trim());
   }
 
   function stepDone(stepId) {
-    return Boolean(String(stepResult(stepId).report_text || "").trim());
+    const step = steps.find((s) => s.id === stepId);
+    return Boolean(step && step.substeps.length && step.substeps.every((s) => substepDone(s.id)));
   }
 
-  function setStepResult(stepId, result) {
-    state.steps[stepId] = { ...emptyStepState(), ...result, citations: normalizeCitations(result.citations) };
+  /** Puts the reports as the store has them on the cards, all at once:
+   *  the ones given replace what there was, the others are empty again. */
+  function replaceResults(resultsById) {
+    state.results = emptyResults(substeps);
+    for (const [substepId, result] of Object.entries(resultsById || {})) {
+      if (substepId in state.results) state.results[substepId] = { ...emptyResult(), ...result, citations: normalizeCitations(result.citations) };
+    }
     changed("steps");
+  }
+
+  function setAsking(substepId, { report = false } = {}) {
+    state.asking = String(substepId || "");
+    state.askingReport = Boolean(state.asking) && report;
+    changed("steps");
+  }
+
+  /** Whether the report of this substep is being written right now. */
+  function reportUnderWay(substepId) {
+    return state.askingReport && state.asking === substepId;
+  }
+
+  function setCaseText(caseText) {
+    state.caseText = String(caseText || "").trim();
+    changed("steps");
+  }
+
+  /** Whether the case has begun. On the page the first thing the user
+   *  types is the case. A case begun in the LibreChat chat has no case
+   *  text, only messages, and may have reports; it has begun too, so what
+   *  the user types next is a message and not the case. */
+  function caseStarted() {
+    return Boolean(state.caseText) || state.messages.some((m) => m.role === "user") || substeps.some((s) => substepDone(s.id));
+  }
+
+  /** Whether the conversation about a substep went on after its report, so
+   *  the report does not reflect that conversation yet. */
+  function talkedSinceReport(substepId) {
+    const since = substepResult(substepId).updated_at;
+    if (!since) return false;
+    return state.messages.some((m) => m.substepId === substepId && m.text && m.ts > since);
+  }
+
+  /** Whether the card of a substep shows a different report than before the
+   *  request. `before` is the updated_at of the report the card showed then,
+   *  or "" when it showed none. */
+  function reportArrived(substepId, before) {
+    const now = substepResult(substepId).updated_at;
+    return Boolean(now) && now !== before;
   }
 
   function addMessage(role, text, meta) {
@@ -117,10 +201,26 @@ export function createStore(steps) {
     changed("conversation");
   }
 
+  /** A request still under way belongs to the case the screen leaves, so
+   *  the screen no longer waits for it. */
+  function forgetRequest() {
+    state.session += 1;
+    state.asking = "";
+    state.askingReport = false;
+  }
+
+  /** The screen leaves the open case, to open another one. */
+  function leaveCase() {
+    forgetRequest();
+    changed("steps");
+  }
+
   function startNewSession() {
+    forgetRequest();
     state.lastMessageId = null;
-    state.steps = emptyStepStates(steps);
-    state.activeStep = 0;
+    state.caseText = "";
+    state.results = emptyResults(substeps);
+    state.activeSubstep = 0;
     state.messages = [createMessage("assistant", "Nieuwe sessie gestart. Beschrijf je casus en we lopen de stappen samen door.")];
     setConversationId(null);
     changed("chat", "steps");
@@ -129,18 +229,29 @@ export function createStore(steps) {
   return {
     state,
     steps,
+    substeps,
     subscribe,
     changed,
+    activeSubstep,
     activeStep,
+    setActiveSubstep,
     setActiveStep,
-    stepResult,
+    substepResult,
+    substepDone,
     stepDone,
-    setStepResult,
+    replaceResults,
+    setAsking,
+    reportUnderWay,
+    setCaseText,
+    caseStarted,
+    talkedSinceReport,
+    reportArrived,
     addMessage,
     replaceMessages,
     updateMessage,
     setLastMessageId,
     setConversationId,
+    leaveCase,
     startNewSession,
   };
 }

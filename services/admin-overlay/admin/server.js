@@ -6,6 +6,8 @@ const http = require("http");
 const path = require("path");
 const sharp = require("sharp");
 const { WebSocket, WebSocketServer } = require("ws");
+const beleidskompas = require("./lib/beleidskompas");
+const dbConnection = require("./db/connection");
 const { createDb } = require("./beleidskompas/db/db");
 const { createStore } = require("./beleidskompas/db/store");
 const { createService } = require("./beleidskompas/api/service");
@@ -75,7 +77,7 @@ const BELEIDSKOMPAS_LIVE_FILE = "beleidskompas-config.json";
 const BELEIDSKOMPAS_FEEDBACK_FILE = "beleidskompas-feedback.json";
 const BELEIDSKOMPAS_FEEDBACK_MAX = 500;
 const BELEIDSKOMPAS_WORKFLOWS_DIR_NAME = "beleidskompas-workflows";
-const BELEIDSKOMPAS_HOOFDAGENT_WEBHOOK_PATH_DEFAULT = "beleidskompas-hoofdagent";
+const BELEIDSKOMPAS_ORCHESTRATOR_WEBHOOK_PATH_DEFAULT = "beleidskompas-orchestrator";
 const BELEIDSKOMPAS_N8N_BASE_URL = String(process.env.BELEIDSKOMPAS_N8N_BASE_URL || "http://n8n:5678").replace(/\/$/, "");
 // Demo/dev: when the database has no templates, load beleidskompas/db/seed.sql instead of the bare default template.
 const BELEIDSKOMPAS_DEV_SEED = String(process.env.BELEIDSKOMPAS_DEV_SEED || "false").toLowerCase() === "true";
@@ -86,8 +88,12 @@ const DEFAULT_BELEIDSKOMPAS_SETTINGS = {
   require_human_validation: true,
   default_model: "govchat-default",
 };
-const db = createDb({ connectionString: process.env.BELEIDSKOMPAS_DATABASE_URL });
+// One pool for everything of Beleidskompas, on the beleidskompas-postgres database: the cases
+// (lib/beleidskompas) and the templates (beleidskompas/). Null without BELEIDSKOMPAS_DB_HOST.
+const beleidskompasPool = dbConnection.openPool();
+const db = createDb(beleidskompasPool);
 const store = createStore(db);
+let beleidskompasReady = false;
 const TRANSCRIPT_AUTH_DEBUG = String(process.env.TRANSCRIPT_AUTH_DEBUG || "false").toLowerCase() === "true";
 const LIBRECHAT_JWT_REFRESH_SECRET = String(process.env.JWT_REFRESH_SECRET || process.env.JWT_SECRET || "").trim();
 
@@ -524,8 +530,8 @@ function selectBeleidskompasRagDocs({ step, question = "", caseText = "", stepFi
 function defaultBeleidskompasFlow() {
   return {
     title: "Beleidskompas",
-    orchestrator_workflow_id: "govchat-beleidskompas-hoofdagent",
-    orchestrator_webhook_path: BELEIDSKOMPAS_HOOFDAGENT_WEBHOOK_PATH_DEFAULT,
+    orchestrator_workflow_id: "govchat-beleidskompas-orchestrator",
+    orchestrator_webhook_path: BELEIDSKOMPAS_ORCHESTRATOR_WEBHOOK_PATH_DEFAULT,
     webhook_token: String(BELEIDSKOMPAS_N8N_WEBHOOK_TOKEN || "").trim(),
     disclaimer:
       "Deze toepassing is een ondersteunend hulpmiddel en vervangt geen menselijke besluitvorming.",
@@ -668,11 +674,11 @@ function normalizeBeleidskompasFlow(input) {
   return {
     title: String(src.title || fallback.title).trim() || fallback.title,
     orchestrator_workflow_id:
-      String(src.orchestrator_workflow_id || fallback.orchestrator_workflow_id || "govchat-beleidskompas-hoofdagent").trim() ||
-      "govchat-beleidskompas-hoofdagent",
+      String(src.orchestrator_workflow_id || fallback.orchestrator_workflow_id || "govchat-beleidskompas-orchestrator").trim() ||
+      "govchat-beleidskompas-orchestrator",
     orchestrator_webhook_path:
-      String(src.orchestrator_webhook_path || fallback.orchestrator_webhook_path || BELEIDSKOMPAS_HOOFDAGENT_WEBHOOK_PATH_DEFAULT).trim() ||
-      BELEIDSKOMPAS_HOOFDAGENT_WEBHOOK_PATH_DEFAULT,
+      String(src.orchestrator_webhook_path || fallback.orchestrator_webhook_path || BELEIDSKOMPAS_ORCHESTRATOR_WEBHOOK_PATH_DEFAULT).trim() ||
+      BELEIDSKOMPAS_ORCHESTRATOR_WEBHOOK_PATH_DEFAULT,
     webhook_token: String(src.webhook_token || fallback.webhook_token || "").trim(),
     disclaimer: String(src.disclaimer || fallback.disclaimer).trim() || fallback.disclaimer,
     specialist_team: String(src.specialist_team || fallback.specialist_team).trim() || fallback.specialist_team,
@@ -840,10 +846,10 @@ function buildBeleidskompasStepWorkflow(flow, step, idx, documentsInput = []) {
 
 function buildBeleidskompasHoofdagentWorkflow(flow) {
   const orchestratorWorkflowId =
-    String(flow?.orchestrator_workflow_id || "govchat-beleidskompas-hoofdagent").trim() || "govchat-beleidskompas-hoofdagent";
+    String(flow?.orchestrator_workflow_id || "govchat-beleidskompas-orchestrator").trim() || "govchat-beleidskompas-orchestrator";
   const orchestratorWebhookPath =
-    String(flow?.orchestrator_webhook_path || BELEIDSKOMPAS_HOOFDAGENT_WEBHOOK_PATH_DEFAULT).trim() ||
-    BELEIDSKOMPAS_HOOFDAGENT_WEBHOOK_PATH_DEFAULT;
+    String(flow?.orchestrator_webhook_path || BELEIDSKOMPAS_ORCHESTRATOR_WEBHOOK_PATH_DEFAULT).trim() ||
+    BELEIDSKOMPAS_ORCHESTRATOR_WEBHOOK_PATH_DEFAULT;
   const steps = Array.isArray(flow?.steps) ? flow.steps : [];
   return {
     id: orchestratorWorkflowId,
@@ -955,7 +961,7 @@ function syncBeleidskompasWorkflowFiles(flow, documents = []) {
   });
 
   const hoofd = buildBeleidskompasHoofdagentWorkflow(flow);
-  const hoofdFile = `${String(hoofd.id || "govchat-beleidskompas-hoofdagent")}.json`;
+  const hoofdFile = `${String(hoofd.id || "govchat-beleidskompas-orchestrator")}.json`;
   fs.writeFileSync(path.join(dir, hoofdFile), `${JSON.stringify([hoofd], null, 2)}\n`, "utf-8");
 
   const manifest = {
@@ -963,8 +969,8 @@ function syncBeleidskompasWorkflowFiles(flow, documents = []) {
     n8n_base_url: BELEIDSKOMPAS_N8N_BASE_URL,
     webhook_token_configured: Boolean(BELEIDSKOMPAS_N8N_WEBHOOK_TOKEN),
     orchestrator: {
-      workflow_id: String(flow.orchestrator_workflow_id || hoofd.id || "govchat-beleidskompas-hoofdagent"),
-      webhook_path: String(flow.orchestrator_webhook_path || BELEIDSKOMPAS_HOOFDAGENT_WEBHOOK_PATH_DEFAULT),
+      workflow_id: String(flow.orchestrator_workflow_id || hoofd.id || "govchat-beleidskompas-orchestrator"),
+      webhook_path: String(flow.orchestrator_webhook_path || BELEIDSKOMPAS_ORCHESTRATOR_WEBHOOK_PATH_DEFAULT),
       file: `${BELEIDSKOMPAS_WORKFLOWS_DIR_NAME}/${hoofdFile}`,
     },
     steps: stepFiles,
@@ -1024,8 +1030,8 @@ function normalizeLegacyState(state) {
   return out;
 }
 
-async function startBeleidskompas() {
-  await db.applySchema();
+// Fills the template tables when they are empty. Runs once the migrations have been applied.
+async function initBeleidskompas() {
   if ((await store.listTemplates()).length) {
     console.log("[init] Beleidskompas database bevat al templates, import overgeslagen");
   } else {
@@ -1051,6 +1057,7 @@ async function startBeleidskompas() {
     }
   }
   await publishLive();
+  beleidskompasReady = true;
 }
 
 function readCrawlerConfig() {
@@ -2670,9 +2677,22 @@ app.post("/api/config/apps", requireAuth, (req, res) => {
 });
 
 
+// The case endpoints (lib/beleidskompas) are mounted first and answer 503 themselves until their
+// store is ready. The admin endpoints below do the same until the templates are initialised.
+const beleidskompasStarted = beleidskompas.start(app, { resolveUser: resolveUserFromVerifiedRefreshToken }, process.env, {
+  openPool: () => beleidskompasPool,
+});
+beleidskompasStarted
+  .then((caseStore) => {
+    if (!caseStore) return console.error("[init] Beleidskompas database niet geconfigureerd (BELEIDSKOMPAS_DB_HOST ontbreekt)");
+    return initBeleidskompas();
+  })
+  .catch((err) => console.error("[init] Beleidskompas initialiseren mislukt:", err));
+
 const beleidskompasService = createService({ store });
 app.use(
   "/api/beleidskompas",
+  (req, res, next) => (beleidskompasReady ? next() : res.status(503).json({ error: "Beleidskompas database is nog niet beschikbaar" })),
   createBeleidskompasRouter({
     store,
     service: beleidskompasService,
@@ -3150,7 +3170,9 @@ server.on("upgrade", (req, socket, head) => {
   });
 });
 
-startBeleidskompas().then(() => server.listen(PORT, "0.0.0.0", () => {
+// Beleidskompas reaches its database in the background (see lib/beleidskompas/index.js),
+// so the service listens straight away.
+server.listen(PORT, "0.0.0.0", () => {
   console.log(`[govchat-admin] Running on http://0.0.0.0:${PORT}`);
   console.log(`[govchat-admin] Data directory: ${DATA_DIR}`);
   console.log(`[govchat-admin] Publish directory: ${PUBLISH_DIR}`);
@@ -3165,7 +3187,4 @@ startBeleidskompas().then(() => server.listen(PORT, "0.0.0.0", () => {
   console.log(
     `[govchat-admin] Realtime STT bridge: /api/realtime-stt (provider=${REALTIME_STT_PROVIDER_DEFAULT})`,
   );
-}), (err) => {
-  console.error("[init] Beleidskompas database start mislukt:", err);
-  process.exit(1);
 });

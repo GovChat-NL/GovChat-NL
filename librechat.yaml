@@ -34,7 +34,7 @@ endpoints:
       # instruction got the same treatment as a real case, producing an
       # absurd, oversized "title" (verified live). The
       # __BELEIDSKOMPAS_TITLE_REQUEST__ marker lets the n8n workflow
-      # (runStep1 in logic.js) recognize this specific request and return
+      # (runOrchestrator in agents/beleidskompas/orchestrator.js) recognize this specific request and return
       # just a short title instead of running the analysis pipeline.
       #
       # `{convo}` is a LibreChat/@librechat-agents template placeholder
