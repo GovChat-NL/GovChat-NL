@@ -130,6 +130,21 @@ test("only the conversation about a substep makes its report fall behind", () =>
   assert.equal(store.talkedSinceReport("1.2"), false);
 });
 
+test("a report counts as under way only while its own substep asks for it", () => {
+  const store = createStore(STEPS);
+  store.setAsking("1.1", { report: true });
+  assert.equal(store.reportUnderWay("1.1"), true);
+  assert.equal(store.reportUnderWay("1.2"), false);
+
+  // A question in the chat is not a report being written.
+  store.setAsking("1.1");
+  assert.equal(store.reportUnderWay("1.1"), false);
+
+  store.setAsking("1.1", { report: true });
+  store.setAsking("");
+  assert.equal(store.reportUnderWay("1.1"), false);
+});
+
 test("the open case is remembered in sessionStorage, so a new store after a reload picks it up", () => {
   withSessionStorage((items) => {
     createStore(STEPS).setConversationId("abc-123");

@@ -52,6 +52,7 @@ export function setupStepCard(store, { specialistTeam, requestReport }) {
   const redoBtn = requireElement("gc-bk-redo");
   const staleEl = requireElement("gc-bk-report-stale");
   const reportStatusEl = requireElement("gc-bk-report-status");
+  const reportBusyEl = requireElement("gc-bk-report-busy");
   const reportBodyEl = requireElement("gc-bk-report-body");
   const reportMetaEl = requireElement("gc-bk-report-meta");
   const reportSourcesEl = requireElement("gc-bk-report-sources");
@@ -65,14 +66,25 @@ export function setupStepCard(store, { specialistTeam, requestReport }) {
     reportStatusEl.textContent = data.report_text ? `Uitwerking beschikbaar voor deelstap ${substep.id}.` : "";
     staleEl.hidden = !store.talkedSinceReport(substep.id);
 
+    // While the report is being written, a notice says so above the card.
+    // A report that is being written again stays visible, faded, until the
+    // new one replaces it.
+    const busy = store.reportUnderWay(substep.id);
+    reportBusyEl.hidden = !busy;
+    reportBusyEl.innerHTML = busy
+      ? `<span class="gc-bk-typing-dots" aria-hidden="true"><span></span><span></span><span></span></span>
+         <strong>Deelstap ${escapeHTML(substep.id)} wordt uitgewerkt</strong>`
+      : "";
+
     const hasReport = Boolean(String(data.report_text || "").trim());
     const advice = hasReport ? parseAdvice(data.report_text) : null;
     if (advice) reportBodyEl.innerHTML = adviceHTML(advice, specialistTeam);
     else if (hasReport) reportBodyEl.innerHTML = formatRichText(data.report_text);
-    else if (state.asking === substep.id) reportBodyEl.textContent = "Wordt uitgewerkt…";
+    else if (busy) reportBodyEl.textContent = "";
     else if (!store.caseStarted()) reportBodyEl.textContent = "Beschrijf je casus in de chat om te beginnen. De uitwerking van elke deelstap verschijnt hier.";
     else reportBodyEl.textContent = "Deze deelstap is nog niet uitgewerkt.";
     reportBodyEl.classList.toggle("is-placeholder", !hasReport);
+    reportBodyEl.classList.toggle("is-replacing", busy && hasReport);
 
     const trace = data.retrieval_trace || null;
     const tsText = data.updated_at ? ` · bijgewerkt: ${formatTime(data.updated_at)}` : "";
@@ -96,7 +108,10 @@ export function setupStepCard(store, { specialistTeam, requestReport }) {
   function renderReportButton(substep) {
     const isLast = state.activeSubstep >= substeps.length - 1;
     const done = store.substepDone(substep.id);
-    reportBtn.textContent = done ? "Volgende deelstap uitwerken" : "Deze deelstap uitwerken";
+    const working = Boolean(state.asking) && state.askingReport;
+    if (working) reportBtn.innerHTML = '<span class="gc-bk-spinner" aria-hidden="true"></span>Bezig met uitwerken…';
+    else reportBtn.textContent = done ? "Volgende deelstap uitwerken" : "Deze deelstap uitwerken";
+    reportBtn.classList.toggle("is-working", working);
     reportBtn.disabled = Boolean(state.asking) || !store.caseStarted() || (done && isLast);
     redoBtn.hidden = !done;
     redoBtn.disabled = Boolean(state.asking);

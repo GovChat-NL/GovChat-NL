@@ -58,7 +58,10 @@ export function createStore(steps) {
     activeSubstep: 0,
     // The id of the substep a request to Beleidskompas is under way for, or
     // "" when none is; no second request starts until it is answered.
+    // askingReport says whether that request asks for the substep's report
+    // (otherwise it is a question in the chat).
     asking: "",
+    askingReport: false,
     conversationId: readStoredConversationId(),
     lastMessageId: null,
     messages: [createMessage("assistant", "Hallo! Ik ben je beleidsassistent. Beschrijf je casus en ik help je stap voor stap.")],
@@ -118,9 +121,15 @@ export function createStore(steps) {
     changed("steps");
   }
 
-  function setAsking(substepId) {
+  function setAsking(substepId, { report = false } = {}) {
     state.asking = String(substepId || "");
+    state.askingReport = Boolean(state.asking) && report;
     changed("steps");
+  }
+
+  /** Whether the report of this substep is being written right now. */
+  function reportUnderWay(substepId) {
+    return state.askingReport && state.asking === substepId;
   }
 
   function setCaseText(caseText) {
@@ -190,6 +199,7 @@ export function createStore(steps) {
   function startNewSession() {
     state.lastMessageId = null;
     state.asking = "";
+    state.askingReport = false;
     state.caseText = "";
     state.results = emptyResults(substeps);
     state.activeSubstep = 0;
@@ -213,6 +223,7 @@ export function createStore(steps) {
     stepDone,
     replaceResults,
     setAsking,
+    reportUnderWay,
     setCaseText,
     caseStarted,
     talkedSinceReport,

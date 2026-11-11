@@ -146,7 +146,7 @@ export function setupChat(store, { refreshState }) {
     // arrives.
     const pendingMessage = message ? store.addMessage("assistant", "", { pending: true, substepId: substep.id }) : null;
     setComposerDisabled(true);
-    store.setAsking(substep.id);
+    store.setAsking(substep.id, { report: !message });
 
     const conversationIdBeforeRequest = state.conversationId;
     const reportBefore = store.substepResult(substep.id).updated_at;

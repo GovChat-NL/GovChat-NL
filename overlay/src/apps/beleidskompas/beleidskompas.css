@@ -556,6 +556,66 @@
   color: #6b7280;
 }
 
+/* The report that is being written again, until the new one arrives. */
+.gc-bk-step-text.is-replacing {
+  opacity: 0.4;
+  transition: opacity 0.2s;
+}
+
+/* The notice on the step card while its report is being written. */
+.gc-bk-busy {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  font-size: 13px;
+  color: #1e3a8a;
+  background: #eff6ff;
+  border: 1px solid #bfdbfe;
+  border-radius: 10px;
+}
+
+.gc-bk-busy[hidden] {
+  display: none;
+}
+
+.gc-bk-busy strong {
+  font-weight: 600;
+}
+
+.gc-bk-busy .gc-bk-typing-dots span {
+  width: 7px;
+  height: 7px;
+  background: #2563eb;
+}
+
+/* A small turning circle: in the report button and next to the substep in
+   the stepper while its report is being written. */
+.gc-bk-spinner {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  margin-right: 8px;
+  vertical-align: -2px;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  animation: gc-bk-spin 0.8s linear infinite;
+}
+
+.gc-bk-step-link .gc-bk-spinner {
+  width: 10px;
+  height: 10px;
+  margin: 0 0 0 6px;
+  color: #2563eb;
+}
+
+@keyframes gc-bk-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 .gc-bk-step-meta {
   font-size: 11px;
   color: #6b7280;
@@ -593,6 +653,13 @@
 #gc-bk-request-report:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+
+/* While it is working, the button stays at full strength, so it reads as
+   busy rather than unavailable. */
+#gc-bk-request-report.is-working:disabled {
+  opacity: 1;
+  cursor: progress;
 }
 
 #gc-bk-redo {
@@ -1263,6 +1330,20 @@
   color: #e5e7eb;
 }
 
+.dark .gc-bk-busy {
+  color: #bfdbfe;
+  background: rgba(30, 58, 138, 0.35);
+  border-color: #1e40af;
+}
+
+.dark .gc-bk-busy .gc-bk-typing-dots span {
+  background: #93c5fd;
+}
+
+.dark .gc-bk-step-link .gc-bk-spinner {
+  color: #93c5fd;
+}
+
 .dark .gc-bk-form-short {
   color: #d1d5db;
 }
@@ -1338,5 +1419,14 @@
 @media (max-width: 768px) {
   .gc-bk-grid {
     grid-template-columns: 1fr;
+  }
+}
+
+/* No movement for people who turned animations off; the notice and the
+   button text still say that a report is being written. */
+@media (prefers-reduced-motion: reduce) {
+  .gc-bk-typing-dots span,
+  .gc-bk-spinner {
+    animation: none;
   }
 }

@@ -1,7 +1,8 @@
 // The stepper on the left: one collapsible group per step with its title
 // and its substeps. The active step is open and its active substep is
 // marked; substeps with a report are marked done, and a step once all its
-// substeps are. Redraws itself when the active substep or a report
+// substeps are. A substep whose report is being written shows a spinner.
+// Redraws itself when the active substep or a report
 // changes.
 
 import { escapeHTML } from "../../../shared/html.js";
@@ -20,7 +21,8 @@ export function setupStepper(store) {
     if (substep.id === store.activeSubstep().id) classes.push("is-active");
     if (store.substepDone(substep.id)) classes.push("is-done");
     const index = substeps.findIndex((s) => s.id === substep.id);
-    return `<button type="button" class="${classes.join(" ")}" data-substep-index="${index}">${escapeHTML(substep.id)} ${escapeHTML(substep.title)}${store.substepDone(substep.id) ? " ✓" : ""}</button>`;
+    const busy = store.reportUnderWay(substep.id) ? '<span class="gc-bk-spinner" aria-label="wordt uitgewerkt"></span>' : "";
+    return `<button type="button" class="${classes.join(" ")}" data-substep-index="${index}">${escapeHTML(substep.id)} ${escapeHTML(substep.title)}${store.substepDone(substep.id) ? " ✓" : ""}${busy}</button>`;
   }
 
   function renderStepper() {
