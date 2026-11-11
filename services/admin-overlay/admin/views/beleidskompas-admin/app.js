@@ -107,7 +107,7 @@ async function saveAsNewTemplate() {
   store.templates = api.listTemplates(store.state);
   store.dirty = false;
   await selectTemplate(tpl.id);
-  toast(`Template “${name}” aangemaakt`, "success");
+  toast(`Voorbeeldtemplate “${name}” aangemaakt. Het bestaat alleen in dit tabblad.`, "info");
 }
 
 // ── Routing (hash routes, so the browser's back button works) ─────
