@@ -1,9 +1,13 @@
 """Offline regression suite: python -m unittest discover -s tests/agents -p test_openbesluitvorming_ingest.py"""
 import importlib.util
+import concurrent.futures
+import io
 import json
 import math
 from pathlib import Path
 import tempfile
+import threading
+import time
 import unittest
 from unittest.mock import patch
 
@@ -307,8 +311,260 @@ class WorkerTests(unittest.TestCase):
             self.worker.db.execute("UPDATE documents SET status='indexed'")
         self.assertTrue(self.worker.status('test')['runs'][0]['complete'])
 
+    def test_parallel_inflight_and_exact_attempt_bounds(self):
+        self.worker.page(self.run, 5)
+        gate = threading.Barrier(2)
+        mutex = threading.Lock()
+        active, peak, calls = 0, 0, 0
+        def process(run, job):
+            nonlocal active, peak, calls
+            with mutex:
+                active += 1
+                peak = max(peak, active)
+                calls += 1
+                number = calls
+            if number <= 2:
+                gate.wait(timeout=5)
+            time.sleep(0.01)
+            with mutex:
+                active -= 1
+            return 'indexed'
+        self.worker.process = process
+        result = self.worker.execute('test', 3, 1, workers=2)
+        self.assertEqual((calls, peak, result['session_processed']), (3, 2, 3))
+        self.assertEqual(result['performance']['peak_inflight'], 2)
+        self.assertEqual(result['runs'][0]['counts'], {'indexed': 3, 'pending': 2})
+        self.assertEqual(self.worker.db.execute('SELECT sum(attempts) FROM documents').fetchone()[0], 3)
+
+    def test_invalid_worker_bounds_and_environment_default(self):
+        for workers in (0, -1, 5, 100):
+            with self.assertRaisesRegex(obv.IngestError, 'workers_must'):
+                self.worker.execute('test', workers=workers)
+        self.worker.page(self.run, 5)
+        with patch.dict(obv.os.environ, {'OBV_WORKERS': '1'}):
+            result = self.worker.execute('test', 1, 1)
+        self.assertEqual(result['performance']['workers'], 1)
+
+    def test_parallel_replay_and_error_sibling_are_both_persisted(self):
+        self.worker.page(self.run, 5)
+        with self.worker.db:
+            self.worker.db.execute("UPDATE documents SET status='processing' WHERE entity_id=?", (RECORDS[0]['entity_id'],))
+        original = self.worker.process
+        def process(run, job):
+            if job['entity_id'] == RECORDS[1]['entity_id']:
+                raise obv.IngestError('http_429', 'http')
+            return original(run, job)
+        self.worker.process = process
+        result = self.worker.execute('test', 2, 1, workers=2)
+        self.assertEqual(result['runs'][0]['counts'], {'indexed': 1, 'retry': 1, 'pending': 3})
+        self.assertEqual(self.http.payload['id'], obv.point_id(RECORDS[0]['entity_id']))
+        self.assertIn('http_429', result['runs'][0]['failures'][0]['error'])
+
+    def test_unexpected_task_exception_is_sanitized_and_success_sibling_persists(self):
+        self.worker.page(self.run, 5)
+        def process(run, job):
+            if job['entity_id'] == RECORDS[0]['entity_id']:
+                raise RuntimeError('private response must not appear in evidence')
+            return 'indexed'
+        self.worker.process = process
+        result = self.worker.execute('test', 2, 1, workers=2)
+        self.assertEqual(result['runs'][0]['counts'], {'indexed': 1, 'retry': 1, 'pending': 3})
+        failure = result['runs'][0]['failures'][0]
+        self.assertEqual(json.loads(failure['error']), {'code': 'unexpected_RuntimeError', 'stage': 'worker'})
+        self.assertNotIn('private response', json.dumps(result))
+
+    def test_page_exception_drains_outstanding_success_and_failure(self):
+        for exception in (obv.IngestError('http_429', 'http'), RuntimeError('page failed'), KeyboardInterrupt()):
+            with self.subTest(exception=type(exception).__name__):
+                with self.worker.db:
+                    self.worker.db.execute('DELETE FROM documents')
+                    for record in RECORDS[:2]:
+                        self.worker.db.execute('INSERT INTO documents(run_id,entity_id,record,updated_at) VALUES(?,?,?,?)',
+                                               ('test', record['entity_id'], json.dumps(record), obv.now()))
+                release = threading.Event()
+                def process(run, job):
+                    self.assertTrue(release.wait(5))
+                    if job['entity_id'] == RECORDS[1]['entity_id']:
+                        raise obv.IngestError('embedding_failure', 'embedding')
+                    return 'indexed'
+                def page(*args):
+                    release.set()
+                    raise exception
+                self.worker.process = process
+                self.worker.page = page
+                with self.assertRaises(type(exception)):
+                    self.worker.execute('test', 3, 1, workers=3)
+                self.assertEqual(self.worker.status('test')['runs'][0]['counts'], {'indexed': 1, 'retry': 1})
+
+    def test_parallel_page_budget_and_remaining_document_request_are_exact(self):
+        calls = []
+        def page(run, limit):
+            calls.append(limit)
+            # Non-document pages must still count toward the invocation bound.
+        self.worker.page = page
+        result = self.worker.execute('test', 3, 2, page_size=100, workers=4)
+        self.assertEqual(calls, [3, 3])
+        self.assertEqual((result['session_pages'], result['session_processed']), (2, 0))
+
+    def test_reference_cache_is_deduplicated_durable_and_bounded(self):
+        reference = RECORDS[0]['payload']['is_referenced_by']
+        with concurrent.futures.ThreadPoolExecutor(max_workers=4) as pool:
+            results = list(pool.map(self.worker.context, [reference] * 4))
+        self.assertTrue(all(r == results[0] for r in results))
+        self.assertEqual(sum('/entities/' in url for url, _, _ in self.http.calls), 1)
+        self.worker.flush_contexts()
+        self.worker.context_cache.clear()
+        self.worker.context(reference)
+        self.assertEqual(sum('/entities/' in url for url, _, _ in self.http.calls), 1)
+        for i in range(130):
+            self.worker.context(f'meeting:test:{i}')
+            self.worker.flush_contexts()
+        self.assertLessEqual(len(self.worker.context_cache), 128)
+
+    def test_timing_metrics_cover_pipeline_and_are_not_payload_metadata(self):
+        self.worker.page(self.run, 5)
+        result = self.worker.execute('test', 1, 1, workers=1)
+        metrics = result['performance']
+        self.assertGreater(metrics['elapsed_seconds'], 0)
+        self.assertAlmostEqual(metrics['documents_per_second'], 1 / metrics['elapsed_seconds'])
+        for stage in ('detail', 'attachment', 'tika', 'embedding', 'upsert'):
+            self.assertGreater(metrics['stages'][stage]['calls'], 0)
+            self.assertGreater(metrics['stages'][stage]['seconds'], 0)
+        self.assertNotIn('timings_seconds', self.http.payload['payload'])
+
+    def test_tokenizer_initializes_once_across_threads(self):
+        import types
+        get_encoding = unittest.mock.Mock(return_value=Encoder())
+        self.worker.encoder = None
+        with patch.dict('sys.modules', {'tiktoken': types.SimpleNamespace(get_encoding=get_encoding)}):
+            with concurrent.futures.ThreadPoolExecutor(max_workers=4) as pool:
+                list(pool.map(lambda _: self.worker.embed('Text', 'Title', 'model'), range(4)))
+        get_encoding.assert_called_once_with('cl100k_base')
+
 
 class SafetyTests(unittest.TestCase):
+    def test_attachment_downloads_share_two_slots_and_global_start_pacing(self):
+        clock, starts = [100.0], []
+        barrier = threading.Barrier(2)
+        mutex = threading.Lock()
+        active, peak = 0, 0
+        class Response:
+            headers = {}
+            def __enter__(self):
+                return self
+            def read(self, count):
+                barrier.wait(timeout=5)
+                return b'ok'
+            def __exit__(self, *args):
+                nonlocal active
+                with mutex:
+                    active -= 1
+        def open_request(*args, **kwargs):
+            nonlocal active, peak
+            with mutex:
+                starts.append(clock[0])
+                active += 1
+                peak = max(peak, active)
+            return Response()
+        opener = unittest.mock.Mock()
+        opener.open.side_effect = open_request
+        http = obv.Http()
+        with patch.object(obv.urllib.request, 'build_opener', return_value=opener), \
+                patch.object(obv.time, 'monotonic', side_effect=lambda: clock[0]), \
+                patch.object(obv.time, 'sleep', side_effect=lambda delay: clock.__setitem__(0, clock[0] + delay)):
+            with concurrent.futures.ThreadPoolExecutor(max_workers=4) as pool:
+                list(pool.map(lambda _: http.request('https://api1.ibabs.eu/file', attachment=True), range(8)))
+        self.assertEqual(peak, 2)
+        self.assertEqual(len(starts), 8)
+        self.assertTrue(all(b - a >= 0.5 - 1e-8 for a, b in zip(starts, starts[1:])))
+
+    def test_attachment_redirects_are_allowlisted_and_paced(self):
+        pace = unittest.mock.Mock()
+        redirect = obv.SafeRedirect(pace)
+        request = obv.urllib.request.Request('https://api1.ibabs.eu/file')
+        redirected = redirect.redirect_request(request, None, 302, 'found', {}, 'https://fsn1.your-objectstorage.com/file')
+        self.assertEqual(redirected.full_url, 'https://fsn1.your-objectstorage.com/file')
+        pace.assert_called_once_with()
+        with self.assertRaises(obv.IngestError):
+            redirect.redirect_request(request, None, 302, 'found', {}, 'https://evil.example/file')
+        pace.assert_called_once_with()
+
+    def test_final_attachment_429_establishes_shared_download_cooldown(self):
+        clock, starts = [100.0], []
+        response = unittest.mock.MagicMock()
+        response.__enter__.return_value = response
+        response.read.return_value = b'ok'
+        response.headers = {}
+        def open_request(*args, **kwargs):
+            starts.append(clock[0])
+            if len(starts) == 1:
+                raise obv.urllib.error.HTTPError('https://api1.ibabs.eu/file', 429, 'limit', {'Retry-After': '125'}, io.BytesIO())
+            return response
+        opener = unittest.mock.Mock()
+        opener.open.side_effect = open_request
+        http = obv.Http()
+        http.attempts = 1
+        with patch.object(obv.urllib.request, 'build_opener', return_value=opener), \
+                patch.object(obv.time, 'monotonic', side_effect=lambda: clock[0]), \
+                patch.object(obv.time, 'sleep', side_effect=lambda delay: clock.__setitem__(0, clock[0] + delay)):
+            with self.assertRaisesRegex(obv.IngestError, 'http_429'):
+                http.request('https://api1.ibabs.eu/first', attachment=True)
+            http.request('https://api1.ibabs.eu/second', attachment=True)
+        self.assertGreaterEqual(starts[1] - starts[0], 125)
+
+    def test_source_starts_are_globally_paced_across_threads_and_retries(self):
+        clock, starts = [100.0], []
+        response = unittest.mock.MagicMock()
+        response.__enter__.return_value = response
+        response.read.return_value = b'ok'
+        response.headers = {}
+        def open_request(*args, **kwargs):
+            starts.append(clock[0])
+            if len(starts) == 1:
+                raise obv.urllib.error.HTTPError(obv.API, 429, 'rate limit', {'Retry-After': '7'}, io.BytesIO())
+            return response
+        opener = unittest.mock.Mock()
+        opener.open.side_effect = open_request
+        http = obv.Http()
+        def sleep(delay):
+            clock[0] += delay
+        with patch.object(obv.urllib.request, 'build_opener', return_value=opener), \
+                patch.object(obv.time, 'monotonic', side_effect=lambda: clock[0]), patch.object(obv.time, 'sleep', side_effect=sleep):
+            with concurrent.futures.ThreadPoolExecutor(max_workers=4) as pool:
+                list(pool.map(http.request, [obv.API + '/entities/test', obv.API + '/export/snapshot?limit=1'] * 2))
+        self.assertEqual(len(starts), 5)
+        self.assertGreaterEqual(starts[1] - starts[0], 7)
+        self.assertTrue(all(b - a >= 1.1 - 1e-8 for a, b in zip(starts, starts[1:])))
+
+    def test_final_source_429_cooldown_applies_to_next_document(self):
+        clock, starts = [100.0], []
+        response = unittest.mock.MagicMock()
+        response.__enter__.return_value = response
+        response.read.return_value = b'ok'
+        response.headers = {}
+        def open_request(*args, **kwargs):
+            starts.append(clock[0])
+            if len(starts) == 1:
+                raise obv.urllib.error.HTTPError(obv.API, 429, 'limit', {'Retry-After': '125'}, io.BytesIO())
+            return response
+        opener = unittest.mock.Mock()
+        opener.open.side_effect = open_request
+        http = obv.Http()
+        http.attempts = 1
+        with patch.object(obv.urllib.request, 'build_opener', return_value=opener), \
+                patch.object(obv.time, 'monotonic', side_effect=lambda: clock[0]), \
+                patch.object(obv.time, 'sleep', side_effect=lambda delay: clock.__setitem__(0, clock[0] + delay)):
+            with self.assertRaisesRegex(obv.IngestError, 'http_429'):
+                http.request(obv.API + '/entities/first')
+            http.request(obv.API + '/entities/second')
+        self.assertGreaterEqual(starts[1] - starts[0], 125)
+
+    def test_retry_after_http_date_and_invalid_values(self):
+        with patch.object(obv.time, 'time', return_value=0):
+            self.assertEqual(obv.Http.retry_delay('Thu, 01 Jan 1970 00:02:05 GMT', 0), 125)
+        for value in ('invalid', 'NaN', '-1', 'inf'):
+            self.assertEqual(obv.Http.retry_delay(value, 2), 4)
+
     def test_http_retry_after_and_attempt_budget(self):
         import io
         error = obv.urllib.error.HTTPError('https://example.test', 429, 'rate limit', {'Retry-After': '7'}, io.BytesIO())

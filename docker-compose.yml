@@ -851,6 +851,7 @@ services:
       OBV_HTTP_TIMEOUT_SECONDS: ${OBV_HTTP_TIMEOUT_SECONDS:-120}
       OBV_HTTP_ATTEMPTS: ${OBV_HTTP_ATTEMPTS:-4}
       OBV_JOB_MAX_ATTEMPTS: ${OBV_JOB_MAX_ATTEMPTS:-3}
+      OBV_WORKERS: ${OBV_WORKERS:-2}
     volumes:
       - openbesluitvorming-ingest-state:/state
     networks:

@@ -1,7 +1,10 @@
 """Opt-in, bounded, crash-resumable Limburg document ingestion. No scheduler."""
 import argparse
+from collections import OrderedDict
 import contextlib
+import concurrent.futures
 import datetime
+import email.utils
 import hashlib
 import json
 import math
@@ -9,6 +12,7 @@ import os
 import re
 import sqlite3
 import sys
+import threading
 import time
 import urllib.error
 import urllib.parse
@@ -108,16 +112,44 @@ def validate_attachment_url(url):
 
 
 class SafeRedirect(urllib.request.HTTPRedirectHandler):
+    def __init__(self, pace=None):
+        super().__init__()
+        self.pace = pace
+
     def redirect_request(self, req, fp, code, msg, headers, newurl):
         validate_attachment_url(newurl)
+        if self.pace:
+            self.pace()
         return super().redirect_request(req, fp, code, msg, headers, newurl)
 
 
 class Http:
     def __init__(self):
         self.last_api = 0
+        self.api_lock = threading.Lock()
+        self.api_not_before = 0
+        self.download_slots = threading.BoundedSemaphore(2)
+        self.download_lock = threading.Lock()
+        self.last_download = 0
+        self.download_not_before = 0
         self.timeout = int(os.getenv('OBV_HTTP_TIMEOUT_SECONDS', '120'))
         self.attempts = int(os.getenv('OBV_HTTP_ATTEMPTS', '4'))
+
+    @staticmethod
+    def retry_delay(value, attempt):
+        try:
+            delay = float(value)
+        except (ValueError, TypeError):
+            try:
+                delay = email.utils.parsedate_to_datetime(value).timestamp() - time.time()
+            except (ValueError, TypeError, OverflowError):
+                delay = 0
+        return max(delay if math.isfinite(delay) else 0, 2 ** attempt)
+
+    def pace_download(self):
+        with self.download_lock:
+            time.sleep(max(0, max(self.last_download + 0.5, self.download_not_before) - time.monotonic()))
+            self.last_download = time.monotonic()
 
     def request(self, url, method='GET', data=None, headers=None, max_bytes=64 * 1024 * 1024, attachment=False):
         if attachment:
@@ -126,34 +158,44 @@ class Http:
         if isinstance(data, dict):
             data = json.dumps(data, ensure_ascii=False, allow_nan=False).encode()
             hdr['Content-Type'] = 'application/json'
-        opener = urllib.request.build_opener(SafeRedirect()) if attachment else urllib.request.build_opener()
+        opener = urllib.request.build_opener(SafeRedirect(self.pace_download)) if attachment else urllib.request.build_opener()
         for attempt in range(self.attempts):
-            if url.startswith(API + '/'):
-                time.sleep(max(0, 1.1 - (time.monotonic() - self.last_api)))
-                self.last_api = time.monotonic()
-            try:
-                req = urllib.request.Request(url, data=data, headers=hdr, method=method)
-                with opener.open(req, timeout=self.timeout) as response:
-                    content = response.read(max_bytes + 1)
-                    if len(content) > max_bytes:
-                        raise IngestError('response_size_budget_exceeded', 'http')
-                    return content, dict(response.headers)
-            except urllib.error.HTTPError as error:
-                # Never include response bodies, headers, credentials or signed URLs in errors.
-                code = error.code
-                retry_after = error.headers.get('Retry-After', '0')
-                error.close()
-                if code not in (408, 429, 500, 502, 503, 504) or attempt == self.attempts - 1:
-                    raise IngestError(f'http_{code}', 'http') from None
+            source = url.startswith(API + '/')
+            # Serialize actual source starts (and response reads), not just slot
+            # reservations. All snapshot/detail/reference/retry calls share this
+            # limiter. Downstream HTTP remains concurrent. A final 429 also
+            # establishes a shared cooldown before another document can start.
+            with self.download_slots if attachment else contextlib.nullcontext(), \
+                    self.api_lock if source else contextlib.nullcontext():
+                if source:
+                    time.sleep(max(0, max(self.last_api + 1.1, self.api_not_before) - time.monotonic()))
+                    self.last_api = time.monotonic()
                 try:
-                    delay = min(120, max(float(retry_after), 2 ** attempt))
-                except ValueError:
+                    req = urllib.request.Request(url, data=data, headers=hdr, method=method)
+                    if attachment:
+                        self.pace_download()
+                    with opener.open(req, timeout=self.timeout) as response:
+                        content = response.read(max_bytes + 1)
+                        if len(content) > max_bytes:
+                            raise IngestError('response_size_budget_exceeded', 'http')
+                        return content, dict(response.headers)
+                except urllib.error.HTTPError as error:
+                    # Never log bodies, headers, credentials or signed URLs.
+                    code = error.code
+                    delay = self.retry_delay(error.headers.get('Retry-After', '0'), attempt)
+                    error.close()
+                    if source and code in (429, 503):
+                        self.api_not_before = max(self.api_not_before, time.monotonic() + delay)
+                    if attachment and code in (429, 503):
+                        with self.download_lock:
+                            self.download_not_before = max(self.download_not_before, time.monotonic() + delay)
+                    if code not in (408, 429, 500, 502, 503, 504) or attempt == self.attempts - 1:
+                        raise IngestError(f'http_{code}', 'http') from None
+                except (urllib.error.URLError, TimeoutError, OSError):
+                    if attempt == self.attempts - 1:
+                        raise IngestError('http_transport_failure', 'http') from None
                     delay = 2 ** attempt
-                time.sleep(delay)
-            except (urllib.error.URLError, TimeoutError, OSError):
-                if attempt == self.attempts - 1:
-                    raise IngestError('http_transport_failure', 'http') from None
-                time.sleep(2 ** attempt)
+            time.sleep(delay)
         raise IngestError('http_attempts_exhausted', 'http')
 
     def json(self, url, method='GET', data=None, headers=None):
@@ -233,6 +275,35 @@ class Worker:
         self.tika = os.getenv('OBV_TIKA_URL', 'http://tika:9998/tika')
         self.max_bytes = int(os.getenv('OBV_ATTACHMENT_MAX_BYTES', str(64 * 1024 * 1024)))
         self.max_chars = int(os.getenv('OBV_DOCUMENT_MAX_CHARS', '10000000'))
+        self.context_lock = threading.Lock()
+        self.encoder_lock = threading.Lock()
+        self.metrics_lock = threading.Lock()
+        self.context_cache = OrderedDict()
+        self.context_dirty = {}
+        self.metrics = {}
+        self.local = threading.local()
+
+    def timed(self, stage, function, *args, **kwargs):
+        start = time.perf_counter()
+        try:
+            return function(*args, **kwargs)
+        finally:
+            elapsed = time.perf_counter() - start
+            with self.metrics_lock:
+                metric = self.metrics.setdefault(stage, {'calls': 0, 'seconds': 0.0})
+                metric['calls'] += 1
+                metric['seconds'] += elapsed
+            if hasattr(self.local, 'timings'):
+                self.local.timings[stage] = self.local.timings.get(stage, 0.0) + elapsed
+
+    def flush_contexts(self):
+        # Only the coordinator touches SQLite; thread-fetched reference metadata
+        # is an optimization cache, never the authoritative document checkpoint.
+        with self.context_lock:
+            with self.db:
+                for reference, detail in self.context_dirty.items():
+                    self.db.execute('INSERT OR REPLACE INTO contexts VALUES(?,?,?)', (reference, json.dumps(detail), now()))
+            self.context_dirty.clear()
 
     def run_info(self, run_id):
         row = self.db.execute('SELECT * FROM runs WHERE id=?', (run_id,)).fetchone()
@@ -276,7 +347,7 @@ class Worker:
         query = {'source': SOURCE, 'limit': limit}
         if run['cursor']:
             query['cursor'] = run['cursor']
-        body, headers = self.http.request(API + '/export/snapshot?' + urllib.parse.urlencode(query))
+        body, headers = self.timed('source', self.http.request, API + '/export/snapshot?' + urllib.parse.urlencode(query))
         try:
             records, nxt, more, changes = parse_page(body, headers, run['cursor'])
             # Snapshot cursors are entity IDs ordered lexicographically. Prevent cycles/backtracking.
@@ -321,23 +392,31 @@ class Worker:
             # display name without fabricating unavailable entity metadata.
             return {'entity_id': reference, 'metadata_status': 'reference_only',
                     'reason': 'organization_not_exposed_by_entity_detail_api'}
-        cached = self.db.execute('SELECT detail FROM contexts WHERE entity_id=?', (reference,)).fetchone()
-        if cached:
-            return json.loads(cached['detail'])
-        d = self.detail(reference)
-        with self.db:
-            self.db.execute('INSERT OR REPLACE INTO contexts VALUES(?,?,?)', (reference, json.dumps(d), now()))
-        return d
+        with self.context_lock:
+            if reference not in self.context_cache:
+                # A short-lived thread-owned read connection avoids sharing the
+                # coordinator connection. Keep only 128 references in memory;
+                # the durable cache can grow without growing worker RSS forever.
+                with contextlib.closing(sqlite3.connect(self.state / 'ingest.sqlite', timeout=30)) as reader:
+                    cached = reader.execute('SELECT detail FROM contexts WHERE entity_id=?', (reference,)).fetchone()
+                d = json.loads(cached[0]) if cached else self.timed('detail', self.detail, reference)
+                self.context_cache[reference] = d
+                if not cached:
+                    self.context_dirty[reference] = d
+                if len(self.context_cache) > 128:
+                    self.context_cache.popitem(last=False)
+            self.context_cache.move_to_end(reference)
+            return self.context_cache[reference]
 
     def download_text(self, urls, name):
         errors = []
         for url in dict.fromkeys(filter(None, urls)):
             try:
-                data, headers = self.http.request(url, max_bytes=self.max_bytes, attachment=True)
+                data, headers = self.timed('attachment', self.http.request, url, max_bytes=self.max_bytes, attachment=True)
                 mime = next((v for k, v in headers.items() if k.lower() == 'content-type'), '').split(';')[0]
                 if not data or mime == 'text/html' or data.lstrip()[:30].lower().startswith((b'<!doctype html', b'<html')):
                     raise IngestError('empty_or_html_attachment', 'download')
-                extracted, _ = self.http.request(self.tika, 'PUT', data,
+                extracted, _ = self.timed('tika', self.http.request, self.tika, 'PUT', data,
                                                  {'Accept': 'text/plain', 'Content-Type': mime or 'application/octet-stream'},
                                                  max_bytes=self.max_chars * 4)
                 text = extracted.decode('utf-8', errors='strict').strip()
@@ -404,9 +483,10 @@ class Worker:
         return text, evidence
 
     def embed(self, text, title, model):
-        if self.encoder is None:
-            import tiktoken
-            self.encoder = tiktoken.get_encoding('cl100k_base')
+        with self.encoder_lock:
+            if self.encoder is None:
+                import tiktoken
+                self.encoder = tiktoken.get_encoding('cl100k_base')
         # No truncation/chunk-count cap. Non-overlapping token windows ensure every
         # token contributes exactly once. Batches bound memory and provider limits.
         prefix = f'Titel: {title}\nOrganisatie: Limburg\n\nInhoud:\n'
@@ -453,9 +533,9 @@ class Worker:
         record = json.loads(job['record'])
         url = self.collection_url(run['collection']) + '/points'
         if record['op'] == 'delete':
-            self.http.json(url + '/delete?wait=true', 'POST', {'points': [point_id(record['entity_id'])]})
+            self.timed('upsert', self.http.json, url + '/delete?wait=true', 'POST', {'points': [point_id(record['entity_id'])]})
             return 'deleted'
-        detail = self.detail(record['entity_id'])
+        detail = self.timed('detail', self.detail, record['entity_id'])
         if detail['entityType'] != 'Document':
             raise IngestError('entity_is_not_document', 'entity_detail')
         p = record['payload']
@@ -463,7 +543,7 @@ class Worker:
         context = self.context(reference)
         text, extraction = self.content(record, detail)
         title = detail.get('title') or p.get('name') or record['entity_id']
-        vector, stats = self.embed(text, title, run['model'])
+        vector, stats = self.timed('embedding', self.embed, text, title, run['model'])
         payload = {
             'source_id': record['entity_id'], 'source_key': SOURCE, 'entity_type': 'Document',
             'title': title, 'organization': detail.get('organization') or p.get('organization'),
@@ -482,56 +562,109 @@ class Worker:
             'extraction': extraction, 'ingest_run_id': run['id'], 'indexed_at': now(), **stats,
             **public_links(record['entity_id'], reference, p.get('original_url'), p.get('public_url')),
         }
-        ack = self.http.json(url + '?wait=true', 'PUT', {'points': [{'id': point_id(record['entity_id']),
+        ack = self.timed('upsert', self.http.json, url + '?wait=true', 'PUT', {'points': [{'id': point_id(record['entity_id']),
                                                                  'vector': vector, 'payload': payload}]})
         if ack.get('status') != 'ok' or ack.get('result', {}).get('status') != 'completed':
             raise IngestError('qdrant_upsert_not_completed', 'qdrant')
         return 'indexed'
 
-    def execute(self, run_id, max_documents=5, max_pages=5, page_size=20, approve=False):
+    def task(self, run, job):
+        self.local.timings = {}
+        start = time.perf_counter()
+        try:
+            return self.process(run, job), None, self.local.timings, time.perf_counter() - start
+        except Exception as error:
+            e = error if isinstance(error, IngestError) else IngestError('unexpected_' + type(error).__name__, 'worker')
+            return None, e, self.local.timings, time.perf_counter() - start
+        finally:
+            del self.local.timings
+
+    def persist_task(self, run_id, job, future):
+        outcome, error, timings, elapsed = future.result()
+        with self.db:
+            if error is None:
+                self.db.execute('UPDATE documents SET status=?,error=NULL,evidence=NULL,updated_at=? WHERE run_id=? AND entity_id=?',
+                                (outcome, now(), run_id, job['entity_id']))
+            else:
+                attempts = job['attempts'] + 1
+                outcome = 'dead_letter' if attempts >= int(os.getenv('OBV_JOB_MAX_ATTEMPTS', '3')) else 'retry'
+                self.db.execute('UPDATE documents SET status=?,error=?,evidence=?,next_attempt=?,updated_at=? WHERE run_id=? AND entity_id=?',
+                                (outcome, json.dumps({'code': error.code, 'stage': error.stage}), json.dumps(error.evidence),
+                                 time.time() + min(3600, 60 * 2 ** (attempts - 1)), now(), run_id, job['entity_id']))
+            self.db.execute('UPDATE runs SET updated_at=? WHERE id=?', (now(), run_id))
+        print(json.dumps({'entity_id': job['entity_id'], 'outcome': outcome,
+                          'elapsed_seconds': elapsed, 'timings_seconds': timings}), flush=True)
+
+    def execute(self, run_id, max_documents=5, max_pages=5, page_size=20, approve=False, workers=None):
+        workers = int(os.getenv('OBV_WORKERS', '2')) if workers is None else workers
+        if not 1 <= workers <= 4:
+            raise IngestError('workers_must_be_between_1_and_4')
         if not 1 <= page_size <= 100 or max_documents < 1 or max_pages < 1:
             raise IngestError('invalid_execution_bounds')
         if (max_documents > 10 or max_pages > 10) and not approve:
             raise IngestError('large_run_requires_approve_full_run')
+        start = time.perf_counter()
+        self.metrics = {stage: {'calls': 0, 'seconds': 0.0}
+                        for stage in ('source', 'detail', 'attachment', 'tika', 'embedding', 'upsert')}
         run = self.run_info(run_id)
         self.validate_collection(run)
         # Previous process died after claiming work: the kernel lock proves it is
         # no longer running; deterministic Qdrant IDs make replay idempotent.
         with self.db:
             self.db.execute("UPDATE documents SET status='pending' WHERE run_id=? AND status='processing'", (run_id,))
-        processed, fetched = 0, 0
-        while processed < max_documents:
-            job = self.db.execute("""SELECT * FROM documents WHERE run_id=? AND status IN ('pending','retry')
-                AND next_attempt<=? ORDER BY entity_id LIMIT 1""", (run_id, time.time())).fetchone()
-            if job:
-                with self.db:
-                    self.db.execute("UPDATE documents SET status='processing',attempts=attempts+1,updated_at=? WHERE run_id=? AND entity_id=?",
-                                    (now(), run_id, job['entity_id']))
-                try:
-                    outcome = self.process(run, job)
-                    with self.db:
-                        self.db.execute('UPDATE documents SET status=?,error=NULL,evidence=NULL,updated_at=? WHERE run_id=? AND entity_id=?',
-                                        (outcome, now(), run_id, job['entity_id']))
-                except Exception as error:
-                    e = error if isinstance(error, IngestError) else IngestError('unexpected_' + type(error).__name__, 'worker')
-                    attempts = job['attempts'] + 1
-                    outcome = 'dead_letter' if attempts >= int(os.getenv('OBV_JOB_MAX_ATTEMPTS', '3')) else 'retry'
-                    with self.db:
-                        self.db.execute('UPDATE documents SET status=?,error=?,evidence=?,next_attempt=?,updated_at=? WHERE run_id=? AND entity_id=?',
-                                        (outcome, json.dumps({'code': e.code, 'stage': e.stage}), json.dumps(e.evidence),
-                                         time.time() + min(3600, 60 * 2 ** (attempts - 1)), now(), run_id, job['entity_id']))
-                processed += 1
-                with self.db:
-                    self.db.execute('UPDATE runs SET updated_at=? WHERE id=?', (now(), run_id))
-                print(json.dumps({'entity_id': job['entity_id'], 'outcome': outcome}), flush=True)
-                continue
-            run = self.run_info(run_id)
-            if run['snapshot_complete'] or fetched >= max_pages:
-                break
-            self.page(run, min(page_size, max_documents - processed))
-            fetched += 1
+        processed, fetched, submitted, peak = 0, 0, 0, 0
+        outstanding = {}
+        with concurrent.futures.ThreadPoolExecutor(max_workers=workers, thread_name_prefix='obv') as pool:
+            try:
+                while submitted < max_documents or outstanding:
+                    # Drain acknowledgements before fetching another page. At most
+                    # workers jobs are claimed/inflight; no unbounded executor queue.
+                    for future in list(outstanding):
+                        if future.done():
+                            self.persist_task(run_id, outstanding[future], future)
+                            del outstanding[future]
+                            processed += 1
+                    self.flush_contexts()
+                    if submitted >= max_documents or len(outstanding) >= workers:
+                        if outstanding:
+                            concurrent.futures.wait(outstanding, return_when=concurrent.futures.FIRST_COMPLETED)
+                        elif submitted >= max_documents:
+                            break
+                        continue
+                    job = self.db.execute("""SELECT * FROM documents WHERE run_id=? AND status IN ('pending','retry')
+                        AND next_attempt<=? ORDER BY entity_id LIMIT 1""", (run_id, time.time())).fetchone()
+                    if job:
+                        job = dict(job)
+                        with self.db:
+                            self.db.execute("UPDATE documents SET status='processing',attempts=attempts+1,updated_at=? WHERE run_id=? AND entity_id=?",
+                                            (now(), run_id, job['entity_id']))
+                        outstanding[pool.submit(self.task, run, job)] = job
+                        submitted += 1
+                        peak = max(peak, len(outstanding))
+                        continue
+                    run = self.run_info(run_id)
+                    if not run['snapshot_complete'] and fetched < max_pages:
+                        self.page(run, min(page_size, max_documents - submitted))
+                        fetched += 1
+                    elif outstanding:
+                        concurrent.futures.wait(outstanding, return_when=concurrent.futures.FIRST_COMPLETED)
+                    else:
+                        break
+            finally:
+                # A page/rate/validation error must not discard successful sibling
+                # tasks. Stop scheduling, wait for the bounded set, persist every
+                # outcome, then propagate the original coordinator exception.
+                pool.shutdown(wait=True)
+                for future, job in list(outstanding.items()):
+                    self.persist_task(run_id, job, future)
+                    del outstanding[future]
+                    processed += 1
+                self.flush_contexts()
         result = self.status(run_id)
-        result.update({'session_processed': processed, 'session_pages': fetched})
+        elapsed = time.perf_counter() - start
+        result.update({'session_processed': processed, 'session_pages': fetched,
+                       'performance': {'workers': workers, 'peak_inflight': peak, 'elapsed_seconds': elapsed,
+                                       'documents_per_second': processed / elapsed, 'stages': self.metrics}})
         return result
 
     def retry(self, run_id, entity_id=None):
@@ -622,6 +755,7 @@ def main():
     run.add_argument('--max-documents', type=int, default=5)
     run.add_argument('--max-pages', type=int, default=5)
     run.add_argument('--page-size', type=int, default=20)
+    run.add_argument('--workers', type=int, help='1..4 document pipelines; default OBV_WORKERS or 2')
     run.add_argument('--approve-full-run', action='store_true')
     status = sub.add_parser('status')
     status.add_argument('--run-id')
@@ -646,7 +780,7 @@ def main():
                 if args.command == 'fresh':
                     result = w.fresh(args.run_id, args.collection)
                 elif args.command == 'run':
-                    result = w.execute(args.run_id, args.max_documents, args.max_pages, args.page_size, args.approve_full_run)
+                    result = w.execute(args.run_id, args.max_documents, args.max_pages, args.page_size, args.approve_full_run, args.workers)
                 elif args.command == 'retry':
                     result = w.retry(args.run_id, args.entity_id)
                 elif args.command == 'failures':

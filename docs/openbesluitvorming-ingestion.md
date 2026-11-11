@@ -1,5 +1,62 @@
 # Limburg full-document ingestion: operator guide
 
+## Current operational state: full run started on 2026-11-11
+
+The user explicitly authorized starting the full ingest after power and storage
+checks. Earlier statements in this guide that the full collection is empty refer
+to the pre-launch validation and benchmark stages, not the current state.
+
+- Windows plugged-in sleep and hibernation are explicitly set to Never and verified.
+  Battery settings and screen-off settings are unchanged. Keep the laptop plugged
+  in, do not manually sleep/reboot it, and keep Docker Desktop running. These power
+  settings do not prevent Windows Update restarts or power outages. Review Windows
+  Update's pause/restart settings before leaving a multi-day job unattended.
+- Non-destructive Ubuntu virtual-disk compaction recovered approximately **263 GiB**
+  on C:, increasing physical free space from 9.77 to approximately 272.81 GiB.
+  The Ubuntu disk shrank from 294.20 to 31.32 GiB. Ubuntu subsequently mounted
+  successfully, still reported 29 GiB of used data, and its home directory was
+  verified present. No user files, packages, Docker images, containers or volumes
+  were deleted. Docker/WSL were temporarily stopped for compaction and the original
+  nine running containers were restored.
+- Container **govchat-obv-full-run** started at **2026-11-11 17:57:16 UTC**
+  (**18:57:16 Europe/Amsterdam**), targeting the already prepared run
+  **limburg-full-20261111** and collection **limburg_full_20261111**.
+- The worker runs detached with two document pipelines. Invocation ceilings are
+  1,000,000 document attempts and 100,000 pages, with page size 20. These are safety
+  ceilings, not a target number of documents: the source's terminal snapshot page
+  determines corpus completion. The higher ceiling avoids stopping at exactly
+  100,000 attempts if the corpus is larger or retries consume attempts.
+- Process failures have a bounded Docker **on-failure:5** restart policy. Normal
+  completion does not restart the container. This is not a guarantee of resuming
+  automatically after a Windows reboot or Docker daemon restart; inspect status
+  and use the documented resume procedure after those interruptions.
+- First live checkpoint after launch: **12 indexed**, 7 pending, 1 processing,
+  one page queued and **zero failures**. This is a dated progress observation,
+  not a current total. Full corpus completion has not been claimed.
+- Optimized ingestion regressions: 55 passed. Search/probe regressions after
+  restoring Docker: 18 passed, including live-Qdrant filtering.
+
+### Follow progress without starting another ingest
+
+Double-click [`openbesluitvorming-progress.cmd`](../scripts/openbesluitvorming-progress.cmd)
+in Windows Explorer. It displays container state and durable counts, refreshing
+every 30 seconds. Closing the monitor does not stop the detached ingest. Indexed
+documents are successful; pending/processing documents remain in progress, and
+retry/dead-letter counts are unresolved failures. Completion requires the terminal
+snapshot and no outstanding jobs: **complete=true** in status.
+
+For live per-document logs, open **Docker Desktop → Containers →
+govchat-obv-full-run → Logs**, or run from this repository directory:
+
+```bat
+scripts\openbesluitvorming-progress.cmd logs
+```
+
+The logs show document identity, indexed/retry/dead-letter outcome and stage
+timings. No reliable percentage or full-run ETA is available before the source's
+total corpus size is known. Monitoring is in the dedicated worker, not a long
+n8n execution. Do not run fresh initialization again or start a second worker.
+
 ## Safety and implementation
 
 The supported ingestion path is the one-shot service in
@@ -211,10 +268,17 @@ delete it automatically. Inspect it and choose a new unique name if necessary.
 ### Explicit operator start: up to 100k attempts
 
 **This command is documented only; it was not executed during validation.**
+**Arrange bulk access with the source provider first.** The published
+[API guide](https://openbesluitvorming.nl/docs/api), backed by
+[its public Markdown source](https://openbesluitvorming.nl/API.md), asks users not
+to mirror/index whole folders or organisations on demand-download infrastructure
+and to ask first for more than about 500 files or 1 GB per user per day, or all
+files of an organisation. The local approval flag is **not provider permission**.
+No such bulk arrangement or 100k-load validation is established by these samples.
 It begins processing the prepared fresh run, or resumes that same run:
 
 ```bat
-%OBV% run -d --name govchat-obv-full-run --no-deps openbesluitvorming-ingest run --run-id limburg-full-20261111 --max-documents 100000 --max-pages 20000 --page-size 20 --approve-full-run
+%OBV% run -d --name govchat-obv-full-run --no-deps openbesluitvorming-ingest run --run-id limburg-full-20261111 --max-documents 100000 --max-pages 20000 --page-size 20 --workers 2 --approve-full-run
 docker logs --tail 50 -f govchat-obv-full-run
 ```
 
@@ -262,6 +326,64 @@ process/container death. An overlapping run or retry refuses. On resume, a job
 left in processing is replayed; deterministic IDs and completed upserts make this
 safe even after a crash between Qdrant acknowledgement and SQLite commit.
 
+### Bounded concurrency and performance metrics
+
+The default is **two document pipelines**, configured by the worker-only
+`OBV_WORKERS` environment setting in Compose. The run command's `--workers`
+argument overrides it. Accepted values are **1 through 4**; one reproduces a
+sequential pipeline, and four is an opt-in ceiling, not a recommended speed
+setting for every corpus. At most that many jobs are durably claimed/inflight;
+there is no unbounded executor queue. Per-invocation page and document-attempt
+limits remain exact, including retries and existing queued jobs.
+
+All threads share one HTTP client and one source limiter: snapshot, document
+detail, reference detail and retries start at least 1.1 seconds apart. Source
+requests are serialized through the response read; downloads, Tika, embeddings
+and completed Qdrant upserts can overlap. A source 429/503 establishes a shared
+cooldown even on the final failed HTTP attempt. Retry-After numeric seconds and
+HTTP dates are honoured without shortening a longer provider-requested wait.
+
+Attachment downloads have a separate global ceiling of **two concurrent requests
+and one start every 0.5 seconds**, including retries and allowlisted redirects.
+Their 429/503 cooldown is shared too. These guards apply conservatively to all
+attachment hosts, not only the source's object storage. Tika and embedding calls
+remain bounded by the document-worker count; embedding batches still contain at
+most eight windows. No text truncation, attachment skipping or OCR bypass was
+introduced, and document-vector pooling/upsert semantics are unchanged.
+
+Only the coordinator writes SQLite. Reference reads use short-lived thread-owned
+connections; reference results are deduplicated and the in-memory cache is limited
+to 128 entries, backed by durable context rows. One shared tokenizer initializes
+under a lock, then is reused. On an ordinary document error, the coordinator
+persists retry/dead-letter evidence. On a pagination/coordinator exception it
+stops scheduling, waits for the bounded outstanding jobs, persists their successes
+and failures, then propagates the error. Kernel/process death still uses durable
+claim replay, protected by the unchanged global mutation lock.
+
+Every document log includes elapsed seconds and stage timing seconds. The final
+result adds a performance object: worker count, peak inflight, elapsed seconds,
+documents per second, and call counts/summed seconds for source snapshot, entity
+detail (including references), attachment download, Tika, embedding and upsert.
+Times use a monotonic high-resolution performance clock. They include HTTP retry
+and limiter waits; embedding timing also includes tokenization/pooling. Stage
+seconds overlap and can exceed wallclock: **do not add them to predict duration**.
+Documents per second means **completed attempts**, including failures, not only
+new indexed documents. These diagnostic timings do not change point metadata.
+
+The production invocation's elapsed time includes collection validation, recovery,
+pagination and checkpoint work, but not container startup. A cold tokenizer is
+included if initialized during execution. The comparison harness instead warms
+the same encoder before every experiment and excludes initialization/verification
+for both implementations, avoiding startup/warm-up comparison bias.
+
+For a newly initialized **isolated sample**, not the prepared full run:
+
+```bat
+%OBV% run --rm --no-deps openbesluitvorming-ingest fresh --run-id my-perf-sample --collection limburg_my_perf_sample
+%OBV% run --rm --no-deps openbesluitvorming-ingest run --run-id my-perf-sample --max-documents 5 --max-pages 1 --page-size 5 --workers 2
+%OBV% run --rm --no-deps openbesluitvorming-ingest verify --run-id my-perf-sample --sample-size 5
+```
+
 ### Retry failures
 
 HTTP requests retry transient errors/429 with bounded backoff and Retry-After.
@@ -281,14 +403,25 @@ Do not continually reset attempts without investigating a permanent error.
 
 ## Capacity, security, publication and limitations
 
-- Source API requests are paced at 1.1 seconds each (observed API budget 60/minute).
-  100k detail requests alone take over 30 hours; downloads, references, Tika and
-  embedding quota add time. No production-duration/100k load test was performed.
+- The published source budget is 60 units/minute, continuously refilling. Export
+  and ordinary entity requests cost one unit each. A live five-record probe on
+  2026-11-11 returned HTTP 200 and RateLimit-Limit 60, Remaining 59, Reset 1;
+  Reset means seconds until the bucket is full, **not** a fixed-window boundary.
+  The retained 1.1-second pace is about 54.5 starts/minute. 100k detail requests
+  alone take about **30.56 hours**, before references, snapshot pages and downstream
+  bottlenecks. Concurrency cannot remove this floor. Other clients sharing the
+  provider's client identity may still consume its bucket; honour cooldowns.
+  No production-duration/100k load test was performed.
 - Reserve substantial disk headroom for full text, duplicated raw metadata, SQLite
   pages, indexes and Qdrant snapshots. The vector data alone is about 1.23 GB at
   100k × 3072 float32 values. Twenty GB free is a starting planning allowance, not
   a guarantee. Monitor Docker Desktop disk, memory and provider quota.
-- Worker memory is capped at 1 GiB. Documents above 64 MiB download or ten million
+- Worker memory is capped at 1 GiB; two pipelines are the conservative default,
+  four require deliberate memory/quota review. This is a job-count bound, not a
+  worst-case byte/RSS guarantee: simultaneous large attachments, token lists,
+  JSON/fulltext copies and embedding responses can still exhaust the cap. Reduce
+  workers to one for unusually large documents and monitor worker/Tika separately.
+  Documents above 64 MiB download or ten million
   text characters fail visibly rather than truncate. A very large payload may
   require a deliberately reviewed limit change. Tika blank text may require an
   OCR-enabled parser configuration; OCR quality was not validated on scanned files.
@@ -314,6 +447,128 @@ Do not continually reset attempts without investigating a permanent error.
   long mixed-topic documents may be lower than a future multi-vector/chunk index.
   Such an index would require a separate search change and was not introduced here.
 
+## Recorded performance comparison (2026-11-11)
+
+The final code was measured against the unchanged sequential worker from parent
+commit **d9b48e8**, on the same running Docker Desktop stack. The live ABBA order
+was old/one worker, new/two, new/two, old/one. All four trials ran in one 1 GiB
+worker container, each with a fresh isolated collection and independent SQLite
+context/checkpoint state. The same initialized tokenizer was passed to both
+implementations. A high-resolution performance clock enclosed only execution;
+fresh collection/index initialization, the equal 1.1-second inter-trial pause,
+tokenizer warm-up and read-only verification were outside every timed interval.
+Both implementations had identical HTTP-only timing instrumentation.
+
+| Final live trial | Implementation / workers | Wall seconds | Documents/second |
+| --- | --- | ---: | ---: |
+| A1 | d9b48e8 / 1 | 12.728259 | 0.392827 |
+| B1 | optimized / 2 | 9.819624 | 0.509184 |
+| B2 | optimized / 2 | 10.002370 | 0.499882 |
+| A2 | d9b48e8 / 1 | 12.923725 | 0.386885 |
+
+Mean wall time: **12.825992 seconds sequential vs 9.910997 seconds with two**.
+That is **1.294× observed throughput, 22.73% less wall time** for this sample,
+not a production-duration prediction. Each trial fetched exactly **one five-record
+snapshot page**, indexed exactly **five documents**, used **two Tika extractions
+and three source-markdown paths**, and passed five-point complete metadata,
+fulltext, dimension and vector-normalization verification with no retries/failures.
+The first five source IDs were identical across trials. Entire point payloads
+matched exactly across all four, including raw metadata, extraction evidence and
+full text, excluding only the necessarily different run ID and indexing timestamp.
+Vector values were validated individually, not assumed byte-identical across
+separate provider calls.
+
+Each trial required eight entity/detail HTTP calls (five documents plus three
+references), two attachment downloads, two Tika calls, six embedding HTTP batches
+and five acknowledged upserts. Comparable **summed HTTP-call seconds**, including
+limiter waits, averaged:
+
+| HTTP stage | Sequential | Two workers |
+| --- | ---: | ---: |
+| Source snapshot | 0.078 | 0.063 |
+| Document/reference detail | 6.828 | 10.558 |
+| Attachment | 0.375 | 0.400 |
+| Tika | 3.672 | 3.698 |
+| Embedding | 1.698 | 1.735 |
+| Completed upsert | 0.091 | 0.069 |
+
+Detail call-time totals grow because both threads can wait for the same source
+limiter. The speedup comes from overlap, not faster source requests, reduced text,
+fewer embedding batches or a skipped parser. Tika's similar totals and ABBA order
+also limit cache/warm-up comparison bias. Provider/network noise still exists and
+there are only two trials per mode. Four workers were **not live-benchmarked**;
+the source floor already dominates this sample. No cross-document embedding or
+Qdrant batching was introduced without supporting measurements.
+
+The benchmark process's cumulative RSS high-water mark reached **119.48 MiB**
+across the four small-document trials (including harness/tokenizer), not a separate
+per-trial peak or a 100k memory test. Production tokenizer/JSON/token-list memory
+on large documents remains a limitation. The 1 GiB worker cap was retained.
+
+The offline fixed-latency experiment measured **1.754166 seconds** mean sequential,
+**1.076388 seconds** mean with two (**1.630×**) and **0.727463 seconds** with four
+(a single maximum-concurrency trial, approximately **2.411×** vs sequential mean).
+Its synthetic source starts are spaced 50 ms with 20 ms response latency;
+downstream calls sleep 100 ms. These deliberately scaled latencies are only a
+deterministic offline overlap experiment, **not production rate settings or a
+claim about real throughput**. Production pacing/attachment limits have separate
+regression tests.
+
+Reproducible harness and raw final measurements:
+
+- [`benchmark_openbesluitvorming_ingest.py`](../tests/agents/benchmark_openbesluitvorming_ingest.py)
+- [`openbesluitvorming-performance-live.json`](../tests/agents/fixtures/openbesluitvorming-performance-live.json)
+- [`openbesluitvorming-performance-offline.json`](../tests/agents/fixtures/openbesluitvorming-performance-offline.json)
+
+The final four collections and their retained isolated state directories are
+listed in the live report. A preceding exploratory ABBA round also used the same
+five documents in four distinct benchmark collections; those collections were
+not deleted or substituted for the final results. In total, only the same **five
+distinct source documents** were fetched repeatedly, never the full corpus.
+The old sample still has five points with unchanged checkpoint state/count.
+The prepared full run's entire status is identical before/after: zero pages,
+null cursors, empty job counts, unchanged preparation timestamps, **zero points**.
+No search/chat configuration or alias was changed; no full run was started.
+
+### Reproduce without starting the full run
+
+The offline benchmark is safe by default and uses no network. Extracting the
+parent into a temporary file avoids maintaining a second worker implementation:
+
+```bat
+git show d9b48e8:services/openbesluitvorming-ingest/worker.py > tests/agents/.obv-benchmark-baseline.py
+python tests/agents/benchmark_openbesluitvorming_ingest.py --baseline tests/agents/.obv-benchmark-baseline.py --output tests/agents/fixtures/openbesluitvorming-performance-offline.json
+```
+
+The explicitly enabled live harness is tied to this prepared runtime: it verifies
+the full run is empty first, holds the global mutation lock, creates **four new
+isolated collections**, and rejects any sample not containing exactly two Tika
+and three markdown documents or any metadata/fulltext divergence. It has no
+full-run start option. It does make paid embeddings and repeated small downloads;
+use it deliberately rather than in CI. Run from the repository directory with
+the explicit Compose prefix defined above; it inherits credentials without
+reading/printing the environment file:
+
+```bat
+%OBV% run --rm --no-deps -v "%cd%:/workspace:ro" --entrypoint python openbesluitvorming-ingest /workspace/tests/agents/benchmark_openbesluitvorming_ingest.py --live --baseline /workspace/tests/agents/.obv-benchmark-baseline.py --output /state/openbesluitvorming-performance-live.json
+%OBV% run --rm --no-deps --entrypoint python openbesluitvorming-ingest -c "from pathlib import Path; print(Path('/state/openbesluitvorming-performance-live.json').read_text())" > tests/agents/fixtures/openbesluitvorming-performance-live.json
+del tests\agents\.obv-benchmark-baseline.py
+```
+
+An individual retained optimized benchmark can be verified read-only, using the
+state directory from the report (do not use the full-run ID in an ingest command):
+
+```bat
+%OBV% run --rm --no-deps openbesluitvorming-ingest --state-dir /state/performance-benchmarks/perf-397990b962b5-1-w2 verify --run-id perf-397990b962b5-1-w2 --sample-size 5
+```
+
+Final regression results: **55 ingestion tests passed** on Windows Python and
+again inside the rebuilt Linux worker image, and
+**18 search/probe tests passed with no skips**, including the isolated live-Qdrant
+fixture test at loopback port 16333. The rebuilt worker image matches the reviewed
+worker source. The app stack remains running with the documented local ports;
+the one-shot benchmark exits rather than starting a daemon.
+
 ## Regression verification
 
 The public, bounded fixtures and offline ingestion tests live in
@@ -326,7 +581,10 @@ node --test tests/agents/openbesluitvorming-search.test.js
 
 They cover real schema, malformed pagination, attachment/Tika fallback, multi-media
 documents, full metadata, long-document traversal, response validation, durable
-retry/dead letters, crash replay, locking, resource limits and safety approval.
+retry/dead letters, crash replay, locking, resource limits and safety approval,
+parallel inflight/attempt/page bounds, global API pacing/retry cooldowns, attachment
+slots/start pace/redirects, shared tokenizer/cache and exception-time sibling
+outcome persistence.
 The old public-link renderer now preserves an existing specialized search helper.
 Some pre-existing Node file-permission tests require Linux filesystem semantics;
 run the broader suite in a Linux container rather than interpreting Windows mode
