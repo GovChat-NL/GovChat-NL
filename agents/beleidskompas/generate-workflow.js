@@ -29,7 +29,7 @@ const step1 = require('./steps/step1');
 const step2 = require('./steps/step2');
 const step3 = require('./steps/step3');
 const step4 = require('./steps/step4');
-const { DEFAULT_TEMPLATE } = require('./template');
+const template = require('./template');
 
 const WORKFLOWS_DIR = path.join(__dirname, '..', 'n8n', 'workflows', 'beleidskompas');
 // The admin's seed template (section "defaults" of the admin service).
@@ -119,21 +119,6 @@ function buildWorkflow({ id, name, webhookPath, nodeNames, jsCode }) {
 // The step workflows: one per step definition in steps/.
 const steps = [step1.STEP, step2.STEP, step3.STEP, step4.STEP];
 
-/** What the orchestrator knows about a step: number, title, role and the
- *  substeps (titles for the model that picks a step, ids for the order of
- *  the reports). The instructions of the substeps stay out; they are for
- *  the step itself. */
-function stepSummary(step) {
-  return {
-    id: step.id,
-    nr: step.nr,
-    title: step.title,
-    role: step.role,
-    substeps: step.substeps.map((substep) => substep.title),
-    substep_ids: step.substeps.map((substep) => substep.id),
-  };
-}
-
 // The functions orchestrator.js uses from shared.js, and the ones those use.
 const ORCHESTRATOR_SHARED_FUNCTIONS = [
   'extractSuppliedToken',
@@ -146,7 +131,7 @@ const ORCHESTRATOR_SHARED_FUNCTIONS = [
   'buildTitleResponse',
 ];
 
-const ORCHESTRATOR_FUNCTIONS = ['incomingMessage', 'determineStep', 'chooseStep', 'contextFromState', 'buildStepRequest', 'forwardToStep', 'runOrchestrator'];
+const ORCHESTRATOR_FUNCTIONS = ['incomingMessage', 'determineStep', 'stepSummary', 'chooseStep', 'contextFromState', 'buildStepRequest', 'forwardToStep', 'runOrchestrator'];
 
 function buildOrchestratorJsCode() {
   return [
@@ -158,12 +143,16 @@ function buildOrchestratorJsCode() {
     `const STORE_MISSING_TEXT = ${JSON.stringify(orchestrator.STORE_MISSING_TEXT)};`,
     `const STORE_FAILED_TEXT = ${JSON.stringify(orchestrator.STORE_FAILED_TEXT)};`,
     `const STORE_WARNING_TEXT = ${JSON.stringify(orchestrator.STORE_WARNING_TEXT)};`,
-    `const STEP_SUMMARIES = ${JSON.stringify(steps.map(stepSummary), null, 2)};`,
+    // The seed template stands in when the admin cannot be read.
+    `const TEMPLATE_DEFAULTS = ${JSON.stringify(template.DEFAULT_TEMPLATE, null, 2)};`,
+    `const DEFAULT_MESSAGES = ${JSON.stringify(template.DEFAULT_MESSAGES, null, 2)};`,
     `const ORCHESTRATOR_PROMPT_TEMPLATE = ${JSON.stringify(shared.ORCHESTRATOR_PROMPT_TEMPLATE)};`,
     '',
     inlineFunctions([shared], ORCHESTRATOR_SHARED_FUNCTIONS),
     '',
     inlineFunctions([storeClient], ['storeRequest', 'createStoreClient']),
+    '',
+    inlineFunctions([template], ['stepFromTemplate']),
     '',
     inlineFunctions([orchestrator], ORCHESTRATOR_FUNCTIONS),
     '',
@@ -171,7 +160,6 @@ function buildOrchestratorJsCode() {
     '',
     'const result = await runOrchestrator({',
     '  input: $json,',
-    '  summaries: STEP_SUMMARIES,',
     `  env: ${envLiteral([
       'N8N_WEBHOOK_TOKEN',
       'BELEIDSKOMPAS_N8N_WEBHOOK_TOKEN',
@@ -300,7 +288,7 @@ function main() {
   writeJson(path.join(WORKFLOWS_DIR, 'beleidskompas-orchestrator.json'), buildOrchestratorWorkflow());
   for (const step of steps) writeJson(path.join(WORKFLOWS_DIR, `beleidskompas-step-${step.id}.json`), buildStepWorkflow(step));
   writeJson(PAGE_STEPS_FILE, pageSteps(steps));
-  writeJson(ADMIN_DEFAULTS_FILE, DEFAULT_TEMPLATE);
+  writeJson(ADMIN_DEFAULTS_FILE, template.DEFAULT_TEMPLATE);
 }
 
 main();

@@ -414,7 +414,7 @@ function extractConvoCaseText(text) {
  *  running the full step-1 analysis. Never throws - falls back to a
  *  deterministic title on any LLM error, since a broken title must never
  *  break the actual conversation. */
-async function buildTitleResponse({ titleSource, env, fetchImpl, httpModule, httpsModule, urlModule }) {
+async function buildTitleResponse({ titleSource, env, model, fetchImpl, httpModule, httpsModule, urlModule }) {
   const source = extractConvoCaseText(String(titleSource || '').replaceAll(TITLE_REQUEST_MARKER, ''));
   const litellmUrl = String((env && env.LITELLM_URL) || '').trim();
   const litellmApiKey = String((env && (env.LITELLM_API_KEY || env.OPENAI_API_KEY)) || '').trim();
@@ -425,7 +425,7 @@ async function buildTitleResponse({ titleSource, env, fetchImpl, httpModule, htt
       const raw = await callLiteLLM({
         baseUrl: litellmUrl,
         apiKey: litellmApiKey,
-        model: (env && env.BELEIDSKOMPAS_MODEL) || 'govchat-default',
+        model: model || (env && env.BELEIDSKOMPAS_MODEL) || 'govchat-default',
         systemPrompt:
           'Je genereert uitsluitend een korte titel (maximaal 6 woorden) voor een gesprek, in het Nederlands. ' +
           'Geen opmaak, geen aanhalingstekens, geen toelichting: alleen de titel zelf.',
@@ -465,27 +465,31 @@ async function buildTitleResponse({ titleSource, env, fetchImpl, httpModule, htt
 // page, and a heading whose first line is "**Oordeel:**" becomes a badge.
 
 /** Fills a prompt template with what a step provides: its role, its
- *  substeps with their instructions, the rules, and the answer formats of
- *  the substeps. */
-function fillTemplate(template, step) {
+ *  substeps with their instructions, the rules (the baked ones unless the
+ *  template brought its own), and the answer formats of the substeps. */
+function fillTemplate(template, step, rules) {
   const values = {
     role: step.role,
     substeps: step.substeps.map((substep) => `Deelstap ${substep.id}: ${substep.title}\n${substep.instruction}`).join('\n\n'),
-    rules: COMMON_RULES.map((rule) => '- ' + rule).join('\n'),
+    rules: (Array.isArray(rules) ? rules : COMMON_RULES).map((rule) => '- ' + rule).join('\n'),
     substep_format: step.substeps.map((substep) => substep.format).join('\n\n'),
   };
   return template.replace(/\{\{(\w+)\}\}/g, (match, key) => (key in values ? values[key] : match));
 }
 
-/** The system prompt for writing the report of a step (prompts/report-prompt.md). */
-function buildReportPrompt(step) {
-  return fillTemplate(REPORT_PROMPT_TEMPLATE, step);
+/** The system prompt for writing the report of a step: the live template's
+ *  text when there is one, else prompts/report-prompt.md. `texts` may give
+ *  `template` and `rules`. */
+function buildReportPrompt(step, texts) {
+  const t = texts || {};
+  return fillTemplate(t.template || REPORT_PROMPT_TEMPLATE, step, t.rules);
 }
 
 /** The system prompt for answering a message about a step's report
- *  (prompts/conversation-prompt.md). */
-function buildConversationPrompt(step) {
-  return fillTemplate(CONVERSATION_PROMPT_TEMPLATE, step);
+ *  (prompts/conversation-prompt.md unless the live template says otherwise). */
+function buildConversationPrompt(step, texts) {
+  const t = texts || {};
+  return fillTemplate(t.template || CONVERSATION_PROMPT_TEMPLATE, step, t.rules);
 }
 
 // The answer text is markdown: a heading per section. It is not only what
@@ -519,14 +523,14 @@ function askedStep(step, substepId) {
 /** The report as the page shows it: the step heading, the model's reply,
  *  the sources and the disclaimer. A reply wrapped in a code block is
  *  unwrapped, and an empty reply reads as "onbekend". */
-function composeReport(step, reply, citations) {
+function composeReport(step, reply, citations, disclaimer) {
   const text = String(reply || '').trim().replace(/^```(?:markdown|md)?\s*\n([\s\S]*?)\n```$/i, '$1').trim();
   const substep = step.substep ? ` · ${step.substep.id} ${step.substep.title}` : '';
   return [
     `**Stap ${step.nr} · ${step.title}${substep}**`,
     text || 'onbekend',
     section('Bronnen', sourcesText(Array.isArray(citations) ? citations : [])),
-    `---\n${DISCLAIMER}`,
+    `---\n${disclaimer || DISCLAIMER}`,
   ].join('\n\n');
 }
 
@@ -585,7 +589,13 @@ async function runStep(step, ctx) {
   // it can belong to another step when the orchestrator sent the message
   // here because it is about this step.
   const askedFrom = String(body.asked_from || '').trim() || null;
-  const asked = askedStep(step, substepId);
+  // The live template from the admin, as the orchestrator passes it on: the
+  // step's own definition, the rules and the prompt texts. Without it (an
+  // older orchestrator, a direct call) the baked definition is used.
+  const t = body.template && typeof body.template === 'object' ? body.template : {};
+  const definition = t.step && t.step.id === step.id && Array.isArray(t.step.substeps) ? t.step : step;
+  const rules = t.rules ? String(t.rules).split('\n').map((line) => line.trim()).filter(Boolean) : null;
+  const asked = askedStep(definition, substepId);
   if (!asked) {
     const text = `Beleidskompas kent deelstap ${substepId} niet in stap ${step.nr}.`;
     return { ok: false, step_id: step.id, substep_id: substepId, error: 'Unknown substep', text, answer: text };
@@ -613,8 +623,10 @@ async function runStep(step, ctx) {
     rawAnswer = await callLiteLLM({
       baseUrl: litellmUrl,
       apiKey: litellmApiKey,
-      model: (env && env.BELEIDSKOMPAS_MODEL) || 'govchat-default',
-      systemPrompt: conversing ? buildConversationPrompt(asked) : buildReportPrompt(asked),
+      model: t.model || (env && env.BELEIDSKOMPAS_MODEL) || 'govchat-default',
+      systemPrompt: conversing
+        ? buildConversationPrompt(asked, { template: t.conversation_prompt, rules })
+        : buildReportPrompt(asked, { template: t.report_prompt, rules }),
       userPrompt: buildUserPrompt({ caseText, findings, conversation, message, citations }),
       timeoutMs: 60000,
       fetchImpl,
@@ -642,7 +654,7 @@ async function runStep(step, ctx) {
     };
   }
 
-  const answer = composeReport(asked, rawAnswer, citations);
+  const answer = composeReport(asked, rawAnswer, citations, t.report_disclaimer);
 
   return {
     ok: true,
