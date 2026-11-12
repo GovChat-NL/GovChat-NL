@@ -90,6 +90,8 @@ function createStoreClient({ env, fetchImpl, httpModule, httpsModule, urlModule 
     addTurn: ({ caseId, userId, role, stepId, askedFrom, text }) =>
       send('POST', `${casePath(caseId)}/turns`, { body: { user_id: userId, role, step_id: stepId, asked_from: askedFrom, text } }),
     getState: ({ caseId, userId, maxTurns }) => send('GET', casePath(caseId), { query: { user_id: userId, max_turns: maxTurns } }),
+    // The live template of the admin: { version_id, flow, settings }.
+    getLive: () => send('GET', '/api/beleidskompas/live'),
   };
 }
 
