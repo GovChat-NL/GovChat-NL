@@ -5,7 +5,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { composePrompt, parseCitationsMetaBlock, readCaseState } from "../beleidskompas-api.js";
+import { composePrompt, parseCitationsMetaBlock, readCaseState, sendBeleidskompasFeedback } from "../beleidskompas-api.js";
 
 const SUBSTEP = { id: "2.1", title: "Rolbepaling" };
 
@@ -87,4 +87,19 @@ test("parseCitationsMetaBlock reads which step answered and where the user asked
   const parsed = parseCitationsMetaBlock(`Antwoord.\n\n[beleidskompas-meta]: data:application/json;base64,${encoded}`);
   assert.equal(parsed.agent, "stap3");
   assert.equal(parsed.asked_from, "1.3");
+});
+
+test("sendBeleidskompasFeedback posts the rating with step, substep and template version", async () => {
+  const calls = [];
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = async (url, init) => (calls.push([url, JSON.parse(init.body)]), { ok: true });
+  try {
+    await sendBeleidskompasFeedback({ rating: "up", comment: "", stepId: "stap2", substepId: "2.1", versionId: "v3" });
+    await sendBeleidskompasFeedback({ rating: "down", stepId: "stap1" });
+  } finally {
+    globalThis.fetch = realFetch;
+  }
+  assert.equal(calls[0][0], "/govchat-api/beleidskompas-feedback");
+  assert.deepEqual(calls[0][1], { rating: "up", comment: "", step_id: "stap2", substep_id: "2.1", version_id: "v3" });
+  assert.deepEqual(calls[1][1], { rating: "down", comment: "", step_id: "stap1", substep_id: null, version_id: null });
 });

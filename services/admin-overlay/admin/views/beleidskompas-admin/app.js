@@ -24,7 +24,6 @@ const DEFAULT_ROUTE = "editor";
 
 export const store = {
   state: null, // server state: draft, live, versions, documents, settings
-  manifest: null,
   templates: [],
   templateId: null, // nothing selected until the admin picks a template in the Editor
   flow: null, // working copy of the selected template's newest version; saved as a whole
@@ -50,7 +49,10 @@ export const versionOptions = (tpl) =>
 
 // The editor always works on the newest saved version, live or not.
 function flowOf(tpl) {
-  return tpl ? structuredClone(newestVersion(tpl)?.snapshot || store.state.live) : null;
+  if (!tpl) return null;
+  const flow = structuredClone(newestVersion(tpl)?.snapshot || store.state.live);
+  flow.messages = flow.messages || {}; // older snapshots lack it; the Flow builder binds its fields
+  return flow;
 }
 
 async function loadDocuments() {
@@ -59,9 +61,8 @@ async function loadDocuments() {
 }
 
 export async function reload() {
-  const { state, workflow_manifest } = await api.getState();
+  const { state } = await api.getState();
   store.state = state;
-  store.manifest = workflow_manifest;
   store.templates = api.listTemplates(state);
   store.flow = flowOf(template());
   store.dirty = false;

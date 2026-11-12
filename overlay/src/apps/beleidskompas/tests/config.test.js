@@ -62,3 +62,28 @@ test("without steps.json the page cannot be built", () => {
   assert.throws(() => buildConfig(null, null, null), /steps\.json/);
   assert.throws(() => buildConfig(null, null, { steps: [] }), /steps\.json/);
 });
+
+test("the published configuration with steps and substeps wins over steps.json", () => {
+  const config = buildConfig(
+    null,
+    {
+      version_id: " v7 ",
+      steps: [
+        { id: "stap1", nr: 1, title: "Eigen titel", description: "Eigen omschrijving", substeps: [{ id: "1.1", title: "Eigen deelstap" }] },
+        { id: "stap2", nr: 2, title: "Twee", substeps: [{ id: "2.9", title: "Nieuw" }] },
+      ],
+    },
+    STEPS_DATA,
+  );
+  assert.equal(config.versionId, "v7");
+  assert.deepEqual(config.steps.map((s) => [s.id, s.nr, s.title, s.substeps]), [
+    ["stap1", 1, "Eigen titel", [{ id: "1.1", title: "Eigen deelstap" }]],
+    ["stap2", 2, "Twee", [{ id: "2.9", title: "Nieuw" }]],
+  ]);
+  assert.equal(config.steps[0].short, "Eigen omschrijving");
+  assert.ok(config.steps[0].help.length > 0);
+  // steps.json is not needed then.
+  assert.equal(buildConfig(null, { steps: [{ id: "stap1", substeps: [{ id: "1.1", title: "A" }] }] }, null).steps.length, 1);
+  // Steps without substeps still come from steps.json.
+  assert.equal(buildConfig(null, { version_id: "v8", steps: [{ id: "stap1", title: "Niet deze" }] }, STEPS_DATA).steps[0].title, "Publiek en provinciaal belang");
+});
