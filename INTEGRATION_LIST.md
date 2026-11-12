@@ -1,56 +1,62 @@
 # Beleidskompas admin: integration TODO
 
-What the admin UI saves that nothing reads yet, and what the backend merged with #32 (agents, orchestrator, case store) still needs from the admin. Each item names the UI place, the backend piece and what done means. Checked 2026-11-12 on `feature/beleidskompas` (4ea044f, with #20 and #32 merged).
+What the admin UI saves that nothing reads yet, what the backend (agents, orchestrator, case store) still needs from the admin, and how #34 (versioning) fits in. Each item names the UI place, the backend piece and what done means. Checked 2026-11-12 on `feature/admin-ui-integration` (the wiring commits on top of `feature/beleidskompas` 4ea044f).
 
 Paths are relative to `services/admin-overlay/admin/views/beleidskompas-admin/` unless stated.
 
-## 1. The agent reads the template
+## How the wiring works now
 
-Today the agent (`agents/beleidskompas/`) reads its prompts from `prompts/stepN/*.md`, the rules from `prompts/rules.md`, the answer structure from the headings in those files, the model from `BELEIDSKOMPAS_MODEL` and its sources from `fixtures/source-passages.json`. Nothing of the template reaches it.
+- The admin's **live template** is the runtime source of truth. `GET /api/beleidskompas/live` (store token, `lib/beleidskompas/routes.js`) returns `{ version_id, flow, settings }`. The orchestrator (`agents/beleidskompas/orchestrator.js`) fetches it once per message and passes the step its definition, rules, prompts, report disclaimer and model in the step request (`template`); `runStep` (`shared.js`) uses that and falls back to the baked definition.
+- **Defaults** live in one generated file, `services/admin-overlay/admin/defaults/beleidskompas-template.json`, written by `make generate-workflows` from `agents/beleidskompas/prompts/**` and `steps/*.js` (`agents/beleidskompas/template.js`). `defaultBeleidskompasFlow()` in `server.js` reads it; an empty prompt-like field in a saved template means "use the seed", so older states get the prompts on load. The compose file bind-mounts that file into the admin container.
+- The **four steps are fixed** (SiS 4.0): the normaliser keeps `stap1..stap4` in order and drops other ids; substeps are free. The page builds steps, substeps and `version_id` from the public `beleidskompas-config.json`; `steps.json` is only the fallback.
+- **Feedback** records the rated message's own `step_id`, `substep_id` and `version_id`; `POST /api/beleidskompas-feedback` needs a logged-in LibreChat user (presence only, nothing stored).
+- **Retention**: `lib/beleidskompas/index.js` deletes cases older than `settings.retention_days` at start and every 6 hours.
+- Gone: the admin's own n8n workflow generator, `workflow_manifest`, step `workflow_id`/`webhook_path`, the "Geavanceerd" fields and the webhook token in the template; the admin no longer reads `BELEIDSKOMPAS_N8N_*`.
 
-- [ ] Step "Instructies" and substep "Instructies" / "Vereiste antwoordstructuur" (`pages/flow.js`): the agent takes them from the live template instead of the prompt files. Decide where: the orchestrator reads the template at request time, or `make generate-workflows` bakes the live template into the workflows.
-- [ ] "Opmaakregels" (`pages/flow.js`, `flow.rules`): same, replaces `{{rules}}` from `rules.md`.
-- [ ] "Zoekmethode" and the documents ticked per step (`step.rag.algorithm`, `step.document_ids`): retrieval uses the admin documents instead of `fixtures/source-passages.json` (the agent README names them as the future source). Then remove the "Mock" badge and hint on the Documenten card (`pages/flow.js`) and "Gebruikt in" (`pages/documents.js`) means used by the assistant.
-- [ ] "Standaardmodel" (`pages/general.js`, `settings.default_model`): the agent takes its model from the settings instead of `BELEIDSKOMPAS_MODEL`, or the field goes.
-- [ ] Flow builder notice (`pages/flow.js`): the sentence "…maar de pagina en de assistent lezen het nog niet" goes with the items above.
-- [ ] "Geavanceerd" on the Editor (`pages/editor.js`: orchestrator workflow-id, webhook-pad, webhook-token): read by nothing at runtime; the workflows check `$env.BELEIDSKOMPAS_N8N_WEBHOOK_TOKEN`. `defaultBeleidskompasFlow` in `server.js` copies that token into the flow, so the secret sits in every version and in the export. Remove the three fields and stop copying the token.
+## 1. Still open on the agent side
 
-## 2. Steps and substeps have one source
+- [ ] "Zoekmethode" and the documents ticked per step (`step.rag`, `step.document_ids`): retrieval still uses `fixtures/source-passages.json`. Needs text extraction at upload and a store-token route that serves the documents (or passages) to the step; then remove the "Mock" badge on the Documenten card (`pages/flow.js`) and "Gebruikt in" (`pages/documents.js`) means used by the assistant.
+- [ ] "Standaardmodel" (`pages/general.js`): now sent to the agents, but free text. Validate against LiteLLM's chat models (`litellm/config.yaml`: `govchat-default`, `govchat-versimpelaar`) or render a select.
+- [ ] "Bronvermelding verplicht" and "Menselijke validatie verplicht" (`pages/general.js`): read by nothing. Wire them into the prompt or hide them.
+- [ ] Page texts an admin cannot edit: the check/deep questions per step (`overlay/src/apps/beleidskompas/config.js` `DEFAULT_STEP_TEXTS`), welcome and overview texts. Candidate template fields: `steps[].help[]`, `steps[].deep[]`, `flow.texts`.
+- [ ] The page parses the report by convention (`### ` headings, `**Oordeel:**`, `Redenering`/`Aannames`, `---` footer; `overlay/src/apps/beleidskompas/format.js`). An admin who edits "Vereiste antwoordstructuur" can break badges and collapsing silently. Validate the answer formats on publish, or move the fixed headings into the template.
+- [ ] Reports re-enter the model as findings with the `### Bronnen` list and the disclaimer included (`orchestrator.js` `contextFromState`). Strip them, or store the raw reply.
 
-The page builds its steps and substeps from `overlay/src/apps/beleidskompas/steps.json`, generated from the agent code. The template has its own copy with the same 13 substep ids, and from it the page reads only the step description.
+## 2. Case store (Postgres, `services/admin-overlay/admin/lib/beleidskompas/`)
 
-- [ ] Decide the source: the admin template generates `steps.json` (and the step workflows), or the Flow builder stops editing step and substep titles and stops adding, removing and reordering them. Until then none of those changes reach the page.
-- [ ] Step id is not editable in the Flow builder; editing it needs a fixed internal id first.
-- [ ] The admin still writes n8n workflow files that nothing imports: `syncBeleidskompasWorkflowFiles` in `server.js` runs at startup and after every save, publish, rollback, import and document change, and copies document text into `DATA_DIR/beleidskompas-workflows/`. The runtime workflows come from `make generate-workflows`. Remove the generator, `workflow_manifest` in `GET /api/beleidskompas/state` and the step `workflow_id`/`webhook_path`; #34 should not bring back `/workflows/status` and `/workflows/sync`.
-
-## 3. Case store (Postgres, `services/admin-overlay/admin/lib/beleidskompas/`)
-
-Tables `cases`, `case_texts`, `reports`, `conversation_turns` (`services/admin-overlay/admin/db/migrations/0001-init.sql`). The orchestrator writes through `agents/beleidskompas/store-client.js`; the page reads its own cases through `/govchat-api/beleidskompas/`.
-
-- [ ] "Bewaartermijn casussen (dagen)" (`pages/general.js`, `settings.retention_days`): nothing deletes cases. A retention job that reads the setting, or hide the field.
-- [ ] "Bronvermelding verplicht" and "Menselijke validatie verplicht" (`pages/general.js`): read by nothing. Wire them or hide them.
+- [ ] Reports and turns do not record the template version they were made with. If the Feedback page must show "written with an older version", add `template_version` columns (migration `0002-*.sql`) and pass `template.version_id` from the orchestrator.
 - [ ] An admin view of cases, if wanted: `GET /api/beleidskompas/cases` exists, internal token only.
+- [ ] The orchestrator accepts the bridge's fallback user `anonymous` as a case owner (`orchestrator.js`). Refuse it.
 
-## 4. Feedback
+## 3. Feedback
 
-The page posts `{ rating, comment, step_id }` to `/api/beleidskompas-feedback`; `step_id` is the step open when the user rates (`panels/chat.js`, `store.activeStep()`), not the step of the rated answer, while the agent works per substep.
+- [ ] "Antwoord waarop gereageerd is" (`components/feedback-row.js`, `mockAnswerText` in `mock-data.js`) is sample text. Storing the answer, or the case id and turn, breaks the anonymity promise in `overlay/defaults/help-content.json`; decide the wording first.
+- [ ] The Feedback page groups by `step_id`; items now carry `substep_id` too.
 
-- [ ] Version per item (`api.js`, `listFeedback`): guessed as the newest saved version before the item. The page sends the live version (and template) with the POST; the Version filter on the Feedback page depends on it.
-- [ ] Per substep: send the rated message's own step and substep instead of the active step, if the admin should group by substep (`pages/feedback.js` groups by `step_id`).
-- [ ] "Antwoord waarop gereageerd is" (`components/feedback-row.js`, `mockAnswerText` in `mock-data.js`): sample text. Storing the answer, or the case id and turn, needs a privacy decision first.
+## 4. Several templates (MOCK #1) and #34
 
-## 5. Several templates (MOCK #1)
+The server stores one template. `MOCK_TEMPLATES`, `saveAsNewTemplate` and every `tpl.mock` branch (`app.js`, `api.js`, `pages/editor.js`, `pages/documents.js`, `pages/deploy.js`, `components/template-selector.js`) go when #34 lands.
 
-The server stores one template, named "SiS 4.0" in `mock-data.js`. The sample "Omgevingsvisie (voorbeeld)" and "Opslaan als nieuw template" exist in the browser tab only and carry the badge "Voorbeeld".
+### Merge strategy for #34 (`feature/beleidskompas-versioning`, checked at bd85ddc)
 
-- [ ] Templates stored on the server with a name. Then `MOCK_TEMPLATES`, `saveAsNewTemplate` and every `tpl.mock` branch go (`app.js`, `api.js`, `pages/editor.js`, `pages/documents.js`, `pages/deploy.js`, `components/template-selector.js`).
-- [ ] Documentenbibliotheek per template: the library is one shared list today; the breadcrumb suggests it belongs to the selected template.
-- [ ] Versioning backend (#34, `feature/beleidskompas-versioning`, checked at bd85ddc): templates and versions in Postgres, `/templates/:id/versions/:versionId/deploy` (one live row), `/templates/:id/export` and `/templates/:id/documents`; `/publish`, `/rollback` and `/import` are gone. Its `api.js` already uses these routes; `importState` still posts to `/import`. When #34 lands: keep `publicBeleidskompasConfig` and the `module.exports` block at the end of `server.js`, and delete the `live: false` test in `tests/beleidskompas-flow.test.js` (#34's `tests/beleidskompas-admin-routes.test.js` covers it).
+Facts: #34 carries 75 commits of pre-squash history (merge-base with `feature/beleidskompas` is b7a583a, before the #20 and #32 squashes); its true delta is 39 files. Merged as is it would revert the last #20 commits (public-config allowlist, `OLD_DEFAULT_SUBSTEPS`, removed `/workflows/*`, `/rag/query`, preview routes) and PR 35's server guard and tests. Known breakages at bd85ddc: Feedback page `ui.split is not a function`, upload toast `uploaded is not defined`, Import posts to a removed route, `/dashboard` 500 while the DB starts, the public config leaks `webhook_token`, and `/workflows/status|sync` plus the Workflows card are back. A simulated merge onto this branch conflicts in 7 files: `server.js`, `lib/beleidskompas/index.js`, `tests/beleidskompas-start.test.js`, `api.js`, `app.js`, `pages/flow.js`, `mock-data.js` (deleted there).
 
-## 6. Who did what
+Order: 1) retarget and merge this PR into `feature/beleidskompas`; 2) rebuild #34 on top of it; 3) delete `feature/admin-ui`.
+
+Rebuild #34 (recommended over merging): branch from `feature/beleidskompas`, apply `git diff origin/feature/beleidskompas origin/feature/beleidskompas-versioning` for the 39 files, then:
+
+- Keep from this branch: `normalizeBeleidskompasFlow` (empty-means-default, fixed steps), `defaultBeleidskompasFlow` from the generated defaults file, `publicBeleidskompasConfig(flow, versionId)`, the `live` handler and `start(app, { resolveUser, getLive, getRetentionDays })` with the retention sweep, `module.exports` + the `require.main` guard, `tests/beleidskompas-flow.test.js` tests 1–2 (delete the `live: false` test; #34's route test covers it).
+- Take from #34: the template store (`0002-templates.sql`, `template-store.js`, `template-service.js`, `routes/admin-routes.js`), the per-template `api.js`/pages, deletion of `mock-data.js`. In `api.js` keep `listFeedback` reading `item.version_id`.
+- Wire #34's store into the new seams: `getLive` reads the `live` row and normalises the snapshot through `normalizeBeleidskompasFlow`; `getRetentionDays` reads the `settings` table; `publishLive` calls `publicBeleidskompasConfig(flow, live.version_id)`; `start()` merges #34's `{ pool, requireAuth, flow, init }` with the three callbacks (one Pool, one `schema_migrations`).
+- Do not bring back: `syncBeleidskompasWorkflowFiles`, `workflow_manifest`, `/workflows/status`, `/workflows/sync`, `/rag/query` (its scorer no longer exists), `webhook_token` in the snapshot, the Workflows card in `pages/general.js`.
+- Fix in the same rebuild: `pages/feedback.js` filter (`matchesTemplate`/`subtitleFor` get a string), `pages/documents.js` `uploaded` array, Import (add `POST /templates/import` on `importLegacyState` or drop the button), `/dashboard` shows `—` on a 503 `StoreError`, `db/seed.sql` must use `stap1..stap4` (the normaliser drops other ids), `.env.example` `BELEIDSKOMPAS_DEV_SEED` should default to `false`.
+- Decide with the author: one `live` row for the whole app (as #34 and 10ffde5 assume) is fine; port the Deploy-page half of 10ffde5 (`feature/admin-ui-single-live`) so "Nu live" shows the app-wide live version.
+
+## 5. Who did what
 
 - [ ] "Door" in Versies (`pages/editor.js`) is always "System Administrator" until sign-in with an admin role stores the user.
 
 ## Done
 
-- #20: Flow builder notice says what reaches the page; default substeps follow `steps.json` (a saved step with the old defaults migrates on load); hoofdagent renamed to orchestrator; the public `beleidskompas-config.json` holds only title, disclaimer, specialist team and the steps' id, title and description; the Workflows card and its routes are gone (the generator still runs, see §2); sample templates are marked "Voorbeeld".
+- #20: Flow builder notice; default substeps follow `steps.json`; hoofdagent renamed to orchestrator; public config allowlisted; Workflows card removed; sample templates marked "Voorbeeld".
+- This branch: the agent reads the live template (instructions, answer structure, rules, report/conversation/orchestrator prompts, report disclaimer, messages, model); one generated defaults file; steps fixed, substeps and `version_id` published to the page; feedback with substep and version; retention sweep; the dead workflow generator, Geavanceerd fields and token copy removed.
