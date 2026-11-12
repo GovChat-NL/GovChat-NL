@@ -54,3 +54,15 @@ test("the endpoints answer 503 until the database can be reached, and work after
   await ready;
   assert.equal((await app.call("GET", "/api/beleidskompas/cases", asN8n)).status, 200);
 });
+
+test("once ready, the store deletes cases older than the retention setting", async () => {
+  const app = fakeApp();
+  const queries = [];
+  const pool = { query: async (sql, params) => (queries.push({ sql, params }), { rows: [], rowCount: 2 }) };
+  const logs = [];
+  const log = { log: (m) => logs.push(m), error: () => {} };
+  await start(app, { getRetentionDays: () => 30 }, { BELEIDSKOMPAS_STORE_TOKEN: TOKEN }, { openPool: () => pool, migrate: async () => [], log, sweepIntervalMs: 1e9 });
+  const sweep = queries.find((q) => q.sql.startsWith("DELETE FROM cases"));
+  assert.deepEqual(sweep.params, [30]);
+  assert.ok(logs.some((m) => m.includes("deleted 2 cases older than 30 days")));
+});

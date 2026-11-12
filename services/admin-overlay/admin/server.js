@@ -71,10 +71,6 @@ const BELEIDSKOMPAS_STATE_FILE = "beleidskompas-state.json";
 const BELEIDSKOMPAS_LIVE_FILE = "beleidskompas-config.json";
 const BELEIDSKOMPAS_FEEDBACK_FILE = "beleidskompas-feedback.json";
 const BELEIDSKOMPAS_FEEDBACK_MAX = 500;
-const BELEIDSKOMPAS_WORKFLOWS_DIR_NAME = "beleidskompas-workflows";
-const BELEIDSKOMPAS_ORCHESTRATOR_WEBHOOK_PATH_DEFAULT = "beleidskompas-orchestrator";
-const BELEIDSKOMPAS_N8N_BASE_URL = String(process.env.BELEIDSKOMPAS_N8N_BASE_URL || "http://n8n:5678").replace(/\/$/, "");
-const BELEIDSKOMPAS_N8N_WEBHOOK_TOKEN = String(process.env.BELEIDSKOMPAS_N8N_WEBHOOK_TOKEN || process.env.N8N_WEBHOOK_TOKEN || "").trim();
 const TRANSCRIPT_AUTH_DEBUG = String(process.env.TRANSCRIPT_AUTH_DEBUG || "false").toLowerCase() === "true";
 const LIBRECHAT_JWT_REFRESH_SECRET = String(process.env.JWT_REFRESH_SECRET || process.env.JWT_SECRET || "").trim();
 
@@ -341,8 +337,7 @@ function initDefaults() {
   }
 
   const beleidskompasState = readBeleidskompasState();
-  publishBeleidskompasLiveConfig(beleidskompasState.live || beleidskompasState.draft || defaultBeleidskompasFlow());
-  syncBeleidskompasWorkflowFiles(beleidskompasState);
+  publishBeleidskompasLiveConfig(beleidskompasState.live, beleidskompasState.live_version_id);
 }
 
 function readJSON(filename) {
@@ -382,27 +377,6 @@ function cloneJSON(input) {
 function normalizeTags(value) {
   if (!Array.isArray(value)) return [];
   return [...new Set(value.map((v) => String(v || "").trim()).filter(Boolean))];
-}
-
-function slugifyPolicyText(value, fallback = "step") {
-  const slug = String(value || "")
-    .toLowerCase()
-    .normalize("NFKD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "")
-    .slice(0, 48);
-  return slug || fallback;
-}
-
-function buildStepWorkflowMeta(step, idx) {
-  const stepSlug = slugifyPolicyText(step?.id || step?.title || `step-${idx + 1}`, `step-${idx + 1}`);
-  const workflowId = String(step?.workflow_id || `govchat-beleidskompas-step-${stepSlug}`).trim();
-  const webhookPath = String(step?.webhook_path || `beleidskompas-step-${stepSlug}`).trim();
-  return {
-    workflow_id: workflowId || `govchat-beleidskompas-step-${stepSlug}`,
-    webhook_path: webhookPath || `beleidskompas-step-${stepSlug}`,
-  };
 }
 
 function defaultStepRagSettings(step = {}) {
@@ -448,119 +422,15 @@ function normalizeBeleidskompasDocuments(input) {
   }));
 }
 
+// The seed template: generated from the agent's prompt files by
+// agents/beleidskompas/generate-workflow.js (make generate-workflows).
+const BELEIDSKOMPAS_DEFAULT_TEMPLATE = JSON.parse(
+  fs.readFileSync(path.join(__dirname, "defaults", "beleidskompas-template.json"), "utf-8"),
+);
+
 function defaultBeleidskompasFlow() {
-  return {
-    title: "Beleidskompas",
-    orchestrator_workflow_id: "govchat-beleidskompas-orchestrator",
-    orchestrator_webhook_path: BELEIDSKOMPAS_ORCHESTRATOR_WEBHOOK_PATH_DEFAULT,
-    webhook_token: String(BELEIDSKOMPAS_N8N_WEBHOOK_TOKEN || "").trim(),
-    disclaimer:
-      "Deze toepassing is een ondersteunend hulpmiddel en vervangt geen menselijke besluitvorming.",
-    specialist_team:
-      "Bij hoge juridische/financiële impact: betrek concernjurist, financieel adviseur en programmaregisseur.",
-    sources: [
-      "SiS 4.0 Strategisch kader",
-      "SiS 4.0 Uitvoeringskader",
-      "Provinciale Instrumentenkoffer",
-      "Coalitieakkoord en beleidskaders",
-      "Overzicht wettelijke taken Provincie",
-    ],
-    steps: [
-      {
-        id: "stap1",
-        workflow_id: "govchat-beleidskompas-step-stap1",
-        webhook_path: "beleidskompas-step-stap1",
-        title: "Publiek en provinciaal belang",
-        description:
-          "Bepaal probleem, publiek belang en provinciale legitimiteit op basis van wettelijke taken en beleidskaders.",
-        prompt:
-          "Toets publiek en provinciaal belang. Benoem doelgroep, maatschappelijke impact, legitimiteit en conflicterende belangen.",
-        doc_tags: ["Beleid", "Governance"],
-        rag: {
-          algorithm: "needle",
-          top_k: 3,
-          min_score: 0.12,
-          tag_filter_mode: "any",
-          required_tags: ["Beleid", "Governance"],
-        },
-        substeps: [
-          { id: "1.1", title: "Probleemdefinitie", description: "Probleem, oorzaken en symptomen." },
-          { id: "1.2", title: "Overheidsinterventie", description: "Is overheidsingrijpen gerechtvaardigd?" },
-          { id: "1.3", title: "Stakeholderanalyse", description: "Belanghebbenden, belangen en invloed." },
-          { id: "1.4", title: "Provinciaal doel", description: "Aansluiting op provinciale beleidsdoelen." },
-          { id: "1.5", title: "Integrale afweging", description: "Oordeel over publiek en provinciaal belang." },
-        ],
-      },
-      {
-        id: "stap2",
-        workflow_id: "govchat-beleidskompas-step-stap2",
-        webhook_path: "beleidskompas-step-stap2",
-        title: "Rolbepaling provincie",
-        description:
-          "Kies passende provinciale rol(len): regulerend, regisserend, stimulerend of faciliterend.",
-        prompt:
-          "Onderbouw de provinciale rolkeuze met impact, uitvoerbaarheid, bestuurlijke haalbaarheid en risico’s.",
-        doc_tags: ["Governance"],
-        rag: {
-          algorithm: "hybrid",
-          top_k: 4,
-          min_score: 0.09,
-          tag_filter_mode: "any",
-          required_tags: ["Governance"],
-        },
-        substeps: [
-          { id: "2.1", title: "Rolbepaling", description: "Welke rol past de provincie, en waarom?" },
-        ],
-      },
-      {
-        id: "stap3",
-        workflow_id: "govchat-beleidskompas-step-stap3",
-        webhook_path: "beleidskompas-step-stap3",
-        title: "Instrumentkeuze",
-        description:
-          "Vergelijk beleids- en uitvoeringsinstrumenten, inclusief argumentatie, risicobeoordeling en alternatieven.",
-        prompt:
-          "Scoor instrumenten op effectiviteit, juridische robuustheid, financiën en uitvoerbaarheid. Geef voorkeursoptie met alternatieven.",
-        doc_tags: ["Beleid", "Compliance"],
-        rag: {
-          algorithm: "haystack",
-          top_k: 5,
-          min_score: 0.06,
-          tag_filter_mode: "any",
-          required_tags: ["Beleid", "Compliance"],
-        },
-        substeps: [
-          { id: "3.1", title: "Sturingsbepaling", description: "Mate van sturing bij de gekozen rol." },
-          { id: "3.2", title: "Instrumentarium", description: "Instrumenten bij rol, sturing en probleem." },
-          { id: "3.3", title: "Afwegingskader", description: "Meest geschikte samenwerkingsvorm." },
-          { id: "3.4", title: "Gevolgenanalyse", description: "Gevolgen per instrument en de nuloptie." },
-        ],
-      },
-      {
-        id: "stap4",
-        workflow_id: "govchat-beleidskompas-step-stap4",
-        webhook_path: "beleidskompas-step-stap4",
-        title: "Governance-inrichting",
-        description:
-          "Adviseer inrichting voor sturing, toezicht, beheersing en verantwoording, inclusief KPI’s.",
-        prompt:
-          "Werk governance-advies uit conform SiS 4.0 hoofdstuk 10 en het uitvoeringskader. Neem ook alternatieven mee.",
-        doc_tags: ["Governance", "Compliance"],
-        rag: {
-          algorithm: "hybrid",
-          top_k: 4,
-          min_score: 0.1,
-          tag_filter_mode: "all",
-          required_tags: ["Governance", "Compliance"],
-        },
-        substeps: [
-          { id: "4.1", title: "Good governance-principes", description: "Sturing, toezicht, beheersing en verantwoording." },
-          { id: "4.2", title: "Organisatorische governance", description: "Organisatorische inrichting van goed bestuur." },
-          { id: "4.3", title: "Governance-richtlijnen", description: "Concrete richtlijnen per component." },
-        ],
-      },
-    ],
-  };
+  const template = cloneJSON(BELEIDSKOMPAS_DEFAULT_TEMPLATE);
+  return { ...template, steps: template.steps.map((step) => ({ ...step, rag: defaultStepRagSettings(step) })) };
 }
 
 // The default substeps from before they followed steps.json. A saved step that still has exactly
@@ -572,53 +442,59 @@ const OLD_DEFAULT_SUBSTEPS = {
   stap4: "4.1 Sturing|4.2 Toezicht|4.3 KPI’s",
 };
 
+/** The saved value, or the default when it is empty: a prompt-like field
+ *  that is blank means "the seed text", so an older state gets the prompts. */
+function textOrDefault(value, fallback) {
+  return String(value ?? "").trim() || String(fallback ?? "").trim();
+}
+
 function normalizeBeleidskompasFlow(input) {
   const fallback = defaultBeleidskompasFlow();
   const src = input && typeof input === "object" ? input : {};
   const stepsRaw = Array.isArray(src.steps) ? src.steps : fallback.steps;
 
-  const steps = stepsRaw.map((step, idx) => {
-    const fb = fallback.steps[Math.min(idx, fallback.steps.length - 1)] || fallback.steps[0];
-    let substepsRaw = Array.isArray(step?.substeps) ? step.substeps : fb.substeps;
-    const oldDefault = OLD_DEFAULT_SUBSTEPS[step?.id];
-    if (oldDefault && oldDefault === substepsRaw.map((s) => `${s?.id} ${s?.title}`).join("|")) {
-      substepsRaw = fallback.steps.find((s) => s.id === step.id).substeps;
-    }
-    const workflowMeta = buildStepWorkflowMeta(step, idx);
+  // The four steps are fixed (the SiS 4.0 pillars): a saved step is matched by id, the rest is dropped.
+  const steps = fallback.steps.map((fb, idx) => {
+    const step = stepsRaw.find((s) => s && String(s.id || "").trim() === fb.id) || {};
+    let substepsRaw = Array.isArray(step.substeps) ? step.substeps : fb.substeps;
+    const oldDefault = OLD_DEFAULT_SUBSTEPS[fb.id];
+    if (oldDefault === substepsRaw.map((s) => `${s?.id} ${s?.title}`).join("|")) substepsRaw = fb.substeps;
     return {
-      id: String(step?.id || fb.id || `stap${idx + 1}`).trim() || `stap${idx + 1}`,
-      workflow_id: workflowMeta.workflow_id,
-      webhook_path: workflowMeta.webhook_path,
-      title: String(step?.title || fb.title || `Stap ${idx + 1}`).trim() || `Stap ${idx + 1}`,
+      id: fb.id,
+      nr: idx + 1,
+      title: String(step.title || fb.title).trim() || fb.title,
       // An empty string is the admin's choice; defaults only fill fields that are missing.
-      description: String(step?.description ?? fb.description ?? "").trim(),
-      prompt: String(step?.prompt ?? fb.prompt ?? "").trim(),
-      doc_tags: normalizeTags(step?.doc_tags || fb.doc_tags),
+      description: String(step.description ?? fb.description ?? "").trim(),
+      prompt: textOrDefault(step.prompt, fb.prompt),
+      doc_tags: normalizeTags(step.doc_tags || fb.doc_tags),
       // Documents picked in the Flow builder; nothing reads them yet. Missing = not picked yet.
-      document_ids: Array.isArray(step?.document_ids) ? [...new Set(step.document_ids.map(String))] : undefined,
-      rag: normalizeStepRagSettings(step?.rag || fb.rag || {}, step || fb),
-      substeps: substepsRaw.map((sub, subIdx) => ({
-        id: String(sub?.id || `${idx + 1}.${subIdx + 1}`).trim() || `${idx + 1}.${subIdx + 1}`,
-        title: String(sub?.title || `Substap ${subIdx + 1}`).trim() || `Substap ${subIdx + 1}`,
-        description: String(sub?.description || "").trim(),
-        prompt: String(sub?.prompt || "").trim(),
-        answer_format: String(sub?.answer_format || "").trim(),
-      })),
+      document_ids: Array.isArray(step.document_ids) ? [...new Set(step.document_ids.map(String))] : undefined,
+      rag: normalizeStepRagSettings(step.rag || fb.rag || {}, step.id ? step : fb),
+      substeps: substepsRaw.map((sub, subIdx) => {
+        const id = String(sub?.id || `${idx + 1}.${subIdx + 1}`).trim() || `${idx + 1}.${subIdx + 1}`;
+        const sfb = fb.substeps.find((d) => d.id === id) || {};
+        return {
+          id,
+          title: String(sub?.title || `Substap ${subIdx + 1}`).trim() || `Substap ${subIdx + 1}`,
+          description: String(sub?.description || "").trim(),
+          prompt: textOrDefault(sub?.prompt, sfb.prompt),
+          answer_format: textOrDefault(sub?.answer_format, sfb.answer_format),
+        };
+      }),
     };
   });
 
+  const messagesRaw = src.messages && typeof src.messages === "object" ? src.messages : {};
   return {
     title: String(src.title || fallback.title).trim() || fallback.title,
-    orchestrator_workflow_id:
-      String(src.orchestrator_workflow_id || fallback.orchestrator_workflow_id || "govchat-beleidskompas-orchestrator").trim() ||
-      "govchat-beleidskompas-orchestrator",
-    orchestrator_webhook_path:
-      String(src.orchestrator_webhook_path || fallback.orchestrator_webhook_path || BELEIDSKOMPAS_ORCHESTRATOR_WEBHOOK_PATH_DEFAULT).trim() ||
-      BELEIDSKOMPAS_ORCHESTRATOR_WEBHOOK_PATH_DEFAULT,
-    webhook_token: String(src.webhook_token || fallback.webhook_token || "").trim(),
     disclaimer: String(src.disclaimer || fallback.disclaimer).trim() || fallback.disclaimer,
     specialist_team: String(src.specialist_team || fallback.specialist_team).trim() || fallback.specialist_team,
-    rules: String(src.rules ?? "").trim(),
+    report_disclaimer: textOrDefault(src.report_disclaimer, fallback.report_disclaimer),
+    rules: textOrDefault(src.rules, fallback.rules),
+    report_prompt: textOrDefault(src.report_prompt, fallback.report_prompt),
+    conversation_prompt: textOrDefault(src.conversation_prompt, fallback.conversation_prompt),
+    orchestrator_prompt: textOrDefault(src.orchestrator_prompt, fallback.orchestrator_prompt),
+    messages: Object.fromEntries(Object.keys(fallback.messages).map((key) => [key, textOrDefault(messagesRaw[key], fallback.messages[key])])),
     sources: normalizeTags(src.sources || fallback.sources),
     steps,
   };
@@ -704,309 +580,31 @@ function writeBeleidskompasState(state) {
 
 // beleidskompas-config.json is public (nginx serves it without auth), so it holds only what the
 // Beleidskompas page reads (buildConfig in overlay/src/apps/beleidskompas/config.js) plus the step titles.
-function publicBeleidskompasConfig(flow) {
+function publicBeleidskompasConfig(flow, versionId) {
   const { title, disclaimer, specialist_team, steps } = normalizeBeleidskompasFlow(flow);
-  return { title, disclaimer, specialist_team, steps: steps.map(({ id, title, description }) => ({ id, title, description })) };
-}
-
-function publishBeleidskompasLiveConfig(flow) {
-  writeJSON(BELEIDSKOMPAS_LIVE_FILE, publicBeleidskompasConfig(flow));
-}
-
-function ensureBeleidskompasWorkflowsDir() {
-  ensureDataDir();
-  const dir = path.join(DATA_DIR, BELEIDSKOMPAS_WORKFLOWS_DIR_NAME);
-  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-  return dir;
-}
-
-function buildBeleidskompasStepWorkflow(flow, step, idx, documentsInput = []) {
-  const wf = buildStepWorkflowMeta(step, idx);
-  const stepId = String(step?.id || `stap${idx + 1}`).trim() || `stap${idx + 1}`;
-  const title = String(step?.title || `Stap ${idx + 1}`).trim() || `Stap ${idx + 1}`;
-  const prompt = String(step?.prompt || "").trim();
-  const sources = Array.isArray(flow?.sources) ? flow.sources : [];
-  const rag = normalizeStepRagSettings(step?.rag || {}, step);
-  const documents = normalizeBeleidskompasDocuments(documentsInput).map((d) => ({
-    id: d.id,
-    filename: d.filename,
-    tags: normalizeTags(d.tags || []),
-    text: String(d.preview_text || "").slice(0, 6000),
-  }));
   return {
-    id: wf.workflow_id,
-    name: `Beleidskompas Specialist - ${title}`,
-    active: true,
-    nodes: [
-      {
-        parameters: {
-          httpMethod: "POST",
-          path: wf.webhook_path,
-          responseMode: "responseNode",
-          options: {},
-        },
-        id: "WebhookStep",
-        name: "Webhook Step",
-        type: "n8n-nodes-base.webhook",
-        typeVersion: 2,
-        webhookId: wf.workflow_id,
-        position: [-620, 200],
-      },
-      {
-        parameters: {
-          jsCode:
-            `const raw = $json || {};\n` +
-            `const body = raw.body || {};\n` +
-            `const headers = raw.headers || {};\n` +
-            `const suppliedToken = String(headers['x-govchat-token'] || headers['X-Govchat-Token'] || '').trim();\n` +
-            `const expectedToken = String($env.BELEIDSKOMPAS_N8N_WEBHOOK_TOKEN || $env.N8N_WEBHOOK_TOKEN || '').trim();\n` +
-            `if (expectedToken && suppliedToken !== expectedToken) throw new Error('Unauthorized webhook token');\n` +
-            `const question = String(body.question || '').trim();\n` +
-            `const fields = body.step_fields && typeof body.step_fields === 'object' ? body.step_fields : {};\n` +
-            `const context = String(body.case_text || '').trim();\n` +
-            `const rag = ${JSON.stringify(rag)};\n` +
-            `const docs = ${JSON.stringify(documents)};\n` +
-            `const refs = ${JSON.stringify(sources)};\n` +
-            `const toWords = (s) => String(s || '').toLowerCase().normalize('NFKD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9\s]/g,' ').split(/\s+/).filter((w) => w.length > 2);\n` +
-            `const uniq = (arr) => [...new Set(arr)];\n` +
-            `const textBlob = [question, context, fields.problem, fields.causes, fields.symptoms, fields.perspectives, fields.references].filter(Boolean).join(' ');\n` +
-            `const qWords = uniq(toWords(textBlob));\n` +
-            `const requiredTags = Array.isArray(rag.required_tags) ? rag.required_tags.map((t) => String(t).toLowerCase()) : [];\n` +
-            `const modeAll = String(rag.tag_filter_mode || 'any').toLowerCase() === 'all';\n` +
-            `const matchesTags = (doc) => {\n` +
-            `  if (!requiredTags.length) return true;\n` +
-            `  const tags = Array.isArray(doc.tags) ? doc.tags.map((t) => String(t).toLowerCase()) : [];\n` +
-            `  return modeAll ? requiredTags.every((t) => tags.includes(t)) : requiredTags.some((t) => tags.includes(t));\n` +
-            `};\n` +
-            `const scoreDoc = (doc) => {\n` +
-            `  const text = String(doc.text || '');\n` +
-            `  if (!text.trim()) return 0;\n` +
-            `  const words = toWords(text);\n` +
-            `  if (!words.length) return 0;\n` +
-            `  const set = new Set(words);\n` +
-            `  const overlap = qWords.filter((w) => set.has(w)).length;\n` +
-            `  const overlapRatio = qWords.length ? overlap / qWords.length : 0;\n` +
-            `  const density = overlap / Math.max(24, words.length);\n` +
-            `  let needleHits = 0;\n` +
-            `  const lowerText = String(text).toLowerCase();\n` +
-            `  for (const w of qWords) { if (lowerText.includes(w)) needleHits += 1; }\n` +
-            `  const needleScore = qWords.length ? needleHits / qWords.length : 0;\n` +
-            `  const haystackScore = overlapRatio * 0.7 + density * 0.3;\n` +
-            `  const algo = String(rag.algorithm || 'hybrid').toLowerCase();\n` +
-            `  if (algo === 'needle') return needleScore;\n` +
-            `  if (algo === 'haystack') return haystackScore;\n` +
-            `  return needleScore * 0.55 + haystackScore * 0.45;\n` +
-            `};\n` +
-            `const ranked = docs\n` +
-            `  .filter(matchesTags)\n` +
-            `  .map((d) => ({ ...d, score: scoreDoc(d) }))\n` +
-            `  .filter((d) => d.score >= Number(rag.min_score || 0))\n` +
-            `  .sort((a, b) => b.score - a.score)\n` +
-            `  .slice(0, Math.max(1, Number(rag.top_k || 3)));\n` +
-            `const citations = ranked.map((d, i) => ({ rank: i + 1, id: d.id, filename: d.filename, score: Number(d.score.toFixed(4)), tags: d.tags, preview: String(d.text || '').slice(0, 900) }));\n` +
-            `const lines = [];\n` +
-            `lines.push('Stap: ${stepId} - ${title}');\n` +
-            `if (context) lines.push('Casus: ' + context);\n` +
-            `if (fields.problem) lines.push('Probleemdefinitie: ' + String(fields.problem));\n` +
-            `if (fields.causes) lines.push('Oorzaken: ' + String(fields.causes));\n` +
-            `if (fields.symptoms) lines.push('Symptomen: ' + String(fields.symptoms));\n` +
-            `if (fields.perspectives) lines.push('Ontbrekend perspectief: ' + String(fields.perspectives));\n` +
-            `if (fields.references) lines.push('Bronverwijzingen: ' + String(fields.references));\n` +
-            `if (question) lines.push('Vraag: ' + question);\n` +
-            `lines.push('Promptkader: ${prompt.replace(/`/g, "'")}');\n` +
-            `if (ranked.length) {\n` +
-            `  lines.push('Geraadpleegde bronnen (' + ranked.length + '): ' + ranked.map((d) => d.filename + ' [' + d.score.toFixed(3) + ']').join('; '));\n` +
-            `} else {\n` +
-            `  lines.push('Geraadpleegde bronnen: geen matches op huidige RAG-filter/score.');\n` +
-            `}\n` +
-            `lines.push('Bekende bronnen: ' + refs.join('; '));\n` +
-            `return [{ json: { text: lines.join('\\n'), citations, retrieval_trace: { algorithm: rag.algorithm, top_k: rag.top_k, min_score: rag.min_score, tag_filter_mode: rag.tag_filter_mode, required_tags: rag.required_tags, matched_docs: ranked.length } } }];`,
-        },
-        id: "BuildStepAnswer",
-        name: "Build Step Answer",
-        type: "n8n-nodes-base.code",
-        typeVersion: 2,
-        position: [-360, 200],
-      },
-      {
-        parameters: {
-          respondWith: "json",
-          responseBody:
-            '={{ JSON.stringify({ ok: true, step_id: "' + stepId + '", answer: $json.text, citations: $json.citations || [], retrieval_trace: $json.retrieval_trace || null }) }}',
-          options: {},
-        },
-        id: "RespondStep",
-        name: "Respond Step",
-        type: "n8n-nodes-base.respondToWebhook",
-        typeVersion: 1,
-        position: [-120, 200],
-      },
-    ],
-    connections: {
-      "Webhook Step": {
-        main: [[{ node: "Build Step Answer", type: "main", index: 0 }]],
-      },
-      "Build Step Answer": {
-        main: [[{ node: "Respond Step", type: "main", index: 0 }]],
-      },
-    },
-    settings: { executionOrder: "v1" },
+    version_id: String(versionId || "").trim(),
+    title,
+    disclaimer,
+    specialist_team,
+    steps: steps.map(({ id, nr, title, description, substeps }) => ({
+      id,
+      nr,
+      title,
+      description,
+      substeps: substeps.map((s) => ({ id: s.id, title: s.title })),
+    })),
   };
 }
 
-function buildBeleidskompasHoofdagentWorkflow(flow) {
-  const orchestratorWorkflowId =
-    String(flow?.orchestrator_workflow_id || "govchat-beleidskompas-orchestrator").trim() || "govchat-beleidskompas-orchestrator";
-  const orchestratorWebhookPath =
-    String(flow?.orchestrator_webhook_path || BELEIDSKOMPAS_ORCHESTRATOR_WEBHOOK_PATH_DEFAULT).trim() ||
-    BELEIDSKOMPAS_ORCHESTRATOR_WEBHOOK_PATH_DEFAULT;
-  const steps = Array.isArray(flow?.steps) ? flow.steps : [];
-  return {
-    id: orchestratorWorkflowId,
-    name: "Beleidskompas Hoofdagent",
-    active: true,
-    nodes: [
-      {
-        parameters: {
-          httpMethod: "POST",
-          path: orchestratorWebhookPath,
-          responseMode: "responseNode",
-          options: {},
-        },
-        id: "WebhookHoofdagent",
-        name: "Webhook Hoofdagent",
-        type: "n8n-nodes-base.webhook",
-        typeVersion: 2,
-        webhookId: orchestratorWorkflowId,
-        position: [-740, 240],
-      },
-      {
-        parameters: {
-          jsCode:
-            `const raw = $json || {};\n` +
-            `const body = raw.body || {};\n` +
-            `const headers = raw.headers || {};\n` +
-            `const suppliedToken = String(headers['x-govchat-token'] || headers['X-Govchat-Token'] || '').trim();\n` +
-            `const expectedToken = String($env.BELEIDSKOMPAS_N8N_WEBHOOK_TOKEN || $env.N8N_WEBHOOK_TOKEN || '').trim();\n` +
-            `if (expectedToken && suppliedToken !== expectedToken) throw new Error('Unauthorized webhook token');\n` +
-            `const steps = ${JSON.stringify(steps.map((s, idx) => {
-              const m = buildStepWorkflowMeta(s, idx);
-              return { id: s.id, title: s.title, webhook_path: m.webhook_path };
-            }))};\n` +
-            `const stepId = String(body.step_id || '').trim();\n` +
-            `let step = steps.find((s) => String(s.id) === stepId);\n` +
-            `if (!step) step = steps[0] || null;\n` +
-            `if (!step) throw new Error('Geen stappen geconfigureerd');\n` +
-            `return [{ json: { route: step, payload: body } }];`,
-        },
-        id: "RouteStep",
-        name: "Route Step",
-        type: "n8n-nodes-base.code",
-        typeVersion: 2,
-        position: [-500, 240],
-      },
-      {
-        parameters: {
-          method: "POST",
-          url: `={{'${BELEIDSKOMPAS_N8N_BASE_URL}/webhook/' + $json.route.webhook_path}}`,
-          sendHeaders: true,
-          headerParameters: {
-            parameters: [
-              { name: "Content-Type", value: "application/json" },
-              {
-                name: "x-govchat-token",
-                value: "={{ String($env.BELEIDSKOMPAS_N8N_WEBHOOK_TOKEN || $env.N8N_WEBHOOK_TOKEN || '') }}",
-              },
-            ],
-          },
-          sendBody: true,
-          specifyBody: "json",
-          jsonBody: "={{ JSON.stringify($json.payload || {}) }}",
-          options: { timeout: 120000 },
-        },
-        id: "CallStepWorkflow",
-        name: "Call Step Workflow",
-        type: "n8n-nodes-base.httpRequest",
-        typeVersion: 4.2,
-        position: [-240, 240],
-      },
-      {
-        parameters: {
-          respondWith: "json",
-          responseBody:
-            '={{ JSON.stringify({ ok: true, route: $json.step_id || null, answer: $json.answer || $json.text || "", citations: $json.citations || [], retrieval_trace: $json.retrieval_trace || null }) }}',
-          options: {},
-        },
-        id: "RespondHoofdagent",
-        name: "Respond Hoofdagent",
-        type: "n8n-nodes-base.respondToWebhook",
-        typeVersion: 1,
-        position: [20, 240],
-      },
-    ],
-    connections: {
-      "Webhook Hoofdagent": { main: [[{ node: "Route Step", type: "main", index: 0 }]] },
-      "Route Step": { main: [[{ node: "Call Step Workflow", type: "main", index: 0 }]] },
-      "Call Step Workflow": { main: [[{ node: "Respond Hoofdagent", type: "main", index: 0 }]] },
-    },
-    settings: { executionOrder: "v1" },
-  };
+function publishBeleidskompasLiveConfig(flow, versionId) {
+  writeJSON(BELEIDSKOMPAS_LIVE_FILE, publicBeleidskompasConfig(flow, versionId));
 }
 
-function syncBeleidskompasWorkflowFiles(flowInput) {
-  let flow = defaultBeleidskompasFlow();
-  let documents = [];
-  if (flowInput && typeof flowInput === "object" && (flowInput.draft || flowInput.live || flowInput.documents)) {
-    const state = normalizeBeleidskompasState(flowInput);
-    flow = normalizeBeleidskompasFlow(state.draft || state.live || defaultBeleidskompasFlow());
-    documents = normalizeBeleidskompasDocuments(state.documents || []);
-  } else {
-    flow = normalizeBeleidskompasFlow(flowInput || defaultBeleidskompasFlow());
-  }
-  const dir = ensureBeleidskompasWorkflowsDir();
-  const steps = Array.isArray(flow.steps) ? flow.steps : [];
-
-  const stepFiles = steps.map((step, idx) => {
-    const meta = buildStepWorkflowMeta(step, idx);
-    const wf = buildBeleidskompasStepWorkflow(flow, step, idx, documents);
-    const filename = `${meta.workflow_id}.json`;
-    fs.writeFileSync(path.join(dir, filename), `${JSON.stringify([wf], null, 2)}\n`, "utf-8");
-    return {
-      step_id: String(step?.id || `stap${idx + 1}`),
-      workflow_id: meta.workflow_id,
-      webhook_path: meta.webhook_path,
-      file: `${BELEIDSKOMPAS_WORKFLOWS_DIR_NAME}/${filename}`,
-    };
-  });
-
-  const hoofd = buildBeleidskompasHoofdagentWorkflow(flow);
-  const hoofdFile = `${String(hoofd.id || "govchat-beleidskompas-orchestrator")}.json`;
-  fs.writeFileSync(path.join(dir, hoofdFile), `${JSON.stringify([hoofd], null, 2)}\n`, "utf-8");
-
-  const manifest = {
-    generated_at: new Date().toISOString(),
-    n8n_base_url: BELEIDSKOMPAS_N8N_BASE_URL,
-    webhook_token_configured: Boolean(BELEIDSKOMPAS_N8N_WEBHOOK_TOKEN),
-    orchestrator: {
-      workflow_id: String(flow.orchestrator_workflow_id || hoofd.id || "govchat-beleidskompas-orchestrator"),
-      webhook_path: String(flow.orchestrator_webhook_path || BELEIDSKOMPAS_ORCHESTRATOR_WEBHOOK_PATH_DEFAULT),
-      file: `${BELEIDSKOMPAS_WORKFLOWS_DIR_NAME}/${hoofdFile}`,
-    },
-    steps: stepFiles,
-  };
-  fs.writeFileSync(path.join(dir, "manifest.json"), JSON.stringify(manifest, null, 2), "utf-8");
-  return manifest;
-}
-
-function readBeleidskompasWorkflowManifest() {
-  const dir = ensureBeleidskompasWorkflowsDir();
-  const file = path.join(dir, "manifest.json");
-  if (!fs.existsSync(file)) return null;
-  try {
-    return JSON.parse(fs.readFileSync(file, "utf-8"));
-  } catch {
-    return null;
-  }
+/** The live template as the orchestrator reads it (GET /api/beleidskompas/live). */
+function liveBeleidskompasTemplate() {
+  const state = readBeleidskompasState();
+  return { version_id: state.live_version_id, flow: state.live, settings: { default_model: state.settings.default_model } };
 }
 
 function publishFile(filename, data) {
@@ -1029,7 +627,7 @@ function publishAll() {
     if (data) publishFile(file, data);
   }
   const bkState = readBeleidskompasState();
-  publishBeleidskompasLiveConfig(bkState.live || bkState.draft || defaultBeleidskompasFlow());
+  publishBeleidskompasLiveConfig(bkState.live, bkState.live_version_id);
 }
 
 function readCrawlerConfig() {
@@ -2650,15 +2248,15 @@ app.post("/api/config/apps", requireAuth, (req, res) => {
 
 app.get("/api/beleidskompas/state", requireAuth, (req, res) => {
   const state = readBeleidskompasState();
-  const workflow_manifest = readBeleidskompasWorkflowManifest();
-  return res.json({ ok: true, state, workflow_manifest });
+  return res.json({ ok: true, state });
 });
 
 // ── Beleidskompas user feedback ──────────────────────────────────
 //
-// Deliberately anonymous: only the rating, an optional comment and the step
-// the feedback is about. No user, e-mail or conversation id, so the feedback
-// cannot be traced back to a person or a case.
+// Deliberately anonymous: only the rating, an optional comment, the step and
+// substep the feedback is about and the live template version. No user,
+// e-mail or conversation id, so the feedback cannot be traced back to a
+// person or a case.
 function readBeleidskompasFeedback() {
   const stored = readPrivateJSON(BELEIDSKOMPAS_FEEDBACK_FILE);
   const items = stored && Array.isArray(stored.items) ? stored.items : [];
@@ -2666,12 +2264,16 @@ function readBeleidskompasFeedback() {
 }
 
 app.post("/api/beleidskompas-feedback", (req, res) => {
+  // Only a logged-in user may rate; who it was is not kept.
+  if (!resolveUserFromVerifiedRefreshToken(req)) return res.status(401).json({ error: "Unauthorized" });
   const rating = String(req.body?.rating || "").trim().toLowerCase();
   if (rating !== "up" && rating !== "down") {
     return res.status(400).json({ error: 'Veld "rating" moet "up" of "down" zijn' });
   }
   const comment = String(req.body?.comment || "").trim().slice(0, 2000);
   const stepId = String(req.body?.step_id || "").trim().slice(0, 64);
+  const substepId = String(req.body?.substep_id || "").trim().slice(0, 32);
+  const versionId = String(req.body?.version_id || "").trim().slice(0, 64);
 
   const items = readBeleidskompasFeedback();
   items.push({
@@ -2679,6 +2281,8 @@ app.post("/api/beleidskompas-feedback", (req, res) => {
     rating,
     comment,
     step_id: stepId,
+    substep_id: substepId,
+    version_id: versionId,
     created_at: new Date().toISOString(),
   });
   writePrivateJSON(BELEIDSKOMPAS_FEEDBACK_FILE, {
@@ -2711,8 +2315,7 @@ app.post("/api/beleidskompas/import", requireAuth, (req, res) => {
       ...(incoming.state && typeof incoming.state === "object" ? incoming.state : incoming),
     };
     const saved = writeBeleidskompasState(next);
-    const workflow_manifest = syncBeleidskompasWorkflowFiles(saved);
-    return res.json({ ok: true, state: saved, workflow_manifest });
+    return res.json({ ok: true, state: saved });
   } catch (err) {
     return res.status(400).json({ error: String(err?.message || err) });
   }
@@ -2774,9 +2377,8 @@ app.post("/api/beleidskompas/publish", requireAuth, (req, res) => {
     }
 
     const saved = writeBeleidskompasState(state);
-    if (goLive) publishBeleidskompasLiveConfig(saved.live);
-    const workflow_manifest = syncBeleidskompasWorkflowFiles(saved);
-    return res.json({ ok: true, version, live: saved.live, workflow_manifest });
+    if (goLive) publishBeleidskompasLiveConfig(saved.live, saved.live_version_id);
+    return res.json({ ok: true, version, live: saved.live });
   } catch (err) {
     return res.status(400).json({ error: String(err?.message || err) });
   }
@@ -2796,9 +2398,8 @@ app.post("/api/beleidskompas/rollback/:versionId", requireAuth, (req, res) => {
   for (const v of state.versions) v.is_live = v.id === versionId;
 
   const saved = writeBeleidskompasState(state);
-  publishBeleidskompasLiveConfig(saved.live);
-  const workflow_manifest = syncBeleidskompasWorkflowFiles(saved);
-  return res.json({ ok: true, live: saved.live, version_id: versionId, workflow_manifest });
+  publishBeleidskompasLiveConfig(saved.live, saved.live_version_id);
+  return res.json({ ok: true, live: saved.live, version_id: versionId });
 });
 
 app.get("/api/beleidskompas/documents", requireAuth, (req, res) => {
@@ -2836,10 +2437,9 @@ app.post("/api/beleidskompas/documents", requireAuth, (req, res) => {
       content_base64: contentBase64,
     };
     state.documents.unshift(doc);
-    const saved = writeBeleidskompasState(state);
-    const workflow_manifest = syncBeleidskompasWorkflowFiles(saved);
+    writeBeleidskompasState(state);
 
-    return res.status(201).json({ ok: true, document: { ...doc, content_base64: undefined }, workflow_manifest });
+    return res.status(201).json({ ok: true, document: { ...doc, content_base64: undefined } });
   } catch (err) {
     return res.status(400).json({ error: String(err?.message || err) });
   }
@@ -2857,9 +2457,8 @@ app.patch("/api/beleidskompas/documents/:docId", requireAuth, (req, res) => {
   current.tags = normalizeTags(req.body?.tags || current.tags || []);
   current.filename = String(req.body?.filename || current.filename || "document").trim() || "document";
   state.documents[idx] = current;
-  const saved = writeBeleidskompasState(state);
-  const workflow_manifest = syncBeleidskompasWorkflowFiles(saved);
-  return res.json({ ok: true, document: { ...current, content_base64: undefined }, workflow_manifest });
+  writeBeleidskompasState(state);
+  return res.json({ ok: true, document: { ...current, content_base64: undefined } });
 });
 
 app.get("/api/beleidskompas/documents/:docId/download", requireAuth, (req, res) => {
@@ -2887,9 +2486,8 @@ app.delete("/api/beleidskompas/documents/:docId", requireAuth, (req, res) => {
   const before = state.documents.length;
   state.documents = state.documents.filter((d) => String(d.id || "") !== docId);
   if (state.documents.length === before) return res.status(404).json({ error: "Document niet gevonden" });
-  const saved = writeBeleidskompasState(state);
-  const workflow_manifest = syncBeleidskompasWorkflowFiles(saved);
-  return res.json({ ok: true, removed: docId, workflow_manifest });
+  writeBeleidskompasState(state);
+  return res.json({ ok: true, removed: docId });
 });
 
 app.get("/api/transcript-sessions", requireLibreChatUser, (req, res) => {
@@ -3322,7 +2920,11 @@ if (require.main === module) {
 
   // Beleidskompas reaches its database in the background (see
   // lib/beleidskompas/index.js), so the service listens straight away.
-  beleidskompas.start(app, { resolveUser: resolveUserFromVerifiedRefreshToken });
+  beleidskompas.start(app, {
+    resolveUser: resolveUserFromVerifiedRefreshToken,
+    getLive: liveBeleidskompasTemplate,
+    getRetentionDays: () => readBeleidskompasState().settings.retention_days,
+  });
   server.listen(PORT, "0.0.0.0", () => {
     console.log(`[govchat-admin] Running on http://0.0.0.0:${PORT}`);
     console.log(`[govchat-admin] Data directory: ${DATA_DIR}`);
