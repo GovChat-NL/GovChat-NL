@@ -422,6 +422,12 @@
   position: relative;
 }
 
+.gc-bk-compose-hint {
+  margin: 4px 11px 0;
+  font-size: 11px;
+  color: #6b7280;
+}
+
 .gc-bk-compose-field textarea {
   display: block;
   width: 100%;
@@ -1287,6 +1293,10 @@
 .dark .gc-bk-msg-step {
   color: #d1d5db;
   background: #374151;
+}
+
+.dark .gc-bk-compose-hint {
+  color: #9ca3af;
 }
 
 .dark .gc-bk-chat-compose,
