@@ -82,13 +82,13 @@ export function parseCitationsMetaBlock(text) {
 }
 
 /** Sends a rating for an answer to the admin, which stores it anonymously:
- *  no user or conversation id, only the rating, an optional comment and
- *  the step it is about. */
-export async function sendBeleidskompasFeedback({ rating, comment, stepId }) {
+ *  no user or conversation id, only the rating, an optional comment, the
+ *  step and substep it is about and the template version that answered. */
+export async function sendBeleidskompasFeedback({ rating, comment, stepId, substepId, versionId }) {
   const resp = await fetch("/govchat-api/beleidskompas-feedback", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ rating, comment: String(comment || ""), step_id: stepId }),
+    body: JSON.stringify({ rating, comment: String(comment || ""), step_id: stepId, substep_id: substepId || null, version_id: versionId || null }),
   });
   if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
 }

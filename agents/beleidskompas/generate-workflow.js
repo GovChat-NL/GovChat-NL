@@ -29,8 +29,11 @@ const step1 = require('./steps/step1');
 const step2 = require('./steps/step2');
 const step3 = require('./steps/step3');
 const step4 = require('./steps/step4');
+const { DEFAULT_TEMPLATE } = require('./template');
 
 const WORKFLOWS_DIR = path.join(__dirname, '..', 'n8n', 'workflows', 'beleidskompas');
+// The admin's seed template (section "defaults" of the admin service).
+const ADMIN_DEFAULTS_FILE = path.join(__dirname, '..', '..', 'services', 'admin-overlay', 'admin', 'defaults', 'beleidskompas-template.json');
 
 const passages = JSON.parse(
   fs.readFileSync(path.join(__dirname, 'fixtures', 'source-passages.json'), 'utf-8'),
@@ -297,6 +300,7 @@ function main() {
   writeJson(path.join(WORKFLOWS_DIR, 'beleidskompas-orchestrator.json'), buildOrchestratorWorkflow());
   for (const step of steps) writeJson(path.join(WORKFLOWS_DIR, `beleidskompas-step-${step.id}.json`), buildStepWorkflow(step));
   writeJson(PAGE_STEPS_FILE, pageSteps(steps));
+  writeJson(ADMIN_DEFAULTS_FILE, DEFAULT_TEMPLATE);
 }
 
 main();

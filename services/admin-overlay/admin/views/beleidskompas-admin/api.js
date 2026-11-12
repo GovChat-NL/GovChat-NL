@@ -28,7 +28,7 @@ async function request(method, url, body) {
 
 // ── Template, versions, settings ───────────────────────────────────
 
-// WIRED: GET /api/beleidskompas/state → { state, workflow_manifest }
+// WIRED: GET /api/beleidskompas/state → { state }
 export const getState = () => request("GET", `${BASE}/state`);
 
 // WIRED: POST /api/beleidskompas/settings
@@ -118,9 +118,9 @@ export const stepDocumentIds = (step) => new Set(step.document_ids || []);
 
 // ── Feedback ───────────────────────────────────────────────────────
 
-// WIRED: GET /api/beleidskompas-feedback → anonymous items { id, rating, comment, step_id, created_at }.
-// MOCK #4: items carry no template or version yet. Real feedback can only come from the one
-// real template; its version is guessed as the one published last before the feedback.
+// WIRED: GET /api/beleidskompas-feedback → anonymous items { id, rating, comment, step_id, substep_id, version_id, created_at }.
+// MOCK #4: items carry no template yet. Real feedback can only come from the one real template;
+// older items without version_id get the version published last before the feedback.
 // MOCK #5: the answer the user reacted to is not stored, so a sample text is shown.
 export async function listFeedback(templates) {
   const data = await request("GET", "/api/beleidskompas-feedback");
@@ -131,7 +131,7 @@ export async function listFeedback(templates) {
     return {
       ...item,
       template_id: real?.id,
-      version_id: version?.id || null,
+      version_id: item.version_id || version?.id || null,
       answer_text: mockAnswerText(item.step_id),
     };
   });

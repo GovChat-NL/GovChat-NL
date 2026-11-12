@@ -1,5 +1,5 @@
 // The configuration of the Beleidskompas screen: the steps and substeps from
-// steps.json, the default texts around them, and how the published
+// the published configuration (else steps.json), the default texts around them, and how the published
 // configuration (the app's entry in apps.json plus the step configuration)
 // is merged with those.
 
@@ -77,7 +77,8 @@ const DEFAULT_STEP_TEXTS = {
 
 /** `stepsData` is steps.json: the steps with their substeps, generated from
  *  the step definitions in agents/beleidskompas/ (one list for the page and
- *  the workflows). It is required; the texts around the steps are not. */
+ *  the workflows). It is the fallback when the published configuration
+ *  carries no steps; the texts around the steps are optional. */
 export function buildConfig(app, flowConfig, stepsData) {
   const cfg = {
     ...(app?.config && typeof app.config === "object" ? app.config : {}),
@@ -87,32 +88,43 @@ export function buildConfig(app, flowConfig, stepsData) {
     title: String(cfg.title || "").trim(),
     disclaimer: String(cfg.disclaimer || "").trim(),
     specialistTeam: String(cfg.specialist_team || DEFAULT_SPECIALIST_TEAM).trim(),
+    versionId: String(cfg.version_id || "").trim(),
     steps: buildSteps(cfg, stepsData),
   };
 }
 
-/** The steps as steps.json defines them, with the texts around each step
- *  (short description, longer explanation) from the published configuration
- *  when it has them, otherwise from DEFAULT_STEP_TEXTS; the check questions
- *  come from there too. */
+/** The steps with their substeps from the published configuration when it
+ *  carries them (the admin's live template), otherwise from steps.json; the
+ *  texts around each step (short description, longer explanation) from the
+ *  published configuration when it has them, otherwise from
+ *  DEFAULT_STEP_TEXTS; the check questions come from there too. */
 function buildSteps(cfg, stepsData) {
+  const configured = Array.isArray(cfg.steps) ? cfg.steps : [];
+  if (configured.some((c) => c && Array.isArray(c.substeps) && c.substeps.length)) {
+    return configured.map((step, idx) => shapeStep(step, idx, step));
+  }
   const defined = Array.isArray(stepsData?.steps) ? stepsData.steps : [];
   if (!defined.length) throw new Error("steps.json ontbreekt of bevat geen stappen");
-  const configured = Array.isArray(cfg.steps) ? cfg.steps : [];
   return defined.map((step, idx) => {
     const id = String(step.id);
-    const texts = DEFAULT_STEP_TEXTS[id] || { short: "", info: "", help: [], deep: [] };
     const own = configured.find((c) => c && String(c.id || "").trim() === id) || configured[idx] || {};
-    const substeps = Array.isArray(step.substeps) ? step.substeps : [];
-    return {
-      id,
-      nr: Number(step.nr) || idx + 1,
-      title: String(step.title || "").trim(),
-      substeps: substeps.map((s) => ({ id: String(s.id), title: String(s.title || "").trim() })),
-      short: String(own.description || "").trim() || texts.short,
-      info: String(own.description || "").trim() || texts.info,
-      help: texts.help,
-      deep: texts.deep,
-    };
+    return shapeStep(step, idx, own);
   });
+}
+
+/** `step` gives id, nr, title and substeps; `own` the description. */
+function shapeStep(step, idx, own) {
+  const id = String(step.id);
+  const texts = DEFAULT_STEP_TEXTS[id] || { short: "", info: "", help: [], deep: [] };
+  const substeps = Array.isArray(step.substeps) ? step.substeps : [];
+  return {
+    id,
+    nr: Number(step.nr) || idx + 1,
+    title: String(step.title || "").trim(),
+    substeps: substeps.map((s) => ({ id: String(s.id), title: String(s.title || "").trim() })),
+    short: String(own.description || "").trim() || texts.short,
+    info: String(own.description || "").trim() || texts.info,
+    help: texts.help,
+    deep: texts.deep,
+  };
 }

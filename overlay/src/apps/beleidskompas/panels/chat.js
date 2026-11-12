@@ -67,8 +67,9 @@ function messageHTML(m, idx, stepLabel) {
 
 /** `refreshState(conversationId)` (from cases.js) puts the case text and
  *  the reports as the store has them on the screen; the chat calls it
- *  after every answer. */
-export function setupChat(store, { refreshState }) {
+ *  after every answer. `versionId` is the template version the page runs
+ *  on; it goes along with feedback. */
+export function setupChat(store, { refreshState, versionId }) {
   const { state } = store;
   const chatLogEl = requireElement("gc-bk-chat-log");
   const chatInputEl = requireElement("gc-bk-chat-input");
@@ -87,7 +88,13 @@ export function setupChat(store, { refreshState }) {
 
   async function submitFeedback(message, comment) {
     try {
-      await sendBeleidskompasFeedback({ rating: message.feedbackRating, comment, stepId: store.activeStep().id });
+      await sendBeleidskompasFeedback({
+        rating: message.feedbackRating,
+        comment,
+        stepId: message.agent || store.activeStep().id,
+        substepId: message.substepId || null,
+        versionId,
+      });
       store.updateMessage(message, { feedbackSent: true });
     } catch (err) {
       store.updateMessage(message, { feedbackError: String(err?.message || err) });

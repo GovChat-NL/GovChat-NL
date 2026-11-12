@@ -1,4 +1,4 @@
-// Flow builder: the template's steps, each with its texts, instructions, search settings and documents; plus the rules for all steps.
+// Flow builder: the four fixed steps, each with its texts, role, substeps, search settings and documents; plus the rules, prompts and messages for all steps.
 import * as api from "../api.js";
 import { h, icon, card, field, bound, reveal } from "../dom.js";
 import { flowList } from "../components/flow-list.js";
@@ -16,31 +16,15 @@ const stepEl = (idx) => document.querySelectorAll(".flow-list > .flow-step")[idx
 
 export function renderFlow({ store, render, markDirty }) {
   const steps = store.flow.steps;
-  const changed = () => { markDirty(); render(); };
-  // Adds a new step at the end and opens it.
-  const addStep = () => {
-    const id = `stap${Date.now().toString(36)}`;
-    steps.push({
-      id,
-      title: `Nieuwe stap ${steps.length + 1}`,
-      description: "",
-      prompt: "",
-      rag: { algorithm: "hybrid" },
-      substeps: [],
-    });
-    store.ui.stepId = id;
-    changed();
-    const el = stepEl(steps.length - 1);
-    reveal(el);
-    el?.querySelector(".flow-editor input")?.focus({ preventScroll: true });
-  };
+  const flow = store.flow;
+  const text = (obj, key, rows, hint) => field(LABELS[key], bound(obj, key, { multiline: true, rows, onInput: markDirty }), hint);
 
   const notice = h(
     "p",
     { class: "notice notice-info" },
     icon("info", 14),
-    "Van de stappen verschijnt alleen de beschrijving op de Beleidskompas-pagina, zodra de versie live staat (Deploy). " +
-      "De stappen en substappen zelf komen uit de agentcode. De rest wordt opgeslagen in het template, maar de pagina en de assistent lezen het nog niet.",
+    "Titel, beschrijving, deelstappen, instructies, regels en prompts gaan bij Deploy naar de pagina en de assistent. " +
+      "De vier stappen zelf staan vast (SiS 4.0). Documenten en zoekmethode leest de assistent nog niet.",
   );
 
   const list = flowList({
@@ -51,29 +35,41 @@ export function renderFlow({ store, render, markDirty }) {
       render();
       if (id) reveal(stepEl(steps.findIndex((s) => s.id === id)));
     },
-    onMove: (idx, delta) => {
-      const [step] = steps.splice(idx, 1);
-      steps.splice(idx + delta, 0, step);
-      changed();
-      reveal(stepEl(idx + delta));
-    },
-    onRemove: (idx) => {
-      if (!confirm(`Stap “${steps[idx].title}” verwijderen?`)) return;
-      steps.splice(idx, 1);
-      changed();
-    },
-    onAdd: addStep,
     renderEditor: (step) => stepEditor(step, { store, markDirty, render }),
   });
 
-  // One list for the whole flow, like rules.md on the agent side ({{rules}} in every step's prompt).
-  const rules = card(
-    "Opmaakregels",
-    field("Regels voor alle stappen", bound(store.flow, "rules", { multiline: true, rows: 6, onInput: markDirty }), "Eén regel per regel. Gelden voor elke stap."),
+  // Shared by every step: rules ({{rules}}) and the prompt templates of the step and orchestrator agents.
+  const prompts = card(
+    "Regels en prompts",
+    text(flow, "rules", 6, "Eén regel per regel. Gelden voor elke stap."),
+    text(flow, "report_prompt", 10, "Prompt voor het stapresultaat. Plaatshouders: {{role}} {{substeps}} {{rules}} {{substep_format}}."),
+    text(flow, "conversation_prompt", 10, "Prompt voor de gewone gespreksbeurten in een stap."),
+    text(flow, "orchestrator_prompt", 6, "Prompt waarmee de assistent de stap kiest. Plaatshouders: {{steps}} {{active_nr}}."),
+    text(flow, "report_disclaimer", 2, "Staat onder elk stapresultaat."),
   );
 
-  return { content: h("div", { class: "stack" }, notice, rules, list) };
+  const messages = card(
+    "Meldingen",
+    text(flow.messages, "unknown_step", 2, "Getoond als de assistent geen stap kan kiezen."),
+    text(flow.messages, "store_missing", 2, "Getoond als de casusopslag niet is geconfigureerd."),
+    text(flow.messages, "store_failed", 2, "Getoond als de casus niet kan worden opgeslagen."),
+    text(flow.messages, "store_warning", 2, "Toegevoegd onder het antwoord als opslaan tijdelijk mislukt."),
+  );
+
+  return { content: h("div", { class: "stack" }, notice, prompts, messages, list) };
 }
+
+const LABELS = {
+  rules: "Regels voor alle stappen",
+  report_prompt: "Prompt stapresultaat",
+  conversation_prompt: "Prompt gesprek",
+  orchestrator_prompt: "Prompt stapkeuze",
+  report_disclaimer: "Disclaimer onder stapresultaat",
+  unknown_step: "Stap onbekend",
+  store_missing: "Casusopslag ontbreekt",
+  store_failed: "Opslaan mislukt",
+  store_warning: "Waarschuwing bij opslaan",
+};
 
 function stepEditor(step, { store, markDirty, render }) {
   step.rag = step.rag || {};
@@ -84,7 +80,7 @@ function stepEditor(step, { store, markDirty, render }) {
     { class: "stack-sm" },
     field("Titel", bound(step, "title", { onInput: markDirty })),
     field("Beschrijving", bound(step, "description", { multiline: true, rows: 2, onInput: markDirty }), "Getoond in het overzicht en de uitleg van de stap op de Beleidskompas-pagina."),
-    field("Instructies", bound(step, "prompt", { multiline: true, rows: 6, onInput: markDirty }), "Instructie voor de assistent in deze stap."),
+    field("Instructies", bound(step, "prompt", { multiline: true, rows: 6, onInput: markDirty }), "De rol van het model voor deze stap."),
   );
 
   const search = h(
@@ -118,6 +114,12 @@ function stepEditor(step, { store, markDirty, render }) {
       : h("p", { class: "muted" }, "Nog geen documenten in de Documentenbibliotheek."),
   );
 
+  const moveSub = (i, delta) => {
+    const [sub] = step.substeps.splice(i, 1);
+    step.substeps.splice(i + delta, 0, sub);
+    markDirty();
+    render();
+  };
   const substeps = h(
     "div",
     { class: "substeps" },
@@ -133,7 +135,13 @@ function stepEditor(step, { store, markDirty, render }) {
           field("Instructies", bound(sub, "prompt", { multiline: true, rows: 3, onInput: markDirty })),
           field("Vereiste antwoordstructuur", bound(sub, "answer_format", { multiline: true, rows: 3, onInput: markDirty })),
         ),
-        h("button", { class: "icon-btn is-danger", "aria-label": "Substap verwijderen", onClick: () => { step.substeps.splice(i, 1); markDirty(); render(); } }, icon("trash", 18)),
+        h(
+          "div",
+          { class: "stack-sm" },
+          h("button", { class: "icon-btn", "aria-label": "Substap omhoog", disabled: i === 0, onClick: () => moveSub(i, -1) }, icon("up", 18)),
+          h("button", { class: "icon-btn", "aria-label": "Substap omlaag", disabled: i === step.substeps.length - 1, onClick: () => moveSub(i, 1) }, icon("down", 18)),
+          h("button", { class: "icon-btn is-danger", "aria-label": "Substap verwijderen", onClick: () => { step.substeps.splice(i, 1); markDirty(); render(); } }, icon("trash", 18)),
+        ),
       ),
     ),
     h(
@@ -155,9 +163,7 @@ function stepEditor(step, { store, markDirty, render }) {
     ),
   );
 
-  // Not shown: step id, workflow id and webhook path link the step to n8n and feedback, and editing
-  // them safely needs a fixed internal id first.
-  // rag.top_k and rag.min_score stay in the template as they are.
+  // Not shown: the step id (fixed, stap1..stap4). rag.top_k and rag.min_score stay in the template as they are.
   return h(
     "div",
     { class: "stack" },
