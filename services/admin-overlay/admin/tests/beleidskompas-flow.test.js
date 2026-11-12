@@ -15,6 +15,8 @@ for (const name of ["DATA_DIR", "PUBLISH_DIR"]) {
 process.env.ADMIN_PASSWORD = "test-password";
 process.env.BELEIDSKOMPAS_N8N_WEBHOOK_TOKEN = "secret-token";
 const { app, normalizeBeleidskompasFlow, publicBeleidskompasConfig } = require("../server.js");
+const publicFile = path.join(process.env.PUBLISH_DIR, "beleidskompas-config.json");
+test.after(() => fs.rmSync(dir, { recursive: true, force: true }));
 
 test("the public config holds only what the Beleidskompas page reads", () => {
   const flow = normalizeBeleidskompasFlow({
@@ -24,6 +26,10 @@ test("the public config holds only what the Beleidskompas page reads", () => {
   const pub = publicBeleidskompasConfig(flow);
   assert.deepEqual(pub, { title: flow.title, disclaimer: flow.disclaimer, specialist_team: flow.specialist_team, steps: [{ id: "stap1", title: "T", description: "D" }] });
   assert.ok(!JSON.stringify(pub).includes("secret-token"));
+  // The file nginx serves, written on startup from the default flow (which carries the token).
+  const published = fs.readFileSync(publicFile, "utf8");
+  assert.deepEqual(Object.keys(JSON.parse(published)).sort(), ["disclaimer", "specialist_team", "steps", "title"]);
+  assert.ok(!published.includes("secret-token"));
 });
 
 test("a step that still has the old default substeps gets the current ones; changed substeps stay", () => {
@@ -45,11 +51,13 @@ test("publish with live: false saves a version without making it live", async ()
     const cookie = login.headers.get("set-cookie").split(";")[0];
     const state = async () => (await (await fetch(`${base}/api/beleidskompas/state`, { headers: { cookie } })).json()).state;
     const before = await state();
-    const saved = await (await fetch(`${base}/api/beleidskompas/publish`, { method: "POST", headers: { cookie, "Content-Type": "application/json" }, body: JSON.stringify({ flow: before.live, note: "n", live: false }) })).json();
+    const publishedBefore = fs.readFileSync(publicFile, "utf8");
+    const saved = await (await fetch(`${base}/api/beleidskompas/publish`, { method: "POST", headers: { cookie, "Content-Type": "application/json" }, body: JSON.stringify({ flow: { ...before.live, title: "Niet live" }, note: "n", live: false }) })).json();
     const after = await state();
     assert.equal(after.live_version_id, before.live_version_id);
     assert.equal(after.versions[0].id, saved.version.id);
-    assert.equal(after.versions[0].is_live, false);
+    assert.equal(after.live.title, before.live.title);
+    assert.equal(fs.readFileSync(publicFile, "utf8"), publishedBefore);
   } finally {
     server.close();
   }
