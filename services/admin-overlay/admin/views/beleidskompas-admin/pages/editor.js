@@ -30,18 +30,6 @@ export function renderEditor({ store, render, markDirty, selectTemplate, saveAsN
     field("Titel", bound(flow, "title", { onInput: markDirty }), "Getoond boven de Beleidskompas-pagina."),
     field("Disclaimer", bound(flow, "disclaimer", { multiline: true, onInput: markDirty })),
     field("Specialistenteam", bound(flow, "specialist_team", { multiline: true, onInput: markDirty }), "Wie de gebruiker moet betrekken bij grote impact."),
-    h(
-      "details",
-      { class: "advanced" },
-      h("summary", {}, "Geavanceerd"),
-      h(
-        "div",
-        { class: "form-grid" },
-        field("Orchestrator workflow-id", bound(flow, "orchestrator_workflow_id", { onInput: markDirty })),
-        field("Orchestrator webhook-pad", bound(flow, "orchestrator_webhook_path", { onInput: markDirty })),
-        field("Webhook-token", bound(flow, "webhook_token", { type: "password", onInput: markDirty }), "Leeg = token uit de serverconfiguratie."),
-      ),
-    ),
   );
 
   const versionsCard = card(
