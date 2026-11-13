@@ -2,20 +2,19 @@ const express = require("express");
 
 const { createTemplateService } = require("../template-service");
 
-// The admin routes under /api/beleidskompas (templates, versions, documents, settings, workflows).
+// The admin routes under /api/beleidskompas (templates, versions, documents, settings).
 // Mounted by lib/beleidskompas/index.js; the case routes of n8n and the page are in case-routes.js.
 //
 // Dependencies are passed in so this module does not reach into server.js globals.
 //   store             the template store (template-store.js)
 //   requireAuth       the admin auth middleware
-//   flow              flow/workflow helpers that still live in server.js
+//   flow              flow helpers that still live in server.js
 function createAdminRouter({ store, requireAuth, flow }) {
   const service = createTemplateService({ store });
   const { getCurrentOr404, setTemplateDocument, findTemplateDocument } = service;
   const {
-    DEFAULT_BELEIDSKOMPAS_SETTINGS, normalizeBeleidskompasFlow, defaultBeleidskompasFlow,
-    readBeleidskompasWorkflowManifest, selectBeleidskompasRagDocs, normalizeLegacyState,
-    publishLive, n8nBaseUrl, n8nWebhookToken,
+    DEFAULT_BELEIDSKOMPAS_SETTINGS, normalizeBeleidskompasFlow,
+    readBeleidskompasWorkflowManifest, normalizeLegacyState, publishLive,
   } = flow;
   const router = express.Router();
 
@@ -139,38 +138,6 @@ function createAdminRouter({ store, requireAuth, flow }) {
     }
   });
 
-  router.get("/workflows/status", requireAuth, async (req, res) => {
-    try {
-      const live = await store.getLive();
-      const flow = normalizeBeleidskompasFlow(live?.snapshot || defaultBeleidskompasFlow());
-      const manifest = readBeleidskompasWorkflowManifest();
-      const expectedStepCount = Array.isArray(flow.steps) ? flow.steps.length : 0;
-      const mappedStepCount = Array.isArray(manifest?.steps) ? manifest.steps.length : 0;
-      const stepMismatch = expectedStepCount !== mappedStepCount;
-
-      return res.json({
-        ok: true,
-        n8n_base_url: n8nBaseUrl,
-        token_configured: Boolean(n8nWebhookToken),
-        step_count_expected: expectedStepCount,
-        step_count_mapped: mappedStepCount,
-        step_mismatch: stepMismatch,
-        manifest: manifest || null,
-      });
-    } catch (err) {
-      return res.status(err.status || 400).json({ error: String(err?.message || err) });
-    }
-  });
-
-  router.post("/workflows/sync", requireAuth, async (req, res) => {
-    try {
-      const manifest = await publishLive();
-      return res.json({ ok: true, source: "live", manifest });
-    } catch (err) {
-      return res.status(err.status || 500).json({ error: String(err?.message || err) });
-    }
-  });
-
   router.get("/templates/:id/documents", requireAuth, async (req, res) => {
     try {
       const id = templateIdParam(req);
@@ -232,16 +199,6 @@ function createAdminRouter({ store, requireAuth, flow }) {
     }
   });
 
-  router.get("/documents/:docId/preview", requireAuth, async (req, res) => {
-    try {
-      const doc = await store.getDocument(Number(req.params.docId));
-      if (!doc) return res.status(404).json({ error: "Document niet gevonden" });
-      return res.json({ ok: true, preview_text: String(doc.preview_text || "") });
-    } catch (err) {
-      return res.status(err.status || 400).json({ error: String(err?.message || err) });
-    }
-  });
-
   router.get("/documents/:docId/download", requireAuth, async (req, res) => {
     try {
       const doc = await store.getDocument(Number(req.params.docId));
@@ -251,50 +208,6 @@ function createAdminRouter({ store, requireAuth, flow }) {
       return res.status(200).send(doc.content);
     } catch (err) {
       return res.status(err.status || 400).json({ error: String(err?.message || err) });
-    }
-  });
-
-  router.post("/rag/query", requireAuth, async (req, res) => {
-    try {
-      const live = await store.getLive();
-      if (!live) return res.status(400).json({ error: "Geen live versie" });
-      const flow = normalizeBeleidskompasFlow(live.snapshot);
-      const stepId = String(req.body?.step_id || "").trim();
-      let step = Array.isArray(flow.steps) ? flow.steps.find((s) => String(s?.id || "") === stepId) : null;
-      if (!step) step = Array.isArray(flow.steps) ? flow.steps[0] : null;
-      if (!step) return res.status(400).json({ error: "Geen stappen geconfigureerd" });
-
-      const result = selectBeleidskompasRagDocs({
-        step,
-        question: String(req.body?.question || ""),
-        caseText: String(req.body?.case_text || ""),
-        stepFields: req.body?.step_fields && typeof req.body.step_fields === "object" ? req.body.step_fields : {},
-        documents: live.documents,
-      });
-
-      return res.json({
-        ok: true,
-        step_id: String(step.id || stepId),
-        rag: result.rag,
-        citations: result.docs.map((d, i) => ({
-          rank: i + 1,
-          id: d.id,
-          filename: d.filename,
-          score: Number(d.score.toFixed(4)),
-          tags: d.tags,
-          preview: d.preview,
-        })),
-        trace: {
-          algorithm: result.rag.algorithm,
-          top_k: result.rag.top_k,
-          min_score: result.rag.min_score,
-          tag_filter_mode: result.rag.tag_filter_mode,
-          required_tags: result.rag.required_tags,
-          matched_docs: result.docs.length,
-        },
-      });
-    } catch (err) {
-      return res.status(400).json({ error: String(err?.message || err) });
     }
   });
 

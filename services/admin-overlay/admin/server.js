@@ -2620,9 +2620,8 @@ const { templates: templateStore } = beleidskompas.start(
     requireAuth,
     init: initBeleidskompas,
     flow: {
-      DEFAULT_BELEIDSKOMPAS_SETTINGS, normalizeBeleidskompasFlow, defaultBeleidskompasFlow,
-      readBeleidskompasWorkflowManifest, selectBeleidskompasRagDocs, normalizeLegacyState, publishLive,
-      n8nBaseUrl: BELEIDSKOMPAS_N8N_BASE_URL, n8nWebhookToken: BELEIDSKOMPAS_N8N_WEBHOOK_TOKEN,
+      DEFAULT_BELEIDSKOMPAS_SETTINGS, normalizeBeleidskompasFlow,
+      readBeleidskompasWorkflowManifest, normalizeLegacyState, publishLive,
     },
   },
 );
