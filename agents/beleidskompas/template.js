@@ -112,12 +112,4 @@ function stepFromTemplate(template, stepId) {
   };
 }
 
-/** The rules of a template, one per non-empty line. */
-function rulesFromTemplate(template) {
-  return String((template && template.rules) || '')
-    .split('\n')
-    .map((line) => line.trim())
-    .filter(Boolean);
-}
-
-module.exports = { DEFAULT_TEMPLATE, DEFAULT_MESSAGES, stepFromTemplate, rulesFromTemplate };
+module.exports = { DEFAULT_TEMPLATE, DEFAULT_MESSAGES, stepFromTemplate };
