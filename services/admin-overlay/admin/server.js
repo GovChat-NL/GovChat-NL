@@ -2264,6 +2264,8 @@ function readBeleidskompasFeedback() {
 }
 
 app.post("/api/beleidskompas-feedback", (req, res) => {
+  // Only a logged-in user may rate; who it was is not kept.
+  if (!resolveUserFromVerifiedRefreshToken(req)) return res.status(401).json({ error: "Unauthorized" });
   const rating = String(req.body?.rating || "").trim().toLowerCase();
   if (rating !== "up" && rating !== "down") {
     return res.status(400).json({ error: 'Veld "rating" moet "up" of "down" zijn' });
