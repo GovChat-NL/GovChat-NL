@@ -3,7 +3,7 @@
 /**
  * The default Beleidskompas template in the admin's flow shape, built from
  * steps/*.js and prompts/**. generate-workflow.js writes it to
- * services/admin-overlay/admin/defaults/beleidskompas-template.json (the
+ * services/admin-overlay/admin/lib/beleidskompas/default-template.json (the
  * admin's seed) and bakes it into the orchestrator as its fallback.
  */
 

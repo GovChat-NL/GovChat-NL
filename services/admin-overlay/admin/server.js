@@ -451,7 +451,7 @@ function normalizeBeleidskompasDocuments(input) {
 // The seed template: generated from the agent's prompt files by
 // agents/beleidskompas/generate-workflow.js (make generate-workflows).
 const BELEIDSKOMPAS_DEFAULT_TEMPLATE = JSON.parse(
-  fs.readFileSync(path.join(__dirname, "defaults", "beleidskompas-template.json"), "utf-8"),
+  fs.readFileSync(path.join(__dirname, "lib", "beleidskompas", "default-template.json"), "utf-8"),
 );
 
 function defaultBeleidskompasFlow() {
