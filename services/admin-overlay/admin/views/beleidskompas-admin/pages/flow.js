@@ -116,6 +116,12 @@ function stepEditor(step, { store, markDirty, render }) {
       : h("p", { class: "muted" }, "Nog geen documenten in de Documentenbibliotheek."),
   );
 
+  const moveSub = (i, delta) => {
+    const [sub] = step.substeps.splice(i, 1);
+    step.substeps.splice(i + delta, 0, sub);
+    markDirty();
+    render();
+  };
   const substeps = h(
     "div",
     { class: "substeps" },
@@ -131,7 +137,13 @@ function stepEditor(step, { store, markDirty, render }) {
           field("Instructies", bound(sub, "prompt", { multiline: true, rows: 3, onInput: markDirty })),
           field("Vereiste antwoordstructuur", bound(sub, "answer_format", { multiline: true, rows: 3, onInput: markDirty })),
         ),
-        h("button", { class: "icon-btn is-danger", "aria-label": "Substap verwijderen", onClick: () => { step.substeps.splice(i, 1); markDirty(); render(); } }, icon("trash", 18)),
+        h(
+          "div",
+          { class: "stack-sm" },
+          h("button", { class: "icon-btn", "aria-label": "Substap omhoog", disabled: i === 0, onClick: () => moveSub(i, -1) }, icon("up", 18)),
+          h("button", { class: "icon-btn", "aria-label": "Substap omlaag", disabled: i === step.substeps.length - 1, onClick: () => moveSub(i, 1) }, icon("down", 18)),
+          h("button", { class: "icon-btn is-danger", "aria-label": "Substap verwijderen", onClick: () => { step.substeps.splice(i, 1); markDirty(); render(); } }, icon("trash", 18)),
+        ),
       ),
     ),
     h(
@@ -140,7 +152,9 @@ function stepEditor(step, { store, markDirty, render }) {
         class: "btn btn-small btn-secondary",
         onClick: () => {
           const idx = store.flow.steps.indexOf(step) + 1;
-          step.substeps = [...(step.substeps || []), { id: `${idx}.${(step.substeps?.length || 0) + 1}`, title: "", prompt: "", answer_format: "" }];
+          // One past the highest number: counting would repeat an id after a delete.
+          const next = Math.max(0, ...(step.substeps || []).map((s) => Number(String(s.id).split(".")[1]) || 0)) + 1;
+          step.substeps = [...(step.substeps || []), { id: `${idx}.${next}`, title: "", prompt: "", answer_format: "" }];
           markDirty();
           render();
           const row = document.querySelector(".flow-step.is-open .substep:last-of-type");
