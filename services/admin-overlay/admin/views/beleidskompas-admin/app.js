@@ -23,11 +23,11 @@ const ROUTES = {
 const DEFAULT_ROUTE = "editor";
 
 export const store = {
-  state: null, // server state: draft, live, versions, documents, settings
+  state: null, // server state: templates, settings, live
   manifest: null,
   templates: [],
-  templateId: null, // nothing selected until the admin picks a template in the Editor
-  flow: null, // working copy of the selected template's newest version; saved as a whole
+  templateId: null,
+  flow: null, // working copy of the selected template; published as a whole
   dirty: false,
   documents: [],
   feedback: null,
@@ -50,19 +50,19 @@ export const versionOptions = (tpl) =>
 
 // The editor always works on the newest saved version, live or not.
 function flowOf(tpl) {
-  return tpl ? structuredClone(newestVersion(tpl)?.snapshot || store.state.live) : null;
+  return tpl ? structuredClone(newestVersion(tpl)?.snapshot || null) : null;
 }
 
 async function loadDocuments() {
-  const tpl = template();
-  store.documents = !tpl ? [] : tpl.mock ? tpl.documents : await api.listDocuments();
+  store.documents = await api.listDocuments(template().id);
 }
 
 export async function reload() {
-  const { state, workflow_manifest } = await api.getState();
+  const state = await api.getState();
   store.state = state;
-  store.manifest = workflow_manifest;
+  store.manifest = state.workflow_manifest;
   store.templates = api.listTemplates(state);
+  if (!store.templates.some((t) => t.id === store.templateId)) store.templateId = store.templates[0]?.id;
   store.flow = flowOf(template());
   store.dirty = false;
   store.feedback = null;
@@ -86,14 +86,14 @@ export function markDirty() {
   if (el) el.hidden = false;
 }
 
-async function saveVersion() {
+async function save() {
   const tpl = template();
   const note = await askText({ title: `Opslaan als nieuwe versie van ${tpl.name}`, label: "Wat is er veranderd? (optioneel)", placeholder: "Bijv. typfout in stap 2 hersteld", confirm: "Opslaan" });
   if (note === null) return;
   try {
-    const { version } = await api.saveVersion(store.flow, note);
+    const { version } = await api.publishVersion(tpl.id, store.flow, note);
     await reload();
-    toast(`Opgeslagen als ${versionLabel(template(), version.id)}. Live zetten doe je via Deploy.`, "success");
+    toast(`Opgeslagen als ${versionLabel(template(), version.id)}`, "success");
     render();
   } catch (err) {
     toast(`Opslaan mislukt: ${err.message}`, "error");
@@ -103,11 +103,14 @@ async function saveVersion() {
 async function saveAsNewTemplate() {
   const name = await askText({ title: "Opslaan als nieuw template", label: "Naam van het nieuwe template", placeholder: "Bijv. SiS 4.0 – Mobiliteit", confirm: "Opslaan", required: true });
   if (!name) return;
-  const tpl = api.saveAsNewTemplate(name, store.flow);
-  store.templates = api.listTemplates(store.state);
-  store.dirty = false;
-  await selectTemplate(tpl.id);
-  toast(`Voorbeeldtemplate “${name}” aangemaakt. Het bestaat alleen in dit tabblad.`, "info");
+  try {
+    const t = await api.saveAsNewTemplate(template().id, name, store.flow);
+    await reload();
+    await selectTemplate(t.id);
+  } catch (err) {
+    return toast(`Opslaan mislukt: ${err.message}`, "error");
+  }
+  toast(`Template “${name}” aangemaakt`, "success");
 }
 
 // ── Routing (hash routes, so the browser's back button works) ─────
@@ -142,13 +145,20 @@ export const dirtyFlag = () =>
 function subtitleFor(def) {
   if (!def.editor) return null;
   const tpl = template();
-  return ["Template ", h("strong", {}, tpl.name), ` · ${versionStatus(tpl)}`, dirtyFlag()];
+  return [
+    "Template ",
+    h("strong", {}, tpl.name),
+    ` · ${liveLabel(tpl)}`,
+    h("span", { id: "dirty-flag", class: "dirty-flag", hidden: !store.dirty }, " · niet-opgeslagen wijzigingen"),
+  ];
 }
 
-// "v2 live", or "v3 nieuwste · v2 live" when the newest version is not deployed yet.
+// "v2 live", "niet live" when another template is live, or "v3 nieuwste · v2 live" when the newest version is not deployed yet.
+const liveLabel = (tpl) => (tpl.live_version_id == null ? "niet live" : `${versionLabel(tpl, tpl.live_version_id)} live`);
+
 export function versionStatus(tpl) {
   const newest = newestVersion(tpl);
-  const live = `${versionLabel(tpl, tpl.live_version_id)} live`;
+  const live = liveLabel(tpl);
   return newest.id === tpl.live_version_id ? live : `${versionLabel(tpl, newest.id)} nieuwste · ${live}`;
 }
 
@@ -164,7 +174,7 @@ export function render() {
   const actions = def.editor && tpl
     ? [
         h("button", { class: "btn btn-secondary", onClick: saveAsNewTemplate }, icon("branch", 14), "Opslaan als nieuw template"),
-        h("button", { class: "btn btn-primary", onClick: saveVersion, disabled: tpl.mock, title: tpl.mock ? "Voorbeeldtemplate: opslaan is niet beschikbaar" : undefined }, "Opslaan als nieuwe versie"),
+        h("button", { class: "btn btn-primary", onClick: save, disabled: tpl.mock, title: tpl.mock ? "Voorbeeldtemplate: opslaan is niet beschikbaar" : undefined }, "Opslaan"),
       ]
     : [];
   document.getElementById("toolbar").replaceChildren(

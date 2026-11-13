@@ -2,6 +2,7 @@
 import * as api from "../api.js";
 import { h, icon, toast, askText, formatDate, formatBytes } from "../dom.js";
 import { finder } from "../components/finder.js";
+import { toggle } from "../components/toggle.js";
 import { template } from "../app.js";
 
 export function renderDocuments({ store, render }) {
@@ -11,19 +12,37 @@ export function renderDocuments({ store, render }) {
   const selected = docs.find((d) => d.id === ui.docId) || null;
 
   const reloadDocs = async () => {
-    store.documents = await api.listDocuments();
+    store.documents = await api.listDocuments(tpl.id);
     render();
   };
 
-  const files = docs.map((d) => ({ id: d.id, name: d.filename }));
+  const files = docs.map((d) => {
+    const active = api.isDocumentActive(d);
+    return {
+      id: d.id,
+      name: d.filename,
+      muted: !active,
+      trailing: toggle({
+        checked: active,
+        label: null,
+        onChange: async (v) => {
+          try {
+            await api.updateDocument(tpl.id, d.id, { active: v });
+            await reloadDocs();
+          } catch (err) {
+            toast(`Opslaan mislukt: ${err.message}`, "error");
+          }
+        },
+      }),
+    };
+  });
 
   const preview = selected ? docPreview(selected, { tpl, store, reloadDocs }) : emptyPreview();
 
   const uploadInput = h("input", { type: "file", multiple: true, hidden: true });
   uploadInput.addEventListener("change", async () => {
     try {
-      const uploaded = [];
-      for (const file of uploadInput.files || []) uploaded.push((await api.uploadDocument(file)).document);
+      for (const file of uploadInput.files || []) await api.uploadDocument(tpl.id, file);
       toast("Document(en) geüpload", "success");
       // Select and preview the (first) uploaded document.
       if (uploaded[0]) ui.docId = uploaded[0].id;
@@ -63,7 +82,7 @@ function emptyPreview() {
 
 function docPreview(doc, { tpl, store, reloadDocs }) {
   const readOnly = tpl.mock;
-  const usedIn = store.flow.steps.filter((s) => api.stepDocumentIds(s).has(doc.id));
+  const usedIn = store.flow.steps.filter((s) => api.getStepDocumentIds(s).has(String(doc.id)));
 
   const actions = h(
     "div",
@@ -77,7 +96,7 @@ function docPreview(doc, { tpl, store, reloadDocs }) {
           const name = await askText({ title: "Document hernoemen", label: "Bestandsnaam", value: doc.filename, confirm: "Hernoemen", required: true });
           if (!name || name === doc.filename) return;
           try {
-            await api.updateDocument(doc.id, { filename: name });
+            await api.updateDocument(tpl.id, doc.id, { filename: name });
             await reloadDocs();
           } catch (err) {
             toast(`Hernoemen mislukt: ${err.message}`, "error");
@@ -97,7 +116,7 @@ function docPreview(doc, { tpl, store, reloadDocs }) {
         onClick: async () => {
           if (!confirm(`“${doc.filename}” verwijderen?`)) return;
           try {
-            await api.deleteDocument(doc.id);
+            await api.deleteDocument(tpl.id, doc.id);
             store.ui.docId = null;
             await reloadDocs();
           } catch (err) {

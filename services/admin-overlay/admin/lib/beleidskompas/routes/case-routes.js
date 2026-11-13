@@ -23,7 +23,7 @@
  * anything else is a 500 with a generic message.
  */
 
-const { StoreError } = require("./store");
+const { StoreError } = require("../store-errors");
 
 function suppliedToken(headers) {
   const auth = String((headers && headers.authorization) || "").trim();

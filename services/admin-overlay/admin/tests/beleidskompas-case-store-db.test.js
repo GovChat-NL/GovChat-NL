@@ -10,7 +10,7 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 
 const { connectionSettings, applyMigrations } = require("../db/connection");
-const { createStore } = require("../lib/beleidskompas/store");
+const { createCaseStore } = require("../lib/beleidskompas/case-store");
 
 const enabled = String(process.env.BELEIDSKOMPAS_DB_TEST || "").toLowerCase() === "true" && connectionSettings().host;
 
@@ -28,7 +28,7 @@ test("the store against a real Postgres", { skip: !enabled && "set BELEIDSKOMPAS
     assert.ok(applied.includes("0001-init.sql"));
     assert.deepEqual(await applyMigrations(query), [], "a second run has nothing left to apply");
 
-    const store = createStore(query);
+    const store = createCaseStore(query);
 
     assert.deepEqual(await store.setCaseText({ caseId: "conv-1", userId: "user-a", text: "De casus." }), { version: 1, unchanged: false });
     assert.deepEqual(await store.setCaseText({ caseId: "conv-1", userId: "user-a", text: "De casus." }), { version: 1, unchanged: true });
