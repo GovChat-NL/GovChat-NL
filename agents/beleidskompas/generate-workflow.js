@@ -32,8 +32,8 @@ const step4 = require('./steps/step4');
 const template = require('./template');
 
 const WORKFLOWS_DIR = path.join(__dirname, '..', 'n8n', 'workflows', 'beleidskompas');
-// The admin's seed template (section "defaults" of the admin service).
-const ADMIN_DEFAULTS_FILE = path.join(__dirname, '..', '..', 'services', 'admin-overlay', 'admin', 'defaults', 'beleidskompas-template.json');
+// The admin's seed template; the admin image carries it under lib/.
+const ADMIN_DEFAULTS_FILE = path.join(__dirname, '..', '..', 'services', 'admin-overlay', 'admin', 'lib', 'beleidskompas', 'default-template.json');
 
 const passages = JSON.parse(
   fs.readFileSync(path.join(__dirname, 'fixtures', 'source-passages.json'), 'utf-8'),
