@@ -208,6 +208,7 @@ export function setupChat(store, { refreshState }) {
     const text = chatInputEl.value.trim();
     if (!text || state.asking) return;
     chatInputEl.value = "";
+    autoGrowInput();
     if (store.caseStarted()) {
       // A message about the active substep.
       ask(store.activeSubstep(), text);
@@ -219,10 +220,18 @@ export function setupChat(store, { refreshState }) {
     }
   }
 
+  /** The field grows with its text, up to the CSS max-height. */
+  function autoGrowInput() {
+    chatInputEl.style.height = "auto";
+    chatInputEl.style.height = `${chatInputEl.scrollHeight + 2}px`;
+  }
+
   newChatBtn.addEventListener("click", () => store.startNewSession());
   sendBtn.addEventListener("click", sendUserMessage);
+  chatInputEl.addEventListener("input", autoGrowInput);
   chatInputEl.addEventListener("keydown", (e) => {
-    if (e.key === "Enter") {
+    // Shift+Enter inserts a newline; Enter sends.
+    if (e.key === "Enter" && !e.shiftKey && !e.isComposing) {
       e.preventDefault();
       sendUserMessage();
     }
