@@ -24,6 +24,7 @@ const DEFAULT_ROUTE = "editor";
 
 export const store = {
   state: null, // server state: draft, live, versions, documents, settings
+  manifest: null,
   templates: [],
   templateId: null, // nothing selected until the admin picks a template in the Editor
   flow: null, // working copy of the selected template's newest version; saved as a whole
@@ -61,8 +62,9 @@ async function loadDocuments() {
 }
 
 export async function reload() {
-  const { state } = await api.getState();
+  const { state, workflow_manifest } = await api.getState();
   store.state = state;
+  store.manifest = workflow_manifest;
   store.templates = api.listTemplates(state);
   store.flow = flowOf(template());
   store.dirty = false;

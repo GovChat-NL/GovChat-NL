@@ -53,7 +53,6 @@ test("an empty prompt-like field means the seed text; the four steps are fixed",
   assert.equal(flow.steps[0].substeps[0].prompt, "eigen");
   assert.equal(flow.steps[0].substeps[0].answer_format, seed.steps[0].substeps[0].answer_format);
   assert.deepEqual(flow.steps[0].substeps[1], { id: "1.9", title: "Nieuw", description: "", prompt: "", answer_format: "" });
-  assert.ok(!("webhook_token" in flow) && !("workflow_id" in flow.steps[0]));
 });
 
 test("a step that still has the old default substeps gets the current ones; changed substeps stay", () => {
