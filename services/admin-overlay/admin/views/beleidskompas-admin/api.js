@@ -28,7 +28,7 @@ async function request(method, url, body) {
 
 // ── Template, versions, settings ───────────────────────────────────
 
-// WIRED: GET /api/beleidskompas/state → { state }
+// WIRED: GET /api/beleidskompas/state → { state, workflow_manifest }
 export const getState = () => request("GET", `${BASE}/state`);
 
 // WIRED: POST /api/beleidskompas/settings
