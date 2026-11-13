@@ -38,13 +38,15 @@ export function renderFlow({ store, render, markDirty }) {
     renderEditor: (step) => stepEditor(step, { store, markDirty, render }),
   });
 
-  // Shared by every step: rules ({{rules}}) and the prompt templates of the step and orchestrator agents.
+  // One list for the whole flow, like rules.md on the agent side ({{rules}} in every step's prompt).
+  const rules = card("Opmaakregels", text(flow, "rules", 6, "Eén regel per regel. Gelden voor elke stap."));
+
+  // Named after the prompt files the defaults come from (agents/beleidskompas/prompts/); the label is only text.
   const prompts = card(
-    "Regels en prompts",
-    text(flow, "rules", 6, "Eén regel per regel. Gelden voor elke stap."),
-    text(flow, "report_prompt", 10, "Prompt voor het stapresultaat. Plaatshouders: {{role}} {{substeps}} {{rules}} {{substep_format}}."),
-    text(flow, "conversation_prompt", 10, "Prompt voor de gewone gespreksbeurten in een stap."),
-    text(flow, "orchestrator_prompt", 6, "Prompt waarmee de assistent de stap kiest. Plaatshouders: {{steps}} {{active_nr}}."),
+    "Prompts",
+    text(flow, "report_prompt", 10, "Prompt voor het stapresultaat; standaard uit prompts/report-prompt.md. Plaatshouders: {{role}} {{substeps}} {{rules}} {{substep_format}}."),
+    text(flow, "conversation_prompt", 10, "Prompt voor de gewone gespreksbeurten in een stap; standaard uit prompts/conversation-prompt.md."),
+    text(flow, "orchestrator_prompt", 6, "Prompt waarmee de assistent de stap kiest; standaard uit prompts/orchestrator-prompt.md. Plaatshouders: {{steps}} {{active_nr}}."),
     text(flow, "report_disclaimer", 2, "Staat onder elk stapresultaat."),
   );
 
@@ -56,14 +58,14 @@ export function renderFlow({ store, render, markDirty }) {
     text(flow.messages, "store_warning", 2, "Toegevoegd onder het antwoord als opslaan tijdelijk mislukt."),
   );
 
-  return { content: h("div", { class: "stack" }, notice, prompts, messages, list) };
+  return { content: h("div", { class: "stack" }, notice, rules, prompts, messages, list) };
 }
 
 const LABELS = {
   rules: "Regels voor alle stappen",
-  report_prompt: "Prompt stapresultaat",
-  conversation_prompt: "Prompt gesprek",
-  orchestrator_prompt: "Prompt stapkeuze",
+  report_prompt: "Report prompt",
+  conversation_prompt: "Conversation prompt",
+  orchestrator_prompt: "Orchestrator prompt",
   report_disclaimer: "Disclaimer onder stapresultaat",
   unknown_step: "Stap onbekend",
   store_missing: "Casusopslag ontbreekt",
