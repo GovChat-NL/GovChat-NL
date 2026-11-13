@@ -3,7 +3,7 @@
 
 COMPOSE := docker compose --profile admin-overlay
 
-.PHONY: help env up down logs reload-workflows rebuild rebuild-admin check test-beleidskompas test-beleidskompas-db generate-workflows
+.PHONY: help env up down logs reload-workflows rebuild rebuild-admin check test-beleidskompas test-beleidskompas-db generate-workflows replenish-beleidskompas-db
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z0-9_-]+:.*## ' $(MAKEFILE_LIST) | sed -E 's/:.*## /: /' | sort
@@ -46,8 +46,13 @@ test-beleidskompas: ## Run the Beleidskompas unit tests: the workflows, the page
 	cd overlay/src/apps/beleidskompas && node --test
 	cd services/admin-overlay/admin && node --test
 
-test-beleidskompas-db: ## Run the Beleidskompas store against the real database, inside the admin container (the stack must be running)
-	$(COMPOSE) run --rm --no-deps -e BELEIDSKOMPAS_DB_TEST=true -v ./services/admin-overlay/admin/tests:/app/tests:ro govchat-overlay-admin node --test tests/beleidskompas-db.test.js
+replenish-beleidskompas-db: env ## Wipe the Beleidskompas templates and reload the demo seed data (asks for confirmation)
+	scripts/replenish-beleidskompas-db.sh
+
+test-beleidskompas-db: ## Run the Beleidskompas stores (cases and templates) against the real database, inside the admin container (the stack must be running)
+	$(COMPOSE) run --rm --no-deps -e BELEIDSKOMPAS_DB_TEST=true \
+		-v ./services/admin-overlay/admin/tests:/app/tests:ro \
+		govchat-overlay-admin node --test tests/beleidskompas-case-store-db.test.js tests/beleidskompas-template-store.test.js
 
 generate-workflows: ## Regenerate the Beleidskompas workflows (orchestrator and the steps) from agents/beleidskompas
 	cd agents/beleidskompas && node generate-workflow.js

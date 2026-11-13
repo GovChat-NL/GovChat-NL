@@ -6,8 +6,8 @@ import { versionLabel, newestVersion, versionOptions } from "../app.js";
 
 export function renderDeploy({ store, render, reload }) {
   const ui = store.ui;
-  const tpl = store.templates.find((t) => t.id === ui.depTemplate) || store.templates.find((t) => t.id === store.templateId) || store.templates[0];
-  const version = tpl.versions.find((v) => v.id === ui.depVersion) || newestVersion(tpl);
+  const tpl = store.templates.find((t) => String(t.id) === String(ui.depTemplate)) || store.templates.find((t) => t.id === store.templateId) || store.templates[0];
+  const version = tpl.versions.find((v) => String(v.id) === String(ui.depVersion)) || newestVersion(tpl);
   const live = tpl.versions.find((v) => v.id === tpl.live_version_id);
 
   const filters = h(
@@ -43,7 +43,7 @@ export function renderDeploy({ store, render, reload }) {
             try {
               await api.deployVersion(tpl, version.id);
               if (!tpl.mock) await reload();
-              toast(`${label} staat live`, "success");
+              toast(`${label} is live`, "success");
               render();
             } catch (err) {
               toast(`Live zetten mislukt: ${err.message}`, "error");
@@ -51,7 +51,7 @@ export function renderDeploy({ store, render, reload }) {
           },
         },
         icon("upload", 14),
-        isLive ? "Deze versie staat al live" : `${versionLabel(tpl, version.id)} live zetten`,
+        isLive ? "Deze versie is al live" : `${versionLabel(tpl, version.id)} live zetten`,
       ),
     ),
   );

@@ -4,12 +4,13 @@
   "description": "GovChat Admin Panel - beheer handleiding en apps configuratie",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js"
+    "start": "node server.js",
+    "test": "node --test"
   },
   "dependencies": {
-    "express": "^4.21.0",
     "cookie-parser": "^1.4.7",
-    "pg": "^8.13.1",
+    "express": "^4.21.0",
+    "pg": "^8.23.1",
     "sharp": "^0.34.3",
     "ws": "^8.18.3"
   }

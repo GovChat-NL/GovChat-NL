@@ -3,8 +3,8 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 
-const { createBeleidskompasHandlers } = require("../lib/beleidskompas/routes");
-const { StoreError } = require("../lib/beleidskompas/store");
+const { createBeleidskompasHandlers } = require("../lib/beleidskompas/routes/case-routes");
+const { StoreError } = require("../lib/beleidskompas/store-errors");
 
 /** A store that records what it was asked and answers what the test says. */
 function fakeStore(answers = {}) {

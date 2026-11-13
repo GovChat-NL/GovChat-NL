@@ -1,11 +1,4 @@
 // All data access for the Beleidskompas admin UI lives here.
-// Each function is marked:
-//   WIRED: calls the admin server (server.js), the data is real.
-//   MOCK:  no backend yet; sample or in-memory data. The number says what is mocked:
-//          #1 several templates, #2 documents read by the assistant, #4 the version a
-//          feedback item belongs to, #5 the answer a feedback item is about.
-
-import { MOCK_TEMPLATES, REAL_TEMPLATE, mockAnswerText } from "./mock-data.js";
 
 const BASE = "/api/beleidskompas";
 
@@ -28,113 +21,91 @@ async function request(method, url, body) {
 
 // ── Template, versions, settings ───────────────────────────────────
 
-// WIRED: GET /api/beleidskompas/state → { state, workflow_manifest }
+// WIRED: GET /api/beleidskompas/state → { templates, settings, live, workflow_manifest }
 export const getState = () => request("GET", `${BASE}/state`);
 
 // WIRED: POST /api/beleidskompas/settings
 export const saveSettings = (settings) => request("POST", `${BASE}/settings`, settings);
 
-// WIRED: POST /api/beleidskompas/publish with live: false. Saves the flow as a new version; it does not go live.
-export const saveVersion = (flow, note) => request("POST", `${BASE}/publish`, { flow, note, live: false });
+// WIRED: POST /api/beleidskompas/templates/:id/versions. Saves the flow as a new version; published when the template is live.
+export const publishVersion = (templateId, flow, note) => request("POST", `${BASE}/templates/${templateId}/versions`, { flow, note });
 
-// WIRED: POST /api/beleidskompas/rollback/:id makes an existing version live (the Deploy page).
+// WIRED: POST /api/beleidskompas/templates/:id/versions/:versionId/deploy makes an existing version live (the Deploy page).
 // MOCK #1: for a sample template the live version changes in this browser tab only.
 export function deployVersion(tpl, versionId) {
-  if (!tpl.mock) return request("POST", `${BASE}/rollback/${encodeURIComponent(versionId)}`);
+  if (!tpl.mock) return request("POST", `${BASE}/templates/${tpl.id}/versions/${encodeURIComponent(versionId)}/deploy`);
   tpl.live_version_id = versionId;
   for (const v of tpl.versions) v.is_live = v.id === versionId;
   return Promise.resolve({ ok: true });
 }
 
-// WIRED: GET /api/beleidskompas/export (the whole state as JSON)
-export const exportUrl = () => `${BASE}/export`;
+// WIRED: GET /api/beleidskompas/templates/:id/export (one template as JSON)
+export const exportUrl = (templateId) => `${BASE}/templates/${templateId}/export`;
 
 // WIRED: POST /api/beleidskompas/import
 export const importState = (json) => request("POST", `${BASE}/import`, json);
 
-// MOCK #1: the server stores one template without a name. The real one is shown as
-// REAL_TEMPLATE with the server's versions; the others are sample templates.
-export function listTemplates(state) {
-  const real = {
-    ...REAL_TEMPLATE,
-    live_version_id: state.live_version_id,
-    versions: state.versions,
-  };
-  const templates = [real, ...MOCK_TEMPLATES];
-  // Newest version first; the rest of the UI relies on this order.
-  for (const t of templates) t.versions.sort((a, b) => b.published_at.localeCompare(a.published_at));
-  return templates;
-}
+export const listTemplates = (state) => state.templates;
 
-// MOCK #1: "Opslaan als nieuw template" only adds the template to this browser tab.
-export function saveAsNewTemplate(name, flow) {
-  const now = new Date().toISOString();
-  const id = `mock-${Date.now()}`;
-  const template = {
-    id,
-    name,
-    mock: true,
-    live_version_id: `${id}-v1`,
-    versions: [{ id: `${id}-v1`, published_at: now, published_by: "Mock", note: "Eerste versie", is_live: true, snapshot: structuredClone(flow) }],
-    documents: [],
-    feedback: [],
-  };
-  MOCK_TEMPLATES.push(template);
-  return template;
-}
+// WIRED: POST /api/beleidskompas/templates (copy of templateId with the given flow)
+export const saveAsNewTemplate = (templateId, name, flow) =>
+  request("POST", `${BASE}/templates`, { name, flow, from_template_id: templateId }).then((d) => d.template);
 
 // ── Documents ──────────────────────────────────────────────────────
 
-// WIRED: GET /api/beleidskompas/documents (one shared library, without file contents)
-export const listDocuments = () => request("GET", `${BASE}/documents`).then((d) => d.documents || []);
+// WIRED: GET /api/beleidskompas/templates/:id/documents (without file contents)
+export const listDocuments = (templateId) => request("GET", `${BASE}/templates/${templateId}/documents`).then((d) => d.documents || []);
 
-// WIRED: POST /api/beleidskompas/documents (file sent as base64)
-export async function uploadDocument(file) {
+// WIRED: POST /api/beleidskompas/templates/:id/documents (file sent as base64)
+export async function uploadDocument(templateId, file) {
   const contentBase64 = await new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = () => resolve(String(reader.result).split(",")[1] || "");
     reader.onerror = () => reject(reader.error);
     reader.readAsDataURL(file);
   });
-  return request("POST", `${BASE}/documents`, {
+  return request("POST", `${BASE}/templates/${templateId}/documents`, {
     filename: file.name,
     mime_type: file.type || "application/octet-stream",
     content_base64: contentBase64,
   });
 }
 
-// WIRED: PATCH /api/beleidskompas/documents/:id (rename)
-export const updateDocument = (id, patch) => request("PATCH", `${BASE}/documents/${encodeURIComponent(id)}`, patch);
+// WIRED: PATCH /api/beleidskompas/templates/:id/documents/:docId ({ filename } or { active })
+export const updateDocument = (templateId, id, patch) => request("PATCH", `${BASE}/templates/${templateId}/documents/${id}`, patch);
 
-// WIRED: DELETE /api/beleidskompas/documents/:id
-export const deleteDocument = (id) => request("DELETE", `${BASE}/documents/${encodeURIComponent(id)}`);
+// WIRED: DELETE /api/beleidskompas/templates/:id/documents/:docId
+export const deleteDocument = (templateId, id) => request("DELETE", `${BASE}/templates/${templateId}/documents/${id}`);
 
 // WIRED: GET /api/beleidskompas/documents/:id/download
-export const downloadUrl = (id) => `${BASE}/documents/${encodeURIComponent(id)}/download`;
+export const downloadUrl = (id) => `${BASE}/documents/${id}/download`;
 
-// WIRED: the step's documents are saved in the template (step.document_ids) on publish.
-// MOCK #2: the assistant does not read document_ids yet.
-export const stepDocumentIds = (step) => new Set(step.document_ids || []);
+export const isDocumentActive = (doc) => doc.active;
+
+// Step documents live in the flow (step.document_ids, as strings) and are saved on publish.
+export const getStepDocumentIds = (step) => new Set((step.document_ids || []).map(String));
+export function setStepDocument(step, docId, checked) {
+  const ids = getStepDocumentIds(step);
+  if (checked) ids.add(String(docId));
+  else ids.delete(String(docId));
+  step.document_ids = [...ids];
+}
 
 // ── Feedback ───────────────────────────────────────────────────────
 
 // WIRED: GET /api/beleidskompas-feedback → anonymous items { id, rating, comment, step_id, created_at }.
-// MOCK #4: items carry no template or version yet. Real feedback can only come from the one
-// real template; its version is guessed as the one published last before the feedback.
-// MOCK #5: the answer the user reacted to is not stored, so a sample text is shown.
+// Items carry no template or version yet; they are attributed to the first template, and the
+// version is guessed as the one published last before the feedback.
 export async function listFeedback(templates) {
   const data = await request("GET", "/api/beleidskompas-feedback");
-  const real = templates.find((t) => !t.mock);
+  const real = templates[0];
   const versions = real?.versions || []; // newest first
-  const realItems = (data.items || []).map((item) => {
+  return (data.items || []).map((item) => {
     const version = versions.find((v) => v.published_at <= item.created_at) || versions.at(-1);
     return {
       ...item,
       template_id: real?.id,
       version_id: version?.id || null,
-      answer_text: mockAnswerText(item.step_id),
     };
   });
-  const mockItems = templates.filter((t) => t.mock).flatMap((t) => t.feedback || []);
-  return [...realItems, ...mockItems];
 }

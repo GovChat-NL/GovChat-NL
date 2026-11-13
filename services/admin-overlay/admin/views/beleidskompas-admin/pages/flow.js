@@ -77,7 +77,7 @@ export function renderFlow({ store, render, markDirty }) {
 
 function stepEditor(step, { store, markDirty, render }) {
   step.rag = step.rag || {};
-  const docIds = api.stepDocumentIds(step);
+  const docIds = api.getStepDocumentIds(step);
 
   const texts = h(
     "div",
@@ -98,6 +98,7 @@ function stepEditor(step, { store, markDirty, render }) {
     }),
   );
 
+  const docs = store.documents.filter((d) => api.isDocumentActive(d));
   const docList = h(
     "div",
     { class: "doc-checks" },
@@ -105,14 +106,9 @@ function stepEditor(step, { store, markDirty, render }) {
       ? store.documents.map((d) =>
           toggle({
             form: "check",
-            checked: docIds.has(d.id),
+            checked: docIds.has(String(d.id)),
             label: d.filename,
-            onChange: (v) => {
-              if (v) docIds.add(d.id);
-              else docIds.delete(d.id);
-              step.document_ids = [...docIds];
-              markDirty();
-            },
+            onChange: (v) => { api.setStepDocument(step, d.id, v); markDirty(); },
           }),
         )
       : h("p", { class: "muted" }, "Nog geen documenten in de Documentenbibliotheek."),

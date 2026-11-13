@@ -1,11 +1,12 @@
 "use strict";
 
 /**
- * The Beleidskompas store: reading and writing the state of a case. The
- * tables are described in db/migrations (at the root of the service).
+ * The case store: reading and writing the state of a Beleidskompas case. The
+ * tables are described in db/migrations (at the root of the service). The
+ * templates of the admin are in template-store.js.
  *
- * createStore takes a `query(sql, params)` function that resolves to
- * `{ rows }`, the shape of pg's Pool.query, so server.js passes a real pool
+ * createCaseStore takes a `query(sql, params)` function that resolves to
+ * `{ rows }`, the shape of pg's Pool.query, so the service passes a real pool
  * and the unit tests pass a stand-in.
  *
  * Every function takes the user id of the caller. A case of another user
@@ -15,15 +16,7 @@
  * the case theirs.
  */
 
-class StoreError extends Error {
-  constructor(status, message) {
-    super(message);
-    this.status = status;
-  }
-}
-
-// Postgres raises this code when an insert hits an existing primary key.
-const UNIQUE_VIOLATION = "23505";
+const { StoreError, withOneRetry } = require("./store-errors");
 
 function requireText(value, name) {
   const text = String(value || "").trim();
@@ -31,21 +24,8 @@ function requireText(value, name) {
   return text;
 }
 
-/** Runs `insert` again once when it collides with a version number that
- *  another insert took in the meantime. The version is read and written in
- *  one statement, so a collision is rare and the second try gets the next
- *  number. */
-async function withOneRetry(insert) {
-  try {
-    return await insert();
-  } catch (err) {
-    if (err && err.code === UNIQUE_VIOLATION) return insert();
-    throw err;
-  }
-}
-
-function createStore(query) {
-  if (typeof query !== "function") throw new Error("createStore needs a query function");
+function createCaseStore(query) {
+  if (typeof query !== "function") throw new Error("createCaseStore needs a query function");
 
   /** The case row when it exists and belongs to `userId`, otherwise null. */
   async function ownedCase(caseId, userId) {
@@ -193,4 +173,4 @@ function createStore(query) {
   return { ensureCase, setCaseText, addReport, addTurn, setTitle, getState, listCases };
 }
 
-module.exports = { StoreError, createStore };
+module.exports = { createCaseStore };

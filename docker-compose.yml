@@ -805,6 +805,7 @@ services:
     profiles:
       - rag
       - admin
+      - admin-overlay
     networks:
       - librechat-net
 
@@ -896,6 +897,7 @@ services:
       - BELEIDSKOMPAS_N8N_BASE_URL=${BELEIDSKOMPAS_N8N_BASE_URL:-http://n8n:5678}
       - BELEIDSKOMPAS_N8N_WEBHOOK_TOKEN=${BELEIDSKOMPAS_N8N_WEBHOOK_TOKEN:-${N8N_WEBHOOK_TOKEN}}
       - BELEIDSKOMPAS_DB_HOST=beleidskompas-postgres
+      - BELEIDSKOMPAS_DEV_SEED=${BELEIDSKOMPAS_DEV_SEED:-false}
       - BELEIDSKOMPAS_DB_PASSWORD=${BELEIDSKOMPAS_POSTGRES_PASSWORD}
       - BELEIDSKOMPAS_STORE_TOKEN=${BELEIDSKOMPAS_STORE_TOKEN}
       - IMAGE_JOBS_ENABLED=${IMAGE_JOBS_ENABLED:-false}
