@@ -6,6 +6,7 @@ const http = require('node:http');
 
 const { STEP_ROUTES, UNKNOWN_STEP_TEXT, STORE_MISSING_TEXT, STORE_FAILED_TEXT, STORE_WARNING_TEXT, chooseStep, buildStepRequest, runOrchestrator } = require('../orchestrator');
 const { parsePageMessage } = require('../shared');
+const { DEFAULT_TEMPLATE } = require('../template');
 
 // The same shape generate-workflow.js builds for the orchestrator workflow.
 const SUMMARIES = ['step1', 'step2', 'step3', 'step4'].map((name) => {
@@ -29,12 +30,15 @@ let storeState = null;
 let storeCaseText = null;
 // When set, store calls whose url matches this pattern fail with HTTP 500.
 let storeFails = null;
+// What GET /api/beleidskompas/live answers; null means 404.
+let liveTemplate = null;
 
 function withServer(modelReply, fn) {
   const requests = [];
   storeState = null;
   storeCaseText = null;
   storeFails = null;
+  liveTemplate = { version_id: 'v1', flow: DEFAULT_TEMPLATE, settings: { default_model: 'govchat-default' } };
   return new Promise((resolve, reject) => {
     const server = http.createServer((req, res) => {
       let body = '';
@@ -45,6 +49,9 @@ function withServer(modelReply, fn) {
         if (req.url.startsWith('/api/beleidskompas/') && storeFails && storeFails.test(req.url)) {
           res.statusCode = 500;
           res.end(JSON.stringify({ error: 'store down' }));
+        } else if (req.url === '/api/beleidskompas/live') {
+          if (!liveTemplate) res.statusCode = 404;
+          res.end(JSON.stringify(liveTemplate || { error: 'not found' }));
         } else if (req.url.endsWith('/v1/chat/completions')) {
           res.end(JSON.stringify({ choices: [{ message: { content: modelReply } }] }));
         } else if (req.url.startsWith('/api/beleidskompas/') && req.method === 'GET') {
@@ -211,7 +218,7 @@ test('runOrchestrator refuses a message from the page that names no known step',
 test('a report request writes the case text and the report to the store', async () => {
   await withServer('1', async (baseUrl, requests) => {
     const result = await runOrchestrator({ input: bridgeInput(pageMessage({ substep_id: '1.3', case_text: 'Laadpalen.' })), env: STORE_ENV(baseUrl), summaries: SUMMARIES, fetchImpl: global.fetch });
-    assert.deepEqual(result.store, { enabled: true, read: true, written: ['case_text', 'report'], errors: [] });
+    assert.deepEqual(result.store, { enabled: true, read: true, written: ['case_text', 'report'], errors: [], template: 'live' });
     const text = requests.find((r) => r.url === '/api/beleidskompas/cases/conv-1/text');
     assert.deepEqual(text.body, { user_id: 'user-a', text: 'Laadpalen.' });
     const report = requests.find((r) => r.url === '/api/beleidskompas/cases/conv-1/reports');
@@ -264,7 +271,7 @@ test('without the store settings, or without the conversation from the bridge, t
     assert.equal(result.ok, false);
     assert.equal(result.error, 'No conversation or user from the bridge');
     assert.equal(result.text, STORE_MISSING_TEXT);
-    assert.deepEqual(requests, []);
+    assert.deepEqual(outsideStore(requests), []);
   });
 });
 
@@ -381,5 +388,38 @@ test('a new case gets an empty state with only the case text from the page, and 
     assert.equal(sent.case_text, 'De casus van de pagina.');
     assert.equal(sent.findings, '');
     assert.equal(sent.conversation, '');
+  });
+});
+
+test('the live template of the admin reaches the step: its substeps, rules, prompts, model and messages', async () => {
+  await withServer('1', async (baseUrl, requests) => {
+    liveTemplate = {
+      version_id: 'v9',
+      flow: { ...DEFAULT_TEMPLATE, rules: 'Eigen regel', report_disclaimer: 'Eigen disclaimer', messages: { store_warning: 'Eigen waarschuwing' },
+        steps: DEFAULT_TEMPLATE.steps.map((s) => (s.id === 'stap1' ? { ...s, prompt: 'Eigen rol', substeps: [{ id: '1.3', title: 'Eigen titel', prompt: 'Eigen instructie', answer_format: '### Eigen' }] } : s)) },
+      settings: { default_model: 'eigen-model' },
+    };
+    storeFails = /\/reports$/;
+    const result = await runOrchestrator({ input: bridgeInput(pageMessage({ substep_id: '1.3', case_text: 'Laadpalen.' })), env: STORE_ENV(baseUrl), fetchImpl: global.fetch });
+    const sent = outsideStore(requests)[0].body;
+    assert.deepEqual(sent.template, {
+      version_id: 'v9', model: 'eigen-model', rules: 'Eigen regel', report_prompt: DEFAULT_TEMPLATE.report_prompt, conversation_prompt: DEFAULT_TEMPLATE.conversation_prompt, report_disclaimer: 'Eigen disclaimer',
+      step: { id: 'stap1', nr: 1, title: 'Publiek en provinciaal belang', role: 'Eigen rol', substeps: [{ id: '1.3', title: 'Eigen titel', instruction: 'Eigen instructie', format: '### Eigen' }] },
+    });
+    assert.equal(result.store.template, 'live');
+    assert.ok(result.text.startsWith('Eigen waarschuwing'), 'the warning text comes from the template');
+  });
+});
+
+test('without a readable live template the seed stands in and the step still gets a template', async () => {
+  await withServer('1', async (baseUrl, requests) => {
+    liveTemplate = null;
+    const result = await runOrchestrator({ input: bridgeInput(pageMessage({ substep_id: '1.3', case_text: 'Laadpalen.' })), env: STORE_ENV(baseUrl), fetchImpl: global.fetch });
+    assert.equal(result.ok, true);
+    assert.match(result.store.template, /^fallback/);
+    const sent = outsideStore(requests)[0].body;
+    assert.equal(sent.template.version_id, null);
+    assert.equal(sent.template.step.substeps.length, 5);
+    assert.equal(sent.template.rules, DEFAULT_TEMPLATE.rules);
   });
 });

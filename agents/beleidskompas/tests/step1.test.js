@@ -271,3 +271,35 @@ test('runStep reports a failing language model with a message for the chat', asy
     },
   );
 });
+
+test('runStep takes the step, the rules, the prompt and the disclaimer from the template in the request, with STEP as fallback', async () => {
+  let sent = null;
+  await withMockLiteLLM(
+    (req, res) => {
+      let body = '';
+      req.on('data', (c) => (body += c));
+      req.on('end', () => {
+        sent = JSON.parse(body);
+        res.writeHead(200, { 'content-type': 'application/json' });
+        res.end(JSON.stringify({ choices: [{ message: { content: '### Eigen\nTekst' } }] }));
+      });
+    },
+    async (baseUrl) => {
+      const template = {
+        model: 'eigen-model',
+        rules: 'Eigen regel\n\nTweede regel',
+        report_prompt: 'ROL {{role}} REGELS {{rules}} VORM {{substep_format}}',
+        report_disclaimer: 'Eigen disclaimer',
+        step: { id: 'stap1', nr: 1, title: 'Stap', role: 'Eigen rol', substeps: [{ id: '1.9', title: 'Nieuw', instruction: 'Doe dit', format: '### Eigen' }] },
+      };
+      const result = await runStep(STEP, { input: webhookInput({ ...sampleCase, substep_id: '1.9', template }), env: { LITELLM_URL: baseUrl, LITELLM_API_KEY: 'test-key' }, passages, fetchImpl: global.fetch });
+      assert.equal(result.ok, true, result.text);
+      assert.equal(sent.model, 'eigen-model');
+      assert.equal(sent.messages[0].content, 'ROL Eigen rol REGELS - Eigen regel\n- Tweede regel VORM ### Eigen');
+      assert.ok(result.answer.endsWith('---\nEigen disclaimer'));
+      // A template for another step is ignored: 1.9 is then unknown.
+      const other = await runStep(STEP, { input: webhookInput({ ...sampleCase, substep_id: '1.9', template: { ...template, step: { ...template.step, id: 'stap2' } } }), env: { LITELLM_URL: baseUrl, LITELLM_API_KEY: 'test-key' }, passages, fetchImpl: global.fetch });
+      assert.equal(other.error, 'Unknown substep');
+    },
+  );
+});

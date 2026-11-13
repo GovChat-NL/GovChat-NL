@@ -31,6 +31,10 @@
 
 const { ORCHESTRATOR_PROMPT_TEMPLATE, extractSuppliedToken, parsePageMessage, requestRaw, callLiteLLM, isTitleRequest, extractConvoCaseText, buildTitleResponse } = require('./shared');
 const { createStoreClient } = require('./store-client');
+// The admin's live template is what the steps get at request time; without
+// it (no store, admin down) the template generated from the prompt files
+// stands in, so the chat keeps working with the seed texts.
+const { DEFAULT_TEMPLATE: TEMPLATE_DEFAULTS, DEFAULT_MESSAGES, stepFromTemplate } = require('./template');
 
 // Which step id belongs to which webhook path in n8n. The paths are the
 // addresses of the four step workflows.
@@ -74,14 +78,30 @@ function determineStep(parts, routes) {
   return Object.prototype.hasOwnProperty.call(routes, stepId) ? stepId : '';
 }
 
+/** What the orchestrator knows about a step of the template: number,
+ *  title, role and the substeps (titles for the model that picks a step, ids
+ *  for the order of the reports). The instructions stay out; they are for
+ *  the step itself. */
+function stepSummary(step, index) {
+  const substeps = Array.isArray(step.substeps) ? step.substeps : [];
+  return {
+    id: step.id,
+    nr: Number(step.nr) || index + 1,
+    title: String(step.title || ''),
+    role: String(step.prompt || ''),
+    substeps: substeps.map((substep) => String(substep.title || '')),
+    substep_ids: substeps.map((substep) => substep.id),
+  };
+}
+
 /** Asks the model which step a typed message is about, and returns that
  *  step's id. `summaries` describes the steps the model can choose from
- *  (see stepSummary in generate-workflow.js): id, number, title, role and
- *  substep titles. The model answers with a number only. When it names no
- *  step in `routes`, cannot be reached, or is not configured, the answer is
- *  `activeStepId`, the step the user is in: a wrong guess would send the
- *  message to a step it is not about. */
-async function chooseStep({ message, activeStepId, summaries, routes, env, fetchImpl, httpModule, httpsModule, urlModule }) {
+ *  (see stepSummary): id, number, title, role and substep titles. The model
+ *  answers with a number only. When it names no step in `routes`, cannot
+ *  be reached, or is not configured, the answer is `activeStepId`, the step
+ *  the user is in: a wrong guess would send the message to a step it is
+ *  not about. `model` and `promptTemplate` come from the live template. */
+async function chooseStep({ message, activeStepId, summaries, routes, env, model, promptTemplate, fetchImpl, httpModule, httpsModule, urlModule }) {
   const steps = Array.isArray(summaries) ? summaries : [];
   const litellmUrl = String((env && env.LITELLM_URL) || '').trim();
   const litellmApiKey = String((env && (env.LITELLM_API_KEY || env.OPENAI_API_KEY)) || '').trim();
@@ -91,14 +111,14 @@ async function chooseStep({ message, activeStepId, summaries, routes, env, fetch
   const list = steps
     .map((s) => `${s.nr}. ${s.title}. ${String(s.role || '').trim()} Deelstappen: ${(s.substeps || []).join(', ')}.`)
     .join('\n');
-  const systemPrompt = ORCHESTRATOR_PROMPT_TEMPLATE.replaceAll('{{steps}}', list).replaceAll('{{active_nr}}', String(active.nr));
+  const systemPrompt = String(promptTemplate || ORCHESTRATOR_PROMPT_TEMPLATE).replaceAll('{{steps}}', list).replaceAll('{{active_nr}}', String(active.nr));
 
   let raw;
   try {
     raw = await callLiteLLM({
       baseUrl: litellmUrl,
       apiKey: litellmApiKey,
-      model: (env && env.BELEIDSKOMPAS_MODEL) || 'govchat-default',
+      model: model || (env && env.BELEIDSKOMPAS_MODEL) || 'govchat-default',
       systemPrompt,
       userPrompt: String(message).slice(0, 4000),
       timeoutMs: 20000,
@@ -148,13 +168,16 @@ function contextFromState(state, { substepId, forReport, summaries }) {
 
 /** What a step workflow receives: the parts of the message as fields, the
  *  reports and the conversation from the store (`findings` and
- *  `conversation`, see contextFromState), plus who is asking. The substep
- *  only goes along when it belongs to `stepId`; a message sent to another
- *  step is about that whole step. `asked_from` always says which substep
- *  the user was in. */
-function buildStepRequest(stepId, parts, body) {
+ *  `conversation`, see contextFromState), who is asking, and under
+ *  `template` what the step needs from the live template: its own
+ *  definition, the rules, the prompt texts, the disclaimer and the model.
+ *  The substep only goes along when it belongs to `stepId`; a message sent
+ *  to another step is about that whole step. `asked_from` always says which
+ *  substep the user was in. */
+function buildStepRequest(stepId, parts, body, live) {
   const b = body && typeof body === 'object' ? body : {};
   const ownSubstep = stepId === parts.stepId ? parts.substepId || null : null;
+  const t = live && live.template ? live.template : null;
   return {
     step_id: stepId,
     substep_id: ownSubstep,
@@ -165,6 +188,17 @@ function buildStepRequest(stepId, parts, body) {
     message: parts.message,
     sessionId: b.sessionId || null,
     userId: b.userId || null,
+    template: t
+      ? {
+          version_id: live.versionId || null,
+          model: live.model || null,
+          rules: String(t.rules || ''),
+          report_prompt: String(t.report_prompt || ''),
+          conversation_prompt: String(t.conversation_prompt || ''),
+          report_disclaimer: String(t.report_disclaimer || ''),
+          step: stepFromTemplate(t, stepId),
+        }
+      : undefined,
   };
 }
 
@@ -237,7 +271,7 @@ async function forwardToStep({ baseUrl, path, stepId, body, callerToken, timeout
  *  the answer in the store. The returned object is what the workflow
  *  responds with. */
 async function runOrchestrator(ctx) {
-  const { input, env, summaries, fetchImpl, httpModule, httpsModule, urlModule } = ctx;
+  const { input, env, fetchImpl, httpModule, httpsModule, urlModule } = ctx;
   const raw = input || {};
   const body = raw.body || {};
   const headers = raw.headers || {};
@@ -265,6 +299,23 @@ async function runOrchestrator(ctx) {
     return { ok: false, step_id: null, error: 'Unauthorized webhook token', text: '', answer: '' };
   }
 
+  // The live template from the admin, or the seed when it cannot be read.
+  const liveAnswer = await store.getLive();
+  const liveOk = Boolean(liveAnswer.ok && liveAnswer.payload && liveAnswer.payload.flow && Array.isArray(liveAnswer.payload.flow.steps));
+  const template = liveOk ? liveAnswer.payload.flow : TEMPLATE_DEFAULTS;
+  const settings = (liveOk && liveAnswer.payload.settings) || {};
+  const live = {
+    template,
+    versionId: liveOk ? String(liveAnswer.payload.version_id || '') : null,
+    model: String(settings.default_model || (env && env.BELEIDSKOMPAS_MODEL) || 'govchat-default'),
+  };
+  stored.template = liveOk ? 'live' : `fallback (${liveAnswer.error || 'no template in the answer'})`;
+  const msg = Object.assign({}, DEFAULT_MESSAGES, template.messages || {});
+  const summaries = template.steps.map(stepSummary);
+  // Only the steps that have a workflow can be asked.
+  const routes = {};
+  for (const step of template.steps) if (Object.prototype.hasOwnProperty.call(STEP_ROUTES, step.id)) routes[step.id] = STEP_ROUTES[step.id];
+
   // LibreChat asks for a conversation title through this same endpoint. That
   // request carries TITLE_REQUEST_MARKER (set in librechat.yaml), sometimes
   // in systemPrompt and sometimes in the message itself. It names no step,
@@ -274,28 +325,28 @@ async function runOrchestrator(ctx) {
     // The title is made from the case itself, not from the block the page
     // put behind it.
     const caseText = parsePageMessage(extractConvoCaseText(message)).caseText;
-    const titled = await buildTitleResponse({ titleSource: caseText || message, env, fetchImpl, httpModule, httpsModule, urlModule });
+    const titled = await buildTitleResponse({ titleSource: caseText || message, env, model: live.model, fetchImpl, httpModule, httpsModule, urlModule });
     await write('title', () => store.setTitle({ caseId, userId, title: titled.answer }));
     return Object.assign({}, titled, { store: stored });
   }
 
   const parts = parsePageMessage(message);
-  let activeStepId = determineStep(parts, STEP_ROUTES);
+  let activeStepId = determineStep(parts, routes);
   // A message without the block of the page was typed in LibreChat's own
   // chat: it is a question, and there is no page to say where the user is.
   if (!activeStepId && !parts.fromPage) activeStepId = DEFAULT_STEP_ID;
   if (!activeStepId) {
-    return { ok: false, step_id: null, error: 'No step recognised in the request', text: UNKNOWN_STEP_TEXT, answer: UNKNOWN_STEP_TEXT };
+    return { ok: false, step_id: null, error: 'No step recognised in the request', text: msg.unknown_step, answer: msg.unknown_step };
   }
   if (!stored.enabled) {
     const error = store.enabled ? 'No conversation or user from the bridge' : 'Store not configured';
-    return { ok: false, step_id: null, error, text: STORE_MISSING_TEXT, answer: STORE_MISSING_TEXT, store: stored };
+    return { ok: false, step_id: null, error, text: msg.store_missing, answer: msg.store_missing, store: stored };
   }
 
   // A report is always written by the step of the substep the page named.
   // A typed message is answered by the step it is about.
   const stepId = parts.message
-    ? await chooseStep({ message: parts.message, activeStepId, summaries, routes: STEP_ROUTES, env, fetchImpl, httpModule, httpsModule, urlModule })
+    ? await chooseStep({ message: parts.message, activeStepId, summaries, routes, env, model: live.model, promptTemplate: template.orchestrator_prompt, fetchImpl, httpModule, httpsModule, urlModule })
     : activeStepId;
 
   // The case text goes to the store first, so the state read next has it.
@@ -316,14 +367,14 @@ async function runOrchestrator(ctx) {
   // An error so far means the step would answer without the state of the
   // case, or the user's message would not be kept. Then better no answer.
   if (stored.errors.length) {
-    return { ok: false, step_id: null, error: stored.errors.join('; '), text: STORE_FAILED_TEXT, answer: STORE_FAILED_TEXT, store: stored };
+    return { ok: false, step_id: null, error: stored.errors.join('; '), text: msg.store_failed, answer: msg.store_failed, store: stored };
   }
 
   const result = await forwardToStep({
     baseUrl: env && env.BELEIDSKOMPAS_N8N_BASE_URL,
-    path: STEP_ROUTES[stepId],
+    path: routes[stepId],
     stepId,
-    body: buildStepRequest(stepId, context, body),
+    body: buildStepRequest(stepId, context, body, live),
     callerToken,
     timeoutMs: 120000,
     fetchImpl,
@@ -356,7 +407,7 @@ async function runOrchestrator(ctx) {
   // `text` carries the meta block behind the answer, so the warning goes
   // in front, in both.
   const warned = result.ok && stored.errors.length
-    ? Object.assign({}, result, { answer: `${STORE_WARNING_TEXT}\n\n${result.answer}`, text: `${STORE_WARNING_TEXT}\n\n${result.text}` })
+    ? Object.assign({}, result, { answer: `${msg.store_warning}\n\n${result.answer}`, text: `${msg.store_warning}\n\n${result.text}` })
     : result;
   return Object.assign({}, warned, { store: stored });
 }
@@ -370,6 +421,7 @@ module.exports = {
   STORE_WARNING_TEXT,
   incomingMessage,
   determineStep,
+  stepSummary,
   chooseStep,
   contextFromState,
   buildStepRequest,
