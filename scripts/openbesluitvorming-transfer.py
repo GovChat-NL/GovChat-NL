@@ -184,16 +184,20 @@ def sqlite_metadata(path, run_id):
                                  'BLOB' if table in ('pages', 'rejected_pages') and name == 'raw' else
                                  'REAL' if table == 'documents' and name == 'next_attempt' else 'TEXT')
                 require(column['type'].upper() == expected_type, 'sqlite_column_type_mismatch')
-        # This utility intentionally transfers ONE run/collection only.
-        require(db.execute('SELECT count(*) FROM runs').fetchone()[0] == 1, 'multiple_runs_not_portable')
+        # Preserve the entire shared checkpoint database; only the selected
+        # collection's vectors are bundled. Other runs remain historical state.
+        archived_runs = [{k: r[k] for k in RUN_FIELDS} for r in db.execute('SELECT * FROM runs ORDER BY id')]
+        require(all(r['source'] == 'provincie_limburg' for r in archived_runs), 'unrelated_checkpoint_source')
         run = db.execute('SELECT * FROM runs WHERE id=?', (run_id,)).fetchone()
         require(run is not None and run['source'] == 'provincie_limburg', 'unknown_obv_run')
         require(re.fullmatch(r'limburg_[a-zA-Z0-9_-]{1,100}', run['collection']), 'invalid_collection')
         counts = {table: db.execute(f'SELECT count(*) FROM "{table}"').fetchone()[0]
                   for table in TABLES}
         for table in TABLES.keys() - {'runs', 'contexts'}:
-            require(not db.execute(f'SELECT 1 FROM "{table}" WHERE run_id != ? LIMIT 1',
-                                   (run_id,)).fetchone(), 'unrelated_checkpoint_run')
+            require(not db.execute(f'SELECT 1 FROM "{table}" WHERE run_id NOT IN (SELECT id FROM runs) LIMIT 1').fetchone(),
+                    'orphan_checkpoint_run')
+        selected_counts = {table: db.execute(f'SELECT count(*) FROM "{table}" WHERE run_id=?', (run_id,)).fetchone()[0]
+                           for table in TABLES.keys() - {'runs', 'contexts'}}
         statuses = dict(db.execute('SELECT status,count(*) FROM documents WHERE run_id=? GROUP BY status', (run_id,)))
         require(set(statuses) <= {'pending', 'processing', 'retry', 'dead_letter', 'indexed', 'deleted'},
                 'unknown_document_status')
@@ -213,6 +217,8 @@ def sqlite_metadata(path, run_id):
                            'sql_sha256': hashlib.sha256(canonical(rows).encode()).hexdigest(),
                            'objects': rows, 'tables': columns},
                 'run': {k: run[k] for k in RUN_FIELDS}, 'table_counts': counts,
+                'archived_runs': archived_runs, 'selected_run_table_counts': selected_counts,
+                'snapshot_scope': 'selected collection only; other archived runs require separate collection migration before use',
                 'document_statuses': statuses, 'has_vector': vectors,
                 'checkpoint_sample_entities': entities,
                 'checkpoint_sample_records': records, 'refresh_audit': audit,
@@ -592,6 +598,9 @@ def export_bundle(args):
         f'Dimensions: {metadata["embedding"]["dimensions"]}\n'
         f'Exact Qdrant points: {metadata["qdrant"]["count"]}\n'
         f'Checkpoint vectors: {metadata["has_vector"]}\n'
+        f'Selected-run document records: {metadata["selected_run_table_counts"]["documents"]}\n'
+        f'Archived checkpoint runs: {len(metadata["archived_runs"])}\n'
+        f'Snapshot scope: {metadata["snapshot_scope"]}\n'
         f'Document statuses: {canonical(metadata["document_statuses"])}\n'
         f'Dead letter: {metadata["document_statuses"].get("dead_letter", 0)}\n'
         'An exhausted source snapshot does not mean every document was indexed.\n', encoding='utf-8')

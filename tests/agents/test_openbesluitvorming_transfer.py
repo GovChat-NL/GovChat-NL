@@ -203,12 +203,15 @@ class ValidationTests(Fixture):
         with self.assertRaisesRegex(transfer.Refusal, 'sqlite_columns_mismatch'):
             transfer.sqlite_metadata(self.state / 'ingest.sqlite', 'fixture')
 
-    def test_multiple_runs_refused(self):
+    def test_multiple_runs_preserved_with_selected_snapshot_scope(self):
         self.db.execute('INSERT INTO runs(id,collection,source,created_at,updated_at,model) VALUES(?,?,?,?,?,?)',
                         ('other', 'limburg_other', 'provincie_limburg', 'date', 'date', 'model'))
         self.db.commit()
-        with self.assertRaisesRegex(transfer.Refusal, 'multiple_runs'):
-            transfer.sqlite_metadata(self.state / 'ingest.sqlite', 'fixture')
+        metadata = transfer.sqlite_metadata(self.state / 'ingest.sqlite', 'fixture')
+        self.assertEqual([r['id'] for r in metadata['archived_runs']], ['fixture', 'other'])
+        self.assertEqual(metadata['table_counts']['runs'], 2)
+        self.assertEqual(metadata['selected_run_table_counts']['documents'], 1)
+        self.assertIn('separate collection migration', metadata['snapshot_scope'])
 
     def test_unknown_run(self):
         with self.assertRaisesRegex(transfer.Refusal, 'unknown_obv_run'):

@@ -3,8 +3,8 @@
 ## Scope and safety boundary
 
 This runbook is for the one-shot Python worker, **not** the retired n8n ingestion
-pipeline or the old public release/test-data restore. It transfers one Limburg
-run and its collection, including refresh history. It does not export MongoDB,
+pipeline or the old public release/test-data restore. It transfers one selected Limburg
+collection and the entire shared checkpoint database, including all runs and refresh history. It does not export MongoDB,
 LiteLLM databases, n8n, other collections, credentials or private branding.
 
 The host orchestrator is [the transfer utility](../scripts/openbesluitvorming-transfer.py).
@@ -20,7 +20,12 @@ credential injection separately rather than putting keys in command arguments.
 any point backfill script, other worker sharing state, and external Qdrant writes).
 The source worker container must already be stopped. The utility never stops or
 starts it. Its actual named `/state` volume is discovered from container mounts;
-bind mounts and multiple runs in one state database are deliberately refused.
+bind mounts are deliberately refused. Other Limburg runs in the same database are
+preserved, but their Qdrant collections are **not** bundled. Do not run those other
+run IDs on the target until their collections have been separately migrated.
+The manifest distinguishes global table counts from selected-run counts and lists
+all archived run summaries. The existing five-document sample run is historical
+checkpoint state, not part of the full dataset's 56,678 documents or 56,475 vectors.
 
 The helper acquires the same global `worker.lock` kernel flock as the worker and
 holds it across read-only SQLite backup, native Qdrant snapshot creation/download,
