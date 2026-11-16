@@ -1,0 +1,52 @@
+# Separate ingestion project beside an existing GovChat/Qdrant deployment.
+# This file contains NO Qdrant, database, LiteLLM, n8n or public port definitions.
+services:
+  openbesluitvorming-ingest:
+    build:
+      context: ./services/openbesluitvorming-ingest
+    image: govchat-openbesluitvorming-ingest:local
+    restart: "no"
+    init: true
+    mem_limit: 2g
+    environment:
+      LITELLM_URL: ${LITELLM_URL:-http://litellm:4000}
+      LITELLM_API_KEY: ${LITELLM_API_KEY:-}
+      OBV_QDRANT_URL: ${OBV_QDRANT_URL:?Set the existing Qdrant container URL}
+      OBV_TIKA_URL: ${OBV_TIKA_URL:-http://obv-ingest-tika:9998/tika}
+      OBV_EMBEDDING_MODEL: ${OBV_EMBEDDING_MODEL:-govchat-embedding}
+      OBV_WORKERS: "2"
+      OBV_ATTACHMENT_MAX_BYTES: "268435456"
+      OBV_DOCUMENT_MAX_CHARS: "10000000"
+    volumes:
+      - openbesluitvorming-ingest-state:/state
+    networks:
+      - existing-govchat
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    logging:
+      driver: local
+      options:
+        max-size: 10m
+        max-file: "5"
+
+  # Optional dedicated parser; started explicitly, never as an ingest trigger.
+  obv-ingest-tika:
+    image: apache/tika:3.2.3.0-full
+    profiles:
+      - parser
+    restart: unless-stopped
+    mem_limit: 2g
+    expose:
+      - "9998"
+    networks:
+      - existing-govchat
+
+networks:
+  existing-govchat:
+    external: true
+    name: ${OBV_DOCKER_NETWORK:?Set an existing network shared with Qdrant and LiteLLM}
+
+volumes:
+  openbesluitvorming-ingest-state:
