@@ -1,5 +1,30 @@
 # Limburg full-document ingestion: operator guide
 
+## Latest verification: 2026-11-16
+
+The full snapshot traversal ended normally on **2026-11-12 at 22:13:12 UTC**
+(23:13:12 Europe/Amsterdam), after approximately 28 hours 8 minutes. Docker and
+the supporting services remain healthy; the one-shot ingestion container exited 0.
+
+- **56,646 Document records** were discovered in **3,091 snapshot pages**.
+  The earlier 100k figure was an estimate, not the actual count in this snapshot.
+- **56,371 successfully indexed**, **275 dead letters**, zero pending/processing/
+  scheduled-retry jobs. Snapshot complete is true; overall ingestion complete is
+  **false**, because unresolved dead letters prevent a complete-corpus claim.
+- Exact Qdrant count agrees with the durable indexed count: **56,371**. A ten-point
+  verification sample passed full-text/source-metadata and vector checks.
+- Unresolved evidence groups: 80 size-budget errors; 68 HTTP 422; 54 empty/HTML
+  downloads; 34 empty-Tika-text plus HTTP 422; 30 empty-Tika-text; 9 HTTP 404.
+  Retry only after addressing the relevant limit/parser/source issue.
+- No new ingestion or failure requeue was started during this status inspection.
+
+The monitor's stopped-container fallback was repaired: a read-only SQLite database
+in WAL mode can require missing sidecar files even when no WAL remains after a
+clean shutdown. For a stopped worker with no WAL, the helper takes the shared
+kernel ingestion lock and reads the checkpointed database immutably, without
+creating sidecars or writing volumes. A live worker still uses normal read-only
+WAL access. Reopen existing monitor windows to load the repaired code.
+
 ## Current operational state: full run started on 2026-11-11
 
 The user explicitly authorized starting the full ingest after power and storage

@@ -4,15 +4,24 @@ const { execFileSync, spawn } = require('node:child_process');
 const format = new Intl.NumberFormat('nl-NL');
 const CONTAINER = 'govchat-obv-full-run';
 const RUN = 'limburg-full-20261111';
-const QUERY = `import sqlite3,json,sys
-db=sqlite3.connect('file:/state/ingest.sqlite?mode=ro',uri=True,timeout=10)
+const QUERY = `import sqlite3,json,sys,os
+uri='file:/state/ingest.sqlite?mode=ro'
+guard=None
+if sys.argv[2]=='stopped' and not os.path.exists('/state/ingest.sqlite-wal'):
+    import fcntl
+    guard=open('/state/worker.lock','rb')
+    fcntl.flock(guard.fileno(),fcntl.LOCK_SH | fcntl.LOCK_NB)
+    if not os.path.exists('/state/ingest.sqlite-wal'):
+        uri+='&immutable=1'
+db=sqlite3.connect(uri,uri=True,timeout=10)
 db.row_factory=sqlite3.Row
 db.execute('BEGIN')
 run=db.execute('SELECT id,pages,snapshot_complete,updated_at FROM runs WHERE id=?',(sys.argv[1],)).fetchone()
 if run is None: raise SystemExit('Run not found')
 counts=dict(db.execute('SELECT status,count(*) FROM documents WHERE run_id=? GROUP BY status',(sys.argv[1],)))
 print(json.dumps({'run':dict(run),'counts':counts}))
-db.close()`;
+db.close()
+if guard: guard.close()`;
 
 function command(args) {
   return execFileSync('docker', args, { encoding: 'utf8', timeout: 20000, windowsHide: true,
@@ -24,9 +33,9 @@ function collect(runCommand = command) {
   // Read existing state only. Even after completion, the helper cannot access
   // the network or write volumes, and never invokes the ingestion entrypoint.
   const args = state.Running && !state.Paused
-    ? ['exec', CONTAINER, 'python', '-c', QUERY, RUN]
+    ? ['exec', CONTAINER, 'python', '-c', QUERY, RUN, 'running']
     : ['run', '--rm', '--network', 'none', '--volumes-from', `${CONTAINER}:ro`,
-      '--entrypoint', 'python', 'govchat-openbesluitvorming-ingest:local', '-c', QUERY, RUN];
+      '--entrypoint', 'python', 'govchat-openbesluitvorming-ingest:local', '-c', QUERY, RUN, 'stopped'];
   const data = JSON.parse(runCommand(args));
   const counts = {};
   for (const name of ['indexed', 'deleted', 'pending', 'processing', 'retry', 'dead_letter']) {
@@ -47,6 +56,7 @@ function summary(data, rate) {
   return `${new Date().toLocaleTimeString('nl-NL')} | GEINDEXEERD ${format.format(c.indexed)} | ` +
     `wacht ${format.format(c.pending)} | bezig ${c.processing} | retry ${c.retry} | ` +
     `fouten ${c.dead_letter} | bronpagina's ${format.format(data.pages)} | ${data.state}` +
+    (data.snapshotComplete ? ` | bron volledig uitgelezen | volledig geslaagd: ${data.complete ? 'JA' : 'NEE'}` : '') +
     (rate === undefined ? '' : ` | ${format.format(Math.round(rate))} docs/min`);
 }
 
@@ -64,7 +74,9 @@ function dashboard(data, rate) {
     `  Fouten / dead letters  ${format.format(c.dead_letter)}`,
     `  Verwijderd volgens bron ${format.format(c.deleted)}`,
     '',
-    `  Al aangetroffen        ${format.format(data.queued)} documenten (geen volledig brontotaal)`,
+    data.snapshotComplete
+      ? `  Totaal bronrecords     ${format.format(data.queued)} documenten`
+      : `  Al aangetroffen        ${format.format(data.queued)} documenten (geen volledig brontotaal)`,
     `  Bronpagina's opgehaald ${format.format(data.pages)}`,
     `  Alle bronpagina's binnen: ${data.snapshotComplete ? 'ja' : 'nee'}`,
     `  Volledige ingest gereed: ${data.complete ? 'JA' : 'NEE'}`,
@@ -73,7 +85,9 @@ function dashboard(data, rate) {
     ...(rate === undefined ? [] : [`  Recent tempo           ${format.format(Math.round(rate))} documenten/minuut`]),
     '',
     'Vernieuwt elke 10 seconden. Ctrl+C sluit alleen deze monitor.',
-    'Het volledige brontotaal is onbekend; daarom geen misleidend percentage.'
+    data.snapshotComplete
+      ? 'Bron volledig uitgelezen. Openstaande fouten moeten nog worden opgelost.'
+      : 'Het volledige brontotaal is onbekend; daarom geen misleidend percentage.'
   ].join('\n');
 }
 

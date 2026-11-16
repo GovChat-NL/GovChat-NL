@@ -21,6 +21,7 @@ test('running counter reads only existing SQLite state through docker exec', () 
   assert.equal(data.queued, 4338);
   assert.equal(data.complete, false);
   assert.equal(f.calls[1][0], 'exec');
+  assert.equal(f.calls[1].at(-1), 'running');
   assert.match(QUERY, /mode=ro/);
   assert.match(QUERY, /db.execute\('BEGIN'\)/);
   assert.doesNotMatch(QUERY, /INSERT|UPDATE|DELETE|CREATE|Worker\(/);
@@ -35,10 +36,17 @@ test('stopped counter uses networkless read-only existing volumes, never the ing
   assert.ok(args.includes('govchat-obv-full-run:ro'));
   assert.ok(args.includes('--entrypoint'));
   assert.ok(args.includes('python'));
+  assert.equal(args.at(-1), 'stopped');
+  assert.match(QUERY, /sys.argv\[2\]=='stopped'/);
+  assert.match(QUERY, /not os.path.exists\('\/state\/ingest.sqlite-wal'\)/);
+  assert.match(QUERY, /fcntl.LOCK_SH \| fcntl.LOCK_NB/);
+  assert.match(QUERY, /immutable=1/);
 });
 
 test('terminal snapshot with dead letters is not complete', () => {
-  assert.equal(collect(fixture({ indexed: 100, dead_letter: 1 }, 1).read).complete, false);
+  const data = collect(fixture({ indexed: 100, dead_letter: 1 }, 1).read);
+  assert.equal(data.complete, false);
+  assert.match(summary(data), /bron volledig uitgelezen \| volledig geslaagd: NEE/);
 });
 
 test('human-readable dashboard shows counters without inventing corpus percentage', () => {
