@@ -17,5 +17,7 @@
 /{console.error(e)
 /{const
 /testdata/openbesluitvorming/
+# Private portable exports; never add bundle payloads to Git.
+/exports/
 **/__pycache__/
 *.py[cod]

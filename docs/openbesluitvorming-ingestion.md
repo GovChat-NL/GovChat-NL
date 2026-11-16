@@ -1,5 +1,9 @@
 # Limburg full-document ingestion: operator guide
 
+For a portable checkpoint/native-snapshot bundle and an empty-target restore, see
+the [safe transfer and server runbook](openbesluitvorming-transfer.md). Transfer
+does not start ingestion, export credentials, or switch search aliases.
+
 ## All-document refresh started: 2026-11-16
 
 The user authorized resuming ingestion for **all document categories**, after

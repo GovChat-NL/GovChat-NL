@@ -36,14 +36,14 @@ function command(args) {
     stdio: ['ignore', 'pipe', 'pipe'], maxBuffer: 1024 * 1024 }).trim();
 }
 
-function collect(runCommand = command) {
-  const state = JSON.parse(runCommand(['inspect', '--format', '{{json .State}}', CONTAINER]));
+function collect(runCommand = command, container = CONTAINER, run = RUN) {
+  const state = JSON.parse(runCommand(['inspect', '--format', '{{json .State}}', container]));
   // Read existing state only. Even after completion, the helper cannot access
   // the network or write volumes, and never invokes the ingestion entrypoint.
   const args = state.Running && !state.Paused
-    ? ['exec', CONTAINER, 'python', '-c', QUERY, RUN, 'running']
-    : ['run', '--rm', '--network', 'none', '--volumes-from', `${CONTAINER}:ro`,
-      '--entrypoint', 'python', 'govchat-openbesluitvorming-ingest:local', '-c', QUERY, RUN, 'stopped'];
+    ? ['exec', container, 'python', '-c', QUERY, run, 'running']
+    : ['run', '--rm', '--network', 'none', '--volumes-from', `${container}:ro`,
+      '--entrypoint', 'python', 'govchat-openbesluitvorming-ingest:local', '-c', QUERY, run, 'stopped'];
   const data = JSON.parse(runCommand(args));
   const counts = {};
   for (const name of ['indexed', 'deleted', 'pending', 'processing', 'retry', 'dead_letter']) {
@@ -51,7 +51,7 @@ function collect(runCommand = command) {
     if (!Number.isSafeInteger(value) || value < 0) throw new Error('Invalid progress counter');
     counts[name] = value;
   }
-  if (data.run.id !== RUN) throw new Error('Unexpected ingestion run');
+  if (data.run.id !== run) throw new Error('Unexpected ingestion run');
   for (const group of [...Object.values(data.audit || {}), data.outcomes || {}, { retained: data.retained ?? counts.indexed }]) {
     for (const value of Object.values(group)) {
       if (!Number.isSafeInteger(value) || value < 0) throw new Error('Invalid progress counter');
@@ -132,8 +132,17 @@ function dashboard(data, rate) {
 }
 
 async function main(args = process.argv.slice(2)) {
+  function target(flag, fallback) {
+    const index = args.indexOf(flag);
+    if (index === -1) return fallback;
+    const value = args[index + 1];
+    if (!value || !/^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,159}$/.test(value)) throw new Error('Invalid monitor target');
+    return value;
+  }
+  const container = target('--container', CONTAINER);
+  const run = target('--run-id', RUN);
   if (args.includes('logs')) {
-    const child = spawn('docker', ['logs', '--tail', '50', '--follow', CONTAINER], { stdio: 'inherit' });
+    const child = spawn('docker', ['logs', '--tail', '50', '--follow', container], { stdio: 'inherit' });
     child.on('exit', code => { process.exitCode = code || 0; });
     child.on('error', () => { console.error('Docker logs kon niet worden geopend.'); process.exitCode = 1; });
     return;
@@ -145,7 +154,7 @@ async function main(args = process.argv.slice(2)) {
   process.once('SIGINT', () => { stopped = true; });
   do {
     try {
-      const data = collect();
+      const data = collect(command, container, run);
       const current = { time: Date.now(), indexed: data.counts.indexed };
       history.push(current);
       while (history.length > 1 && current.time - history[0].time > 60000) history.shift();
