@@ -25,8 +25,12 @@ export function renderFlow({ store, render, markDirty }) {
       title: `Nieuwe stap ${steps.length + 1}`,
       description: "",
       prompt: "",
+<<<<<<< HEAD
       doc_tags: [],
       rag: { algorithm: "hybrid", top_k: 3, min_score: 0.08, tag_filter_mode: "any", required_tags: [] },
+=======
+      rag: { algorithm: "hybrid" },
+>>>>>>> 91e73b8d82c15b5b13c8264737dc03bcd3d75fe8
       substeps: [],
     });
     store.ui.stepId = id;
@@ -40,8 +44,13 @@ export function renderFlow({ store, render, markDirty }) {
     "p",
     { class: "notice notice-info" },
     icon("info", 14),
+<<<<<<< HEAD
     "Titels, beschrijvingen en substappen verschijnen na publiceren op de Beleidskompas-pagina. " +
       "Prompts en zoekinstellingen worden opgeslagen in het template, maar de assistent leest ze nog niet.",
+=======
+    "Van de stappen verschijnt alleen de beschrijving op de Beleidskompas-pagina, zodra de versie live staat (Deploy). " +
+      "De stappen en substappen zelf komen uit de agentcode. De rest wordt opgeslagen in het template, maar de pagina en de assistent lezen het nog niet.",
+>>>>>>> 91e73b8d82c15b5b13c8264737dc03bcd3d75fe8
   );
 
   const list = flowList({
@@ -84,6 +93,10 @@ function stepEditor(step, { store, markDirty, render }) {
     "div",
     { class: "stack-sm" },
     field("Titel", bound(step, "title", { onInput: markDirty })),
+<<<<<<< HEAD
+=======
+    field("Beschrijving", bound(step, "description", { multiline: true, rows: 2, onInput: markDirty }), "Getoond in het overzicht en de uitleg van de stap op de Beleidskompas-pagina."),
+>>>>>>> 91e73b8d82c15b5b13c8264737dc03bcd3d75fe8
     field("Instructies", bound(step, "prompt", { multiline: true, rows: 6, onInput: markDirty }), "Instructie voor de assistent in deze stap."),
   );
 
@@ -98,6 +111,7 @@ function stepEditor(step, { store, markDirty, render }) {
     }),
   );
 
+<<<<<<< HEAD
   const docs = store.documents.filter((d) => api.isDocumentActive(d) || docIds.has(String(d.id)));
   const docList = h(
     "div",
@@ -118,6 +132,22 @@ function stepEditor(step, { store, markDirty, render }) {
             ? "Geen actieve documenten in de Documentenbibliotheek."
             : "Nog geen documenten in de Documentenbibliotheek.",
         ),
+=======
+  const docs = store.documents.filter((d) => api.isDocumentActive(d));
+  const docList = h(
+    "div",
+    { class: "doc-checks" },
+    store.documents.length
+      ? store.documents.map((d) =>
+          toggle({
+            form: "check",
+            checked: docIds.has(String(d.id)),
+            label: d.filename,
+            onChange: (v) => { api.setStepDocument(step, d.id, v); markDirty(); },
+          }),
+        )
+      : h("p", { class: "muted" }, "Nog geen documenten in de Documentenbibliotheek."),
+>>>>>>> 91e73b8d82c15b5b13c8264737dc03bcd3d75fe8
   );
 
   const substeps = h(
@@ -133,7 +163,11 @@ function stepEditor(step, { store, markDirty, render }) {
           { class: "stack-sm" },
           field("Titel", bound(sub, "title", { onInput: markDirty })),
           field("Instructies", bound(sub, "prompt", { multiline: true, rows: 3, onInput: markDirty })),
+<<<<<<< HEAD
           field("Antwoord format", bound(sub, "answer_format", { multiline: true, rows: 3, onInput: markDirty })),
+=======
+          field("Vereiste antwoordstructuur", bound(sub, "answer_format", { multiline: true, rows: 3, onInput: markDirty })),
+>>>>>>> 91e73b8d82c15b5b13c8264737dc03bcd3d75fe8
         ),
         h("button", { class: "icon-btn is-danger", "aria-label": "Substap verwijderen", onClick: () => { step.substeps.splice(i, 1); markDirty(); render(); } }, icon("trash", 18)),
       ),
@@ -158,13 +192,21 @@ function stepEditor(step, { store, markDirty, render }) {
   );
 
   // Not shown: step id, workflow id and webhook path link the step to n8n and feedback, and editing
+<<<<<<< HEAD
   // them safely needs a fixed internal id first (private notes, ADMIN_UI_FUTURE_WORK.md §9).
+=======
+  // them safely needs a fixed internal id first.
+>>>>>>> 91e73b8d82c15b5b13c8264737dc03bcd3d75fe8
   // rag.top_k and rag.min_score stay in the template as they are.
   return h(
     "div",
     { class: "stack" },
     texts,
+<<<<<<< HEAD
     // MOCK #2: saved with the step, but retrieval does not read them yet (ADMIN_UI_FUTURE_WORK.md §2).
+=======
+    // MOCK #2: saved with the step, but retrieval does not read them yet.
+>>>>>>> 91e73b8d82c15b5b13c8264737dc03bcd3d75fe8
     card(
       ["Documenten ", h("span", { class: "badge badge-mock", title: "Wordt opgeslagen, maar de assistent gebruikt dit nog niet" }, "Mock")],
       h("p", { class: "field-hint" }, "Zoekmethode en documentkeuze worden opgeslagen, maar de assistent gebruikt ze nog niet."),

@@ -19,6 +19,7 @@ const store = {
 const flow = {
   DEFAULT_BELEIDSKOMPAS_SETTINGS: { retention_days: 365 },
   normalizeBeleidskompasFlow: (f) => f ?? { steps: [] },
+<<<<<<< HEAD
   defaultBeleidskompasFlow: () => ({ steps: [] }),
   readBeleidskompasWorkflowManifest: () => null,
   selectBeleidskompasRagDocs: () => ({ rag: {}, docs: [] }),
@@ -26,6 +27,11 @@ const flow = {
   publishLive: async () => { calls.push(["publishLive"]); return { synced: true }; },
   n8nBaseUrl: "http://n8n:5678",
   n8nWebhookToken: "",
+=======
+  readBeleidskompasWorkflowManifest: () => null,
+  normalizeLegacyState: (s) => s,
+  publishLive: async () => { calls.push(["publishLive"]); return { synced: true }; },
+>>>>>>> 91e73b8d82c15b5b13c8264737dc03bcd3d75fe8
 };
 
 let server, base, authed = true;

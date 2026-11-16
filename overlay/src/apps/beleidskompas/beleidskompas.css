@@ -422,27 +422,31 @@
   position: relative;
 }
 
-.gc-bk-compose-field input {
+.gc-bk-compose-field textarea {
+  display: block;
   width: 100%;
   box-sizing: border-box;
+  max-height: 120px;
   padding: 9px 42px 9px 11px;
+  font: inherit;
   font-size: 12px;
+  line-height: 16px;
   color: #111827;
   background: #fff;
   border: 1px solid #d1d5db;
-  border-radius: 999px;
+  border-radius: 18px;
+  resize: none;
 }
 
-.gc-bk-compose-field input:focus {
+.gc-bk-compose-field textarea:focus {
   outline: none;
   border-color: #2563eb;
 }
 
 .gc-bk-compose-field button {
   position: absolute;
-  top: 50%;
   right: 5px;
-  transform: translateY(-50%);
+  bottom: 4px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -464,7 +468,7 @@
   height: 15px;
 }
 
-.gc-bk-chat-compose input:disabled,
+.gc-bk-chat-compose textarea:disabled,
 .gc-bk-chat-compose button:disabled {
   opacity: 0.55;
   cursor: not-allowed;
@@ -1304,7 +1308,7 @@
   border-top-color: #374151;
 }
 
-.dark .gc-bk-compose-field input,
+.dark .gc-bk-compose-field textarea,
 .dark .gc-bk-step-nav button {
   color: #f9fafb;
   background: #111827;

@@ -198,6 +198,7 @@ export function setupChat(store, { refreshState }) {
         store.setAsking("");
         chatInputEl.focus();
       }
+<<<<<<< HEAD
     }
   }
 
@@ -216,13 +217,42 @@ export function setupChat(store, { refreshState }) {
       // active substep. The user's bubble shows the case.
       store.setCaseText(text);
       ask(store.activeSubstep(), "", text);
+=======
+>>>>>>> 91e73b8d82c15b5b13c8264737dc03bcd3d75fe8
     }
+  }
+
+  /** What the user types first is the case. The case is stored, and
+   *  Beleidskompas writes the report of the active substep. Everything typed
+   *  after that is a message about the active substep. */
+  function sendUserMessage() {
+    const text = chatInputEl.value.trim();
+    if (!text || state.asking) return;
+    chatInputEl.value = "";
+    autoGrowInput();
+    if (store.caseStarted()) {
+      // A message about the active substep.
+      ask(store.activeSubstep(), text);
+    } else {
+      // The first text is the case. Sending it asks for the report of the
+      // active substep. The user's bubble shows the case.
+      store.setCaseText(text);
+      ask(store.activeSubstep(), "", text);
+    }
+  }
+
+  /** The field grows with its text, up to the CSS max-height. */
+  function autoGrowInput() {
+    chatInputEl.style.height = "auto";
+    chatInputEl.style.height = `${chatInputEl.scrollHeight + 2}px`;
   }
 
   newChatBtn.addEventListener("click", () => store.startNewSession());
   sendBtn.addEventListener("click", sendUserMessage);
+  chatInputEl.addEventListener("input", autoGrowInput);
   chatInputEl.addEventListener("keydown", (e) => {
-    if (e.key === "Enter") {
+    // Shift+Enter inserts a newline; Enter sends.
+    if (e.key === "Enter" && !e.shiftKey && !e.isComposing) {
       e.preventDefault();
       sendUserMessage();
     }

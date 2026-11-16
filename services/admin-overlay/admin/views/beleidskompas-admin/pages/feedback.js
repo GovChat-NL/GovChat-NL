@@ -66,10 +66,18 @@ export function renderFeedback({ store, render }) {
   };
 }
 
+<<<<<<< HEAD
 function matchesTemplate(item, ui) {
   if (ui.fbTemplate === "all") return true;
   if (String(item.template_id) !== String(ui.fbTemplate)) return false;
   return ui.fbVersion === "all" || String(item.version_id) === String(ui.fbVersion);
+=======
+function matchesTemplate(item, filter) {
+  if (filter === "all") return true;
+  const [kind, tplId, versionId] = filter.split(":");
+  if (String(item.template_id) !== tplId) return false;
+  return kind === "t" || String(item.version_id) === versionId;
+>>>>>>> 91e73b8d82c15b5b13c8264737dc03bcd3d75fe8
 }
 
 function matchesPeriod(item, ui) {
@@ -115,6 +123,7 @@ function describe(item, store) {
   return tpl ? `${tpl.name} ${versionLabel(tpl, item.version_id)}` : "Onbekend template";
 }
 
+<<<<<<< HEAD
 function subtitleFor(ui, store) {
   if (ui.fbTemplate === "all") return "Alle templates";
   const tpl = store.templates.find((t) => String(t.id) === String(ui.fbTemplate));
@@ -122,6 +131,13 @@ function subtitleFor(ui, store) {
   return ui.fbVersion === "all"
     ? `Template ${tpl.name} · alle versies`
     : `Template ${tpl.name} · ${versionLabel(tpl, Number(ui.fbVersion))}`;
+=======
+function subtitleFor(filter, store) {
+  if (filter === "all") return "Alle templates";
+  const [, tplId, versionId] = filter.split(":");
+  const tpl = store.templates.find((t) => String(t.id) === tplId);
+  return versionId ? `Template ${tpl?.name} · ${versionLabel(tpl, Number(versionId))}` : `Template ${tpl?.name} · alle versies`;
+>>>>>>> 91e73b8d82c15b5b13c8264737dc03bcd3d75fe8
 }
 
 function stat(label, value, iconName) {

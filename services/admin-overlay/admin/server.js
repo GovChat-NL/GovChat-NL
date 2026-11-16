@@ -447,80 +447,6 @@ function normalizeBeleidskompasDocuments(input) {
   }));
 }
 
-function tokenizePolicyText(value) {
-  return String(value || "")
-    .toLowerCase()
-    .normalize("NFKD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .replace(/[^a-z0-9\s]/g, " ")
-    .split(/\s+/)
-    .map((w) => w.trim())
-    .filter((w) => w.length > 2);
-}
-
-function selectBeleidskompasRagDocs({ step, question = "", caseText = "", stepFields = {}, documents = [] }) {
-  const rag = normalizeStepRagSettings(step?.rag || {}, step || {});
-  const requiredTags = normalizeTags(rag.required_tags || []).map((t) => t.toLowerCase());
-  const modeAll = String(rag.tag_filter_mode || "any").toLowerCase() === "all";
-
-  const qBlob = [
-    question,
-    caseText,
-    stepFields?.problem,
-    stepFields?.causes,
-    stepFields?.symptoms,
-    stepFields?.perspectives,
-    stepFields?.references,
-  ]
-    .filter(Boolean)
-    .join(" ");
-  const queryWords = [...new Set(tokenizePolicyText(qBlob))];
-
-  const scored = normalizeBeleidskompasDocuments(documents)
-    .map((doc) => {
-      const tags = normalizeTags(doc.tags || []).map((t) => t.toLowerCase());
-      if (requiredTags.length) {
-        const tagMatch = modeAll ? requiredTags.every((t) => tags.includes(t)) : requiredTags.some((t) => tags.includes(t));
-        if (!tagMatch) return null;
-      }
-
-      const text = String(doc.preview_text || "").trim();
-      if (!text) return null;
-      const words = tokenizePolicyText(text);
-      if (!words.length) return null;
-
-      const wordSet = new Set(words);
-      const overlap = queryWords.filter((w) => wordSet.has(w)).length;
-      const overlapRatio = queryWords.length ? overlap / queryWords.length : 0;
-      const density = overlap / Math.max(24, words.length);
-      const lowerText = text.toLowerCase();
-      const needleHits = queryWords.reduce((acc, w) => (lowerText.includes(w) ? acc + 1 : acc), 0);
-      const needleScore = queryWords.length ? needleHits / queryWords.length : 0;
-      const haystackScore = overlapRatio * 0.7 + density * 0.3;
-
-      let score = needleScore * 0.55 + haystackScore * 0.45;
-      if (rag.algorithm === "needle") score = needleScore;
-      if (rag.algorithm === "haystack") score = haystackScore;
-
-      return {
-        id: doc.id,
-        filename: doc.filename,
-        tags: normalizeTags(doc.tags || []),
-        score,
-        preview: text.slice(0, 420),
-      };
-    })
-    .filter(Boolean)
-    .filter((d) => d.score >= Number(rag.min_score || 0))
-    .sort((a, b) => b.score - a.score)
-    .slice(0, Math.max(1, Number(rag.top_k || 3)));
-
-  return {
-    rag,
-    docs: scored,
-  };
-}
-
 function defaultBeleidskompasFlow() {
   return {
     title: "Beleidskompas",
@@ -557,16 +483,18 @@ function defaultBeleidskompasFlow() {
           required_tags: ["Beleid", "Governance"],
         },
         substeps: [
-          { id: "1.1", title: "Casus context", description: "Afbakening van de opgave en context." },
-          { id: "1.2", title: "Toetsing publiek", description: "Is er aantoonbaar publiek belang?" },
-          { id: "1.3", title: "Toetsing provinciaal", description: "Valt dit onder provinciaal belang/mandaat?" },
+          { id: "1.1", title: "Probleemdefinitie", description: "Probleem, oorzaken en symptomen." },
+          { id: "1.2", title: "Overheidsinterventie", description: "Is overheidsingrijpen gerechtvaardigd?" },
+          { id: "1.3", title: "Stakeholderanalyse", description: "Belanghebbenden, belangen en invloed." },
+          { id: "1.4", title: "Provinciaal doel", description: "Aansluiting op provinciale beleidsdoelen." },
+          { id: "1.5", title: "Integrale afweging", description: "Oordeel over publiek en provinciaal belang." },
         ],
       },
       {
         id: "stap2",
         workflow_id: "govchat-beleidskompas-step-stap2",
         webhook_path: "beleidskompas-step-stap2",
-        title: "Rolbepaling",
+        title: "Rolbepaling provincie",
         description:
           "Kies passende provinciale rol(len): regulerend, regisserend, stimulerend of faciliterend.",
         prompt:
@@ -580,8 +508,7 @@ function defaultBeleidskompasFlow() {
           required_tags: ["Governance"],
         },
         substeps: [
-          { id: "2.1", title: "Rolopties", description: "Verken geschikte rollen." },
-          { id: "2.2", title: "Afweging", description: "Weeg effectiviteit, risico en legitimiteit." },
+          { id: "2.1", title: "Rolbepaling", description: "Welke rol past de provincie, en waarom?" },
         ],
       },
       {
@@ -602,9 +529,10 @@ function defaultBeleidskompasFlow() {
           required_tags: ["Beleid", "Compliance"],
         },
         substeps: [
-          { id: "3.1", title: "Selectie", description: "Kies realistische instrumenten." },
-          { id: "3.2", title: "Weging", description: "Onderbouw score en risico per optie." },
-          { id: "3.3", title: "Voorkeur", description: "Motiveer voorkeursinstrument en alternatieven." },
+          { id: "3.1", title: "Sturingsbepaling", description: "Mate van sturing bij de gekozen rol." },
+          { id: "3.2", title: "Instrumentarium", description: "Instrumenten bij rol, sturing en probleem." },
+          { id: "3.3", title: "Afwegingskader", description: "Meest geschikte samenwerkingsvorm." },
+          { id: "3.4", title: "Gevolgenanalyse", description: "Gevolgen per instrument en de nuloptie." },
         ],
       },
       {
@@ -625,14 +553,23 @@ function defaultBeleidskompasFlow() {
           required_tags: ["Governance", "Compliance"],
         },
         substeps: [
-          { id: "4.1", title: "Sturing", description: "Eigenaarschap, mandaat en besluitvorming." },
-          { id: "4.2", title: "Toezicht", description: "Toetsing, escalatie en verantwoording." },
-          { id: "4.3", title: "KPI’s", description: "Monitorings- en rapportageafspraken." },
+          { id: "4.1", title: "Good governance-principes", description: "Sturing, toezicht, beheersing en verantwoording." },
+          { id: "4.2", title: "Organisatorische governance", description: "Organisatorische inrichting van goed bestuur." },
+          { id: "4.3", title: "Governance-richtlijnen", description: "Concrete richtlijnen per component." },
         ],
       },
     ],
   };
 }
+
+// The default substeps from before they followed steps.json. A saved step that still has exactly
+// these gets the current default substeps; any other substeps stay as the admin saved them.
+const OLD_DEFAULT_SUBSTEPS = {
+  stap1: "1.1 Casus context|1.2 Toetsing publiek|1.3 Toetsing provinciaal",
+  stap2: "2.1 Rolopties|2.2 Afweging",
+  stap3: "3.1 Selectie|3.2 Weging|3.3 Voorkeur",
+  stap4: "4.1 Sturing|4.2 Toezicht|4.3 KPI’s",
+};
 
 function normalizeBeleidskompasFlow(input) {
   const fallback = defaultBeleidskompasFlow();
@@ -641,7 +578,11 @@ function normalizeBeleidskompasFlow(input) {
 
   const steps = stepsRaw.map((step, idx) => {
     const fb = fallback.steps[Math.min(idx, fallback.steps.length - 1)] || fallback.steps[0];
-    const substepsRaw = Array.isArray(step?.substeps) ? step.substeps : fb.substeps;
+    let substepsRaw = Array.isArray(step?.substeps) ? step.substeps : fb.substeps;
+    const oldDefault = OLD_DEFAULT_SUBSTEPS[step?.id];
+    if (oldDefault && oldDefault === substepsRaw.map((s) => `${s?.id} ${s?.title}`).join("|")) {
+      substepsRaw = fallback.steps.find((s) => s.id === step.id).substeps;
+    }
     const workflowMeta = buildStepWorkflowMeta(step, idx);
     return {
       id: String(step?.id || fb.id || `stap${idx + 1}`).trim() || `stap${idx + 1}`,
@@ -652,7 +593,11 @@ function normalizeBeleidskompasFlow(input) {
       description: String(step?.description ?? fb.description ?? "").trim(),
       prompt: String(step?.prompt ?? fb.prompt ?? "").trim(),
       doc_tags: normalizeTags(step?.doc_tags || fb.doc_tags),
+<<<<<<< HEAD
       // Documents picked in the Flow builder. Retrieval still uses doc_tags; missing = not picked yet.
+=======
+      // Documents picked in the Flow builder; nothing reads them yet. Missing = not picked yet.
+>>>>>>> 91e73b8d82c15b5b13c8264737dc03bcd3d75fe8
       document_ids: Array.isArray(step?.document_ids) ? [...new Set(step.document_ids.map(String))] : undefined,
       rag: normalizeStepRagSettings(step?.rag || fb.rag || {}, step || fb),
       substeps: substepsRaw.map((sub, subIdx) => ({
@@ -682,6 +627,7 @@ function normalizeBeleidskompasFlow(input) {
   };
 }
 
+<<<<<<< HEAD
 function publishBeleidskompasLiveConfig(flow) {
   const normalized = normalizeBeleidskompasFlow(flow);
   // beleidskompas-config.json is public, so drop what is for the assistant only.
@@ -695,6 +641,17 @@ function publishBeleidskompasLiveConfig(flow) {
     }
   }
   writeJSON(BELEIDSKOMPAS_LIVE_FILE, normalized);
+=======
+// beleidskompas-config.json is public (nginx serves it without auth), so it holds only what the
+// Beleidskompas page reads (buildConfig in overlay/src/apps/beleidskompas/config.js) plus the step titles.
+function publicBeleidskompasConfig(flow) {
+  const { title, disclaimer, specialist_team, steps } = normalizeBeleidskompasFlow(flow);
+  return { title, disclaimer, specialist_team, steps: steps.map(({ id, title, description }) => ({ id, title, description })) };
+}
+
+function publishBeleidskompasLiveConfig(flow) {
+  writeJSON(BELEIDSKOMPAS_LIVE_FILE, publicBeleidskompasConfig(flow));
+>>>>>>> 91e73b8d82c15b5b13c8264737dc03bcd3d75fe8
 }
 
 function ensureBeleidskompasWorkflowsDir() {
@@ -2683,9 +2640,14 @@ const { templates: templateStore } = beleidskompas.start(
     requireAuth,
     init: initBeleidskompas,
     flow: {
+<<<<<<< HEAD
       DEFAULT_BELEIDSKOMPAS_SETTINGS, normalizeBeleidskompasFlow, defaultBeleidskompasFlow,
       readBeleidskompasWorkflowManifest, selectBeleidskompasRagDocs, normalizeLegacyState, publishLive,
       n8nBaseUrl: BELEIDSKOMPAS_N8N_BASE_URL, n8nWebhookToken: BELEIDSKOMPAS_N8N_WEBHOOK_TOKEN,
+=======
+      DEFAULT_BELEIDSKOMPAS_SETTINGS, normalizeBeleidskompasFlow,
+      readBeleidskompasWorkflowManifest, normalizeLegacyState, publishLive,
+>>>>>>> 91e73b8d82c15b5b13c8264737dc03bcd3d75fe8
     },
   },
 );
