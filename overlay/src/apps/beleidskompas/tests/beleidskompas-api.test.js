@@ -7,7 +7,7 @@ import assert from "node:assert/strict";
 
 import { composePrompt, parseCitationsMetaBlock, readCaseState, sendBeleidskompasFeedback } from "../beleidskompas-api.js";
 
-const SUBSTEP = { id: "2.1", title: "Rolbepaling" };
+const SUBSTEP = { id: "2.1", label: "2.1", title: "Rolbepaling" };
 
 /** Takes a composed message apart the way the orchestrator does
  *  (parsePageMessage in agents/beleidskompas/shared.js). */

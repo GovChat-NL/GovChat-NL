@@ -117,7 +117,7 @@ function stepEditor(step, { store, markDirty, render }) {
       h(
         "div",
         { class: "substep" },
-        h("span", { class: "substep-id" }, sub.id),
+        h("span", { class: "substep-id" }, `${store.flow.steps.indexOf(step) + 1}.${i + 1}`),
         h(
           "div",
           { class: "stack-sm" },

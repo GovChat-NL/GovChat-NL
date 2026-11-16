@@ -8,7 +8,7 @@ import { buildConfig } from "../config.js";
 
 const STEPS_DATA = {
   steps: [
-    { id: "stap1", nr: 1, title: "Publiek en provinciaal belang", substeps: [{ id: "1.1", title: "Probleemdefinitie" }, { id: "1.2", title: "Overheidsinterventie" }] },
+    { id: "stap1", nr: 1, title: "Publiek en provinciaal belang", substeps: [{ id: "1.1", label: "1.1", title: "Probleemdefinitie" }, { id: "1.2", label: "1.2", title: "Overheidsinterventie" }] },
     { id: "stap2", nr: 2, title: "Rolbepaling provincie", substeps: [{ id: "2.1", title: "Rolbepaling" }] },
   ],
 };
@@ -33,7 +33,7 @@ test("the steps and substeps come from steps.json; the texts around a step from 
   const defaults = buildConfig(null, null, STEPS_DATA).steps;
   assert.equal(defaults[0].nr, 1);
   assert.equal(defaults[0].title, "Publiek en provinciaal belang");
-  assert.deepEqual(defaults[0].substeps, [{ id: "1.1", title: "Probleemdefinitie" }, { id: "1.2", title: "Overheidsinterventie" }]);
+  assert.deepEqual(defaults[0].substeps, [{ id: "1.1", label: "1.1", title: "Probleemdefinitie" }, { id: "1.2", label: "1.2", title: "Overheidsinterventie" }]);
   assert.ok(defaults[0].short.length > 0);
   assert.ok(defaults[0].help.length > 0);
 
@@ -77,8 +77,8 @@ test("the published configuration with steps and substeps wins over steps.json",
   );
   assert.equal(config.versionId, "v7");
   assert.deepEqual(config.steps.map((s) => [s.id, s.nr, s.title, s.substeps]), [
-    ["stap1", 1, "Eigen titel", [{ id: "1.1", title: "Eigen deelstap" }]],
-    ["stap2", 2, "Twee", [{ id: "2.9", title: "Nieuw" }]],
+    ["stap1", 1, "Eigen titel", [{ id: "1.1", label: "1.1", title: "Eigen deelstap" }]],
+    ["stap2", 2, "Twee", [{ id: "2.9", label: "2.1", title: "Nieuw" }]],
   ]);
   assert.equal(config.steps[0].short, "Eigen omschrijving");
   assert.ok(config.steps[0].help.length > 0);
