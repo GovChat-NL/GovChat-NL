@@ -152,6 +152,18 @@ class ArchiveTests(Fixture):
 
 
 class ValidationTests(Fixture):
+    def test_stopped_wal_database_read_creates_no_sidecars(self):
+        path = self.root / 'stopped.sqlite'
+        with contextlib.closing(sqlite3.connect(path)) as db:
+            db.execute('PRAGMA journal_mode=WAL')
+            db.execute('CREATE TABLE example(value TEXT)')
+            db.execute("INSERT INTO example VALUES('preserved')")
+            db.commit()
+        before = {p.name for p in self.root.iterdir()}
+        with contextlib.closing(transfer.readonly_db(path)) as db:
+            self.assertEqual(db.execute('SELECT value FROM example').fetchone()[0], 'preserved')
+        self.assertEqual({p.name for p in self.root.iterdir()}, before)
+
     def test_valid_bundle_actual_zero_user_version(self):
         manifest = transfer.validate_bundle(self.bundle)
         self.assertEqual(manifest['schema']['user_version'], 0)

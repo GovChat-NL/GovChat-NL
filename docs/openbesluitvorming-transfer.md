@@ -36,7 +36,10 @@ or be stopped: there is no distributed lock against arbitrary Qdrant clients.
 
 SQLite uses a read-only connection's backup API, not a raw database file copy.
 Committed WAL contents are included in the standalone backup; WAL/SHM files are
-not archived. All regular state files, including vector history and other lockfiles,
+not archived. When no populated WAL exists, the locked read uses immutable mode to
+avoid creating empty WAL/SHM sidecars. Existing populated-WAL coordination files
+may be accessed by SQLite; no checkpoint, history or source queue is rewritten.
+All regular state files, including vector history and other lockfiles,
 are preserved. Symlinks, links/devices in archives, secret-looking names, environment
 files and n8n-related state are refused. Do not place secrets anywhere in worker
 state; filename checks cannot detect secrets embedded in otherwise public records.

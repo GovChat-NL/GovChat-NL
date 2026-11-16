@@ -161,7 +161,13 @@ def check_archive(path, kind, destination=None):
 
 def readonly_db(path):
     require(path.is_file() and not path.is_symlink(), 'missing_regular_sqlite')
-    db = sqlite3.connect(path.resolve().as_uri() + '?mode=ro', uri=True)
+    # A stopped WAL-mode database without committed WAL frames is immutable
+    # while the exporter holds worker.lock. Avoid SQLite creating empty WAL/SHM
+    # sidecars merely to read that checkpoint. Populated WAL must still be read
+    # normally so connection.backup includes every committed frame.
+    wal = path.with_name(path.name + '-wal')
+    immutable = not wal.exists() or wal.stat().st_size == 0
+    db = sqlite3.connect(path.resolve().as_uri() + '?mode=ro' + ('&immutable=1' if immutable else ''), uri=True)
     db.row_factory = sqlite3.Row
     return db
 
