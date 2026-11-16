@@ -1,7 +1,7 @@
 {
   "id": "govchat-ob-document-worker",
   "name": "OpenBesluitvorming - Document Worker",
-  "description": "Full-document Open Besluitvorming worker. It persists available source metadata, uses bounded embedding batches and weighted mean pooling, and records individual dead letters.",
+  "description": "RETIRED unsafe legacy n8n ingestion. No scheduler. Use the opt-in openbesluitvorming-ingest Compose worker; see docs/openbesluitvorming-ingestion.md. Nodes retained for historical reference only.",
   "active": false,
   "settings": {
     "executionOrder": "v1",
@@ -25,7 +25,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const input=$input.first().json; const max=Number(input.maxDocumentsInPage||0), records=Array.isArray(input.documents)?input.documents:[]; return records.filter(r=>r?.entity_id&&r.op==='upsert'&&r.entity_type==='Document').slice(0,max||undefined).map(record=>({json:{record,entityId:record.entity_id,sourceKey:input.sourceKey,runId:input.runId,collection:input.collection}}));"
+        "jsCode": "throw new Error('Legacy ingestion retired: use the durable openbesluitvorming-ingest Compose worker. See docs/openbesluitvorming-ingestion.md.');"
       },
       "id": "11f5ea17-e431-4d27-a9ad-6f974e000002",
       "name": "2. Split Documents",

@@ -1,0 +1,44 @@
+{
+  "id": "govchat-obv-search-runtime-smoke",
+  "name": "OpenBesluitvorming - Temporary Sample Search Smoke (No Ingestion)",
+  "active": false,
+  "settings": { "executionOrder": "v1", "saveExecutionProgress": true, "saveDataSuccessExecution": "all", "saveDataErrorExecution": "all" },
+  "nodes": [
+    {
+      "id": "obv-search-smoke-webhook",
+      "name": "Protected Sample Search Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "webhookId": "govchat-obv-search-runtime-smoke",
+      "position": [0, 0],
+      "parameters": { "httpMethod": "POST", "path": "govchat-obv-search-runtime-smoke", "responseMode": "lastNode", "options": {} }
+    },
+    {
+      "id": "obv-search-smoke-input",
+      "name": "Authenticate And Bound Sample Search",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [220, 0],
+      "parameters": {
+        "jsCode": "const input=$input.first().json;const token=String($env.N8N_WEBHOOK_TOKEN||'');if(!token||input.headers?.authorization!=='Bearer '+token)throw new Error('Unauthorized');const mode=input.body?.mode||'limburg';if(!['limburg','wrong_source','date_2020'].includes(mode))throw new Error('Unsupported smoke mode');const filters={source_key:mode==='wrong_source'?'provincie_nonexistent_smoke':'provincie_limburg'};if(mode==='date_2020'){filters.date_from='2020-01-01';filters.date_to='2020-12-31';}return [{json:{query:'Welke provinciale maatregelen nam Limburg tegen de gevolgen van het coronavirus?',collection:'limburg_sample_20261111',filters,include_content:true,candidate_limit:50,rerank_limit:50,result_limit:5}}];"
+      }
+    },
+    {
+      "id": "obv-search-smoke-execute",
+      "name": "Execute Inactive Search Subworkflow",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.3,
+      "position": [440, 0],
+      "parameters": {
+        "source": "parameter",
+        "workflowJson": "{}",
+        "mode": "once",
+        "options": { "waitForSubWorkflow": true }
+      }
+    }
+  ],
+  "connections": {
+    "Protected Sample Search Webhook": { "main": [[{ "node": "Authenticate And Bound Sample Search", "type": "main", "index": 0 }]] },
+    "Authenticate And Bound Sample Search": { "main": [[{ "node": "Execute Inactive Search Subworkflow", "type": "main", "index": 0 }]] }
+  }
+}

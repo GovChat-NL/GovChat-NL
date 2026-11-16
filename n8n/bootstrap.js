@@ -236,7 +236,7 @@ function discoverWorkflows(workflowsDir = WORKFLOWS_DIR, env = process.env) {
   if (!fs.existsSync(workflowsDir)) throw new Error(`Workflow directory ontbreekt: ${workflowsDir}`);
 
   const files = listWorkflowFiles(workflowsDir)
-    .map((fullPath) => path.relative(workflowsDir, fullPath))
+    .map((fullPath) => path.relative(workflowsDir, fullPath).split(path.sep).join('/'))
     .sort((a, b) => a.localeCompare(b));
 
   if (!files.length) throw new Error(`Geen workflow-JSON-bestanden gevonden in ${workflowsDir}`);
@@ -355,11 +355,13 @@ function importVerifyAndPublish(workflows) {
   }
 
   for (const workflow of planned) {
-    for (const id of workflow.ids) runN8n([`publish:workflow`, `--id=${id}`]);
+    // Never briefly activate an ingestion schedule while bootstrapping.
+    for (const id of workflow.ids) {
+      if (!(workflow.inactiveIds || []).includes(id)) runN8n([`publish:workflow`, `--id=${id}`]);
+    }
   }
 
-  // n8n 2.x publishes inactive exports as active by default. Restore the
-  // source export's intended disabled state after publishing its draft.
+  // Also unpublish an older active deployment of an intentionally inactive export.
   for (const workflow of planned) {
     for (const id of workflow.inactiveIds || []) runN8n([`unpublish:workflow`, `--id=${id}`]);
   }
