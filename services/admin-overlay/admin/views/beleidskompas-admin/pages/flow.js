@@ -55,7 +55,7 @@ export function renderFlow({ store, render, markDirty }) {
     text(flow.messages, "unknown_step", 2, "Getoond als de assistent geen stap kan kiezen."),
     text(flow.messages, "store_missing", 2, "Getoond als de casusopslag niet is geconfigureerd."),
     text(flow.messages, "store_failed", 2, "Getoond als de casus niet kan worden opgeslagen."),
-    text(flow.messages, "store_warning", 2, "Toegevoegd onder het antwoord als opslaan tijdelijk mislukt."),
+    text(flow.messages, "store_warning", 2, "Getoond boven het antwoord als opslaan tijdelijk mislukt."),
   );
 
   return { content: h("div", { class: "stack" }, notice, rules, prompts, messages, list) };

@@ -87,12 +87,15 @@ export function setupChat(store, { refreshState, versionId }) {
   }
 
   async function submitFeedback(message, comment) {
+    const stepId = message.agent || store.activeStep().id;
+    // A message sent on to another step is about that whole step: keep the substep only when it is that step's.
+    const substep = store.substeps.find((s) => s.id === message.substepId);
     try {
       await sendBeleidskompasFeedback({
         rating: message.feedbackRating,
         comment,
-        stepId: message.agent || store.activeStep().id,
-        substepId: message.substepId || null,
+        stepId,
+        substepId: substep && substep.step.id === stepId ? substep.id : null,
         versionId,
       });
       store.updateMessage(message, { feedbackSent: true });
