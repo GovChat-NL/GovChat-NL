@@ -98,8 +98,6 @@ textarea.input { resize: vertical; line-height: 1.45; }
 .muted { color: var(--muted); }
 .error { color: var(--red); }
 .empty { color: var(--muted); padding: 24px; text-align: center; border: 1px dashed var(--line-strong); border-radius: var(--radius); }
-.advanced { border-top: 1px solid var(--line); padding-top: 10px; }
-.advanced summary { cursor: pointer; color: var(--muted); font-weight: 600; margin-bottom: 10px; }
 .notice { display: flex; align-items: center; gap: 8px; padding: 9px 12px; border-radius: 8px; font-size: 12.5px; }
 .notice svg { flex: none; }
 .notice-info { background: var(--accent-soft); color: var(--accent); }
