@@ -98,20 +98,26 @@ function stepEditor(step, { store, markDirty, render }) {
     }),
   );
 
-  const docs = store.documents.filter((d) => api.isDocumentActive(d));
+  const docs = store.documents.filter((d) => api.isDocumentActive(d) || docIds.has(String(d.id)));
   const docList = h(
     "div",
     { class: "doc-checks" },
-    store.documents.length
-      ? store.documents.map((d) =>
+    docs.length
+      ? docs.map((d) =>
           toggle({
             form: "check",
             checked: docIds.has(String(d.id)),
-            label: d.filename,
+            label: api.isDocumentActive(d) ? d.filename : `${d.filename} (inactief)`,
             onChange: (v) => { api.setStepDocument(step, d.id, v); markDirty(); },
           }),
         )
-      : h("p", { class: "muted" }, "Nog geen documenten in de Documentenbibliotheek."),
+      : h(
+          "p",
+          { class: "muted" },
+          store.documents.length
+            ? "Geen actieve documenten in de Documentenbibliotheek."
+            : "Nog geen documenten in de Documentenbibliotheek.",
+        ),
   );
 
   const substeps = h(
