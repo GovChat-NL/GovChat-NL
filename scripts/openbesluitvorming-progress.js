@@ -16,10 +16,18 @@ if sys.argv[2]=='stopped' and not os.path.exists('/state/ingest.sqlite-wal'):
 db=sqlite3.connect(uri,uri=True,timeout=10)
 db.row_factory=sqlite3.Row
 db.execute('BEGIN')
-run=db.execute('SELECT id,pages,snapshot_complete,updated_at FROM runs WHERE id=?',(sys.argv[1],)).fetchone()
+run=db.execute('SELECT * FROM runs WHERE id=?',(sys.argv[1],)).fetchone()
 if run is None: raise SystemExit('Run not found')
 counts=dict(db.execute('SELECT status,count(*) FROM documents WHERE run_id=? GROUP BY status',(sys.argv[1],)))
-print(json.dumps({'run':dict(run),'counts':counts}))
+audit={}
+outcomes={}
+retained=counts.get('indexed',0)
+if 'generation' in run.keys() and run['generation']:
+    for kind,disposition,total in db.execute('SELECT entity_type,disposition,count(*) FROM refresh_seen WHERE run_id=? AND generation=? GROUP BY entity_type,disposition',(sys.argv[1],run['generation'])):
+        audit.setdefault(kind,{})[disposition]=total
+    retained=db.execute('SELECT count(*) FROM documents WHERE run_id=? AND has_vector=1',(sys.argv[1],)).fetchone()[0]
+    outcomes=dict(db.execute('SELECT status,count(*) FROM documents WHERE run_id=? AND refresh_generation=? GROUP BY status',(sys.argv[1],run['generation'])))
+print(json.dumps({'run':dict(run),'counts':counts,'audit':audit,'retained':retained,'outcomes':outcomes}))
 db.close()
 if guard: guard.close()`;
 
@@ -44,18 +52,44 @@ function collect(runCommand = command) {
     counts[name] = value;
   }
   if (data.run.id !== RUN) throw new Error('Unexpected ingestion run');
+  for (const group of [...Object.values(data.audit || {}), data.outcomes || {}, { retained: data.retained ?? counts.indexed }]) {
+    for (const value of Object.values(group)) {
+      if (!Number.isSafeInteger(value) || value < 0) throw new Error('Invalid progress counter');
+    }
+  }
   const queued = Object.values(counts).reduce((sum, n) => sum + n, 0);
   const complete = Boolean(data.run.snapshot_complete &&
-    !counts.pending && !counts.processing && !counts.retry && !counts.dead_letter);
+    !counts.pending && !counts.processing && !counts.retry && !counts.dead_letter && !data.audit?.Document?.missing_retained);
   return { state: state.Status, counts, queued, complete, pages: data.run.pages,
-    snapshotComplete: Boolean(data.run.snapshot_complete), updatedAt: data.run.updated_at };
+    snapshotComplete: Boolean(data.run.snapshot_complete), updatedAt: data.run.updated_at,
+    generation: data.run.generation || 0, phase: data.run.refresh_phase || 'none',
+    audit: data.audit || {}, outcomes: data.outcomes || {}, retainedVectors: data.retained ?? counts.indexed };
+}
+
+function auditLines(data) {
+  if (!data.generation) return [];
+  const d = data.audit.Document || {};
+  const rescanned = Object.entries(d).reduce((sum, [key, n]) => sum + (key === 'missing_retained' ? 0 : n), 0);
+  const changed = (d.changed || 0) + (d.parent_changed || 0);
+  const motions = Object.entries(data.audit.Motion || {}).reduce((sum, [key, n]) => sum + (key === 'missing_retained' ? 0 : n), 0);
+  return [
+    `Refresh generatie ${data.generation} | fase ${data.phase} | alle Document-categorieen en bijlagen`,
+    `Herscand ${format.format(rescanned)} | ongewijzigd ${format.format(d.unchanged || 0)} | nieuw ${d.new || 0} | gewijzigd ${changed}`,
+    `Oude/huidige vectors behouden ${format.format(data.retainedVectors)} | formaatfouten eenmalig herpland ${d.retry_size_once || 0}`,
+    `Deze refresh geindexeerd ${format.format(data.outcomes?.indexed || 0)} | mislukt ${format.format(data.outcomes?.dead_letter || 0)} | retry ${data.outcomes?.retry || 0}`,
+    `Bronverwijderingen ${d.deleted_source || 0} | ontbrekend/behouden ${d.missing_retained || 0} | eerdere fouten behouden ${d.failed_retained || 0}`,
+    `Motion-entiteiten aangetroffen ${format.format(motions)} (niet websiteaantal moties)`
+  ];
 }
 
 function summary(data, rate) {
   const c = data.counts;
-  return `${new Date().toLocaleTimeString('nl-NL')} | GEINDEXEERD ${format.format(c.indexed)} | ` +
+  const label = data.generation ? 'BESCHIKBAAR' : 'GEINDEXEERD';
+  const available = data.generation ? data.retainedVectors : c.indexed;
+  return `${new Date().toLocaleTimeString('nl-NL')} | ${label} ${format.format(available)} | ` +
     `wacht ${format.format(c.pending)} | bezig ${c.processing} | retry ${c.retry} | ` +
     `fouten ${c.dead_letter} | bronpagina's ${format.format(data.pages)} | ${data.state}` +
+    (data.generation ? ` | ${auditLines(data).join(' | ')}` : '') +
     (data.snapshotComplete ? ` | bron volledig uitgelezen | volledig geslaagd: ${data.complete ? 'JA' : 'NEE'}` : '') +
     (rate === undefined ? '' : ` | ${format.format(Math.round(rate))} docs/min`);
 }
@@ -66,7 +100,11 @@ function dashboard(data, rate) {
     'OPENBESLUITVORMING LIMBURG - LIVE TELLER',
     '======================================',
     '',
-    `  GEINDEXEERD            ${format.format(c.indexed)} documenten`,
+    ...auditLines(data),
+    ...(data.generation ? [''] : []),
+    data.generation
+      ? `  BESCHIKBAAR           ${format.format(data.retainedVectors)} documenten (bestaande vectors blijven staan)`
+      : `  GEINDEXEERD            ${format.format(c.indexed)} documenten`,
     '',
     `  Nog in wachtrij        ${format.format(c.pending)}`,
     `  Nu in verwerking       ${format.format(c.processing)}`,
@@ -74,9 +112,11 @@ function dashboard(data, rate) {
     `  Fouten / dead letters  ${format.format(c.dead_letter)}`,
     `  Verwijderd volgens bron ${format.format(c.deleted)}`,
     '',
-    data.snapshotComplete
+    data.snapshotComplete && !data.generation
       ? `  Totaal bronrecords     ${format.format(data.queued)} documenten`
-      : `  Al aangetroffen        ${format.format(data.queued)} documenten (geen volledig brontotaal)`,
+      : data.generation
+        ? `  Bestaand + aangetroffen ${format.format(data.queued)} documenten (geen inventarispercentage)`
+        : `  Al aangetroffen        ${format.format(data.queued)} documenten (geen volledig brontotaal)`,
     `  Bronpagina's opgehaald ${format.format(data.pages)}`,
     `  Alle bronpagina's binnen: ${data.snapshotComplete ? 'ja' : 'nee'}`,
     `  Volledige ingest gereed: ${data.complete ? 'JA' : 'NEE'}`,

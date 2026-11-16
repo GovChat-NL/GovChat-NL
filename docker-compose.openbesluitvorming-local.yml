@@ -1,6 +1,11 @@
 # Explicit local validation override; leaves the older stopped runtime untouched.
 # docker compose -f docker-compose.yml -f docker-compose.openbesluitvorming-local.yml ...
 services:
+  openbesluitvorming-ingest:
+    # Two pipelines, bounded 256 MiB downloads; no scheduling on compose up.
+    mem_limit: 2g
+    environment:
+      OBV_ATTACHMENT_MAX_BYTES: "268435456"
   librechat-permissions:
     container_name: govchat-obv-permissions
     volumes:

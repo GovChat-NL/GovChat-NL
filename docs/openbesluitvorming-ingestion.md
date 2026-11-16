@@ -1,5 +1,73 @@
 # Limburg full-document ingestion: operator guide
 
+## All-document refresh started: 2026-11-16
+
+The user authorized resuming ingestion for **all document categories**, after
+observing 4,590 motions on the public website. That website number is not directly
+comparable with our 3,337 documents classified "Moties". The original archived
+snapshot contained 2,125 **Motion entities**, alongside 56,646 Documents and
+3,048 Meetings. Current snapshot probing returned change cursor **111358**, versus
+the original **111032**, confirming later source changes but not their type/count.
+
+**Refresh generation 1** started in the same run/collection on **2026-11-16 at
+10:58:43 UTC** (11:58:43 Europe/Amsterdam), in container **govchat-obv-full-run**.
+The old exited container/logs were retained as **govchat-obv-full-run-20261112**.
+No collection was emptied, restored or switched.
+
+The refresh performs a complete snapshot inventory with page size 100, preserving
+all raw pages and the prior generation checkpoint. It compares entire canonical
+source records, not only text hashes. Unchanged acknowledged documents do not
+trigger new detail/download/embedding requests. New/changed documents queue
+durably. Changed Meeting/Motion records queue affected documents after the entire
+inventory has been traversed, including conservative handling of older detail-only
+meeting references. Reference caches are invalidated. Missing snapshot records
+remain retained and flagged for review; absence is not inferred to be deletion.
+An explicit source tombstone is handled with acknowledged deletion and a backup
+of the old vector/payload. Before any changed-vector upsert, the previous point is
+archived durably under the state volume's vector history.
+
+The dashboard separates **BESCHIKBAAR** (existing/current retained vectors) from
+refresh work: rescanned, unchanged, new, changed/parent-changed, queued, indexed
+this generation, and unresolved failures. During inventory, changed document jobs
+can be pending while their previous vectors remain available. Processing starts
+after the complete parent inventory is known; zero new indexing during this phase
+is expected. Close/reopen pre-existing monitor windows to load the new counters.
+
+The local download budget is now 256 MiB, with two pipelines and a 2 GiB worker
+memory cap. The **80 prior size-budget failures** are eligible for exactly one new
+attempt when encountered unchanged. Unchanged permanent download/parser/OCR
+failures remain visible instead of blindly resetting their attempts. Documents
+whose source record changed receive a normal bounded retry budget. Oversized,
+invalid or unextractable files still fail explicitly without tail truncation.
+
+First production observation at 11:00 UTC: 9,000 Documents rescanned, 8,940 unchanged,
+6 new, 21 changed, 9 size retries queued, and 24 unchanged earlier failures retained.
+All **56,371 existing Qdrant points** were still present. These are partial audit
+counts, not a complete updated corpus or confirmation of the website motion total.
+Tests passed: **77 Python ingestion/refresh tests** on Windows and Linux, plus
+**25 Node monitor/search/probe tests**, including direct live-Qdrant filtering.
+
+### Future refresh and resume
+
+Run from the repository directory using the same explicit Compose prefix described
+below. Generation initialization does not process documents:
+
+```bat
+%OBV% run --rm --no-deps openbesluitvorming-ingest refresh --run-id limburg-full-20261111 --approve-full-run --retry-size-failures-once
+```
+
+**Do not repeat initialization while generation 1 is active.** An interrupted
+generation resumes with the ordinary run command, retaining its inventory cursor:
+
+```bat
+%OBV% run -d --name govchat-obv-refresh-resume --no-deps openbesluitvorming-ingest run --run-id limburg-full-20261111 --max-documents 1000000 --max-pages 100000 --page-size 100 --workers 2 --approve-full-run
+```
+
+The dashboard targets govchat-obv-full-run; if deliberately resuming under a new
+container name, adjust its target or reuse the name after retaining the old exited
+container. Baseline/current state and vector-history backups share the persistent
+state volume. Do not run an old worker image against the migrated refresh state.
+
 ## Latest verification: 2026-11-16
 
 The full snapshot traversal ended normally on **2026-11-12 at 22:13:12 UTC**

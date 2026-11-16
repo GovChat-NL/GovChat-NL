@@ -64,3 +64,32 @@ test('human-readable dashboard shows counters without inventing corpus percentag
 test('invalid counters cannot be displayed as trustworthy totals', () => {
   assert.throws(() => collect(fixture({ indexed: -1 }).read), /Invalid progress counter/);
 });
+
+test('refresh shows independent audit counters and retained vectors without false percentage', () => {
+  const data = collect(args => args[0] === 'inspect'
+    ? JSON.stringify({ Running: true, Status: 'running' })
+    : JSON.stringify({ run: { id: 'limburg-full-20261111', pages: 3100, generation: 1,
+      refresh_phase: 'inventory', snapshot_complete: 0 }, counts: { indexed: 56300, pending: 71, dead_letter: 275 },
+      retained: 56371, audit: { Document: { unchanged: 800, changed: 2, new: 3 }, Motion: { unchanged: 20 } } }));
+  const text = dashboard(data);
+  assert.match(text, /Herscand 805/);
+  assert.match(text, /ongewijzigd 800/);
+  assert.match(text, /nieuw 3/);
+  assert.match(text, /gewijzigd 2/);
+  assert.match(text, /vectors behouden 56\.371/);
+  assert.match(text, /BESCHIKBAAR\s+56\.371 documenten/);
+  assert.match(summary(data), /BESCHIKBAAR 56\.371/);
+  assert.match(summary(data), /fase inventory/);
+  assert.equal(data.complete, false);
+  assert.doesNotMatch(text, /\d+%/);
+});
+
+test('absent source document retained for review prevents false complete refresh', () => {
+  const data = collect(args => args[0] === 'inspect'
+    ? JSON.stringify({ Running: false, Status: 'exited' })
+    : JSON.stringify({ run: { id: 'limburg-full-20261111', pages: 4000, generation: 1,
+      refresh_phase: 'complete', snapshot_complete: 1 }, counts: { indexed: 10 },
+      audit: { Document: { unchanged: 9, missing_retained: 1 } } }));
+  assert.equal(data.complete, false);
+  assert.match(dashboard(data), /Herscand 9/);
+});

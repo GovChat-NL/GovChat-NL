@@ -6,6 +6,7 @@ import concurrent.futures
 import datetime
 import email.utils
 import hashlib
+import gzip
 import json
 import math
 import os
@@ -271,7 +272,32 @@ def connect(state):
             raw BLOB NOT NULL, headers TEXT NOT NULL, error TEXT NOT NULL, created_at TEXT NOT NULL);
         CREATE TABLE IF NOT EXISTS contexts (
             entity_id TEXT PRIMARY KEY, detail TEXT NOT NULL, fetched_at TEXT NOT NULL);
+        CREATE TABLE IF NOT EXISTS refresh_generations (
+            run_id TEXT NOT NULL, generation INTEGER NOT NULL, baseline TEXT NOT NULL,
+            started_at TEXT NOT NULL, retry_size INTEGER NOT NULL,
+            PRIMARY KEY(run_id,generation));
+        CREATE TABLE IF NOT EXISTS source_entities (
+            run_id TEXT NOT NULL, entity_id TEXT NOT NULL, entity_type TEXT NOT NULL,
+            record TEXT NOT NULL, PRIMARY KEY(run_id,entity_id));
+        CREATE TABLE IF NOT EXISTS refresh_seen (
+            run_id TEXT NOT NULL, generation INTEGER NOT NULL, entity_id TEXT NOT NULL,
+            entity_type TEXT NOT NULL, disposition TEXT NOT NULL,
+            PRIMARY KEY(run_id,generation,entity_id));
+        CREATE TABLE IF NOT EXISTS document_history (
+            run_id TEXT NOT NULL, generation INTEGER NOT NULL, entity_id TEXT NOT NULL,
+            checkpoint TEXT NOT NULL, PRIMARY KEY(run_id,generation,entity_id));
     ''')
+    for table, columns in {
+        'runs': [('generation', 'INTEGER NOT NULL DEFAULT 0'), ('refresh_phase', "TEXT NOT NULL DEFAULT 'none'")],
+        'documents': [('has_vector', 'INTEGER NOT NULL DEFAULT 0'), ('refresh_generation', 'INTEGER NOT NULL DEFAULT 0')],
+    }.items():
+        existing = {r[1] for r in db.execute(f'PRAGMA table_info({table})')}
+        for name, declaration in columns:
+            if name not in existing:
+                db.execute(f'ALTER TABLE {table} ADD COLUMN {name} {declaration}')
+                if name == 'has_vector':
+                    db.execute("UPDATE documents SET has_vector=1 WHERE status='indexed'")
+    db.commit()
     return db
 
 
@@ -354,11 +380,141 @@ class Worker:
         if v.get('size') != DIMENSIONS or v.get('distance') != 'Cosine':
             raise IngestError('qdrant_vector_schema_mismatch', 'qdrant')
 
+    @staticmethod
+    def canonical(record):
+        # Compare the ENTIRE record, including metadata, commit and schema. A
+        # content_hash alone does not prove parent/document metadata unchanged.
+        return json.dumps(record, sort_keys=True, ensure_ascii=False, separators=(',', ':'))
+
+    def refresh(self, run_id, approve=False, retry_size=False):
+        """Explicit generation start, under the command lock. `run` resumes it."""
+        if not approve:
+            raise IngestError('refresh_requires_approve_full_run')
+        run = self.run_info(run_id)
+        if run['refresh_phase'] in ('inventory', 'apply'):
+            raise IngestError('refresh_already_active_use_run_to_resume')
+        if not run['snapshot_complete']:
+            raise IngestError('refresh_requires_completed_previous_snapshot')
+        if self.db.execute("SELECT 1 FROM documents WHERE run_id=? AND status IN ('pending','processing','retry') LIMIT 1", (run_id,)).fetchone():
+            raise IngestError('refresh_requires_settled_previous_queue')
+        if retry_size and self.max_bytes <= 64 * 1024 * 1024:
+            raise IngestError('size_retry_requires_increased_attachment_budget')
+        self.validate_collection(run)
+        generation = run['generation'] + 1
+        with self.db:
+            # Seed the original parent inventory from the immutable page archive,
+            # without remote calls or modifying old pages/checkpoints.
+            if not run['generation']:
+                for page in self.db.execute('SELECT raw FROM pages WHERE run_id=? ORDER BY page', (run_id,)):
+                    for line in bytes(page['raw']).decode('utf-8').splitlines():
+                        if line.strip():
+                            record = json.loads(line)
+                            self.db.execute('INSERT OR REPLACE INTO source_entities VALUES(?,?,?,?)',
+                                (run_id, record['entity_id'], record['entity_type'], self.canonical(record)))
+            self.db.execute('INSERT INTO refresh_generations VALUES(?,?,?,?,?)',
+                (run_id, generation, json.dumps(run), now(), int(retry_size)))
+            self.db.execute("UPDATE runs SET generation=?,refresh_phase='inventory',cursor=NULL,changes_cursor=NULL,snapshot_complete=0,last_error=NULL,updated_at=? WHERE id=?",
+                (generation, now(), run_id))
+            self.db.execute('DELETE FROM contexts')
+        with self.context_lock:
+            self.context_cache.clear()
+            self.context_dirty.clear()
+        return self.status(run_id)
+
+    def audit_record(self, run, record):
+        run_id, generation, entity = run['id'], run['generation'], record['entity_id']
+        old = self.db.execute('SELECT record FROM source_entities WHERE run_id=? AND entity_id=?', (run_id, entity)).fetchone()
+        disposition = 'new' if old is None else ('unchanged' if old['record'] == self.canonical(record) else 'changed')
+        job = self.db.execute('SELECT * FROM documents WHERE run_id=? AND entity_id=?', (run_id, entity)).fetchone()
+        if record['entity_type'] == 'Document':
+            if job and self.canonical(json.loads(job['record'])) == self.canonical(record):
+                disposition = 'unchanged' if job['status'] in ('indexed', 'deleted') else 'failed_retained'
+            elif job:
+                disposition = 'changed'
+            if record['op'] == 'delete' and disposition != 'unchanged':
+                disposition = 'deleted_source'
+            retry_size = self.db.execute('SELECT retry_size FROM refresh_generations WHERE run_id=? AND generation=?', (run_id, generation)).fetchone()[0]
+            size_failure = bool(job and 'response_size_budget_exceeded' in (job['evidence'] or '') and retry_size)
+            if disposition == 'failed_retained' and size_failure:
+                disposition = 'retry_size_once'
+            if disposition not in ('unchanged', 'failed_retained'):
+                self.queue_refresh(run, record, job, once=disposition == 'retry_size_once')
+        self.db.execute('INSERT INTO refresh_seen VALUES(?,?,?,?,?)', (run_id, generation, entity, record['entity_type'], disposition))
+        self.db.execute('INSERT OR REPLACE INTO source_entities VALUES(?,?,?,?)', (run_id, entity, record['entity_type'], self.canonical(record)))
+
+    def queue_refresh(self, run, record, job, once=False):
+        if job:
+            self.db.execute('INSERT OR IGNORE INTO document_history VALUES(?,?,?,?)',
+                (run['id'], run['generation'], record['entity_id'], json.dumps(dict(job))))
+        self.db.execute('''INSERT INTO documents(run_id,entity_id,record,updated_at,refresh_generation,attempts)
+            VALUES(?,?,?,?,?,?) ON CONFLICT(run_id,entity_id) DO UPDATE SET record=excluded.record,
+            status='pending',attempts=excluded.attempts,next_attempt=0,updated_at=excluded.updated_at,
+            refresh_generation=excluded.refresh_generation''',
+            (run['id'], record['entity_id'], json.dumps(record, ensure_ascii=False), now(), run['generation'],
+             int(os.getenv('OBV_JOB_MAX_ATTEMPTS', '3')) - 1 if once else 0))
+
+    def finish_inventory(self, run):
+        # Parent pages come AFTER document pages. Only schedule after all parent
+        # records are known. Missing records are retained and flagged, never
+        # inferred to be deletes from a non-atomic live snapshot.
+        args = (run['id'], run['generation'])
+        self.db.execute('''INSERT INTO refresh_seen SELECT s.run_id,?,s.entity_id,s.entity_type,'missing_retained'
+            FROM source_entities s WHERE s.run_id=? AND NOT EXISTS
+            (SELECT 1 FROM refresh_seen a WHERE a.run_id=s.run_id AND a.generation=? AND a.entity_id=s.entity_id)''',
+            (run['generation'], run['id'], run['generation']))
+        parents = {r[0] for r in self.db.execute("SELECT entity_id FROM refresh_seen WHERE run_id=? AND generation=? AND entity_type IN ('Meeting','Motion') AND disposition!='unchanged'", args)}
+        for job in self.db.execute('SELECT * FROM documents WHERE run_id=?', (run['id'],)).fetchall():
+            record = json.loads(job['record'])
+            reference = record.get('payload', {}).get('is_referenced_by')
+            # Older detail-only meetingId dependencies were not checkpointed.
+            # Conservatively refresh unreferenced acknowledged documents if any
+            # parent changed rather than silently missing those dependencies.
+            if (reference in parents or (not reference and parents)) and record['op'] != 'delete':
+                seen = self.db.execute('SELECT disposition FROM refresh_seen WHERE run_id=? AND generation=? AND entity_id=?', (*args, job['entity_id'])).fetchone()
+                if seen and seen[0] == 'unchanged':
+                    self.queue_refresh(run, record, job)
+                    self.db.execute("UPDATE refresh_seen SET disposition='parent_changed' WHERE run_id=? AND generation=? AND entity_id=?", (*args, job['entity_id']))
+        self.db.execute("UPDATE runs SET refresh_phase='apply' WHERE id=?", (run['id'],))
+
+    def archive_vector(self, run, job):
+        """Durably preserve previous point BEFORE an upsert/delete. Crash replay
+        must not replace this backup with the already refreshed point."""
+        if not job.get('refresh_generation') or not job.get('has_vector'):
+            return
+        path = self.state / 'vector-history' / run['id'] / str(job['refresh_generation']) / (point_id(job['entity_id']) + '.json.gz')
+        if path.exists():
+            return
+        result = self.http.json(self.collection_url(run['collection']) + '/points', 'POST',
+            {'ids': [point_id(job['entity_id'])], 'with_payload': True, 'with_vector': True})
+        points = result.get('result')
+        if (not isinstance(points, list) or len(points) != 1 or points[0].get('id') != point_id(job['entity_id'])
+                or len(points[0].get('vector', [])) != DIMENSIONS):
+            raise IngestError('cannot_archive_previous_vector', 'qdrant')
+        path.parent.mkdir(parents=True, exist_ok=True)
+        temporary = path.with_suffix('.tmp')
+        with open(temporary, 'wb') as handle:
+            with gzip.GzipFile(fileobj=handle, mode='wb') as compressed:
+                compressed.write(json.dumps(points[0], ensure_ascii=False, allow_nan=False).encode('utf-8'))
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temporary, path)
+        if os.name != 'nt':
+            directory = os.open(path.parent, os.O_RDONLY)
+            try:
+                os.fsync(directory)
+            finally:
+                os.close(directory)
+
     def page(self, run, limit):
         query = {'source': SOURCE, 'limit': limit}
         if run['cursor']:
             query['cursor'] = run['cursor']
-        body, headers = self.timed('source', self.http.request, API + '/export/snapshot?' + urllib.parse.urlencode(query))
+        try:
+            body, headers = self.timed('source', self.http.request, API + '/export/snapshot?' + urllib.parse.urlencode(query))
+        except IngestError as error:
+            with self.db:
+                self.db.execute('UPDATE runs SET last_error=?,updated_at=? WHERE id=?', (error.code, now(), run['id']))
+            raise
         try:
             records, nxt, more, changes = parse_page(body, headers, run['cursor'])
             # Snapshot cursors are entity IDs ordered lexicographically. Prevent cycles/backtracking.
@@ -377,14 +533,21 @@ class Worker:
             self.db.execute('INSERT INTO pages VALUES(?,?,?,?,?,?)',
                             (run['id'], page, run['cursor'], nxt, body, json.dumps(headers)))
             for record in records:
-                if record['entity_type'] == 'Document':
+                if run['refresh_phase'] == 'inventory':
+                    self.audit_record(run, record)
+                elif record['entity_type'] == 'Document':
                     self.db.execute('''INSERT INTO documents(run_id,entity_id,record,updated_at) VALUES(?,?,?,?)
                         ON CONFLICT(run_id,entity_id) DO UPDATE SET record=excluded.record,status='pending',
                         attempts=0,next_attempt=0,error=NULL,updated_at=excluded.updated_at''',
                                     (run['id'], record['entity_id'], json.dumps(record, ensure_ascii=False), now()))
             self.db.execute('''UPDATE runs SET cursor=?,changes_cursor=COALESCE(changes_cursor,?),pages=?,
                 snapshot_complete=?,updated_at=?,last_error=NULL WHERE id=?''',
-                            (nxt, changes, page, int(not more), now(), run['id']))
+                             (nxt, changes, page, int(not more), now(), run['id']))
+            if run['refresh_phase'] == 'inventory' and not more:
+                self.finish_inventory(run)
+        if run['refresh_phase'] == 'inventory':
+            print(json.dumps({'event': 'refresh_inventory_page', 'generation': run['generation'],
+                              'page': page, 'records': len(records), 'inventory_complete': not more}), flush=True)
 
     def detail(self, entity_id):
         d = self.http.json(API + '/entities/' + urllib.parse.quote(entity_id, safe=''))
@@ -544,7 +707,10 @@ class Worker:
         record = json.loads(job['record'])
         url = self.collection_url(run['collection']) + '/points'
         if record['op'] == 'delete':
-            self.timed('upsert', self.http.json, url + '/delete?wait=true', 'POST', {'points': [point_id(record['entity_id'])]})
+            self.archive_vector(run, job)
+            ack = self.timed('upsert', self.http.json, url + '/delete?wait=true', 'POST', {'points': [point_id(record['entity_id'])]})
+            if ack.get('status') != 'ok' or ack.get('result', {}).get('status') != 'completed':
+                raise IngestError('qdrant_delete_not_completed', 'qdrant')
             return 'deleted'
         detail = self.timed('detail', self.detail, record['entity_id'])
         if detail['entityType'] != 'Document':
@@ -573,6 +739,7 @@ class Worker:
             'extraction': extraction, 'ingest_run_id': run['id'], 'indexed_at': now(), **stats,
             **public_links(record['entity_id'], reference, p.get('original_url'), p.get('public_url')),
         }
+        self.archive_vector(run, job)
         ack = self.timed('upsert', self.http.json, url + '?wait=true', 'PUT', {'points': [{'id': point_id(record['entity_id']),
                                                                  'vector': vector, 'payload': payload}]})
         if ack.get('status') != 'ok' or ack.get('result', {}).get('status') != 'completed':
@@ -594,8 +761,8 @@ class Worker:
         outcome, error, timings, elapsed = future.result()
         with self.db:
             if error is None:
-                self.db.execute('UPDATE documents SET status=?,error=NULL,evidence=NULL,updated_at=? WHERE run_id=? AND entity_id=?',
-                                (outcome, now(), run_id, job['entity_id']))
+                self.db.execute('UPDATE documents SET status=?,has_vector=?,error=NULL,evidence=NULL,updated_at=? WHERE run_id=? AND entity_id=?',
+                                (outcome, int(outcome == 'indexed'), now(), run_id, job['entity_id']))
             else:
                 attempts = job['attempts'] + 1
                 outcome = 'dead_letter' if attempts >= int(os.getenv('OBV_JOB_MAX_ATTEMPTS', '3')) else 'retry'
@@ -624,6 +791,16 @@ class Worker:
         with self.db:
             self.db.execute("UPDATE documents SET status='pending' WHERE run_id=? AND status='processing'", (run_id,))
         processed, fetched, submitted, peak = 0, 0, 0, 0
+        # Inventory is bounded by max_pages independently of the document work
+        # budget. Unchanged records require no detail/download/embedding calls.
+        while run['refresh_phase'] == 'inventory' and fetched < max_pages:
+            self.page(run, page_size)
+            fetched += 1
+            run = self.run_info(run_id)
+        if run['refresh_phase'] == 'inventory':
+            result = self.status(run_id)
+            result.update({'session_pages': fetched, 'session_processed': 0})
+            return result
         outstanding = {}
         with concurrent.futures.ThreadPoolExecutor(max_workers=workers, thread_name_prefix='obv') as pool:
             try:
@@ -672,6 +849,10 @@ class Worker:
                     processed += 1
                 self.flush_contexts()
         result = self.status(run_id)
+        if run['generation'] and not any(result['runs'][0]['counts'].get(s, 0) for s in ('pending', 'processing', 'retry')):
+            with self.db:
+                self.db.execute("UPDATE runs SET refresh_phase='complete' WHERE id=?", (run_id,))
+            result = self.status(run_id)
         elapsed = time.perf_counter() - start
         result.update({'session_processed': processed, 'session_pages': fetched,
                        'performance': {'workers': workers, 'peak_inflight': peak, 'elapsed_seconds': elapsed,
@@ -694,7 +875,14 @@ class Worker:
         for run in runs:
             counts = dict(self.db.execute('SELECT status,count(*) FROM documents WHERE run_id=? GROUP BY status', (run['id'],)))
             run['counts'] = counts
+            run['retained_vectors'] = self.db.execute('SELECT count(*) FROM documents WHERE run_id=? AND has_vector=1', (run['id'],)).fetchone()[0]
+            if run['generation']:
+                audit = self.db.execute('SELECT entity_type,disposition,count(*) FROM refresh_seen WHERE run_id=? AND generation=? GROUP BY entity_type,disposition', (run['id'], run['generation'])).fetchall()
+                run['audit'] = {kind: {r[1]: r[2] for r in audit if r[0] == kind} for kind in {r[0] for r in audit}}
+                run['refresh_outcomes'] = dict(self.db.execute('SELECT status,count(*) FROM documents WHERE run_id=? AND refresh_generation=? GROUP BY status', (run['id'], run['generation'])))
             run['complete'] = bool(run['snapshot_complete'] and not any(counts.get(s, 0) for s in ('pending', 'processing', 'retry', 'dead_letter')))
+            if run.get('audit', {}).get('Document', {}).get('missing_retained'):
+                run['complete'] = False
             run['failures'] = [dict(r) for r in self.db.execute("SELECT entity_id,status,attempts,error,evidence FROM documents WHERE run_id=? AND status IN ('retry','dead_letter') LIMIT 20", (run['id'],))]
         return {'runs': runs}
 
@@ -768,6 +956,10 @@ def main():
     run.add_argument('--page-size', type=int, default=20)
     run.add_argument('--workers', type=int, help='1..4 document pipelines; default OBV_WORKERS or 2')
     run.add_argument('--approve-full-run', action='store_true')
+    refresh = sub.add_parser('refresh', help='start all-entity inventory generation in existing run; use run to process/resume')
+    refresh.add_argument('--run-id', required=True)
+    refresh.add_argument('--approve-full-run', action='store_true')
+    refresh.add_argument('--retry-size-failures-once', action='store_true')
     status = sub.add_parser('status')
     status.add_argument('--run-id')
     retry = sub.add_parser('retry', help='requeue failures, without processing them')
@@ -792,6 +984,8 @@ def main():
                     result = w.fresh(args.run_id, args.collection)
                 elif args.command == 'run':
                     result = w.execute(args.run_id, args.max_documents, args.max_pages, args.page_size, args.approve_full_run, args.workers)
+                elif args.command == 'refresh':
+                    result = w.refresh(args.run_id, args.approve_full_run, args.retry_size_failures_once)
                 elif args.command == 'retry':
                     result = w.retry(args.run_id, args.entity_id)
                 elif args.command == 'failures':
