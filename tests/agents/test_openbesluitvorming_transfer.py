@@ -6,6 +6,7 @@ import io
 import json
 import os
 from pathlib import Path
+import re
 import sqlite3
 import subprocess
 import tarfile
@@ -25,6 +26,19 @@ def load(name, path):
 
 transfer = load('obv_transfer', ROOT / 'scripts/openbesluitvorming-transfer.py')
 worker = load('obv_transfer_fixture_worker', ROOT / 'services/openbesluitvorming-ingest/worker.py')
+
+
+class ServerRunbookTests(unittest.TestCase):
+    def test_documented_run_bounds_are_positive_and_approved(self):
+        guide = (ROOT / 'docs/openbesluitvorming-transfer.md').read_text(encoding='utf-8')
+        runs = [line for line in guide.splitlines() if '--max-documents' in line]
+        self.assertTrue(runs)
+        for line in runs:
+            bounds = re.search(r'--max-documents (\d+) --max-pages (\d+)', line)
+            self.assertIsNotNone(bounds)
+            self.assertGreater(int(bounds.group(1)), 0)
+            self.assertGreater(int(bounds.group(2)), 0)
+            self.assertIn('--approve-full-run', line)
 
 
 def archive(path, entries):

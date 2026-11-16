@@ -245,6 +245,12 @@ worker count and approved target LiteLLM configuration, but must not change the
 Qdrant version, dimensions, state-volume identity or add an ingestion scheduler.
 Pass it as another explicit file; never rely on automatically loaded local overrides.
 
+To match this dataset's last successful local refresh, configure the target worker
+with a **256 MiB attachment budget**, **two workers** and **2 GiB memory limit** in
+the reviewed production override. The base Compose default is only 64 MiB/1 GiB;
+do not accidentally revert the raised limit by omitting the workstation override
+without supplying an appropriate server override. No credentials belong in it.
+
 First validate the bundle **offline** from a trusted, reviewed utility checkout
 (not code first extracted from an untrusted bundle). Verify producer authenticity
 and the recorded commit separately. This standard-library one-liner loads that
@@ -365,7 +371,7 @@ Only after the operator approves source API traffic and verifies the target mode
 
 ```text
 docker compose -p govchat-obv-target -f docker-compose.yml run --rm --no-deps openbesluitvorming-ingest refresh --run-id limburg-full-20261111 --approve-full-run
-docker compose -p govchat-obv-target -f docker-compose.yml run -d --no-deps --name govchat-obv-target-run openbesluitvorming-ingest run --run-id limburg-full-20261111 --max-documents 0 --max-pages 0 --page-size 100 --workers 2 --approve-full-run
+docker compose -p govchat-obv-target -f docker-compose.yml run -d --no-deps --name govchat-obv-target-run openbesluitvorming-ingest run --run-id limburg-full-20261111 --max-documents 1000000 --max-pages 100000 --page-size 100 --workers 2 --approve-full-run
 node scripts/openbesluitvorming-progress.js --container govchat-obv-target-run --run-id limburg-full-20261111
 node scripts/openbesluitvorming-progress.js logs --container govchat-obv-target-run --run-id limburg-full-20261111
 ```
@@ -373,6 +379,9 @@ node scripts/openbesluitvorming-progress.js logs --container govchat-obv-target-
 Use one constant operator-chosen container name for the long-running one-shot job
 and monitor; the monitor also accepts an actual container ID. Its original source
 defaults remain unchanged, so **always pass target arguments** on the target.
+The positive attempt/page ceilings are safety limits, not target corpus counts.
+Zero is not an unlimited setting: the worker rejects zero execution bounds. Check
+the terminal snapshot flag and remaining jobs, not merely a normal container exit.
 Do not use `--rm` for the named run container (including a future source run): its
 stopped identity, mounts, exit status and logs must remain inspectable for export.
 Do not remove it until checkpoint/log review is complete. To resume **the identical
