@@ -158,14 +158,6 @@ export function createStore(steps) {
     return state.messages.some((m) => m.substepId === substepId && m.text && m.ts > since);
   }
 
-  /** Whether the card of a substep shows a different report than before the
-   *  request. `before` is the updated_at of the report the card showed then,
-   *  or "" when it showed none. */
-  function reportArrived(substepId, before) {
-    const now = substepResult(substepId).updated_at;
-    return Boolean(now) && now !== before;
-  }
-
   function addMessage(role, text, meta) {
     const message = createMessage(role, text, meta);
     state.messages.push(message);
@@ -245,7 +237,6 @@ export function createStore(steps) {
     setCaseText,
     caseStarted,
     talkedSinceReport,
-    reportArrived,
     addMessage,
     replaceMessages,
     updateMessage,

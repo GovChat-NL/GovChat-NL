@@ -149,7 +149,6 @@ export function setupChat(store, { refreshState }) {
 
     const session = state.session;
     const stillOpen = () => state.session === session;
-    const reportBefore = store.substepResult(substep.id).updated_at;
     try {
       const result = await requestOrchestrator(text);
       if (!stillOpen()) {
@@ -180,14 +179,8 @@ export function setupChat(store, { refreshState }) {
       } catch (err) {
         store.addMessage("assistant", `Kon de stand van de casus niet ophalen (${String(err?.message || err)}). Open de casus opnieuw om de kaarten bij te werken.`);
       }
-      // Beleidskompas answers a report request that went wrong (the store
-      // gave an error, the step failed) with a normal answer that explains
-      // it. The page cannot tell that answer from a report, but the store
-      // then has no new report for the substep. So the answer goes to the
-      // chat, where the user sees it.
-      if (!pendingMessage && stillOpen() && !store.reportArrived(substep.id, reportBefore)) {
-        store.addMessage("assistant", result.text);
-      }
+      const answer = String(result.text || "").trim();
+      if (!pendingMessage && stillOpen() && answer) store.addMessage("assistant", answer);
     } catch (err) {
       if (!stillOpen()) return;
       const failure = `Beleidskompas niet bereikbaar of fout: ${String(err?.message || err)}. Probeer het opnieuw of open een nieuwe chat.`;
