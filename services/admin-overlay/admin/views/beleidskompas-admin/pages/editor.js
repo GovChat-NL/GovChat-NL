@@ -14,14 +14,14 @@ export function renderEditor({ store, render, markDirty, selectTemplate, saveAsN
     currentId: tpl?.id,
     meta: tpl ? versionStatus(tpl) : null,
     onSelect: selectTemplate,
-    onNew: tpl ? saveAsNewTemplate : null,
+    onNew: saveAsNewTemplate,
   });
 
   // Gate: the template settings, Documentenbibliotheek and Flow builder open once a template is picked.
   if (!tpl) {
     return {
       subtitle: picker,
-      content: h("p", { class: "empty" }, "Kies eerst een template. Daarna kun je de instellingen, de Documentenbibliotheek en de Flow builder openen."),
+      content: h("div", { class: "stack" }, h("p", { class: "empty" }, "Kies een template of maak een nieuw template aan."), h("button", { class: "btn btn-primary", onClick: saveAsNewTemplate }, "Nieuw template")),
     };
   }
 
@@ -71,13 +71,12 @@ export function renderEditor({ store, render, markDirty, selectTemplate, saveAsN
                     "button",
                     {
                       class: "btn btn-small btn-secondary",
-                      disabled: tpl.mock,
                       onClick: async () => {
                         const label = versionLabel(tpl, v.id);
                         if (!confirm(`${label} herstellen als nieuwe versie? Niet-opgeslagen wijzigingen gaan verloren.`)) return;
                         try {
                           // Restoring saves the old content as a new version (not live), so the history only grows.
-                          const { version } = await api.saveVersion(v.snapshot, `Hersteld van ${label}`);
+                          const { version } = await api.saveVersion(tpl.id, v.snapshot, `Hersteld van ${label}`);
                           await reload();
                           toast(`${label} hersteld als ${versionLabel(template(), version.id)}. Live zetten doe je via Deploy.`, "success");
                           render();
@@ -102,9 +101,10 @@ export function renderEditor({ store, render, markDirty, selectTemplate, saveAsN
     if (!file) return;
     try {
       const json = JSON.parse(await file.text());
-      if (!confirm("De huidige configuratie wordt overschreven met dit bestand. Doorgaan?")) return;
-      await api.importState(json);
+      if (!confirm("Dit bestand als nieuw template importeren?")) return;
+      const { template: imported } = await api.importState(json);
       await reload();
+      await selectTemplate(imported.id);
       toast("Configuratie geïmporteerd", "success");
       render();
     } catch (err) {
@@ -115,14 +115,12 @@ export function renderEditor({ store, render, markDirty, selectTemplate, saveAsN
   });
   const transferCard = card(
     "Export en import",
-    h("p", { class: "muted" }, "De volledige configuratie (template, versies, documenten en instellingen) als JSON-bestand."),
+    h("p", { class: "muted" }, "Exporteer de nieuwste versie met de gekoppelde documenten. Importeren maakt een nieuw template; live zetten doe je via Deploy."),
     h(
       "div",
       { class: "card-actions" },
-      tpl.mock
-        ? h("button", { class: "btn btn-secondary", disabled: true }, icon("download", 14), "Exporteren")
-        : h("a", { class: "btn btn-secondary", href: api.exportUrl(), download: "beleidskompas-config.json" }, icon("download", 14), "Exporteren"),
-      h("button", { class: "btn btn-secondary", disabled: tpl.mock, onClick: () => importInput.click() }, icon("upload", 14), "Importeren"),
+      h("a", { class: "btn btn-secondary", href: api.exportUrl(tpl.id), download: "beleidskompas-template.json" }, icon("download", 14), "Exporteren"),
+      h("button", { class: "btn btn-secondary", onClick: () => importInput.click() }, icon("upload", 14), "Importeren"),
       importInput,
     ),
   );

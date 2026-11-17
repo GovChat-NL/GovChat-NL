@@ -37,7 +37,7 @@ export function renderDocuments({ store, render }) {
   });
 
   const controls = [
-    h("button", { class: "btn btn-secondary", disabled: tpl.mock, onClick: () => uploadInput.click() }, icon("upload", 14), "Uploaden"),
+    h("button", { class: "btn btn-secondary", onClick: () => uploadInput.click() }, icon("upload", 14), "Uploaden"),
     uploadInput,
   ];
 
@@ -62,7 +62,6 @@ function emptyPreview() {
 }
 
 function docPreview(doc, { tpl, store, reloadDocs }) {
-  const readOnly = tpl.mock;
   const usedIn = store.flow.steps.filter((s) => api.stepDocumentIds(s).has(doc.id));
 
   const actions = h(
@@ -72,7 +71,6 @@ function docPreview(doc, { tpl, store, reloadDocs }) {
       "button",
       {
         class: "btn btn-small btn-secondary",
-        disabled: readOnly,
         onClick: async () => {
           const name = await askText({ title: "Document hernoemen", label: "Bestandsnaam", value: doc.filename, confirm: "Hernoemen", required: true });
           if (!name || name === doc.filename) return;
@@ -86,14 +84,11 @@ function docPreview(doc, { tpl, store, reloadDocs }) {
       },
       "Hernoemen",
     ),
-    readOnly
-      ? h("button", { class: "btn btn-small btn-secondary", disabled: true }, icon("download", 14), "Downloaden")
-      : h("a", { class: "btn btn-small btn-secondary", href: api.downloadUrl(doc.id), download: doc.filename }, icon("download", 14), "Downloaden"),
+    h("a", { class: "btn btn-small btn-secondary", href: api.downloadUrl(doc.id), download: doc.filename }, icon("download", 14), "Downloaden"),
     h(
       "button",
       {
         class: "btn btn-small btn-danger",
-        disabled: readOnly,
         onClick: async () => {
           if (!confirm(`“${doc.filename}” verwijderen?`)) return;
           try {
