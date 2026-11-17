@@ -1,0 +1,9 @@
+# Changes only the statistics read mount, never the worker's default state.
+services:
+  openbesluitvorming-statistics:
+    volumes: !override
+      - obv-statistics-imported-state:/state:ro
+volumes:
+  obv-statistics-imported-state:
+    external: true
+    name: ${OBV_STATS_STATE_VOLUME:?Set OBV_STATS_STATE_VOLUME to the existing imported checkpoint volume}

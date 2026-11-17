@@ -1,4 +1,5 @@
 'use strict';
+const { workflowFunctionSource } = require('./workflow-function-source');
 const { trustedImageUserId } = require('./orchestrator-image-workflow');
 
 function imageConversation(messages) {
@@ -43,8 +44,8 @@ function applyOrchestratorImageEdits(workflow) {
     const visionGuard = /if \(imageParts > 0(?: && !precomputedResponse)?\) \{/;
     if (!code.includes("let visionCallStatus = 'skipped';") || !visionGuard.test(code)) throw new Error('Unknown detector layout');
     const addition = `// GovChat trusted image intent v1
-${trustedImageUserId.toString()}
-${imageConversation.toString()}
+${workflowFunctionSource(trustedImageUserId)}
+${workflowFunctionSource(imageConversation)}
 const imageConversationContext = imageConversation(normalizedMessages);
 let imageIntent = 'analyze';
 let imageEditContext;

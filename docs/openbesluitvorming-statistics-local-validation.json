@@ -1,0 +1,2938 @@
+{
+  "validation_summary": {
+    "production_chat_requests": 11,
+    "model": "existing GPT-5.4 alias via production bridge and actual published orchestrator",
+    "statistics_only_tool_routing": true,
+    "no_new_model_calls_for_independent_backend_comparison": true,
+    "positive_nested_count_validated": true,
+    "final_runtime_exports_match_reviewed_nodes_and_connections": true,
+    "final_prompt_wording_refinement": "Previously republished wording was present for the focused post-fix chats; no additional status chat was purchased.",
+    "targeted_node_tests": {
+      "passed": 43,
+      "skipped": 1,
+      "failed": 0
+    },
+    "ingestion_workflow_active": false,
+    "full_ingest_container_status": "exited 0",
+    "remote_server_deployment_performed": false,
+    "focused_post_fix_chat_requests": 4,
+    "backend_review_blocker": null,
+    "historical_backend_review_blocker": {
+      "operation": "fields",
+      "http_status": 422,
+      "error_code": "invalid_metadata_scalar",
+      "bounded_probe_documents": 256,
+      "oversized_path": "reference_detail.agenda[].description",
+      "observed_lengths": [
+        4167,
+        8290,
+        4355,
+        4605
+      ],
+      "backend_scalar_budget": 4096,
+      "backend_and_python_tests_left_untouched": true
+    },
+    "focused_post_fix_passed": true,
+    "focused_targeted_node_tests": {
+      "passed": 27,
+      "skipped": 1,
+      "failed": 0
+    },
+    "failed_and_unfinished_counts_separately_validated": true
+  },
+  "started_at": "2026-11-17T09:11:06.982Z",
+  "model": "govchat-orchestrator",
+  "cases": [
+    {
+      "case": "count",
+      "http_status": 200,
+      "answer": "Er staan op dit moment **56.475 stukken** in de OpenBesluitvorming-database binnen de geconfigureerde scope.\n\nKort erbij:\n- **Bron/scope:** geïndexeerde documenten voor `provincie_limburg`\n- **Telling:** **exact** (`exact: true`)\n- **Peilmoment opvraag:** 2026-11-17T09:07:46Z\n- **Dekking:** dit gaat om de **geïndexeerde Qdrant-documenten in deze scope**, niet per se om alle documenten uit eventuele bronsystemen\n- **Bronvolledigheid:** **onbekend/niet aangetoond** (`source_complete: null`)\n\nAls je wilt, kan ik ook:\n- de verdeling **per jaar** geven,\n- de verdeling **per documenttype** tonen,\n- of de **laatste synchronisatiestatus** opvragen.",
+      "calls": [
+        {
+          "id": "call_3XBAJCCCCxvOeA42dq7vbafI",
+          "type": "tool_call",
+          "name": "openbesluitvorming_statistics_tool",
+          "args": {
+            "query": "{\"operation\":\"count\"}"
+          }
+        }
+      ],
+      "completed": [
+        {
+          "id": "call_3XBAJCCCCxvOeA42dq7vbafI",
+          "type": "tool_call",
+          "name": "openbesluitvorming_statistics_tool",
+          "args": {
+            "query": "{\"operation\":\"count\"}"
+          },
+          "output": "",
+          "progress": 1
+        }
+      ],
+      "backend": [
+        {
+          "query": {
+            "operation": "count"
+          },
+          "http_status": 200,
+          "duration_ms": 54,
+          "body": {
+            "operation": "count",
+            "source_kind": "qdrant_exact_metadata",
+            "scope": {
+              "collection": "limburg_full_20261111",
+              "run_id": "limburg-full-20261111",
+              "source_key": "provincie_limburg"
+            },
+            "query_as_of": "2026-11-17T09:15:05.149036Z",
+            "cached": false,
+            "exact": true,
+            "truncated": false,
+            "total_documents": 56475,
+            "matched_documents": 56475,
+            "scanned_documents": 0,
+            "skipped_documents": 0,
+            "coverage": {
+              "basis": "indexed Qdrant documents in configured scope only",
+              "source_complete": null,
+              "failed_source_documents_included": false
+            },
+            "evidence": {
+              "method": "native_exact_count",
+              "observed_at": "2026-11-17T09:15:05.161762Z",
+              "native_point_count_before": 56475,
+              "native_point_count_after": 56475,
+              "document_identity": "worker invariant: one deterministic point per source document",
+              "consistency": "non-transactional; same-count concurrent edits cannot be detected"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "case": "year",
+      "http_status": 200,
+      "duration_ms": 35055,
+      "answer": "Hieronder staan de aantallen stukken per jaar in de OpenBesluitvorming-database voor de huidige geïndexeerde scope van **Provincie Limburg**, in **chronologische volgorde**.\n\n### Per jaar\n- **2005**: 630\n- **2006**: 1.483\n- **2007**: 1.791\n- **2008**: 2.044\n- **2009**: 2.594\n- **2010**: 2.843\n- **2011**: 2.022\n- **2012**: 1.261\n- **2013**: 1.345\n- **2014**: 1.677\n- **2015**: 2.203\n- **2016**: 2.419\n- **2017**: 4.936\n- **2018**: 3.154\n- **2019**: 3.041\n- **2020**: 4.118\n- **2021**: 3.639\n- **2022**: 3.686\n- **2023**: 2.587\n- **2024**: 3.181\n- **2025**: 2.970\n- **2026**: 2.851\n\n### Totaal\n- **56.475 stukken**\n\n### Bron en nauwkeurigheid\n- Bron: **OpenBesluitvorming statistics** op metadata-veld `date`, gegroepeerd per **jaar**\n- Scope: **geïndexeerde documenten** binnen de ingestelde bron `provincie_limburg`\n- Status: **exact = true**, **truncated = false**\n- Ontbrekende/null/ongeldige datums in deze uitkomst: **0**\n\nBelangrijk: dit zijn aantallen binnen de **huidig geïndexeerde database-scope**, niet per se een volledig upstream bronarchief buiten deze index. Als je wilt, kan ik dit ook **per maand binnen elk jaar** uitsplitsen.",
+      "calls": [
+        {
+          "id": "call_ZcAhPLJSHoEtTMAdG00C1Rxa",
+          "type": "tool_call",
+          "name": "openbesluitvorming_statistics_tool",
+          "args": {
+            "query": "{\"operation\":\"group\",\"field\":\"date\",\"interval\":\"year\",\"limit\":1000}"
+          }
+        }
+      ],
+      "completed": [
+        {
+          "id": "call_ZcAhPLJSHoEtTMAdG00C1Rxa",
+          "type": "tool_call",
+          "name": "openbesluitvorming_statistics_tool",
+          "args": {
+            "query": "{\"operation\":\"group\",\"field\":\"date\",\"interval\":\"year\",\"limit\":1000}"
+          },
+          "output": "",
+          "progress": 1
+        }
+      ],
+      "backend": [
+        {
+          "query": {
+            "operation": "group",
+            "field": "date",
+            "interval": "year",
+            "limit": 1000
+          },
+          "http_status": 200,
+          "duration_ms": 28317,
+          "body": {
+            "operation": "group",
+            "source_kind": "qdrant_exact_metadata",
+            "scope": {
+              "collection": "limburg_full_20261111",
+              "run_id": "limburg-full-20261111",
+              "source_key": "provincie_limburg"
+            },
+            "query_as_of": "2026-11-17T09:15:05.171800Z",
+            "cached": false,
+            "exact": true,
+            "truncated": false,
+            "total_documents": 56475,
+            "matched_documents": 56475,
+            "scanned_documents": 56475,
+            "skipped_documents": 0,
+            "coverage": {
+              "basis": "indexed Qdrant documents in configured scope only",
+              "source_complete": null,
+              "failed_source_documents_included": false
+            },
+            "evidence": {
+              "scan_started_at": "2026-11-17T09:15:05.171800Z",
+              "scan_finished_at": "2026-11-17T09:15:33.475147Z",
+              "native_point_count_before": 56475,
+              "native_point_count_after": 56475,
+              "consistency": "non-transactional scroll; counts checked before/after; same-count concurrent edits cannot be detected"
+            },
+            "field": "date",
+            "interval": "year",
+            "groups": [
+              {
+                "value": "2017",
+                "value_type": "string",
+                "count": 4936
+              },
+              {
+                "value": "2020",
+                "value_type": "string",
+                "count": 4118
+              },
+              {
+                "value": "2022",
+                "value_type": "string",
+                "count": 3686
+              },
+              {
+                "value": "2021",
+                "value_type": "string",
+                "count": 3639
+              },
+              {
+                "value": "2024",
+                "value_type": "string",
+                "count": 3181
+              },
+              {
+                "value": "2018",
+                "value_type": "string",
+                "count": 3154
+              },
+              {
+                "value": "2019",
+                "value_type": "string",
+                "count": 3041
+              },
+              {
+                "value": "2025",
+                "value_type": "string",
+                "count": 2970
+              },
+              {
+                "value": "2026",
+                "value_type": "string",
+                "count": 2851
+              },
+              {
+                "value": "2010",
+                "value_type": "string",
+                "count": 2843
+              },
+              {
+                "value": "2009",
+                "value_type": "string",
+                "count": 2594
+              },
+              {
+                "value": "2023",
+                "value_type": "string",
+                "count": 2587
+              },
+              {
+                "value": "2016",
+                "value_type": "string",
+                "count": 2419
+              },
+              {
+                "value": "2015",
+                "value_type": "string",
+                "count": 2203
+              },
+              {
+                "value": "2008",
+                "value_type": "string",
+                "count": 2044
+              },
+              {
+                "value": "2011",
+                "value_type": "string",
+                "count": 2022
+              },
+              {
+                "value": "2007",
+                "value_type": "string",
+                "count": 1791
+              },
+              {
+                "value": "2014",
+                "value_type": "string",
+                "count": 1677
+              },
+              {
+                "value": "2006",
+                "value_type": "string",
+                "count": 1483
+              },
+              {
+                "value": "2013",
+                "value_type": "string",
+                "count": 1345
+              },
+              {
+                "value": "2012",
+                "value_type": "string",
+                "count": 1261
+              },
+              {
+                "value": "2005",
+                "value_type": "string",
+                "count": 630
+              }
+            ],
+            "total_groups": 22,
+            "groups_paginated": false,
+            "limit": 1000,
+            "offset": 0,
+            "missing_documents": 0,
+            "invalid_documents": 0,
+            "null_documents": 0,
+            "documents_with_value": 56475,
+            "overlap_documents": 0,
+            "group_memberships": 56475,
+            "semantics": "Each distinct value counts a document once; arrays may overlap. Row sums are memberships, not an exclusive document total. Null/invalid buckets may overlap valid values; missing means absent path; empty arrays exist with no values."
+          }
+        }
+      ]
+    },
+    {
+      "case": "type",
+      "http_status": 200,
+      "duration_ms": 34044,
+      "answer": "Per **documenttype** staan in de OpenBesluitvorming-database voor deze scope de volgende **exacte aantallen**:\n\n- **Bijlage**: 36.357\n- **Ingekomen stukken**: 11.733\n- **Moties**: 3.337\n- **Schriftelijke vragen van Statenleden**: 3.233\n- **Uitnodigingen**: 1.268\n- **Amendementen**: 547\n\n**Totaal aantal geïndexeerde documenten in deze scope**: **56.475**\n\nBron en scope:\n- Bron: OpenBesluitvorming metadata-statistiek\n- Scope: `provincie_limburg`\n- Peildatum opvraag: **2026-11-17T09:11:43Z**\n- Exactheid: **exact = true**\n- Truncatie: **truncated = false**\n\nAanvullend:\n- `missing_documents`: 0\n- `null_documents`: 0\n- `invalid_documents`: 0\n- `overlap_documents`: 0\n\nDus in dit geval zijn de classificaties volledig en tellen de aantallen netjes op tot het totaal.",
+      "calls": [
+        {
+          "id": "call_O94pZDEnv1qSTByx1OMJwCGN",
+          "type": "tool_call",
+          "name": "openbesluitvorming_statistics_tool",
+          "args": {
+            "query": "{\"operation\":\"group\",\"field\":\"document_type\",\"limit\":1000}"
+          }
+        }
+      ],
+      "completed": [
+        {
+          "id": "call_O94pZDEnv1qSTByx1OMJwCGN",
+          "type": "tool_call",
+          "name": "openbesluitvorming_statistics_tool",
+          "args": {
+            "query": "{\"operation\":\"group\",\"field\":\"document_type\",\"limit\":1000}"
+          },
+          "output": "",
+          "progress": 1
+        }
+      ],
+      "backend": [
+        {
+          "query": {
+            "operation": "group",
+            "field": "document_type",
+            "limit": 1000
+          },
+          "http_status": 200,
+          "duration_ms": 29462,
+          "body": {
+            "operation": "group",
+            "source_kind": "qdrant_exact_metadata",
+            "scope": {
+              "collection": "limburg_full_20261111",
+              "run_id": "limburg-full-20261111",
+              "source_key": "provincie_limburg"
+            },
+            "query_as_of": "2026-11-17T09:15:33.489324Z",
+            "cached": false,
+            "exact": true,
+            "truncated": false,
+            "total_documents": 56475,
+            "matched_documents": 56475,
+            "scanned_documents": 56475,
+            "skipped_documents": 0,
+            "coverage": {
+              "basis": "indexed Qdrant documents in configured scope only",
+              "source_complete": null,
+              "failed_source_documents_included": false
+            },
+            "evidence": {
+              "scan_started_at": "2026-11-17T09:15:33.489324Z",
+              "scan_finished_at": "2026-11-17T09:16:02.937710Z",
+              "native_point_count_before": 56475,
+              "native_point_count_after": 56475,
+              "consistency": "non-transactional scroll; counts checked before/after; same-count concurrent edits cannot be detected"
+            },
+            "field": "document_type",
+            "interval": null,
+            "groups": [
+              {
+                "value": "Bijlage",
+                "value_type": "string",
+                "count": 36357
+              },
+              {
+                "value": "Ingekomen stukken",
+                "value_type": "string",
+                "count": 11733
+              },
+              {
+                "value": "Moties",
+                "value_type": "string",
+                "count": 3337
+              },
+              {
+                "value": "Schriftelijke vragen van Statenleden",
+                "value_type": "string",
+                "count": 3233
+              },
+              {
+                "value": "Uitnodigingen",
+                "value_type": "string",
+                "count": 1268
+              },
+              {
+                "value": "Amendementen",
+                "value_type": "string",
+                "count": 547
+              }
+            ],
+            "total_groups": 6,
+            "groups_paginated": false,
+            "limit": 1000,
+            "offset": 0,
+            "missing_documents": 0,
+            "invalid_documents": 0,
+            "null_documents": 0,
+            "documents_with_value": 56475,
+            "overlap_documents": 0,
+            "group_memberships": 56475,
+            "semantics": "Each distinct value counts a document once; arrays may overlap. Row sums are memberships, not an exclusive document total. Null/invalid buckets may overlap valid values; missing means absent path; empty arrays exist with no values."
+          }
+        }
+      ]
+    },
+    {
+      "case": "status",
+      "http_status": 200,
+      "duration_ms": 7291,
+      "answer": "Volgens de statusinformatie is de **laatste voltooide scan** van de OpenBesluitvorming-database voor deze bron op:\n\n- **16 november 2026 om 12:17:50 UTC**  \n  (`status.last_completed_scan_at`)\n- hetzelfde tijdstip staat ook als `last_updated_checkpoint_at`.\n\nBelangrijk: dit is **niet automatisch hetzelfde als een volledig succesvolle synchronisatie**.\n\n### Is de volledige synchronisatie succesvol?\n**Dat is niet aangetoond / onbekend.**\n\nWaarom:\n- `last_successful_full_sync_at` = **null**  \n  → er is dus **geen bevestigd tijdstip van een succesvolle volledige synchronisatie** beschikbaar.\n- `source_complete` = **false**  \n  → de bron is volgens de status **niet als volledig compleet** gemarkeerd.\n- `historical_success_unknown` = **true**  \n  → historische volledige succesvolle sync is **onbekend**.\n\n### Zijn er mislukte documenten?\n- `failed_documents` = **0**  \n  → er zijn **geen expliciet mislukte documenten** geregistreerd.\n- Maar: `unfinished_documents` = **203**  \n  → er zijn wel **203 onvoltooide documenten**.\n- Daarnaast toont `checkpoint_document_counts.dead_letter` = **203**  \n  → die 203 lijken in de **dead-letter / niet afgeronde** categorie te vallen.\n\n### Kort samengevat\n- **Laatste voltooide scan:** 16-11-2026 12:17:50 UTC\n- **Volledige succesvolle synchronisatie:** **onbekend / niet aangetoond**\n- **Mislukte documenten:** **0 expliciet mislukt**\n- **Wel onvoltooide documenten:** **203**\n\nBron: `openbesluitvorming_statistics_tool` status voor scope `provincie_limburg`, geraadpleegd op **2026-11-17T09:12:17Z**.",
+      "calls": [
+        {
+          "id": "call_A7o2TKkAQisptqE629PrOuea",
+          "type": "tool_call",
+          "name": "openbesluitvorming_statistics_tool",
+          "args": {
+            "query": "{\"operation\":\"status\"}"
+          }
+        }
+      ],
+      "completed": [
+        {
+          "id": "call_A7o2TKkAQisptqE629PrOuea",
+          "type": "tool_call",
+          "name": "openbesluitvorming_statistics_tool",
+          "args": {
+            "query": "{\"operation\":\"status\"}"
+          },
+          "output": "",
+          "progress": 1
+        }
+      ],
+      "backend": [
+        {
+          "query": {
+            "operation": "status"
+          },
+          "http_status": 200,
+          "duration_ms": 62,
+          "body": {
+            "operation": "status",
+            "source_kind": "sqlite_readonly_checkpoint",
+            "scope": {
+              "collection": "limburg_full_20261111",
+              "run_id": "limburg-full-20261111",
+              "source_key": "provincie_limburg"
+            },
+            "query_as_of": "2026-11-17T09:16:02.951097Z",
+            "cached": false,
+            "exact": true,
+            "truncated": false,
+            "status": {
+              "available": true,
+              "observed_at": "2026-11-17T09:16:02.951110Z",
+              "last_successful_full_sync_at": null,
+              "read_mode": "immutable_locked",
+              "run_id": "limburg-full-20261111",
+              "collection": "limburg_full_20261111",
+              "generation": 1,
+              "refresh_phase": "complete",
+              "snapshot_exhausted": true,
+              "source_complete": false,
+              "checkpoint_document_counts": {
+                "dead_letter": 203,
+                "indexed": 56475
+              },
+              "checkpoint_has_vector": 56475,
+              "failed_documents": 0,
+              "unfinished_documents": 203,
+              "last_updated_checkpoint_at": "2026-11-16T12:17:50.844091Z",
+              "last_attempt": {
+                "checkpoint_at": "2026-11-16T12:17:50.844091Z",
+                "completed_scan": true,
+                "failed_documents": 0,
+                "has_error": false
+              },
+              "last_completed_scan_at": "2026-11-16T12:17:50.844091Z",
+              "timestamp_valid": true,
+              "timestamp_basis": "runs.updated_at; historical refresh_generations.baseline.updated_at proves scan exhaustion only, not successful indexing",
+              "historical_success_unknown": true
+            },
+            "evidence": {
+              "observed_at": "2026-11-17T09:16:03.010666Z",
+              "timestamp_basis": "runs.updated_at; never indexed_at"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "case": "nested",
+      "http_status": 200,
+      "duration_ms": 7125,
+      "answer": "Het opvragen van de metadata via de statistics-tool faalde met een toolfout: `invalid_metadata_scalar`.\n\nDaardoor kan ik nu niet betrouwbaar vaststellen:\n- welk exacte metadata-veld voor de bron/leverancier gebruikt wordt, en\n- hoeveel stukken daarin leverancier `ibabs` hebben.\n\nBelangrijk: ik ga dit niet raden, omdat voor OpenBesluitvorming eerst expliciet het juiste veld via `fields` moet worden ontdekt voordat er exact geteld wordt.\n\nWat ik wél zeker weet:\n- de juiste route is:  \n  1. `fields` opvragen om het bronveld te vinden,  \n  2. daarna `count` met een exacte filter op dat veld, bijvoorbeeld op leverancier/bron = `ibabs`.\n- de huidige toolrespons is geen geldig resultaat voor aantallen of veldnamen.\n\nAls je wilt, kan ik het meteen opnieuw proberen zodra de statistics-tool weer correct reageert.",
+      "calls": [
+        {
+          "id": "call_CHIdz1CBD0kbpywTgBIvmPgQ",
+          "type": "tool_call",
+          "name": "openbesluitvorming_statistics_tool",
+          "args": {
+            "query": "{\"operation\":\"fields\",\"limit\":1000}"
+          }
+        },
+        {
+          "id": "call_6TaHACeMbhNjS00ZTUNIMNHo",
+          "type": "tool_call",
+          "name": "openbesluitvorming_statistics_tool",
+          "args": {
+            "query": "{\"operation\":\"fields\",\"limit\":200}"
+          }
+        }
+      ],
+      "completed": [
+        {
+          "id": "call_CHIdz1CBD0kbpywTgBIvmPgQ",
+          "type": "tool_call",
+          "name": "openbesluitvorming_statistics_tool",
+          "args": {
+            "query": "{\"operation\":\"fields\",\"limit\":1000}"
+          },
+          "output": "",
+          "progress": 1
+        },
+        {
+          "id": "call_6TaHACeMbhNjS00ZTUNIMNHo",
+          "type": "tool_call",
+          "name": "openbesluitvorming_statistics_tool",
+          "args": {
+            "query": "{\"operation\":\"fields\",\"limit\":200}"
+          },
+          "output": "",
+          "progress": 1
+        }
+      ],
+      "backend": [
+        {
+          "query": {
+            "operation": "fields",
+            "limit": 1000
+          },
+          "http_status": 422,
+          "duration_ms": 254,
+          "body": {
+            "error": {
+              "code": "invalid_metadata_scalar"
+            },
+            "exact": false,
+            "truncated": true,
+            "query_as_of": "2026-11-17T09:16:03.265508Z"
+          }
+        },
+        {
+          "query": {
+            "operation": "fields",
+            "limit": 200
+          },
+          "http_status": 422,
+          "duration_ms": 260,
+          "body": {
+            "error": {
+              "code": "invalid_metadata_scalar"
+            },
+            "exact": false,
+            "truncated": true,
+            "query_as_of": "2026-11-17T09:16:03.525284Z"
+          }
+        }
+      ]
+    },
+    {
+      "case": "zero",
+      "http_status": 200,
+      "duration_ms": 10444,
+      "answer": "Er zijn **0 stukken** in de OpenBesluitvorming-database met `classification` exact gelijk aan `__obv_stats_nonexistent_fixture__`.\n\nBron en scope:\n- Bron: **exacte metadata-count** op de geïndexeerde OpenBesluitvorming-scope\n- Scope: `provincie_limburg` / collectie `limburg_full_20261111`\n- Opgevraagd op: **2026-11-17T09:12:31Z**\n- Resultaat is **exact** (`exact: true`, `truncated: false`)\n\nLet op:\n- Dit gaat om de **geïndexeerde documenten in deze scope**, niet per se om alle upstream bronbestanden.\n- De dekkingsstatus van de bron was hier **niet aangetoond volledig** (`source_complete: null`).",
+      "calls": [
+        {
+          "id": "call_pGpltw0GImere9gq50qj9oyK",
+          "type": "tool_call",
+          "name": "openbesluitvorming_statistics_tool",
+          "args": {
+            "query": "{\"operation\":\"count\",\"filters\":[{\"field\":\"classification\",\"operator\":\"eq\",\"value\":\"__obv_stats_nonexistent_fixture__\"}]}"
+          }
+        }
+      ],
+      "completed": [
+        {
+          "id": "call_pGpltw0GImere9gq50qj9oyK",
+          "type": "tool_call",
+          "name": "openbesluitvorming_statistics_tool",
+          "args": {
+            "query": "{\"operation\":\"count\",\"filters\":[{\"field\":\"classification\",\"operator\":\"eq\",\"value\":\"__obv_stats_nonexistent_fixture__\"}]}"
+          },
+          "output": "",
+          "progress": 1
+        }
+      ],
+      "backend": [
+        {
+          "query": {
+            "operation": "count",
+            "filters": [
+              {
+                "field": "classification",
+                "operator": "eq",
+                "value": "__obv_stats_nonexistent_fixture__"
+              }
+            ]
+          },
+          "http_status": 200,
+          "duration_ms": 6982,
+          "body": {
+            "operation": "count",
+            "source_kind": "qdrant_exact_metadata",
+            "scope": {
+              "collection": "limburg_full_20261111",
+              "run_id": "limburg-full-20261111",
+              "source_key": "provincie_limburg"
+            },
+            "query_as_of": "2026-11-17T09:16:03.528501Z",
+            "cached": false,
+            "exact": true,
+            "truncated": false,
+            "total_documents": 56475,
+            "matched_documents": 0,
+            "scanned_documents": 0,
+            "skipped_documents": 0,
+            "coverage": {
+              "basis": "indexed Qdrant documents in configured scope only",
+              "source_complete": null,
+              "failed_source_documents_included": false
+            },
+            "evidence": {
+              "method": "native_exact_count",
+              "observed_at": "2026-11-17T09:16:10.507485Z",
+              "native_point_count_before": 56475,
+              "native_point_count_after": 56475,
+              "document_identity": "worker invariant: one deterministic point per source document",
+              "consistency": "non-transactional; same-count concurrent edits cannot be detected"
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "post_fix_validation": {
+    "generated_at": "2026-11-17T10:02:32.878328+00:00",
+    "local_only": true,
+    "chat": {
+      "started_at": "2026-11-17T09:37:37.250Z",
+      "model": "govchat-orchestrator",
+      "cases": [
+        {
+          "case": "fields",
+          "http_status": 200,
+          "duration_ms": 71087,
+          "answer": "Ja. In de OpenBesluitvorming-database zijn **exact 199 metadatavelden** aangetroffen.\n\n**Of de volledige schema-scan alle stukken omvatte:** **ja, binnen de geïndexeerde scope wel**.  \nDe tool meldt:\n\n- **total_documents:** 56.475  \n- **matched_documents:** 56.475  \n- **scanned_documents:** 56.475  \n- **skipped_documents:** 0  \n- **exact:** true  \n- **truncated:** false  \n- **fields_paginated:** false\n\nDat betekent dat de veldscan **volledig over alle 56.475 geïndexeerde documenten** in deze scope is uitgevoerd, zonder truncatie of paginering.\n\n### Beschikbare scope\n- **Bron/scope:** `qdrant_exact_metadata`\n- **Collectie:** `limburg_full_20261111`\n- **Run:** `limburg-full-20261111`\n- **source_key:** `provincie_limburg`\n\n### Belangrijke nuance over “alle stukken”\nDe scan omvatte **alle geïndexeerde documenten binnen de geconfigureerde scope**, maar **niet aantoonbaar alle stukken uit de bron buiten die index**. De dekking meldt namelijk:\n- **coverage.basis:** indexed Qdrant documents in configured scope only\n- **source_complete:** `null`\n\nDus:\n- **Volledige schema-scan van de geïndexeerde database:** **ja**\n- **Aantoonbaar volledige dekking van alle upstream bronstukken:** **onbekend / niet aangetoond**\n\nAls u wilt, kan ik ook meteen de **volledige lijst van die 199 metadatavelden** overzichtelijk voor u uitschrijven of groeperen per hoofdveld.",
+          "calls": [
+            {
+              "id": "call_lPuiLyiKuVG3SJIlGMxY6fNs",
+              "type": "tool_call",
+              "name": "openbesluitvorming_statistics_tool",
+              "args": {
+                "query": "{\"operation\":\"fields\",\"limit\":1000}"
+              }
+            }
+          ],
+          "completed": [
+            {
+              "id": "call_lPuiLyiKuVG3SJIlGMxY6fNs",
+              "type": "tool_call",
+              "name": "openbesluitvorming_statistics_tool",
+              "args": {
+                "query": "{\"operation\":\"fields\",\"limit\":1000}"
+              },
+              "output": "",
+              "progress": 1
+            }
+          ]
+        },
+        {
+          "case": "supplier",
+          "http_status": 200,
+          "duration_ms": 76866,
+          "answer": "Ik heb eerst het metadataveld vastgesteld: **`supplier`**. Dat veld is aanwezig in **alle 56.475** geïndexeerde documenten in deze OpenBesluitvorming-scope.\n\nDe exacte telling voor **`supplier = \"ibabs\"`** is:\n\n**56.475 stukken**\n\nBron en scope:\n- Bron: **OpenBesluitvorming database-statistieken** op indexed metadata\n- Scope: `source_key = provincie_limburg`, collectie `limburg_full_20261111`\n- Exactheid: **exact = true**\n- Truncatie: **truncated = false**\n- Dekking: dit betreft de **geïndexeerde documenten in deze scope**, niet noodzakelijk de volledige upstream bron buiten de index. `source_complete` is **onbekend/null**.",
+          "calls": [
+            {
+              "id": "call_jDVh24SJsUkF9OjttZkrptKW",
+              "type": "tool_call",
+              "name": "openbesluitvorming_statistics_tool",
+              "args": {
+                "query": "{\"operation\":\"fields\",\"limit\":1000}"
+              }
+            },
+            {
+              "id": "call_C13kt71wxjT7xKT3EJ51dO62",
+              "type": "tool_call",
+              "name": "openbesluitvorming_statistics_tool",
+              "args": {
+                "query": "{\"operation\":\"count\",\"filters\":[{\"field\":\"supplier\",\"operator\":\"eq\",\"value\":\"ibabs\"}]}",
+                "id": "call_hcg8foVwTDvFnZRbvUO7jw7K"
+              }
+            }
+          ],
+          "completed": [
+            {
+              "id": "call_jDVh24SJsUkF9OjttZkrptKW",
+              "type": "tool_call",
+              "name": "openbesluitvorming_statistics_tool",
+              "args": {
+                "query": "{\"operation\":\"fields\",\"limit\":1000}"
+              },
+              "output": "",
+              "progress": 1
+            },
+            {
+              "id": "call_C13kt71wxjT7xKT3EJ51dO62",
+              "type": "tool_call",
+              "name": "openbesluitvorming_statistics_tool",
+              "args": {
+                "query": "{\"operation\":\"count\",\"filters\":[{\"field\":\"supplier\",\"operator\":\"eq\",\"value\":\"ibabs\"}]}",
+                "id": "call_hcg8foVwTDvFnZRbvUO7jw7K"
+              },
+              "output": "",
+              "progress": 1
+            }
+          ]
+        },
+        {
+          "case": "nested_year",
+          "http_status": 200,
+          "duration_ms": 97173,
+          "answer": "Hier is de groepering op het geneste metadataveld `source_payload.classification` voor stukken met `date` vanaf `2020-01-01` tot exclusief `2021-01-01`:\n\n**2020**\n- Amendementen: **108**\n- Bijlage: **1928**\n- Ingekomen stukken: **1227**\n- Moties: **347**\n- Schriftelijke vragen van Statenleden: **393**\n- Uitnodigingen: **115**\n\n**Totaal binnen filter**\n- Gematchte documenten: **4118**\n- Documenten met een waarde in `source_payload.classification[]`: **4118**\n\n**Datakwaliteit / scope**\n- Bron: exact metadata-groepering op de **geïndexeerde OpenBesluitvorming-documenten** binnen scope `provincie_limburg`\n- Exactheid: **exact=true**\n- Afkapping: **truncated=false**\n- `groups_paginated=false`, dus alle categorieën zijn meegenomen\n- `missing_documents=0`, `null_documents=0`, `invalid_documents=0`\n- `overlap_documents=0`, dus de categoriesommen tellen hier exact op tot het documenttotaal\n\nGeraadpleegd op: **2026-11-17T09:41:10Z**.",
+          "calls": [
+            {
+              "id": "call_jaZvWHqpUVFB06sD8r4ZlmUP",
+              "type": "tool_call",
+              "name": "openbesluitvorming_statistics_tool",
+              "args": {
+                "query": "{\"operation\":\"fields\",\"limit\":1000}"
+              }
+            },
+            {
+              "id": "call_GviGQk6KMEqpD8LwflejYXns",
+              "type": "tool_call",
+              "name": "openbesluitvorming_statistics_tool",
+              "args": {
+                "query": "{\"operation\":\"group\",\"field\":\"source_payload.classification[]\",\"filters\":[{\"field\":\"date\",\"operator\":\"range\",\"gte\":\"2020-01-01\",\"lt\":\"2021-01-01\"}],\"limit\":1000}",
+                "id": "call_nI80LcjLyuNlHj6m1P4fZVdQ"
+              }
+            }
+          ],
+          "completed": [
+            {
+              "id": "call_jaZvWHqpUVFB06sD8r4ZlmUP",
+              "type": "tool_call",
+              "name": "openbesluitvorming_statistics_tool",
+              "args": {
+                "query": "{\"operation\":\"fields\",\"limit\":1000}"
+              },
+              "output": "",
+              "progress": 1
+            },
+            {
+              "id": "call_GviGQk6KMEqpD8LwflejYXns",
+              "type": "tool_call",
+              "name": "openbesluitvorming_statistics_tool",
+              "args": {
+                "query": "{\"operation\":\"group\",\"field\":\"source_payload.classification[]\",\"filters\":[{\"field\":\"date\",\"operator\":\"range\",\"gte\":\"2020-01-01\",\"lt\":\"2021-01-01\"}],\"limit\":1000}",
+                "id": "call_nI80LcjLyuNlHj6m1P4fZVdQ"
+              },
+              "output": "",
+              "progress": 1
+            }
+          ]
+        },
+        {
+          "case": "numeric",
+          "http_status": 200,
+          "duration_ms": 11852,
+          "answer": "Het exacte aantal is **56.475**.\n\nGebruikt filter:\n- **getypeerd numeriek range-filter** op `source_sequence`\n- voorwaarde: **`source_sequence >= 0`**\n\nBron/scope:\n- OpenBesluitvorming statistics\n- scope: **`provincie_limburg`**\n- geïndexeerde documenten in deze scope: **56.475**\n- resultaat is **exact** (`exact: true`, `truncated: false`)\n\nOpmerking:\n- Dit aantal geldt voor de **geïndexeerde OpenBesluitvorming-documenten binnen de geconfigureerde scope**, niet per se voor alle upstream brondocumenten buiten die index.",
+          "calls": [
+            {
+              "id": "call_sUZwY6J9pk2eTimfyp5LvCMZ",
+              "type": "tool_call",
+              "name": "openbesluitvorming_statistics_tool",
+              "args": {
+                "query": "{\"operation\":\"count\",\"filters\":[{\"field\":\"source_sequence\",\"operator\":\"range\",\"gte\":0}]}"
+              }
+            }
+          ],
+          "completed": [
+            {
+              "id": "call_sUZwY6J9pk2eTimfyp5LvCMZ",
+              "type": "tool_call",
+              "name": "openbesluitvorming_statistics_tool",
+              "args": {
+                "query": "{\"operation\":\"count\",\"filters\":[{\"field\":\"source_sequence\",\"operator\":\"range\",\"gte\":0}]}"
+              },
+              "output": "",
+              "progress": 1
+            }
+          ]
+        }
+      ]
+    },
+    "independent_backend": {
+      "fields": {
+        "query": {
+          "operation": "fields",
+          "limit": 1000
+        },
+        "http_status": 200,
+        "duration_ms": 62632,
+        "response": {
+          "operation": "fields",
+          "source_kind": "qdrant_exact_metadata",
+          "scope": {
+            "collection": "limburg_full_20261111",
+            "run_id": "limburg-full-20261111",
+            "source_key": "provincie_limburg"
+          },
+          "query_as_of": "2026-11-17T09:35:29.580883Z",
+          "cached": false,
+          "exact": true,
+          "truncated": false,
+          "total_documents": 56475,
+          "matched_documents": 56475,
+          "scanned_documents": 56475,
+          "skipped_documents": 0,
+          "coverage": {
+            "basis": "indexed Qdrant documents in configured scope only",
+            "source_complete": null,
+            "failed_source_documents_included": false
+          },
+          "evidence": {
+            "scan_started_at": "2026-11-17T09:35:29.580883Z",
+            "scan_finished_at": "2026-11-17T09:36:32.186542Z",
+            "native_point_count_before": 56475,
+            "native_point_count_after": 56475,
+            "consistency": "non-transactional scroll; counts checked before/after; same-count concurrent edits cannot be detected"
+          },
+          "fields": [
+            {
+              "field": "chunk_count",
+              "types": [
+                "number"
+              ],
+              "present_documents": 56475,
+              "missing_documents": 0
+            },
+            {
+              "field": "classification",
+              "types": [
+                "array"
+              ],
+              "present_documents": 56475,
+              "missing_documents": 0
+            },
+            {
+              "field": "classification[]",
+              "types": [
+                "string"
+              ],
+              "present_documents": 56475,
+              "missing_documents": 0
+            },
+            {
+              "field": "commit_id",
+              "types": [
+                "string"
+              ],
+              "present_documents": 56475,
+              "missing_documents": 0
+            },
+            {
+              "field": "content_hash",
+              "types": [
+                "string"
+              ],
+              "present_documents": 56475,
+              "missing_documents": 0
+            },
+            {
+              "field": "date",
+              "types": [
+                "string"
+              ],
+              "present_documents": 56475,
+              "missing_documents": 0
+            },
+            {
+              "field": "derived_content",
+              "types": [
+                "object"
+              ],
+              "present_documents": 56475,
+              "missing_documents": 0
+            },
+            {
+              "field": "derived_content.extraction_quality_score",
+              "types": [
+                "number"
+              ],
+              "present_documents": 20323,
+              "missing_documents": 36152
+            },
+            {
+              "field": "derived_content.extraction_quality_status",
+              "types": [
+                "string"
+              ],
+              "present_documents": 20323,
+              "missing_documents": 36152
+            },
+            {
+              "field": "derived_content.markdown_key",
+              "types": [
+                "string"
+              ],
+              "present_documents": 53400,
+              "missing_documents": 3075
+            },
+            {
+              "field": "derived_content.page_chunks_key",
+              "types": [
+                "string"
+              ],
+              "present_documents": 52720,
+              "missing_documents": 3755
+            },
+            {
+              "field": "derived_content.page_count",
+              "types": [
+                "number"
+              ],
+              "present_documents": 20324,
+              "missing_documents": 36151
+            },
+            {
+              "field": "derived_content.source_page_count",
+              "types": [
+                "number"
+              ],
+              "present_documents": 20323,
+              "missing_documents": 36152
+            },
+            {
+              "field": "document_characters",
+              "types": [
+                "number"
+              ],
+              "present_documents": 56475,
+              "missing_documents": 0
+            },
+            {
+              "field": "download_url",
+              "types": [
+                "string"
+              ],
+              "present_documents": 56475,
+              "missing_documents": 0
+            },
+            {
+              "field": "embedding_batch_count",
+              "types": [
+                "number"
+              ],
+              "present_documents": 56475,
+              "missing_documents": 0
+            },
+            {
+              "field": "embedding_dimensions",
+              "types": [
+                "number"
+              ],
+              "present_documents": 56475,
+              "missing_documents": 0
+            },
+            {
+              "field": "embedding_model",
+              "types": [
+                "string"
+              ],
+              "present_documents": 56475,
+              "missing_documents": 0
+            },
+            {
+              "field": "embedding_tokens",
+              "types": [
+                "number"
+              ],
+              "present_documents": 56475,
+              "missing_documents": 0
+            },
+            {
+              "field": "entity_detail",
+              "types": [
+                "object"
+              ],
+              "present_documents": 56475,
+              "missing_documents": 0
+            },
+            {
+              "field": "entity_detail.date",
+              "types": [
+                "string"
+              ],
+              "present_documents": 56475,
+              "missing_documents": 0
+            },
+            {
+              "field": "entity_detail.dateModified",
+              "types": [
+                "string"
+              ],
+              "present_documents": 16234,
+              "missing_documents": 40241
+            },
+            {
+              "field": "entity_detail.dateModifiedIso",
+              "types": [
+                "string"
+              ],
+              "present_documents": 16234,
+              "missing_documents": 40241
+            },
+            {
+              "field": "entity_detail.downloadUrl",
+              "types": [
+                "string"
+              ],
+              "present_documents": 56475,
+              "missing_documents": 0
+            },
+            {
+              "field": "entity_detail.entityId",
+              "types": [
+                "string"
+              ],
+              "present_documents": 56475,
+              "missing_documents": 0
+            },
+            {
+              "field": "entity_detail.entityType",
+              "types": [
+                "string"
+              ],
+              "present_documents": 56475,
+              "missing_documents": 0
+            },
+            {
+              "field": "entity_detail.entityTypeLabel",
+              "types": [
+                "string"
+              ],
+              "present_documents": 56475,
+              "missing_documents": 0
+            },
+            {
+              "field": "entity_detail.meetingId",
+              "types": [
+                "string"
+              ],
+              "present_documents": 56475,
+              "missing_documents": 0
+            },
+            {
+              "field": "entity_detail.organization",
+              "types": [
+                "string"
+              ],
+              "present_documents": 56475,
+              "missing_documents": 0
+            },
+            {
+              "field": "entity_detail.pdfUrl",
+              "types": [
+                "string"
+              ],
+              "present_documents": 56421,
+              "missing_documents": 54
+            },
+            {
+              "field": "entity_detail.sortDate",
+              "types": [
+                "string"
+              ],
+              "present_documents": 56475,
+              "missing_documents": 0
+            },
+            {
+              "field": "entity_detail.sourceUrl",
+              "types": [
+                "string"
+              ],
+              "present_documents": 56475,
+              "missing_documents": 0
+            },
+            {
+              "field": "entity_detail.title",
+              "types": [
+                "string"
+              ],
+              "present_documents": 56475,
+              "missing_documents": 0
+            },
+            {
+              "field": "entity_type",
+              "types": [
+                "string"
+              ],
+              "present_documents": 56475,
+              "missing_documents": 0
+            },
+            {
+              "field": "extraction",
+              "types": [
+                "array"
+              ],
+              "present_documents": 56475,
+              "missing_documents": 0
+            },
+            {
+              "field": "extraction[]",
+              "types": [
+                "object"
+              ],
+              "present_documents": 56475,
+              "missing_documents": 0
+            },
+            {
+              "field": "extraction[].bytes",
+              "types": [
+                "number"
+              ],
+              "present_documents": 7933,
+              "missing_documents": 48542
+            },
+            {
+              "field": "extraction[].characters",
+              "types": [
+                "number"
+              ],
+              "present_documents": 56475,
+              "missing_documents": 0
+            },
+            {
+              "field": "extraction[].fallback_errors",
+              "types": [
+                "array"
+              ],
+              "present_documents": 7933,
+              "missing_documents": 48542
+            },
+            {
+              "field": "extraction[].fallback_errors[]",
+              "types": [
+                "object"
+              ],
+              "present_documents": 43,
+              "missing_documents": 56432
+            },
+            {
+              "field": "extraction[].fallback_errors[].code",
+              "types": [
+                "string"
+              ],
+              "present_documents": 43,
+              "missing_documents": 56432
+            },
+            {
+              "field": "extraction[].fallback_errors[].stage",
+              "types": [
+                "string"
+              ],
+              "present_documents": 43,
+              "missing_documents": 56432
+            },
+            {
+              "field": "extraction[].method",
+              "types": [
+                "string"
+              ],
+              "present_documents": 56475,
+              "missing_documents": 0
+            },
+            {
+              "field": "extraction[].mime_type",
+              "types": [
+                "string"
+              ],
+              "present_documents": 7933,
+              "missing_documents": 48542
+            },
+            {
+              "field": "extraction[].name",
+              "types": [
+                "string"
+              ],
+              "present_documents": 56475,
+              "missing_documents": 0
+            },
+            {
+              "field": "extraction[].sha256",
+              "types": [
+                "string"
+              ],
+              "present_documents": 7933,
+              "missing_documents": 48542
+            },
+            {
+              "field": "extraction[].url",
+              "types": [
+                "string"
+              ],
+              "present_documents": 7933,
+              "missing_documents": 48542
+            },
+            {
+              "field": "file_name",
+              "types": [
+                "string"
+              ],
+              "present_documents": 56475,
+              "missing_documents": 0
+            },
+            {
+              "field": "indexed_at",
+              "types": [
+                "string"
+              ],
+              "present_documents": 56475,
+              "missing_documents": 0
+            },
+            {
+              "field": "ingest_run_id",
+              "types": [
+                "string"
+              ],
+              "present_documents": 56475,
+              "missing_documents": 0
+            },
+            {
+              "field": "last_discussed_at",
+              "types": [
+                "string"
+              ],
+              "present_documents": 56475,
+              "missing_documents": 0
+            },
+            {
+              "field": "media_urls",
+              "types": [
+                "array"
+              ],
+              "present_documents": 56475,
+              "missing_documents": 0
+            },
+            {
+              "field": "media_urls[]",
+              "types": [
+                "object"
+              ],
+              "present_documents": 53442,
+              "missing_documents": 3033
+            },
+            {
+              "field": "media_urls[].original_url",
+              "types": [
+                "string"
+              ],
+              "present_documents": 53442,
+              "missing_documents": 3033
+            },
+            {
+              "field": "media_urls[].url",
+              "types": [
+                "string"
+              ],
+              "present_documents": 53442,
+              "missing_documents": 3033
+            },
+            {
+              "field": "meeting_id",
+              "types": [
+                "string"
+              ],
+              "present_documents": 56475,
+              "missing_documents": 0
+            },
+            {
+              "field": "organization",
+              "types": [
+                "string"
+              ],
+              "present_documents": 56475,
+              "missing_documents": 0
+            },
+            {
+              "field": "original_download_url",
+              "types": [
+                "string"
+              ],
+              "present_documents": 56475,
+              "missing_documents": 0
+            },
+            {
+              "field": "original_url",
+              "types": [
+                "string"
+              ],
+              "present_documents": 56475,
+              "missing_documents": 0
+            },
+            {
+              "field": "pdf_url",
+              "types": [
+                "null",
+                "string"
+              ],
+              "present_documents": 56475,
+              "missing_documents": 0
+            },
+            {
+              "field": "pooling",
+              "types": [
+                "string"
+              ],
+              "present_documents": 56475,
+              "missing_documents": 0
+            },
+            {
+              "field": "public_url",
+              "types": [
+                "string"
+              ],
+              "present_documents": 56475,
+              "missing_documents": 0
+            },
+            {
+              "field": "reference_detail",
+              "types": [
+                "object"
+              ],
+              "present_documents": 56475,
+              "missing_documents": 0
+            },
+            {
+              "field": "reference_detail.agenda",
+              "types": [
+                "array"
+              ],
+              "present_documents": 36357,
+              "missing_documents": 20118
+            },
+            {
+              "field": "reference_detail.agenda[]",
+              "types": [
+                "object"
+              ],
+              "present_documents": 33132,
+              "missing_documents": 23343
+            },
+            {
+              "field": "reference_detail.agenda[].description",
+              "types": [
+                "string"
+              ],
+              "present_documents": 19579,
+              "missing_documents": 36896
+            },
+            {
+              "field": "reference_detail.agenda[].documents",
+              "types": [
+                "array"
+              ],
+              "present_documents": 33094,
+              "missing_documents": 23381
+            },
+            {
+              "field": "reference_detail.agenda[].documents[]",
+              "types": [
+                "object"
+              ],
+              "present_documents": 33094,
+              "missing_documents": 23381
+            },
+            {
+              "field": "reference_detail.agenda[].documents[].downloadUrl",
+              "types": [
+                "string"
+              ],
+              "present_documents": 33094,
+              "missing_documents": 23381
+            },
+            {
+              "field": "reference_detail.agenda[].documents[].file_name",
+              "types": [
+                "string"
+              ],
+              "present_documents": 33094,
+              "missing_documents": 23381
+            },
+            {
+              "field": "reference_detail.agenda[].documents[].id",
+              "types": [
+                "string"
+              ],
+              "present_documents": 33094,
+              "missing_documents": 23381
+            },
+            {
+              "field": "reference_detail.agenda[].documents[].name",
+              "types": [
+                "string"
+              ],
+              "present_documents": 33094,
+              "missing_documents": 23381
+            },
+            {
+              "field": "reference_detail.agenda[].documents[].original_url",
+              "types": [
+                "string"
+              ],
+              "present_documents": 33094,
+              "missing_documents": 23381
+            },
+            {
+              "field": "reference_detail.agenda[].id",
+              "types": [
+                "string"
+              ],
+              "present_documents": 33132,
+              "missing_documents": 23343
+            },
+            {
+              "field": "reference_detail.agenda[].order",
+              "types": [
+                "number"
+              ],
+              "present_documents": 33132,
+              "missing_documents": 23343
+            },
+            {
+              "field": "reference_detail.agenda[].title",
+              "types": [
+                "string"
+              ],
+              "present_documents": 33132,
+              "missing_documents": 23343
+            },
+            {
+              "field": "reference_detail.date",
+              "types": [
+                "string"
+              ],
+              "present_documents": 40241,
+              "missing_documents": 16234
+            },
+            {
+              "field": "reference_detail.downloadUrl",
+              "types": [
+                "string"
+              ],
+              "present_documents": 3884,
+              "missing_documents": 52591
+            },
+            {
+              "field": "reference_detail.entityId",
+              "types": [
+                "string"
+              ],
+              "present_documents": 40241,
+              "missing_documents": 16234
+            },
+            {
+              "field": "reference_detail.entityType",
+              "types": [
+                "string"
+              ],
+              "present_documents": 40241,
+              "missing_documents": 16234
+            },
+            {
+              "field": "reference_detail.entityTypeLabel",
+              "types": [
+                "string"
+              ],
+              "present_documents": 40241,
+              "missing_documents": 16234
+            },
+            {
+              "field": "reference_detail.entity_id",
+              "types": [
+                "string"
+              ],
+              "present_documents": 16234,
+              "missing_documents": 40241
+            },
+            {
+              "field": "reference_detail.meetingId",
+              "types": [
+                "string"
+              ],
+              "present_documents": 3212,
+              "missing_documents": 53263
+            },
+            {
+              "field": "reference_detail.metadata_status",
+              "types": [
+                "string"
+              ],
+              "present_documents": 16234,
+              "missing_documents": 40241
+            },
+            {
+              "field": "reference_detail.motion",
+              "types": [
+                "object"
+              ],
+              "present_documents": 3884,
+              "missing_documents": 52591
+            },
+            {
+              "field": "reference_detail.motion.agenda_item",
+              "types": [
+                "string"
+              ],
+              "present_documents": 3208,
+              "missing_documents": 53267
+            },
+            {
+              "field": "reference_detail.motion.agenda_item_hint",
+              "types": [
+                "string"
+              ],
+              "present_documents": 4,
+              "missing_documents": 56471
+            },
+            {
+              "field": "reference_detail.motion.attachment_id",
+              "types": [
+                "string"
+              ],
+              "present_documents": 3884,
+              "missing_documents": 52591
+            },
+            {
+              "field": "reference_detail.motion.date",
+              "types": [
+                "string"
+              ],
+              "present_documents": 3883,
+              "missing_documents": 52592
+            },
+            {
+              "field": "reference_detail.motion.id",
+              "types": [
+                "string"
+              ],
+              "present_documents": 3884,
+              "missing_documents": 52591
+            },
+            {
+              "field": "reference_detail.motion.motion_type",
+              "types": [
+                "string"
+              ],
+              "present_documents": 3884,
+              "missing_documents": 52591
+            },
+            {
+              "field": "reference_detail.motion.name",
+              "types": [
+                "string"
+              ],
+              "present_documents": 3884,
+              "missing_documents": 52591
+            },
+            {
+              "field": "reference_detail.motion.result",
+              "types": [
+                "string"
+              ],
+              "present_documents": 3884,
+              "missing_documents": 52591
+            },
+            {
+              "field": "reference_detail.motion.status",
+              "types": [
+                "string"
+              ],
+              "present_documents": 3884,
+              "missing_documents": 52591
+            },
+            {
+              "field": "reference_detail.motion.tally",
+              "types": [
+                "object"
+              ],
+              "present_documents": 2455,
+              "missing_documents": 54020
+            },
+            {
+              "field": "reference_detail.motion.tally.against",
+              "types": [
+                "number"
+              ],
+              "present_documents": 2455,
+              "missing_documents": 54020
+            },
+            {
+              "field": "reference_detail.motion.tally.in_favour",
+              "types": [
+                "number"
+              ],
+              "present_documents": 2455,
+              "missing_documents": 54020
+            },
+            {
+              "field": "reference_detail.motion.votes",
+              "types": [
+                "array"
+              ],
+              "present_documents": 2455,
+              "missing_documents": 54020
+            },
+            {
+              "field": "reference_detail.motion.votes[]",
+              "types": [
+                "object"
+              ],
+              "present_documents": 2455,
+              "missing_documents": 54020
+            },
+            {
+              "field": "reference_detail.motion.votes[].group",
+              "types": [
+                "string"
+              ],
+              "present_documents": 2455,
+              "missing_documents": 54020
+            },
+            {
+              "field": "reference_detail.motion.votes[].group_name",
+              "types": [
+                "string"
+              ],
+              "present_documents": 2455,
+              "missing_documents": 54020
+            },
+            {
+              "field": "reference_detail.motion.votes[].option",
+              "types": [
+                "string"
+              ],
+              "present_documents": 2455,
+              "missing_documents": 54020
+            },
+            {
+              "field": "reference_detail.motion.votes[].voter",
+              "types": [
+                "string"
+              ],
+              "present_documents": 2455,
+              "missing_documents": 54020
+            },
+            {
+              "field": "reference_detail.motion.votes[].voter_name",
+              "types": [
+                "string"
+              ],
+              "present_documents": 2455,
+              "missing_documents": 54020
+            },
+            {
+              "field": "reference_detail.motions",
+              "types": [
+                "array"
+              ],
+              "present_documents": 5804,
+              "missing_documents": 50671
+            },
+            {
+              "field": "reference_detail.motions[]",
+              "types": [
+                "object"
+              ],
+              "present_documents": 5804,
+              "missing_documents": 50671
+            },
+            {
+              "field": "reference_detail.motions[].agenda_item",
+              "types": [
+                "string"
+              ],
+              "present_documents": 5803,
+              "missing_documents": 50672
+            },
+            {
+              "field": "reference_detail.motions[].agenda_item_hint",
+              "types": [
+                "string"
+              ],
+              "present_documents": 2,
+              "missing_documents": 56473
+            },
+            {
+              "field": "reference_detail.motions[].attachment_id",
+              "types": [
+                "string"
+              ],
+              "present_documents": 5755,
+              "missing_documents": 50720
+            },
+            {
+              "field": "reference_detail.motions[].attachment_is_pdf",
+              "types": [
+                "boolean"
+              ],
+              "present_documents": 5755,
+              "missing_documents": 50720
+            },
+            {
+              "field": "reference_detail.motions[].date",
+              "types": [
+                "string"
+              ],
+              "present_documents": 5804,
+              "missing_documents": 50671
+            },
+            {
+              "field": "reference_detail.motions[].download_url",
+              "types": [
+                "string"
+              ],
+              "present_documents": 5755,
+              "missing_documents": 50720
+            },
+            {
+              "field": "reference_detail.motions[].id",
+              "types": [
+                "string"
+              ],
+              "present_documents": 5804,
+              "missing_documents": 50671
+            },
+            {
+              "field": "reference_detail.motions[].motion_type",
+              "types": [
+                "string"
+              ],
+              "present_documents": 5804,
+              "missing_documents": 50671
+            },
+            {
+              "field": "reference_detail.motions[].name",
+              "types": [
+                "string"
+              ],
+              "present_documents": 5804,
+              "missing_documents": 50671
+            },
+            {
+              "field": "reference_detail.motions[].result",
+              "types": [
+                "string"
+              ],
+              "present_documents": 5804,
+              "missing_documents": 50671
+            },
+            {
+              "field": "reference_detail.motions[].status",
+              "types": [
+                "string"
+              ],
+              "present_documents": 5804,
+              "missing_documents": 50671
+            },
+            {
+              "field": "reference_detail.motions[].tally",
+              "types": [
+                "object"
+              ],
+              "present_documents": 4181,
+              "missing_documents": 52294
+            },
+            {
+              "field": "reference_detail.motions[].tally.against",
+              "types": [
+                "number"
+              ],
+              "present_documents": 4181,
+              "missing_documents": 52294
+            },
+            {
+              "field": "reference_detail.motions[].tally.in_favour",
+              "types": [
+                "number"
+              ],
+              "present_documents": 4181,
+              "missing_documents": 52294
+            },
+            {
+              "field": "reference_detail.motions[].votes",
+              "types": [
+                "array"
+              ],
+              "present_documents": 4181,
+              "missing_documents": 52294
+            },
+            {
+              "field": "reference_detail.motions[].votes[]",
+              "types": [
+                "object"
+              ],
+              "present_documents": 4181,
+              "missing_documents": 52294
+            },
+            {
+              "field": "reference_detail.motions[].votes[].group",
+              "types": [
+                "string"
+              ],
+              "present_documents": 4181,
+              "missing_documents": 52294
+            },
+            {
+              "field": "reference_detail.motions[].votes[].group_name",
+              "types": [
+                "string"
+              ],
+              "present_documents": 4181,
+              "missing_documents": 52294
+            },
+            {
+              "field": "reference_detail.motions[].votes[].option",
+              "types": [
+                "string"
+              ],
+              "present_documents": 4181,
+              "missing_documents": 52294
+            },
+            {
+              "field": "reference_detail.motions[].votes[].voter",
+              "types": [
+                "string"
+              ],
+              "present_documents": 4181,
+              "missing_documents": 52294
+            },
+            {
+              "field": "reference_detail.motions[].votes[].voter_name",
+              "types": [
+                "string"
+              ],
+              "present_documents": 4181,
+              "missing_documents": 52294
+            },
+            {
+              "field": "reference_detail.organization",
+              "types": [
+                "string"
+              ],
+              "present_documents": 40241,
+              "missing_documents": 16234
+            },
+            {
+              "field": "reference_detail.pdfEntityId",
+              "types": [
+                "string"
+              ],
+              "present_documents": 3884,
+              "missing_documents": 52591
+            },
+            {
+              "field": "reference_detail.pdfUrl",
+              "types": [
+                "string"
+              ],
+              "present_documents": 3884,
+              "missing_documents": 52591
+            },
+            {
+              "field": "reference_detail.reason",
+              "types": [
+                "string"
+              ],
+              "present_documents": 16234,
+              "missing_documents": 40241
+            },
+            {
+              "field": "reference_detail.sortDate",
+              "types": [
+                "string"
+              ],
+              "present_documents": 40241,
+              "missing_documents": 16234
+            },
+            {
+              "field": "reference_detail.sourceUrl",
+              "types": [
+                "string"
+              ],
+              "present_documents": 36357,
+              "missing_documents": 20118
+            },
+            {
+              "field": "reference_detail.title",
+              "types": [
+                "string"
+              ],
+              "present_documents": 40241,
+              "missing_documents": 16234
+            },
+            {
+              "field": "referenced_by",
+              "types": [
+                "string"
+              ],
+              "present_documents": 56475,
+              "missing_documents": 0
+            },
+            {
+              "field": "schema_version",
+              "types": [
+                "string"
+              ],
+              "present_documents": 56475,
+              "missing_documents": 0
+            },
+            {
+              "field": "source_id",
+              "types": [
+                "string"
+              ],
+              "present_documents": 56475,
+              "missing_documents": 0
+            },
+            {
+              "field": "source_key",
+              "types": [
+                "string"
+              ],
+              "present_documents": 56475,
+              "missing_documents": 0
+            },
+            {
+              "field": "source_operation",
+              "types": [
+                "string"
+              ],
+              "present_documents": 56475,
+              "missing_documents": 0
+            },
+            {
+              "field": "source_payload",
+              "types": [
+                "object"
+              ],
+              "present_documents": 56475,
+              "missing_documents": 0
+            },
+            {
+              "field": "source_payload.classification",
+              "types": [
+                "array"
+              ],
+              "present_documents": 56475,
+              "missing_documents": 0
+            },
+            {
+              "field": "source_payload.classification[]",
+              "types": [
+                "string"
+              ],
+              "present_documents": 56475,
+              "missing_documents": 0
+            },
+            {
+              "field": "source_payload.date_modified",
+              "types": [
+                "string"
+              ],
+              "present_documents": 16234,
+              "missing_documents": 40241
+            },
+            {
+              "field": "source_payload.derived_content",
+              "types": [
+                "object"
+              ],
+              "present_documents": 53400,
+              "missing_documents": 3075
+            },
+            {
+              "field": "source_payload.derived_content.extraction_quality_score",
+              "types": [
+                "number"
+              ],
+              "present_documents": 20323,
+              "missing_documents": 36152
+            },
+            {
+              "field": "source_payload.derived_content.extraction_quality_status",
+              "types": [
+                "string"
+              ],
+              "present_documents": 20323,
+              "missing_documents": 36152
+            },
+            {
+              "field": "source_payload.derived_content.markdown_key",
+              "types": [
+                "string"
+              ],
+              "present_documents": 53400,
+              "missing_documents": 3075
+            },
+            {
+              "field": "source_payload.derived_content.page_chunks_key",
+              "types": [
+                "string"
+              ],
+              "present_documents": 52720,
+              "missing_documents": 3755
+            },
+            {
+              "field": "source_payload.derived_content.page_count",
+              "types": [
+                "number"
+              ],
+              "present_documents": 20324,
+              "missing_documents": 36151
+            },
+            {
+              "field": "source_payload.derived_content.source_page_count",
+              "types": [
+                "number"
+              ],
+              "present_documents": 20323,
+              "missing_documents": 36152
+            },
+            {
+              "field": "source_payload.file_name",
+              "types": [
+                "string"
+              ],
+              "present_documents": 56475,
+              "missing_documents": 0
+            },
+            {
+              "field": "source_payload.is_referenced_by",
+              "types": [
+                "string"
+              ],
+              "present_documents": 56475,
+              "missing_documents": 0
+            },
+            {
+              "field": "source_payload.last_discussed_at",
+              "types": [
+                "string"
+              ],
+              "present_documents": 56475,
+              "missing_documents": 0
+            },
+            {
+              "field": "source_payload.media_urls",
+              "types": [
+                "array"
+              ],
+              "present_documents": 53442,
+              "missing_documents": 3033
+            },
+            {
+              "field": "source_payload.media_urls[]",
+              "types": [
+                "object"
+              ],
+              "present_documents": 53442,
+              "missing_documents": 3033
+            },
+            {
+              "field": "source_payload.media_urls[].original_url",
+              "types": [
+                "string"
+              ],
+              "present_documents": 53442,
+              "missing_documents": 3033
+            },
+            {
+              "field": "source_payload.media_urls[].url",
+              "types": [
+                "string"
+              ],
+              "present_documents": 53442,
+              "missing_documents": 3033
+            },
+            {
+              "field": "source_payload.name",
+              "types": [
+                "string"
+              ],
+              "present_documents": 56475,
+              "missing_documents": 0
+            },
+            {
+              "field": "source_payload.organization",
+              "types": [
+                "string"
+              ],
+              "present_documents": 56475,
+              "missing_documents": 0
+            },
+            {
+              "field": "source_payload.original_url",
+              "types": [
+                "string"
+              ],
+              "present_documents": 56475,
+              "missing_documents": 0
+            },
+            {
+              "field": "source_payload.type",
+              "types": [
+                "string"
+              ],
+              "present_documents": 56475,
+              "missing_documents": 0
+            },
+            {
+              "field": "source_record",
+              "types": [
+                "object"
+              ],
+              "present_documents": 56475,
+              "missing_documents": 0
+            },
+            {
+              "field": "source_record.commit_id",
+              "types": [
+                "string"
+              ],
+              "present_documents": 56475,
+              "missing_documents": 0
+            },
+            {
+              "field": "source_record.content_hash",
+              "types": [
+                "string"
+              ],
+              "present_documents": 56475,
+              "missing_documents": 0
+            },
+            {
+              "field": "source_record.entity_id",
+              "types": [
+                "string"
+              ],
+              "present_documents": 56475,
+              "missing_documents": 0
+            },
+            {
+              "field": "source_record.entity_type",
+              "types": [
+                "string"
+              ],
+              "present_documents": 56475,
+              "missing_documents": 0
+            },
+            {
+              "field": "source_record.op",
+              "types": [
+                "string"
+              ],
+              "present_documents": 56475,
+              "missing_documents": 0
+            },
+            {
+              "field": "source_record.payload",
+              "types": [
+                "object"
+              ],
+              "present_documents": 56475,
+              "missing_documents": 0
+            },
+            {
+              "field": "source_record.payload.classification",
+              "types": [
+                "array"
+              ],
+              "present_documents": 56475,
+              "missing_documents": 0
+            },
+            {
+              "field": "source_record.payload.classification[]",
+              "types": [
+                "string"
+              ],
+              "present_documents": 56475,
+              "missing_documents": 0
+            },
+            {
+              "field": "source_record.payload.date_modified",
+              "types": [
+                "string"
+              ],
+              "present_documents": 16234,
+              "missing_documents": 40241
+            },
+            {
+              "field": "source_record.payload.derived_content",
+              "types": [
+                "object"
+              ],
+              "present_documents": 53400,
+              "missing_documents": 3075
+            },
+            {
+              "field": "source_record.payload.derived_content.extraction_quality_score",
+              "types": [
+                "number"
+              ],
+              "present_documents": 20323,
+              "missing_documents": 36152
+            },
+            {
+              "field": "source_record.payload.derived_content.extraction_quality_status",
+              "types": [
+                "string"
+              ],
+              "present_documents": 20323,
+              "missing_documents": 36152
+            },
+            {
+              "field": "source_record.payload.derived_content.markdown_key",
+              "types": [
+                "string"
+              ],
+              "present_documents": 53400,
+              "missing_documents": 3075
+            },
+            {
+              "field": "source_record.payload.derived_content.page_chunks_key",
+              "types": [
+                "string"
+              ],
+              "present_documents": 52720,
+              "missing_documents": 3755
+            },
+            {
+              "field": "source_record.payload.derived_content.page_count",
+              "types": [
+                "number"
+              ],
+              "present_documents": 20324,
+              "missing_documents": 36151
+            },
+            {
+              "field": "source_record.payload.derived_content.source_page_count",
+              "types": [
+                "number"
+              ],
+              "present_documents": 20323,
+              "missing_documents": 36152
+            },
+            {
+              "field": "source_record.payload.file_name",
+              "types": [
+                "string"
+              ],
+              "present_documents": 56475,
+              "missing_documents": 0
+            },
+            {
+              "field": "source_record.payload.is_referenced_by",
+              "types": [
+                "string"
+              ],
+              "present_documents": 56475,
+              "missing_documents": 0
+            },
+            {
+              "field": "source_record.payload.last_discussed_at",
+              "types": [
+                "string"
+              ],
+              "present_documents": 56475,
+              "missing_documents": 0
+            },
+            {
+              "field": "source_record.payload.media_urls",
+              "types": [
+                "array"
+              ],
+              "present_documents": 53442,
+              "missing_documents": 3033
+            },
+            {
+              "field": "source_record.payload.media_urls[]",
+              "types": [
+                "object"
+              ],
+              "present_documents": 53442,
+              "missing_documents": 3033
+            },
+            {
+              "field": "source_record.payload.media_urls[].original_url",
+              "types": [
+                "string"
+              ],
+              "present_documents": 53442,
+              "missing_documents": 3033
+            },
+            {
+              "field": "source_record.payload.media_urls[].url",
+              "types": [
+                "string"
+              ],
+              "present_documents": 53442,
+              "missing_documents": 3033
+            },
+            {
+              "field": "source_record.payload.name",
+              "types": [
+                "string"
+              ],
+              "present_documents": 56475,
+              "missing_documents": 0
+            },
+            {
+              "field": "source_record.payload.organization",
+              "types": [
+                "string"
+              ],
+              "present_documents": 56475,
+              "missing_documents": 0
+            },
+            {
+              "field": "source_record.payload.original_url",
+              "types": [
+                "string"
+              ],
+              "present_documents": 56475,
+              "missing_documents": 0
+            },
+            {
+              "field": "source_record.payload.type",
+              "types": [
+                "string"
+              ],
+              "present_documents": 56475,
+              "missing_documents": 0
+            },
+            {
+              "field": "source_record.schema_version",
+              "types": [
+                "string"
+              ],
+              "present_documents": 56475,
+              "missing_documents": 0
+            },
+            {
+              "field": "source_record.seq",
+              "types": [
+                "number"
+              ],
+              "present_documents": 56475,
+              "missing_documents": 0
+            },
+            {
+              "field": "source_record.source_key",
+              "types": [
+                "string"
+              ],
+              "present_documents": 56475,
+              "missing_documents": 0
+            },
+            {
+              "field": "source_record.supplier",
+              "types": [
+                "string"
+              ],
+              "present_documents": 56475,
+              "missing_documents": 0
+            },
+            {
+              "field": "source_record.time",
+              "types": [
+                "string"
+              ],
+              "present_documents": 56475,
+              "missing_documents": 0
+            },
+            {
+              "field": "source_sequence",
+              "types": [
+                "number"
+              ],
+              "present_documents": 56475,
+              "missing_documents": 0
+            },
+            {
+              "field": "source_time",
+              "types": [
+                "string"
+              ],
+              "present_documents": 56475,
+              "missing_documents": 0
+            },
+            {
+              "field": "supplier",
+              "types": [
+                "string"
+              ],
+              "present_documents": 56475,
+              "missing_documents": 0
+            },
+            {
+              "field": "text_truncated",
+              "types": [
+                "boolean"
+              ],
+              "present_documents": 56475,
+              "missing_documents": 0
+            },
+            {
+              "field": "title",
+              "types": [
+                "string"
+              ],
+              "present_documents": 56475,
+              "missing_documents": 0
+            }
+          ],
+          "total_fields": 199,
+          "fields_paginated": false,
+          "limit": 1000,
+          "offset": 0,
+          "excluded_field_categories": [
+            "document content (full_text, content_preview, markdownText)",
+            "binary/vectors",
+            "credential keys"
+          ],
+          "aliases": {
+            "date": [
+              "date",
+              "entity_detail.sortDate",
+              "source_payload.date",
+              "source_payload.last_discussed_at",
+              "source_payload.date_modified",
+              "last_discussed_at",
+              "date_modified"
+            ],
+            "year": "date grouped by UTC calendar year",
+            "document_type": [
+              "document_type",
+              "documentType",
+              "entity_detail.documentType",
+              "entity_detail.document_type",
+              "source_payload.documentType",
+              "source_payload.document_type",
+              "classification",
+              "source_payload.classification"
+            ]
+          },
+          "alias_semantics": "First nonempty candidate wins; documentType precedes classification. Raw paths remain queryable."
+        }
+      },
+      "supplier_group": {
+        "query": {
+          "operation": "group",
+          "field": "source_record.supplier",
+          "limit": 1000
+        },
+        "http_status": 200,
+        "duration_ms": 27825,
+        "response": {
+          "operation": "group",
+          "source_kind": "qdrant_exact_metadata",
+          "scope": {
+            "collection": "limburg_full_20261111",
+            "run_id": "limburg-full-20261111",
+            "source_key": "provincie_limburg"
+          },
+          "query_as_of": "2026-11-17T09:57:58.976295Z",
+          "cached": false,
+          "exact": true,
+          "truncated": false,
+          "total_documents": 56475,
+          "matched_documents": 56475,
+          "scanned_documents": 56475,
+          "skipped_documents": 0,
+          "coverage": {
+            "basis": "indexed Qdrant documents in configured scope only",
+            "source_complete": null,
+            "failed_source_documents_included": false
+          },
+          "evidence": {
+            "scan_started_at": "2026-11-17T09:57:58.976295Z",
+            "scan_finished_at": "2026-11-17T09:58:26.779670Z",
+            "native_point_count_before": 56475,
+            "native_point_count_after": 56475,
+            "consistency": "non-transactional scroll; counts checked before/after; same-count concurrent edits cannot be detected"
+          },
+          "field": "source_record.supplier",
+          "interval": null,
+          "groups": [
+            {
+              "value": "ibabs",
+              "value_type": "string",
+              "count": 56475
+            }
+          ],
+          "total_groups": 1,
+          "groups_paginated": false,
+          "limit": 1000,
+          "offset": 0,
+          "missing_documents": 0,
+          "invalid_documents": 0,
+          "null_documents": 0,
+          "documents_with_value": 56475,
+          "overlap_documents": 0,
+          "group_memberships": 56475,
+          "semantics": "Each distinct value counts a document once; arrays may overlap. Row sums are memberships, not an exclusive document total. Null/invalid buckets may overlap valid values; missing means absent path; empty arrays exist with no values."
+        }
+      },
+      "supplier_count": {
+        "query": {
+          "operation": "count",
+          "filters": [
+            {
+              "field": "supplier",
+              "operator": "eq",
+              "value": "ibabs"
+            }
+          ]
+        },
+        "http_status": 200,
+        "duration_ms": 6986,
+        "response": {
+          "operation": "count",
+          "source_kind": "qdrant_exact_metadata",
+          "scope": {
+            "collection": "limburg_full_20261111",
+            "run_id": "limburg-full-20261111",
+            "source_key": "provincie_limburg"
+          },
+          "query_as_of": "2026-11-17T09:58:26.791152Z",
+          "cached": false,
+          "exact": true,
+          "truncated": false,
+          "total_documents": 56475,
+          "matched_documents": 56475,
+          "scanned_documents": 0,
+          "skipped_documents": 0,
+          "coverage": {
+            "basis": "indexed Qdrant documents in configured scope only",
+            "source_complete": null,
+            "failed_source_documents_included": false
+          },
+          "evidence": {
+            "method": "native_exact_count",
+            "observed_at": "2026-11-17T09:58:33.776125Z",
+            "native_point_count_before": 56475,
+            "native_point_count_after": 56475,
+            "document_identity": "worker invariant: one deterministic point per source document",
+            "consistency": "non-transactional; same-count concurrent edits cannot be detected"
+          }
+        }
+      },
+      "nested_year": {
+        "query": {
+          "operation": "group",
+          "field": "source_payload.classification[]",
+          "filters": [
+            {
+              "field": "date",
+              "operator": "range",
+              "gte": "2020-01-01",
+              "lt": "2021-01-01"
+            }
+          ],
+          "limit": 1000
+        },
+        "http_status": 200,
+        "duration_ms": 27684,
+        "response": {
+          "operation": "group",
+          "source_kind": "qdrant_exact_metadata",
+          "scope": {
+            "collection": "limburg_full_20261111",
+            "run_id": "limburg-full-20261111",
+            "source_key": "provincie_limburg"
+          },
+          "query_as_of": "2026-11-17T09:58:33.777429Z",
+          "cached": false,
+          "exact": true,
+          "truncated": false,
+          "total_documents": 56475,
+          "matched_documents": 4118,
+          "scanned_documents": 56475,
+          "skipped_documents": 0,
+          "coverage": {
+            "basis": "indexed Qdrant documents in configured scope only",
+            "source_complete": null,
+            "failed_source_documents_included": false
+          },
+          "evidence": {
+            "scan_started_at": "2026-11-17T09:58:33.777429Z",
+            "scan_finished_at": "2026-11-17T09:59:01.449461Z",
+            "native_point_count_before": 56475,
+            "native_point_count_after": 56475,
+            "consistency": "non-transactional scroll; counts checked before/after; same-count concurrent edits cannot be detected"
+          },
+          "field": "source_payload.classification[]",
+          "interval": null,
+          "groups": [
+            {
+              "value": "Bijlage",
+              "value_type": "string",
+              "count": 1928
+            },
+            {
+              "value": "Ingekomen stukken",
+              "value_type": "string",
+              "count": 1227
+            },
+            {
+              "value": "Schriftelijke vragen van Statenleden",
+              "value_type": "string",
+              "count": 393
+            },
+            {
+              "value": "Moties",
+              "value_type": "string",
+              "count": 347
+            },
+            {
+              "value": "Uitnodigingen",
+              "value_type": "string",
+              "count": 115
+            },
+            {
+              "value": "Amendementen",
+              "value_type": "string",
+              "count": 108
+            }
+          ],
+          "total_groups": 6,
+          "groups_paginated": false,
+          "limit": 1000,
+          "offset": 0,
+          "missing_documents": 0,
+          "invalid_documents": 0,
+          "null_documents": 0,
+          "documents_with_value": 4118,
+          "overlap_documents": 0,
+          "group_memberships": 4118,
+          "semantics": "Each distinct value counts a document once; arrays may overlap. Row sums are memberships, not an exclusive document total. Null/invalid buckets may overlap valid values; missing means absent path; empty arrays exist with no values."
+        }
+      },
+      "nested_count": {
+        "query": {
+          "operation": "count",
+          "filters": [
+            {
+              "field": "source_payload.classification[]",
+              "operator": "eq",
+              "value": "Bijlage"
+            },
+            {
+              "field": "date",
+              "operator": "range",
+              "gte": "2020-01-01",
+              "lt": "2021-01-01"
+            }
+          ]
+        },
+        "http_status": 200,
+        "duration_ms": 27128,
+        "response": {
+          "operation": "count",
+          "source_kind": "qdrant_exact_metadata",
+          "scope": {
+            "collection": "limburg_full_20261111",
+            "run_id": "limburg-full-20261111",
+            "source_key": "provincie_limburg"
+          },
+          "query_as_of": "2026-11-17T09:59:01.460525Z",
+          "cached": false,
+          "exact": true,
+          "truncated": false,
+          "total_documents": 56475,
+          "matched_documents": 1928,
+          "scanned_documents": 56475,
+          "skipped_documents": 0,
+          "coverage": {
+            "basis": "indexed Qdrant documents in configured scope only",
+            "source_complete": null,
+            "failed_source_documents_included": false
+          },
+          "evidence": {
+            "scan_started_at": "2026-11-17T09:59:01.460525Z",
+            "scan_finished_at": "2026-11-17T09:59:28.575397Z",
+            "native_point_count_before": 56475,
+            "native_point_count_after": 56475,
+            "consistency": "non-transactional scroll; counts checked before/after; same-count concurrent edits cannot be detected"
+          }
+        }
+      },
+      "numeric": {
+        "query": {
+          "operation": "count",
+          "filters": [
+            {
+              "field": "source_sequence",
+              "operator": "range",
+              "gte": 0
+            }
+          ]
+        },
+        "http_status": 200,
+        "duration_ms": 7721,
+        "response": {
+          "operation": "count",
+          "source_kind": "qdrant_exact_metadata",
+          "scope": {
+            "collection": "limburg_full_20261111",
+            "run_id": "limburg-full-20261111",
+            "source_key": "provincie_limburg"
+          },
+          "query_as_of": "2026-11-17T09:59:28.586704Z",
+          "cached": false,
+          "exact": true,
+          "truncated": false,
+          "total_documents": 56475,
+          "matched_documents": 56475,
+          "scanned_documents": 56475,
+          "skipped_documents": 0,
+          "coverage": {
+            "basis": "indexed Qdrant documents in configured scope only",
+            "source_complete": null,
+            "failed_source_documents_included": false
+          },
+          "evidence": {
+            "scan_started_at": "2026-11-17T09:59:28.586704Z",
+            "scan_finished_at": "2026-11-17T09:59:36.298356Z",
+            "native_point_count_before": 56475,
+            "native_point_count_after": 56475,
+            "consistency": "non-transactional scroll; counts checked before/after; same-count concurrent edits cannot be detected"
+          }
+        }
+      },
+      "boolean": {
+        "query": {
+          "operation": "count",
+          "filters": [
+            {
+              "field": "text_truncated",
+              "operator": "eq",
+              "value": false
+            }
+          ]
+        },
+        "http_status": 200,
+        "duration_ms": 6760,
+        "response": {
+          "operation": "count",
+          "source_kind": "qdrant_exact_metadata",
+          "scope": {
+            "collection": "limburg_full_20261111",
+            "run_id": "limburg-full-20261111",
+            "source_key": "provincie_limburg"
+          },
+          "query_as_of": "2026-11-17T09:59:36.307776Z",
+          "cached": false,
+          "exact": true,
+          "truncated": false,
+          "total_documents": 56475,
+          "matched_documents": 56475,
+          "scanned_documents": 0,
+          "skipped_documents": 0,
+          "coverage": {
+            "basis": "indexed Qdrant documents in configured scope only",
+            "source_complete": null,
+            "failed_source_documents_included": false
+          },
+          "evidence": {
+            "method": "native_exact_count",
+            "observed_at": "2026-11-17T09:59:43.066642Z",
+            "native_point_count_before": 56475,
+            "native_point_count_after": 56475,
+            "document_identity": "worker invariant: one deterministic point per source document",
+            "consistency": "non-transactional; same-count concurrent edits cannot be detected"
+          }
+        }
+      },
+      "status": {
+        "query": {
+          "operation": "status"
+        },
+        "http_status": 200,
+        "duration_ms": 590,
+        "response": {
+          "operation": "status",
+          "source_kind": "sqlite_readonly_checkpoint",
+          "scope": {
+            "collection": "limburg_full_20261111",
+            "run_id": "limburg-full-20261111",
+            "source_key": "provincie_limburg"
+          },
+          "query_as_of": "2026-11-17T09:59:43.067881Z",
+          "cached": false,
+          "exact": true,
+          "truncated": false,
+          "status": {
+            "available": true,
+            "observed_at": "2026-11-17T09:59:43.067893Z",
+            "last_successful_full_sync_at": null,
+            "read_mode": "immutable_locked",
+            "run_id": "limburg-full-20261111",
+            "collection": "limburg_full_20261111",
+            "generation": 1,
+            "refresh_phase": "complete",
+            "snapshot_exhausted": true,
+            "source_complete": false,
+            "checkpoint_document_counts": {
+              "dead_letter": 203,
+              "indexed": 56475
+            },
+            "checkpoint_has_vector": 56475,
+            "failed_documents": 0,
+            "unfinished_documents": 203,
+            "last_updated_checkpoint_at": "2026-11-16T12:17:50.844091Z",
+            "last_attempt": {
+              "checkpoint_at": "2026-11-16T12:17:50.844091Z",
+              "completed_scan": true,
+              "failed_documents": 0,
+              "has_error": false
+            },
+            "last_completed_scan_at": "2026-11-16T12:17:50.844091Z",
+            "timestamp_valid": true,
+            "timestamp_basis": "runs.updated_at; historical refresh_generations.baseline.updated_at proves scan exhaustion only, not successful indexing",
+            "historical_success_unknown": true
+          },
+          "evidence": {
+            "observed_at": "2026-11-17T09:59:43.656591Z",
+            "timestamp_basis": "runs.updated_at; never indexed_at"
+          }
+        }
+      }
+    },
+    "comparison": {
+      "passed": true,
+      "schema_fields": 199,
+      "indexed_documents": 56475,
+      "supplier_count": 56475,
+      "nested_2020_groups": {
+        "Bijlage": 1928,
+        "Ingekomen stukken": 1227,
+        "Schriftelijke vragen van Statenleden": 393,
+        "Moties": 347,
+        "Uitnodigingen": 115,
+        "Amendementen": 108
+      },
+      "nested_2020_total": 4118,
+      "nested_bijlage_count": 1928,
+      "numeric_range_count": 56475,
+      "backend_only_boolean_count": 56475,
+      "statistics_calls": 6,
+      "completion_events": 6,
+      "rag_calls": 0,
+      "event_tool_outputs_exposed": false
+    },
+    "limits": [
+      "No remote server deployment",
+      "Indexed scope only; source_complete false with 203 dead-letter/unfinished",
+      "Query/report generation timestamps are not successful synchronization timestamps",
+      "Non-transactional scroll; same-count concurrent edits cannot be detected",
+      "No exhaustive validation of all discovered types, operators, long-string grouping or budget exhaustion"
+    ],
+    "evidence_collection_note": "Docker copy API failed to access backend /tmp files; reports recovered through container execution without repeating queries.",
+    "targeted_node_tests": {
+      "passed": 27,
+      "skipped": 1,
+      "failed": 0
+    }
+  },
+  "final_failure_status_validation": {
+    "started_at": "2026-11-17T10:13:00.269Z",
+    "model": "govchat-orchestrator",
+    "cases": [
+      {
+        "case": "status",
+        "http_status": 200,
+        "duration_ms": 6802,
+        "answer": "Volgens de statusbron van OpenBesluitvorming is dit de stand:\n\n- **Laatst voltooide scan:** **2026-11-16 12:17:50.844091Z**\n- **Laatste succesvolle volledige synchronisatie:** **onbekend / niet aangetoond**\n- **Volledige synchronisatie succesvol?** **Nee, dat kan hier niet als succesvol volledig worden bevestigd**\n- **Mislukte documenten?** **Ja, 203**\n\nKorte duiding:\n\n- De tool meldt **`last_successful_full_sync_at: null`**. Dat betekent dat een **succesvolle volledige synchronisatie niet is aangetoond**.\n- Er is wel een **laatst voltooide scan**: **2026-11-16T12:17:50.844091Z** (`last_completed_scan_at`).\n- De bron meldt bovendien **`source_complete: false`**, dus de brondekking was **niet volledig**.\n- Bij de documentstatus staan:\n  - **Indexed:** 56.475\n  - **Dead letter:** 203\n  - **Failed documents:** 203\n  - **Unfinished documents:** 0\n\nBelangrijk: die **203 mislukte documenten** moet je niet wegredeneren met `unfinished_documents: 0`; **dead_letter** betekent juist definitief niet geslaagde ingestdocumenten.\n\n**Bron / scope:** OpenBesluitvorming status, collectie **`limburg_full_20261111`**, bron **`provincie_limburg`**, geraadpleegd op **2026-11-17T10:13:02Z**.",
+        "calls": [
+          {
+            "id": "call_t4drDCPLdF1LrQ4VB4Aj1CUL",
+            "type": "tool_call",
+            "name": "openbesluitvorming_statistics_tool",
+            "args": {
+              "query": "{\"operation\":\"status\"}"
+            }
+          }
+        ],
+        "completed": [
+          {
+            "id": "call_t4drDCPLdF1LrQ4VB4Aj1CUL",
+            "type": "tool_call",
+            "name": "openbesluitvorming_statistics_tool",
+            "args": {
+              "query": "{\"operation\":\"status\"}"
+            },
+            "output": "",
+            "progress": 1
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -1,6 +1,14 @@
 # Explicit local validation override; leaves the older stopped runtime untouched.
 # docker compose -f docker-compose.yml -f docker-compose.openbesluitvorming-local.yml ...
 services:
+  # Real prompt-management service required by the unchanged orchestrator loader.
+  govchat-overlay-admin:
+    container_name: govchat-obv-overlay-admin
+    ports: !override
+      - "127.0.0.1:13002:3002"
+    volumes:
+      - obv-local-overlay-data:/data
+      - obv-local-publish:/publish
   openbesluitvorming-ingest:
     # Two pipelines, bounded 256 MiB downloads; no scheduling on compose up.
     mem_limit: 2g
@@ -57,3 +65,4 @@ volumes:
   obv-local-images:
   obv-local-publish:
   obv-local-litellm-postgres:
+  obv-local-overlay-data:

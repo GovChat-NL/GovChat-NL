@@ -1,4 +1,5 @@
 'use strict';
+const { workflowFunctionSource } = require('./workflow-function-source');
 
 // Serialized into an n8n expression; keep this function self-contained.
 function trustedImageUserId(request, expectedToken) {
@@ -14,7 +15,7 @@ function trustedImageUserId(request, expectedToken) {
 }
 
 const fields = ['prompt', 'size', 'quality', 'userId', 'operation', 'sourceImage'];
-const trustedUserExpression = `={{ (${trustedImageUserId.toString()})($('Webhook Orchestrator').first().json, $env.N8N_WEBHOOK_TOKEN) }}`;
+const trustedUserExpression = `={{ (${workflowFunctionSource(trustedImageUserId)})($('Webhook Orchestrator').first().json, $env.N8N_WEBHOOK_TOKEN) }}`;
 
 function applyImageToolInputs(workflow) {
   const tool = workflow.nodes.find(node => node.name === 'image_generation_tool');

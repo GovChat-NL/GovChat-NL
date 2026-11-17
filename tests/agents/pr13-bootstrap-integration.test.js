@@ -27,7 +27,7 @@ test('the merged bootstrap imports new workflows after either parent marker, the
   for (const version of [6, 7]) {
     assert.deepEqual(getWorkflowImportPlan(workflows, JSON.stringify({ version, topdeskSearchEnabled: false }), false, env), workflows);
   }
-  const marker = JSON.stringify({ version: 8, topdeskSearchEnabled: false });
+  const marker = JSON.stringify({ version: 8, statisticsIntegrationVersion: 1, topdeskSearchEnabled: false });
   assert.deepEqual(getWorkflowImportPlan(workflows, marker, false, env), []);
   const changed = getWorkflowImportPlan(workflows, marker, false, { N8N_ENABLE_TOPDESK_SEARCH: 'true' });
   assert.deepEqual(changed.map(entry => entry.file).sort(), ['algemeen/orchestrator-litellm.json', 'topdesk-knowledge-items-search.json']);
@@ -38,9 +38,11 @@ test('workflow rendering creates private nested directories and preserves TOPdes
   try {
     for (const workflow of discoverWorkflows(directory, env)) {
       const output = writeRenderedWorkflow(workflow, env, temporary);
-      assert.equal(path.relative(temporary, output), workflow.file);
-      assert.equal(fs.statSync(output).mode & 0o777, 0o600);
-      assert.equal(fs.statSync(path.dirname(output)).mode & 0o777, 0o700);
+      assert.equal(path.relative(temporary, output).split(path.sep).join('/'), workflow.file);
+      if (process.platform !== 'win32') {
+        assert.equal(fs.statSync(output).mode & 0o777, 0o600);
+        assert.equal(fs.statSync(path.dirname(output)).mode & 0o777, 0o700);
+      }
       const rendered = JSON.parse(fs.readFileSync(output, 'utf8'));
       const items = Array.isArray(rendered) ? rendered : [rendered];
       assert.deepEqual(items.map(item => item.id).filter(Boolean), workflow.ids);
@@ -63,12 +65,16 @@ test('regenerating the moved orchestrator does not create duplicate utility expo
     for (const file of ['update-orchestrator-workflow.js', 'orchestrator-utility-workflow.js',
       'orchestrator-document-workflow.js', 'n8n-document-context.js',
       'orchestrator-image-workflow.js', 'orchestrator-prompt-workflow.js',
-      'orchestrator-image-edit-workflow.js']) {
+      'orchestrator-image-edit-workflow.js', 'openbesluitvorming-statistics-workflow.js',
+      'workflow-function-source.js']) {
       fs.copyFileSync(path.resolve(__dirname, '../../scripts', file), path.join(scripts, file));
     }
     const workflowsDir = path.join(temporary, 'agents/n8n/workflows');
     fs.cpSync(directory, workflowsDir, { recursive: true });
     execFileSync(process.execPath, [path.join(scripts, 'update-orchestrator-workflow.js')]);
+    const renderedOnce = fs.readFileSync(path.join(workflowsDir, 'algemeen/orchestrator-litellm.json'), 'utf8');
+    execFileSync(process.execPath, [path.join(scripts, 'update-orchestrator-workflow.js')]);
+    assert.equal(fs.readFileSync(path.join(workflowsDir, 'algemeen/orchestrator-litellm.json'), 'utf8'), renderedOnce);
     const workflows = discoverWorkflows(workflowsDir, env);
     assert.equal(workflows.length, discoverWorkflows(directory, env).length);
     const ids = workflows.flatMap(entry => entry.ids);
@@ -82,6 +88,8 @@ test('regenerating the moved orchestrator does not create duplicate utility expo
     assert.ok(template.nodes.some(node => node.id === 'ExtractDocumentContext'));
     const agent = template.nodes.find(node => node.id === 'AIAgentOrchestrator');
     assert.match(agent.parameters.options.systemMessage, /const organizationPrompt = \$json\.orchestratorPrompt/);
+    assert.match(agent.parameters.options.systemMessage, /OPENBESLUITVORMING STATISTICS/);
+    assert.equal(template.nodes.filter(node => node.name === 'openbesluitvorming_statistics_tool').length, 1);
     const imageTool = template.nodes.find(node => node.name === 'image_generation_tool');
     assert.match(JSON.stringify(imageTool.parameters), /Webhook Orchestrator/);
     assert.match(JSON.stringify(imageTool.parameters), /sourceImage/);
