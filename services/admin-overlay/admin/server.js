@@ -338,6 +338,8 @@ function initDefaults() {
 
   const beleidskompasState = readBeleidskompasState();
   publishBeleidskompasLiveConfig(beleidskompasState.live, beleidskompasState.live_version_id);
+  // Left behind by the removed workflow generator; it held document text.
+  fs.rmSync(path.join(DATA_DIR, "beleidskompas-workflows"), { recursive: true, force: true });
 }
 
 function readJSON(filename) {
