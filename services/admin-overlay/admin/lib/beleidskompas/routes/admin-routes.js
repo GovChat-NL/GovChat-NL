@@ -2,33 +2,20 @@ const express = require("express");
 
 const { createTemplateService } = require("../template-service");
 
-<<<<<<< HEAD
 // The admin routes under /api/beleidskompas (templates, versions, documents, settings, workflows).
-=======
-// The admin routes under /api/beleidskompas (templates, versions, documents, settings).
->>>>>>> 91e73b8d82c15b5b13c8264737dc03bcd3d75fe8
 // Mounted by lib/beleidskompas/index.js; the case routes of n8n and the page are in case-routes.js.
 //
 // Dependencies are passed in so this module does not reach into server.js globals.
 //   store             the template store (template-store.js)
 //   requireAuth       the admin auth middleware
-<<<<<<< HEAD
 //   flow              flow/workflow helpers that still live in server.js
-=======
-//   flow              flow helpers that still live in server.js
->>>>>>> 91e73b8d82c15b5b13c8264737dc03bcd3d75fe8
 function createAdminRouter({ store, requireAuth, flow }) {
   const service = createTemplateService({ store });
   const { getCurrentOr404, setTemplateDocument, findTemplateDocument } = service;
   const {
-<<<<<<< HEAD
     DEFAULT_BELEIDSKOMPAS_SETTINGS, normalizeBeleidskompasFlow, defaultBeleidskompasFlow,
     readBeleidskompasWorkflowManifest, selectBeleidskompasRagDocs, normalizeLegacyState,
     publishLive, n8nBaseUrl, n8nWebhookToken,
-=======
-    DEFAULT_BELEIDSKOMPAS_SETTINGS, normalizeBeleidskompasFlow,
-    readBeleidskompasWorkflowManifest, normalizeLegacyState, publishLive,
->>>>>>> 91e73b8d82c15b5b13c8264737dc03bcd3d75fe8
   } = flow;
   const router = express.Router();
 
@@ -152,7 +139,6 @@ function createAdminRouter({ store, requireAuth, flow }) {
     }
   });
 
-<<<<<<< HEAD
   router.get("/workflows/status", requireAuth, async (req, res) => {
     try {
       const live = await store.getLive();
@@ -185,8 +171,6 @@ function createAdminRouter({ store, requireAuth, flow }) {
     }
   });
 
-=======
->>>>>>> 91e73b8d82c15b5b13c8264737dc03bcd3d75fe8
   router.get("/templates/:id/documents", requireAuth, async (req, res) => {
     try {
       const id = templateIdParam(req);
@@ -248,7 +232,6 @@ function createAdminRouter({ store, requireAuth, flow }) {
     }
   });
 
-<<<<<<< HEAD
   router.get("/documents/:docId/preview", requireAuth, async (req, res) => {
     try {
       const doc = await store.getDocument(Number(req.params.docId));
@@ -259,8 +242,6 @@ function createAdminRouter({ store, requireAuth, flow }) {
     }
   });
 
-=======
->>>>>>> 91e73b8d82c15b5b13c8264737dc03bcd3d75fe8
   router.get("/documents/:docId/download", requireAuth, async (req, res) => {
     try {
       const doc = await store.getDocument(Number(req.params.docId));
@@ -273,7 +254,6 @@ function createAdminRouter({ store, requireAuth, flow }) {
     }
   });
 
-<<<<<<< HEAD
   router.post("/rag/query", requireAuth, async (req, res) => {
     try {
       const live = await store.getLive();
@@ -318,8 +298,6 @@ function createAdminRouter({ store, requireAuth, flow }) {
     }
   });
 
-=======
->>>>>>> 91e73b8d82c15b5b13c8264737dc03bcd3d75fe8
   return router;
 }
 

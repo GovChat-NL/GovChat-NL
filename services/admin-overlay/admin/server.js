@@ -593,11 +593,7 @@ function normalizeBeleidskompasFlow(input) {
       description: String(step?.description ?? fb.description ?? "").trim(),
       prompt: String(step?.prompt ?? fb.prompt ?? "").trim(),
       doc_tags: normalizeTags(step?.doc_tags || fb.doc_tags),
-<<<<<<< HEAD
       // Documents picked in the Flow builder. Retrieval still uses doc_tags; missing = not picked yet.
-=======
-      // Documents picked in the Flow builder; nothing reads them yet. Missing = not picked yet.
->>>>>>> 91e73b8d82c15b5b13c8264737dc03bcd3d75fe8
       document_ids: Array.isArray(step?.document_ids) ? [...new Set(step.document_ids.map(String))] : undefined,
       rag: normalizeStepRagSettings(step?.rag || fb.rag || {}, step || fb),
       substeps: substepsRaw.map((sub, subIdx) => ({
@@ -627,21 +623,6 @@ function normalizeBeleidskompasFlow(input) {
   };
 }
 
-<<<<<<< HEAD
-function publishBeleidskompasLiveConfig(flow) {
-  const normalized = normalizeBeleidskompasFlow(flow);
-  // beleidskompas-config.json is public, so drop what is for the assistant only.
-  delete normalized.rules;
-  for (const step of normalized.steps) {
-    delete step.prompt;
-    delete step.document_ids;
-    for (const sub of step.substeps) {
-      delete sub.prompt;
-      delete sub.answer_format;
-    }
-  }
-  writeJSON(BELEIDSKOMPAS_LIVE_FILE, normalized);
-=======
 // beleidskompas-config.json is public (nginx serves it without auth), so it holds only what the
 // Beleidskompas page reads (buildConfig in overlay/src/apps/beleidskompas/config.js) plus the step titles.
 function publicBeleidskompasConfig(flow) {
@@ -651,7 +632,6 @@ function publicBeleidskompasConfig(flow) {
 
 function publishBeleidskompasLiveConfig(flow) {
   writeJSON(BELEIDSKOMPAS_LIVE_FILE, publicBeleidskompasConfig(flow));
->>>>>>> 91e73b8d82c15b5b13c8264737dc03bcd3d75fe8
 }
 
 function ensureBeleidskompasWorkflowsDir() {
@@ -2640,14 +2620,9 @@ const { templates: templateStore } = beleidskompas.start(
     requireAuth,
     init: initBeleidskompas,
     flow: {
-<<<<<<< HEAD
       DEFAULT_BELEIDSKOMPAS_SETTINGS, normalizeBeleidskompasFlow, defaultBeleidskompasFlow,
       readBeleidskompasWorkflowManifest, selectBeleidskompasRagDocs, normalizeLegacyState, publishLive,
       n8nBaseUrl: BELEIDSKOMPAS_N8N_BASE_URL, n8nWebhookToken: BELEIDSKOMPAS_N8N_WEBHOOK_TOKEN,
-=======
-      DEFAULT_BELEIDSKOMPAS_SETTINGS, normalizeBeleidskompasFlow,
-      readBeleidskompasWorkflowManifest, normalizeLegacyState, publishLive,
->>>>>>> 91e73b8d82c15b5b13c8264737dc03bcd3d75fe8
     },
   },
 );

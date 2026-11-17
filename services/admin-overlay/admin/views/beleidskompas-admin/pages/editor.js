@@ -37,13 +37,8 @@ export function renderEditor({ store, render, markDirty, selectTemplate, saveAsN
       h(
         "div",
         { class: "form-grid" },
-<<<<<<< HEAD
         field("Hoofdagent workflow-id", bound(flow, "orchestrator_workflow_id", { onInput: markDirty })),
         field("Hoofdagent webhook-pad", bound(flow, "orchestrator_webhook_path", { onInput: markDirty })),
-=======
-        field("Orchestrator workflow-id", bound(flow, "orchestrator_workflow_id", { onInput: markDirty })),
-        field("Orchestrator webhook-pad", bound(flow, "orchestrator_webhook_path", { onInput: markDirty })),
->>>>>>> 91e73b8d82c15b5b13c8264737dc03bcd3d75fe8
         field("Webhook-token", bound(flow, "webhook_token", { type: "password", onInput: markDirty }), "Leeg = token uit de serverconfiguratie."),
       ),
     ),

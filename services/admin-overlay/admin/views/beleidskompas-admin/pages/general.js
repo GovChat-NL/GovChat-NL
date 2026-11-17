@@ -1,12 +1,6 @@
-<<<<<<< HEAD
 // General: settings for all templates and the status of the generated workflows.
 import * as api from "../api.js";
 import { h, icon, card, field, bound, toast } from "../dom.js";
-=======
-// General: settings for all templates.
-import * as api from "../api.js";
-import { h, card, field, bound, toast } from "../dom.js";
->>>>>>> 91e73b8d82c15b5b13c8264737dc03bcd3d75fe8
 import { toggle } from "../components/toggle.js";
 
 export function renderGeneral({ store }) {
@@ -48,7 +42,6 @@ export function renderGeneral({ store }) {
     ),
   );
 
-<<<<<<< HEAD
   const statusBody = h("div", { class: "status-body" }, h("p", { class: "muted" }, "Status laden…"));
   const loadStatus = async () => {
     try {
@@ -98,7 +91,4 @@ export function renderGeneral({ store }) {
   );
 
   return { subtitle: "Geldt voor alle templates", content: h("div", { class: "stack" }, settingsCard, statusCard) };
-=======
-  return { subtitle: "Geldt voor alle templates", content: h("div", { class: "stack" }, settingsCard) };
->>>>>>> 91e73b8d82c15b5b13c8264737dc03bcd3d75fe8
 }

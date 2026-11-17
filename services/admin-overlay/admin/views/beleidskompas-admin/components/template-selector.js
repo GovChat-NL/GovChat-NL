@@ -3,21 +3,14 @@ import { h, icon } from "../dom.js";
 // GitHub-style selector (like the branch picker): a button that opens a filterable list.
 export function templateSelector({ templates, currentId, meta, onSelect, onNew }) {
   const current = templates.find((t) => t.id === currentId) || null;
-<<<<<<< HEAD
-=======
   // MOCK #1: sample templates exist in this browser tab only; say so wherever a name is shown.
   const mockBadge = (t) => (t.mock ? h("span", { class: "badge badge-mock", title: "Voorbeeldtemplate: bestaat alleen in dit tabblad" }, "Voorbeeld") : null);
->>>>>>> 91e73b8d82c15b5b13c8264737dc03bcd3d75fe8
   const wrap = h("div", { class: "tpl-select" });
   const button = h(
     "button",
     { class: "tpl-button", "aria-haspopup": "listbox", "aria-expanded": "false" },
     icon("branch", 14),
-<<<<<<< HEAD
-    h("span", { class: "tpl-button-label" }, current ? ["Template: ", h("strong", {}, current.name), meta ? ` · ${meta}` : null] : h("strong", {}, "Kies een template")),
-=======
     h("span", { class: "tpl-button-label" }, current ? ["Template: ", h("strong", {}, current.name), " ", mockBadge(current), meta ? ` · ${meta}` : null] : h("strong", {}, "Kies een template")),
->>>>>>> 91e73b8d82c15b5b13c8264737dc03bcd3d75fe8
     icon("chevronDown", 12),
   );
   const filter = h("input", { class: "tpl-filter", type: "search", placeholder: "Zoek een template…", "aria-label": "Zoek een template" });
@@ -50,11 +43,7 @@ export function templateSelector({ templates, currentId, meta, onSelect, onNew }
               onKeydown: (e) => { if (e.key === "Enter") e.currentTarget.click(); },
             },
             h("span", { class: "tpl-check" }, t.id === current?.id ? icon("check", 14) : null),
-<<<<<<< HEAD
-            h("span", { class: "tpl-name" }, t.name),
-=======
             h("span", { class: "tpl-name" }, t.name, " ", mockBadge(t)),
->>>>>>> 91e73b8d82c15b5b13c8264737dc03bcd3d75fe8
             h("span", { class: "tpl-meta" }, `${t.versions.length} versie${t.versions.length === 1 ? "" : "s"}`),
           ),
         ),
