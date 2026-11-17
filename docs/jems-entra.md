@@ -148,3 +148,29 @@ Record prior source commits, image digests, Compose overrides and restricted
 configuration backups before candidate testing. Application rollback restores the
 previous services/configuration and retains current user data. Database restoration
 is a separate reviewed decision, not an automatic rollback step.
+
+## Verified testserver result and local image policy
+
+The testserver operator explicitly approved use of the existing local build
+procedure, with the tested source commit and exact local Docker image ID, instead
+of private GHCR access. No new registry credentials or package-visibility change
+is needed. The optional bridge-image setting in the environment example accepts
+that exact local ID; the private server override disables pulling/rebuilding it.
+A local image ID is **not** a published registry manifest digest. This exception
+applies to the testserver, not to a production release policy.
+
+The real operator's existing Entra login and native hub language call succeeded:
+fallback **EN**, supported languages **DE, EN, FR, NL**, with a visible tool
+execution. A repeated language call from the same session also succeeded. No
+project, financial or submission mutation was performed. This does not by itself
+prove refresh across an independently observed token-expiry boundary.
+
+Two deployment issues were resolved without authorization bypasses: the private
+LibreChat configuration needed runtime-readable ownership while retaining mode
+0600, and the existing API registration needed version-2 access tokens rather
+than its previous null/1 setting. The native registry and executor must be
+published even though their only triggers are internal workflow-call triggers;
+the scoped bootstrap marker upgrades this publication state without a schedule.
+
+Keep reviewed-registry/manual-refresh and language-only policy limitations
+explicit. Successful testserver use does not authorize production deployment.

@@ -739,7 +739,7 @@ services:
   n8n-openai-bridge:
     # Build the clean GovChat-NL main-branch checkout kept beside this repository.
     # It emits the sideband used by the LibreChat and n8n runtime overlays.
-    image: govchat-nl/n8n-openai-bridge:main
+    image: ${N8N_OPENAI_BRIDGE_IMAGE:-govchat-nl/n8n-openai-bridge:main}
     build:
       context: ${N8N_OPENAI_BRIDGE_BUILD_CONTEXT:-../n8n-openai-bridge-main}
       dockerfile: docker/Dockerfile.build
