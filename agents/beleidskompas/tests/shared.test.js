@@ -2,80 +2,35 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const fs = require('node:fs');
-const path = require('node:path');
 
 const {
-  selectSources,
-  appendCitationsMetaBlock,
-  parseCitationsMetaBlock,
-  extractSuppliedToken,
+  REQUEST_META_LABEL,
   TITLE_REQUEST_MARKER,
+  extractSuppliedToken,
+  parsePageMessage,
   isTitleRequest,
   buildFallbackTitle,
   extractConvoCaseText,
 } = require('../shared');
 
-const passages = JSON.parse(
-  fs.readFileSync(path.join(__dirname, '..', 'fixtures', 'source-passages.json'), 'utf-8'),
-).passages;
+/** A message as the page composes it: the visible text, then the request
+ *  as base64 JSON in a markdown link definition. */
+function pageMessage(request, shown = 'Zichtbare tekst') {
+  return `${shown}\n\n[${REQUEST_META_LABEL}]: data:application/json;base64,${Buffer.from(JSON.stringify(request), 'utf8').toString('base64')}`;
+}
 
-test('selectSources ranks and trims by top_k/min_score', () => {
-  const { citations, retrieval_trace } = selectSources(passages, 'energietransitie provincie bevoegdheid gemeenten', {
-    algorithm: 'needle',
-    top_k: 2,
-    min_score: 0.01,
-  });
-  assert.ok(citations.length <= 2);
-  assert.ok(citations.length >= 1);
-  assert.equal(retrieval_trace.matched_docs, citations.length);
-  for (let i = 1; i < citations.length; i += 1) {
-    assert.ok(citations[i - 1].score >= citations[i].score, 'citations must be sorted by descending score');
-  }
+test('parsePageMessage reads the substep, the case and the message from the block of the page', () => {
+  const parts = parsePageMessage(pageMessage({ substep_id: '3.2', case_text: ' Een casus mét accenten. ', message: 'Waarom?' }));
+  assert.deepEqual(parts, { fromPage: true, stepId: 'stap3', substepId: '3.2', caseText: 'Een casus mét accenten.', message: 'Waarom?' });
 });
 
-test('selectSources returns nothing when min_score excludes everything', () => {
-  const { citations } = selectSources(passages, 'volledig ongerelateerde tekst xyz', { top_k: 3, min_score: 0.99 });
-  assert.equal(citations.length, 0);
+test('parsePageMessage: text without the block was typed in the chat of LibreChat and is all message', () => {
+  assert.deepEqual(parsePageMessage('  Hoe werkt dit?  '), { fromPage: false, stepId: '', substepId: '', caseText: '', message: 'Hoe werkt dit?' });
 });
 
-test('appendCitationsMetaBlock + parseCitationsMetaBlock round-trip citations and retrieval_trace', () => {
-  const citations = [{ rank: 1, id: 'doc-1', filename: 'Doc 1', score: 0.5, preview: 'preview tekst mét accenten' }];
-  const retrieval_trace = { algorithm: 'needle', top_k: 3, min_score: 0.1, matched_docs: 1 };
-  const withMeta = appendCitationsMetaBlock('Zichtbare tekst.', citations, retrieval_trace);
-
-  assert.ok(withMeta.startsWith('Zichtbare tekst.'));
-  const parsed = parseCitationsMetaBlock(withMeta);
-  assert.equal(parsed.displayText, 'Zichtbare tekst.');
-  assert.deepEqual(parsed.citations, citations);
-  assert.deepEqual(parsed.retrieval_trace, retrieval_trace);
-});
-
-test('the meta block is a markdown link definition, so no renderer shows it', () => {
-  const withMeta = appendCitationsMetaBlock('Zichtbare tekst.', [{ rank: 1, filename: 'Doc "1"' }], null);
-  const metaLine = withMeta.split('\n').pop();
-
-  // Een HTML-commentaar werd door LibreChat als tekst getoond; een
-  // linkdefinitie wordt door de markdown-parser opgeslokt.
-  assert.ok(!withMeta.includes('<!--'), 'no HTML comment');
-  assert.match(metaLine, /^\[beleidskompas-meta]: data:application\/json;base64,[A-Za-z0-9+/=]+$/);
-  assert.equal(metaLine.split('\n').length, 1, 'stays on a single line');
-});
-
-test('parseCitationsMetaBlock still reads messages stored in the old HTML-comment format', () => {
-  const citations = [{ rank: 1, id: 'doc-1', filename: 'Doc 1', score: 0.5 }];
-  const legacy = `Zichtbare tekst.\n\n<!--BELEIDSKOMPAS-META:${JSON.stringify({ citations, retrieval_trace: null })}-->`;
-
-  const parsed = parseCitationsMetaBlock(legacy);
-  assert.equal(parsed.displayText, 'Zichtbare tekst.');
-  assert.deepEqual(parsed.citations, citations);
-});
-
-test('parseCitationsMetaBlock leaves plain text (no meta block) unchanged', () => {
-  const parsed = parseCitationsMetaBlock('Gewoon tekst zonder meta-blok.');
-  assert.equal(parsed.displayText, 'Gewoon tekst zonder meta-blok.');
-  assert.deepEqual(parsed.citations, []);
-  assert.equal(parsed.retrieval_trace, null);
+test('parsePageMessage: an unreadable block leaves the text as the message', () => {
+  const broken = `Tekst\n\n[${REQUEST_META_LABEL}]: data:application/json;base64,@@@`;
+  assert.equal(parsePageMessage(broken).fromPage, false);
 });
 
 test('extractSuppliedToken reads x-govchat-token directly', () => {

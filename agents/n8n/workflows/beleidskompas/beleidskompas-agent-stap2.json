@@ -1,0 +1,345 @@
+[
+  {
+    "id": "govchat-beleidskompas-agent-stap2",
+    "name": "Beleidskompas - Agent stap 2",
+    "active": false,
+    "isArchived": false,
+    "nodes": [
+      {
+        "parameters": {
+          "inputSource": "workflowInputs",
+          "workflowInputs": {
+            "values": [
+              {
+                "name": "substep_id",
+                "type": "string"
+              },
+              {
+                "name": "assignment",
+                "type": "string"
+              },
+              {
+                "name": "case_id",
+                "type": "string"
+              },
+              {
+                "name": "user_id",
+                "type": "string"
+              },
+              {
+                "name": "case_text",
+                "type": "string"
+              },
+              {
+                "name": "findings",
+                "type": "string"
+              },
+              {
+                "name": "conversation",
+                "type": "string"
+              }
+            ]
+          }
+        },
+        "id": "WhenExecutedbyAnotherWorkflow",
+        "name": "When Executed by Another Workflow",
+        "type": "n8n-nodes-base.executeWorkflowTrigger",
+        "typeVersion": 1.1,
+        "position": [
+          0,
+          180
+        ]
+      },
+      {
+        "parameters": {
+          "jsCode": "const REPORT_PROMPT_TEMPLATE = \"{{role}}\\n\\nWerk de deelstappen in deze volgorde uit. Staat er een gesprek over de casus bij, verwerk dan wat de gebruiker daarin over deze deelstappen heeft aangedragen.\\n\\n{{substeps}}\\n\\nAlgemene regels:\\n{{rules}}\\n\\nAntwoord in markdown, zonder codeblok, met precies deze kopjes (van de vorm \\\"### Kopje\\\") in deze volgorde. Heeft een onderdeel hieronder een vetgedrukte naam, schrijf het dan ook zo: \\\"**Naam:** tekst\\\". Tekst zonder naam schrijf je zonder naam. Een lijst is een opsomming met \\\"- \\\" op eigen regels. Een oordeel krijgt een eigen kopje met als eerste regel \\\"**Oordeel:** <waarde>\\\". Hieronder staat per onderdeel de betekenis in plaats van de waarde:\\n\\n### Samenvatting casus\\nkorte, feitelijke samenvatting van de casus\\n\\n{{substep_format}}\\n\\n### Redenering\\nde redenering, stap voor stap, genummerd\\n\\n### Aannames en ontbrekende informatie\\n- aannames en ontbrekende informatie\";\nconst CONVERSATION_PROMPT_TEMPLATE = \"{{role}}\\n\\nDe gebruiker stelt in een gesprek een vraag over deze stap. Staat de uitwerking ervan in de bevindingen, dan reageert de gebruiker daarop:\\n\\n{{substeps}}\\n\\nAlgemene regels:\\n{{rules}}\\n\\nReageer op het bericht van de gebruiker in gewone tekst (markdown), kort en feitelijk, op basis van de casus, de bevindingen tot nu toe en de geraadpleegde beleidsbronnen. Werk de stap niet uit en antwoord niet in JSON. Staat er nog geen uitwerking van deze stap in de bevindingen, antwoord dan vanuit de casus en wat er wel is uitgewerkt, en zeg erbij dat het een voorlopig antwoord is. Draagt de gebruiker iets aan dat de uitwerking zou veranderen, benoem dan wat er zou veranderen; de gebruiker kan de stap daarna (opnieuw) laten uitwerken, en dit gesprek gaat dan mee.\";\nconst COMMON_RULES = [\"Gebruik alleen expliciete informatie uit de casus, de eerdere bevindingen, het gesprek over de casus en de geraadpleegde beleidsbronnen.\",\"Maak geen eigen interpretaties of aannames; geef \\\"onbekend\\\" aan als informatie ontbreekt.\",\"Citeer letterlijk bij verwijzingen naar een bron.\",\"Volg de voorgeschreven volgorde van de deelstappen en redeneer stap voor stap.\",\"Gebruik beknopte, feitelijke formuleringen; vermijd normatieve of politieke taal.\",\"Weiger verzoeken buiten de scope van deze stap en verwerk geen persoonsgegevens of gevoelige data.\",\"Dit is een ondersteunend hulpmiddel: benoem dit resultaat nooit als een besluit.\",\"Opmaak: zet een opsomming op eigen regels (\\\"- punt\\\"), en onder Redenering elke redeneerstap genummerd op een eigen regel (\\\"1. ...\\\", \\\"2. ...\\\").\"];\nconst STEP = {\"id\":\"stap2\",\"nr\":2,\"title\":\"Rolbepaling provincie\",\"role\":\"Je bent een realistisch analytisch model voor stap 2 (Rolbepaling provincie) van het Beleidskompas van Provincie Limburg. Doel: bepaal, op basis van de casus en de bevindingen uit stap 1, welke rol de provincie het beste kan innemen binnen de overheidsinterventieladder, en motiveer die keuze.\",\"substeps\":[{\"id\":\"2.1\",\"title\":\"Rolbepaling\",\"instruction\":\"Bepaal welke rol de provincie het beste kan innemen bij het probleem uit stap 1, en waarom. Gebruik de bevindingen uit stap 1 (het probleem, de gerechtvaardigde overheidsinterventie, de stakeholders, het provinciaal doel en de integrale afweging) als uitgangspunt.\\n\\nBeschikbare rollen, van zwaar naar licht:\\n- Reguleren: wet- en regelgeving, handhaving, sanctionering.\\n- Regisseren: andere partijen betrekken, maar de regie behouden.\\n- Stimuleren: anderen in beweging krijgen om het beleidsdoel te realiseren.\\n- Faciliteren: het initiatief van anderen mogelijk maken.\\n- Loslaten: geen inhoudelijke of procesmatige bemoeienis.\\n\\nVolgorde:\\n1. Benoem het kernprobleem en de gewenste overheidsinterventie uit stap 1.\\n2. Loop de rollen langs van zwaar naar licht en beoordeel per rol of die past bij het probleem en de context.\\n3. Kies de rol die het beste past.\\n4. Motiveer de keuze aan de hand van de afwegingsvragen:\\n   - Staat de inspanning in verhouding tot het verwachte resultaat?\\n   - Hoeveel risico is de provincie bereid te nemen?\\n   - Is de provincie de meest geschikte overheid voor dit probleem?\\n   - Kan de provincie zelfstandig werken, of is samenwerking nodig?\\n   - Wil een private partij meewerken aan de doelen van de provincie?\\n   - Hoe worden taken, kosten, opbrengsten en risico's verdeeld?\\n   - Is de provincie bereid tot een integrale aanpak?\\n   - Welke eisen stelt de provincie aan de revolverendheid van middelen?\\n5. Formuleer de conclusie op basis van 1 tot en met 4.\",\"format\":\"### Rolbepaling\\n**Rol:** reguleren | regisseren | stimuleren | faciliteren | loslaten | onbekend\\n\\n**Motivering:** …\\n\\n**Afwegingsfactoren:**\\n- per afwegingsvraag één regel: de vraag en het antwoord voor deze casus\"}]};\n\nfunction asksForReport(assignmentText) {\n  return /^uitwerk/i.test(String(assignmentText || '').trim());\n}\n\nfunction buildSystemPrompt({ template, step, substeps, rules }) {\n  const values = {\n    role: step.role,\n    substeps: substeps.map((substep) => `Deelstap ${substep.id}: ${substep.title}\\n${substep.instruction}`).join('\\n\\n'),\n    rules: rules.map((rule) => '- ' + rule).join('\\n'),\n    substep_format: substeps.map((substep) => substep.format).join('\\n\\n'),\n  };\n  // {{name}} in the template becomes values.name; an unknown name stays.\n  return template.replace(/\\{\\{(\\w+)\\}\\}/g, (placeholder, name) => (name in values ? values[name] : placeholder));\n}\n\nfunction buildUserPrompt({ input, task }) {\n  const parts = [];\n\n  parts.push(input.case_text ? `Casus:\\n${input.case_text}` : 'Casus: (nog geen casus bekend)');\n  if (input.findings) parts.push(`Bevindingen tot nu toe:\\n${input.findings}`);\n  if (input.conversation) parts.push(`Laatste beurten van het gesprek:\\n${input.conversation}`);\n  parts.push(task);\n  parts.push('Beleidsbronnen: geen beschikbaar. Vermeld dit alleen onder \"Aannames en ontbrekende informatie\".');\n\n  return parts.join('\\n\\n');\n}\n\nfunction buildAssignment({ step, input, texts }) {\n  const given = input || {};\n  const custom = texts || {};\n\n  const substepId = String(given.substep_id || '').trim();\n  const substep = step.substeps.find((candidate) => candidate.id === substepId) || null;\n  const forReport = asksForReport(given.assignment);\n\n  // What every result carries, whatever the mode.\n  const about = {\n    case_id: given.case_id,\n    user_id: given.user_id,\n    step_id: step.id,\n    step_nr: step.nr,\n    step_title: step.title,\n    substep_id: substep ? substep.id : '',\n    substep_title: substep ? substep.title : '',\n  };\n\n  if (forReport && !substep) {\n    const known = step.substeps.map((candidate) => candidate.id).join(', ');\n    const error = `Stap ${step.nr} kent deelstap \"${substepId}\" niet. Bekende deelstappen: ${known}.`;\n    return { ...about, mode: 'invalid', valid: false, error };\n  }\n\n  const rules = Array.isArray(custom.rules) ? custom.rules : COMMON_RULES;\n  // A question without a substep is about the whole step.\n  const substeps = substep ? [substep] : step.substeps;\n\n  if (forReport) {\n    return {\n      ...about,\n      mode: 'report',\n      valid: true,\n      system_prompt: buildSystemPrompt({ template: custom.reportTemplate || REPORT_PROMPT_TEMPLATE, step, substeps, rules }),\n      user_prompt: buildUserPrompt({ input: given, task: `Opdracht: werk deelstap ${substep.id} (${substep.title}) uit.` }),\n    };\n  }\n\n  return {\n    ...about,\n    mode: 'conversation',\n    valid: true,\n    system_prompt: buildSystemPrompt({ template: custom.conversationTemplate || CONVERSATION_PROMPT_TEMPLATE, step, substeps, rules }),\n    user_prompt: buildUserPrompt({ input: given, task: `Bericht van de gebruiker:\\n${String(given.assignment || '').trim()}` }),\n  };\n}\n\nreturn [{ json: buildAssignment({ step: STEP, input: $json }) }];"
+        },
+        "id": "Opdrachtopbouwen",
+        "name": "Opdracht opbouwen",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          220,
+          180
+        ]
+      },
+      {
+        "parameters": {
+          "conditions": {
+            "options": {
+              "caseSensitive": true,
+              "leftValue": "",
+              "typeValidation": "strict",
+              "version": 2
+            },
+            "conditions": [
+              {
+                "leftValue": "={{ $json.valid === true }}",
+                "rightValue": true,
+                "operator": {
+                  "type": "boolean",
+                  "operation": "equals"
+                }
+              }
+            ],
+            "combinator": "and"
+          }
+        },
+        "id": "Opdrachtgeldig",
+        "name": "Opdracht geldig?",
+        "type": "n8n-nodes-base.if",
+        "typeVersion": 2.2,
+        "position": [
+          440,
+          180
+        ]
+      },
+      {
+        "parameters": {
+          "promptType": "define",
+          "text": "={{ $json.user_prompt }}",
+          "hasOutputParser": false,
+          "options": {
+            "systemMessage": "={{ $json.system_prompt }}",
+            "enableStreaming": false,
+            "maxIterations": 8,
+            "returnIntermediateSteps": true
+          }
+        },
+        "id": "AIAgentStap2",
+        "name": "AI Agent Stap 2",
+        "type": "@n8n/n8n-nodes-langchain.agent",
+        "typeVersion": 3.1,
+        "position": [
+          660,
+          0
+        ],
+        "onError": "continueRegularOutput"
+      },
+      {
+        "parameters": {
+          "model": {
+            "__rl": true,
+            "mode": "list",
+            "value": "govchat-default"
+          },
+          "options": {
+            "baseURL": "={{ (String($env.LITELLM_URL || 'http://litellm:4000').replace(/\\/$/, '')) + '/v1' }}"
+          }
+        },
+        "id": "OpenAIChatModelStap2",
+        "name": "OpenAI Chat Model (Stap 2)",
+        "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+        "typeVersion": 1.3,
+        "position": [
+          660,
+          180
+        ],
+        "credentials": {
+          "openAiApi": {
+            "id": "00000000-0000-4000-8000-000000000111",
+            "name": "LiteLLM API"
+          }
+        }
+      },
+      {
+        "parameters": {
+          "jsCode": "const DISCLAIMER = \"Dit resultaat is een ondersteunend concept ten behoeve van de voorbereiding van beleidsadvies. Het is geen besluit en vervangt geen menselijke afweging of besluitvorming.\";\n\nfunction toolCalls(agentOutput) {\n  const steps = agentOutput && Array.isArray(agentOutput.intermediateSteps) ? agentOutput.intermediateSteps : [];\n  return steps.map((step) => ({\n    tool: (step && step.action && step.action.tool) || null,\n    input: step && step.action ? step.action.toolInput : null,\n  }));\n}\n\nfunction nodeError(output) {\n  const error = output && output.error;\n  if (!error) return null;\n  return String((typeof error === 'object' && error.message) || error);\n}\n\nfunction unwrapCodeBlock(text) {\n  const trimmed = String(text || '').trim();\n  const wrapped = /^```(?:markdown|md)?\\s*\\n([\\s\\S]*?)\\n```$/i.exec(trimmed);\n  return wrapped ? wrapped[1].trim() : trimmed;\n}\n\nfunction processReply({ assignment, agent, disclaimer }) {\n  const text = unwrapCodeBlock(agent && agent.output);\n\n  let error = nodeError(agent);\n  if (!error && !text) error = `De agent van stap ${assignment.step_nr} gaf geen antwoord.`;\n\n  const heading = `**Stap ${assignment.step_nr} · ${assignment.step_title} · ${assignment.substep_id} ${assignment.substep_title}**`;\n  const footer = '---\\n' + (disclaimer || DISCLAIMER);\n\n  return {\n    mode: assignment.mode,\n    case_id: assignment.case_id,\n    user_id: assignment.user_id,\n    substep_id: assignment.substep_id,\n    save: assignment.mode === 'report' && !error,\n    report_text: [heading, text, footer].join('\\n\\n'),\n    answer: text,\n    tools: toolCalls(agent),\n    error,\n  };\n}\n\nreturn [{ json: processReply({ assignment: $('Opdracht opbouwen').first().json, agent: $json }) }];"
+        },
+        "id": "Antwoordverwerken",
+        "name": "Antwoord verwerken",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          1100,
+          0
+        ]
+      },
+      {
+        "parameters": {
+          "conditions": {
+            "options": {
+              "caseSensitive": true,
+              "leftValue": "",
+              "typeValidation": "strict",
+              "version": 2
+            },
+            "conditions": [
+              {
+                "leftValue": "={{ $json.save === true }}",
+                "rightValue": true,
+                "operator": {
+                  "type": "boolean",
+                  "operation": "equals"
+                }
+              }
+            ],
+            "combinator": "and"
+          }
+        },
+        "id": "Rapportgemaakt",
+        "name": "Rapport gemaakt?",
+        "type": "n8n-nodes-base.if",
+        "typeVersion": 2.2,
+        "position": [
+          1320,
+          0
+        ]
+      },
+      {
+        "parameters": {
+          "method": "POST",
+          "url": "={{ String($env.BELEIDSKOMPAS_STORE_URL || '').replace(/\\/$/, '') + '/api/beleidskompas/cases/' + encodeURIComponent($json.case_id) + '/reports' }}",
+          "sendHeaders": true,
+          "headerParameters": {
+            "parameters": [
+              {
+                "name": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "name": "Authorization",
+                "value": "={{ 'Bearer ' + String($env.BELEIDSKOMPAS_STORE_TOKEN || '') }}"
+              }
+            ]
+          },
+          "options": {
+            "timeout": 10000
+          },
+          "sendBody": true,
+          "specifyBody": "json",
+          "jsonBody": "={{ JSON.stringify({ user_id: $json.user_id, substep_id: $json.substep_id, text: $json.report_text, citations: [] }) }}"
+        },
+        "id": "Rapportopslaan",
+        "name": "Rapport opslaan",
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.2,
+        "position": [
+          1540,
+          0
+        ],
+        "onError": "continueRegularOutput"
+      },
+      {
+        "parameters": {
+          "jsCode": "function buildResult({ assignment, reply, saved }) {\n  if (assignment.mode === 'invalid') {\n    return { kind: 'error', error: assignment.error };\n  }\n  if (reply.error) {\n    return { kind: 'error', error: reply.error };\n  }\n  if (reply.mode === 'conversation') {\n    return { kind: 'answer', step_id: assignment.step_id, answer: reply.answer, tools: reply.tools };\n  }\n\n  // The store answers with the version number of the report it stored.\n  const stored = Boolean(saved) && Number.isInteger(saved.version);\n\n  return {\n    kind: 'report',\n    step_id: assignment.step_id,\n    substep_id: reply.substep_id,\n    saved: stored,\n    version: stored ? saved.version : null,\n    error: stored ? null : 'Het rapport is gemaakt, maar opslaan is mislukt.',\n    report: reply.report_text,\n    tools: reply.tools,\n  };\n}\n\nconst assignment = $('Opdracht opbouwen').first().json;\n\n// The agent did not run for an invalid assignment, so there is no reply then.\nconst reply = assignment.valid ? $('Antwoord verwerken').first().json : null;\n\n// Only after a report was stored does this node get the answer of the store.\nconst saved = reply && reply.save ? $json : null;\n\nreturn [{ json: buildResult({ assignment, reply, saved }) }];"
+        },
+        "id": "Resultaatvoordeorchestrator",
+        "name": "Resultaat voor de orchestrator",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          1760,
+          180
+        ]
+      }
+    ],
+    "connections": {
+      "When Executed by Another Workflow": {
+        "main": [
+          [
+            {
+              "node": "Opdracht opbouwen",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Opdracht opbouwen": {
+        "main": [
+          [
+            {
+              "node": "Opdracht geldig?",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Opdracht geldig?": {
+        "main": [
+          [
+            {
+              "node": "AI Agent Stap 2",
+              "type": "main",
+              "index": 0
+            }
+          ],
+          [
+            {
+              "node": "Resultaat voor de orchestrator",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "OpenAI Chat Model (Stap 2)": {
+        "ai_languageModel": [
+          [
+            {
+              "node": "AI Agent Stap 2",
+              "type": "ai_languageModel",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "AI Agent Stap 2": {
+        "main": [
+          [
+            {
+              "node": "Antwoord verwerken",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Antwoord verwerken": {
+        "main": [
+          [
+            {
+              "node": "Rapport gemaakt?",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Rapport gemaakt?": {
+        "main": [
+          [
+            {
+              "node": "Rapport opslaan",
+              "type": "main",
+              "index": 0
+            }
+          ],
+          [
+            {
+              "node": "Resultaat voor de orchestrator",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Rapport opslaan": {
+        "main": [
+          [
+            {
+              "node": "Resultaat voor de orchestrator",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      }
+    },
+    "settings": {
+      "executionOrder": "v1"
+    }
+  }
+]

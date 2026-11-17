@@ -1,7 +1,7 @@
 [
   {
     "id": "govchat-beleidskompas-orchestrator",
-    "name": "Beleidskompas Orchestrator",
+    "name": "Beleidskompas - Orchestrator",
     "active": true,
     "isArchived": false,
     "nodes": [
@@ -16,23 +16,1032 @@
         "name": "Webhook Orchestrator",
         "type": "n8n-nodes-base.webhook",
         "typeVersion": 2,
-        "webhookId": "govchat-beleidskompas-orchestrator",
         "position": [
-          -620,
-          220
+          0,
+          540
+        ],
+        "webhookId": "govchat-beleidskompas-orchestrator"
+      },
+      {
+        "parameters": {
+          "jsCode": "const REQUEST_META_LABEL = \"beleidskompas-request\";\nconst TITLE_REQUEST_MARKER = \"__BELEIDSKOMPAS_TITLE_REQUEST__\";\nconst UNKNOWN_STEP_TEXT = \"Beleidskompas kon niet bepalen voor welke stap dit bericht is en heeft het daarom niet beantwoord. Stel je vraag opnieuw vanaf de Beleidskompas-pagina, met een stap gekozen.\";\nconst STORE_MISSING_TEXT = \"Beleidskompas kan zijn opslag niet gebruiken en heeft dit bericht daarom niet beantwoord. Meld dit bij de beheerder.\";\nconst SUBSTEP_IDS = [\"1.1\",\"1.2\",\"1.3\",\"1.4\",\"1.5\",\"2.1\",\"3.1\",\"3.2\",\"3.3\",\"3.4\",\"4.1\",\"4.2\",\"4.3\"];\n\nfunction extractSuppliedToken(headers) {\n  const h = headers && typeof headers === 'object' ? headers : {};\n  const direct = String(h['x-govchat-token'] || h['X-Govchat-Token'] || '').trim();\n  if (direct) return direct;\n  // The n8n-openai-bridge (LibreChat's real custom-endpoint pipeline) sends the\n  // shared webhook secret as a standard Authorization bearer token instead of\n  // the x-govchat-token header used by direct/manual webhook calls.\n  const authHeader = String(h['authorization'] || h['Authorization'] || '').trim();\n  if (/^Bearer\\s/i.test(authHeader)) {\n    return authHeader.slice(authHeader.indexOf(' ') + 1).trim();\n  }\n  return '';\n}\n\nfunction parsePageMessage(text) {\n  const raw = String(text || '');\n  const parts = { fromPage: false, stepId: '', substepId: '', caseText: '', message: raw.trim() };\n  const marker = `[${REQUEST_META_LABEL}]: data:application/json;base64,`;\n  const idx = raw.lastIndexOf(marker);\n  if (idx === -1) return parts;\n\n  let request;\n  try {\n    const encoded = raw.slice(idx + marker.length).split('\\n')[0].trim();\n    request = JSON.parse(Buffer.from(encoded, 'base64').toString('utf8'));\n  } catch (_) {\n    return parts;\n  }\n  const substepMatch = /^(\\d+)\\.\\d+/.exec(String(request.substep_id || '').trim());\n  parts.fromPage = true;\n  parts.substepId = substepMatch ? substepMatch[0] : '';\n  parts.stepId = substepMatch ? `stap${substepMatch[1]}` : '';\n  parts.caseText = String(request.case_text || '').trim();\n  parts.message = String(request.message || '').trim();\n  return parts;\n}\n\nfunction isTitleRequest(text) {\n  return String(text || '').includes(TITLE_REQUEST_MARKER);\n}\n\nfunction extractConvoCaseText(text) {\n  const s = String(text || '');\n  const userIdx = s.indexOf('User:');\n  if (userIdx === -1) return s.trim();\n  const afterUser = s.slice(userIdx + 'User:'.length);\n  const aiIdx = afterUser.indexOf('\\nAI:');\n  return (aiIdx === -1 ? afterUser : afterUser.slice(0, aiIdx)).trim();\n}\n\nfunction incomingMessage(body) {\n  const b = body && typeof body === 'object' ? body : {};\n  return String(b.currentMessage || b.chatInput || b.question || '');\n}\n\nfunction prepareRequest({ body, headers, env, substepIds, now }) {\n  const b = body && typeof body === 'object' ? body : {};\n  const started_at = now;\n  const refuse = (error, text) => ({ kind: 'refused', ok: false, step_id: null, error, text, answer: text, started_at });\n\n  // A wrong token gives a normal answer with ok: false, not a thrown error:\n  // n8n can turn a thrown error into an empty response, and then the caller\n  // sees nothing at all.\n  const expectedToken = String((env && (env.BELEIDSKOMPAS_N8N_WEBHOOK_TOKEN || env.N8N_WEBHOOK_TOKEN)) || '').trim();\n  if (expectedToken && extractSuppliedToken(headers) !== expectedToken) return refuse('Unauthorized webhook token', '');\n\n  const case_id = String(b.sessionId || '').trim();\n  const user_id = String(b.userId || '').trim();\n\n  // LibreChat asks for a conversation title through this same endpoint. That\n  // request carries TITLE_REQUEST_MARKER (set in librechat.yaml), sometimes\n  // in systemPrompt and sometimes in the message itself.\n  const text = incomingMessage(b);\n  if (isTitleRequest(text) || isTitleRequest(String(b.systemPrompt || ''))) {\n    // The title is made from the case itself, not from the block the page\n    // put behind it.\n    const conversation = extractConvoCaseText(text.replaceAll(TITLE_REQUEST_MARKER, ''));\n    const title_source = parsePageMessage(conversation).caseText || conversation;\n    return { kind: 'title', ok: true, case_id, user_id, title_source: title_source.slice(0, 2000), started_at };\n  }\n\n  const storeConfigured = Boolean(String((env && env.BELEIDSKOMPAS_STORE_URL) || '').trim() && String((env && env.BELEIDSKOMPAS_STORE_TOKEN) || '').trim());\n  if (!storeConfigured) return refuse('Store not configured', STORE_MISSING_TEXT);\n  if (!case_id || !user_id) return refuse('No conversation or user from the bridge', STORE_MISSING_TEXT);\n\n  const parts = parsePageMessage(text);\n  const known = Array.isArray(substepIds) ? substepIds : [];\n  const substep_id = known.includes(parts.substepId) ? parts.substepId : '';\n  if (!parts.message && !substep_id) return refuse('No substep recognised in the request', UNKNOWN_STEP_TEXT);\n\n  return {\n    kind: parts.message ? 'message' : 'report',\n    ok: true,\n    case_id,\n    user_id,\n    substep_id,\n    message: parts.message,\n    case_text: parts.caseText,\n    started_at,\n  };\n}\n\nreturn [{ json: prepareRequest({\n  body: $json.body,\n  headers: $json.headers,\n  env: {\n    N8N_WEBHOOK_TOKEN: $env.N8N_WEBHOOK_TOKEN,\n    BELEIDSKOMPAS_N8N_WEBHOOK_TOKEN: $env.BELEIDSKOMPAS_N8N_WEBHOOK_TOKEN,\n    BELEIDSKOMPAS_STORE_URL: $env.BELEIDSKOMPAS_STORE_URL,\n    BELEIDSKOMPAS_STORE_TOKEN: $env.BELEIDSKOMPAS_STORE_TOKEN,\n  },\n  substepIds: SUBSTEP_IDS,\n  now: Date.now(),\n}) }];"
+        },
+        "id": "Verzoekvoorbereiden",
+        "name": "Verzoek voorbereiden",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          220,
+          540
         ]
       },
       {
         "parameters": {
-          "jsCode": "const TITLE_REQUEST_MARKER = \"__BELEIDSKOMPAS_TITLE_REQUEST__\";\nconst TITLE_PREFIX = \"Beleidskompas - \";\nconst REQUEST_META_LABEL = \"beleidskompas-request\";\nconst STEP_ROUTES = {\"stap1\":\"beleidskompas-step-stap1\",\"stap2\":\"beleidskompas-step-stap2\",\"stap3\":\"beleidskompas-step-stap3\",\"stap4\":\"beleidskompas-step-stap4\"};\nconst DEFAULT_STEP_ID = \"stap1\";\nconst UNKNOWN_STEP_TEXT = \"Beleidskompas kon niet bepalen voor welke stap dit bericht is en heeft het daarom niet beantwoord. Stel je vraag opnieuw vanaf de Beleidskompas-pagina, met een stap gekozen.\";\nconst STORE_MISSING_TEXT = \"Beleidskompas kan zijn opslag niet gebruiken en heeft dit bericht daarom niet beantwoord. Meld dit bij de beheerder.\";\nconst STORE_FAILED_TEXT = \"De opslag van Beleidskompas gaf een fout. Dit bericht is daarom niet beantwoord; probeer het later opnieuw.\";\nconst STORE_WARNING_TEXT = \"Let op: de opslag van Beleidskompas gaf een fout. Dit antwoord is mogelijk niet bewaard.\";\nconst STEP_SUMMARIES = [\n  {\n    \"id\": \"stap1\",\n    \"nr\": 1,\n    \"title\": \"Publiek en provinciaal belang\",\n    \"role\": \"Je bent een realistisch analytisch model voor stap 1 (Publiek en provinciaal belang) van het Beleidskompas van Provincie Limburg. Doel: breng het onderliggende beleids- of maatschappelijke probleem zuiver in kaart en bepaal of er sprake is van publiek belang en van provinciaal belang, op basis van de casus en de aangeleverde brondocumenten.\",\n    \"substeps\": [\n      \"Probleemdefinitie\",\n      \"Overheidsinterventie\",\n      \"Stakeholderanalyse\",\n      \"Provinciaal doel\",\n      \"Integrale afweging\"\n    ],\n    \"substep_ids\": [\n      \"1.1\",\n      \"1.2\",\n      \"1.3\",\n      \"1.4\",\n      \"1.5\"\n    ]\n  },\n  {\n    \"id\": \"stap2\",\n    \"nr\": 2,\n    \"title\": \"Rolbepaling provincie\",\n    \"role\": \"Je bent een realistisch analytisch model voor stap 2 (Rolbepaling provincie) van het Beleidskompas van Provincie Limburg. Doel: bepaal, op basis van de casus en de bevindingen uit stap 1, welke rol de provincie het beste kan innemen binnen de overheidsinterventieladder, en motiveer die keuze.\",\n    \"substeps\": [\n      \"Rolbepaling\"\n    ],\n    \"substep_ids\": [\n      \"2.1\"\n    ]\n  },\n  {\n    \"id\": \"stap3\",\n    \"nr\": 3,\n    \"title\": \"Instrumentkeuze\",\n    \"role\": \"Je bent een realistisch analytisch model voor stap 3 (Instrumentkeuze) van het Beleidskompas van Provincie Limburg. Doel: bepaal, op basis van de casus en de bevindingen uit stap 1 en 2, welke mate van sturing en welke instrumenten passen bij de gekozen rol, doorloop het afwegingskader voor de samenwerkingsvorm en breng de gevolgen van de instrumentopties in kaart.\",\n    \"substeps\": [\n      \"Sturingsbepaling\",\n      \"Instrumentarium\",\n      \"Afwegingskader\",\n      \"Gevolgenanalyse\"\n    ],\n    \"substep_ids\": [\n      \"3.1\",\n      \"3.2\",\n      \"3.3\",\n      \"3.4\"\n    ]\n  },\n  {\n    \"id\": \"stap4\",\n    \"nr\": 4,\n    \"title\": \"Governance-inrichting\",\n    \"role\": \"Je bent een realistisch analytisch model voor stap 4 (Governance-inrichting) van het Beleidskompas van Provincie Limburg. Doel: bepaal, op basis van de casus en de bevindingen uit stap 1 tot en met 3, hoe sturing, toezicht, beheersing en verantwoording voor de gekozen samenwerkingsvorm en instrumenten worden ingericht: eerst de principes, dan de organisatorische inrichting, dan de concrete richtlijnen.\",\n    \"substeps\": [\n      \"Good governance-principes\",\n      \"Organisatorische governance\",\n      \"Governance-richtlijnen\"\n    ],\n    \"substep_ids\": [\n      \"4.1\",\n      \"4.2\",\n      \"4.3\"\n    ]\n  }\n];\nconst ORCHESTRATOR_PROMPT_TEMPLATE = \"Je bepaalt over welke stap van Beleidskompas een bericht van de gebruiker gaat. De stappen:\\n{{steps}}\\n\\nDe gebruiker werkt nu in stap {{active_nr}}. Antwoord met alleen het nummer van de stap waar het bericht over gaat, zonder toelichting. Gaat het bericht over de stap waar de gebruiker nu werkt, of is het niet duidelijk, antwoord dan {{active_nr}}.\";\n\nfunction extractSuppliedToken(headers) {\n  const h = headers && typeof headers === 'object' ? headers : {};\n  const direct = String(h['x-govchat-token'] || h['X-Govchat-Token'] || '').trim();\n  if (direct) return direct;\n  // The n8n-openai-bridge (LibreChat's real custom-endpoint pipeline) sends the\n  // shared webhook secret as a standard Authorization bearer token instead of\n  // the x-govchat-token header used by direct/manual webhook calls.\n  const authHeader = String(h['authorization'] || h['Authorization'] || '').trim();\n  if (/^Bearer\\s/i.test(authHeader)) {\n    return authHeader.slice(authHeader.indexOf(' ') + 1).trim();\n  }\n  return '';\n}\n\nfunction parsePageMessage(text) {\n  const raw = String(text || '');\n  const parts = { fromPage: false, stepId: '', substepId: '', caseText: '', message: raw.trim() };\n  const marker = `[${REQUEST_META_LABEL}]: data:application/json;base64,`;\n  const idx = raw.lastIndexOf(marker);\n  if (idx === -1) return parts;\n\n  let request;\n  try {\n    const encoded = raw.slice(idx + marker.length).split('\\n')[0].trim();\n    request = JSON.parse(Buffer.from(encoded, 'base64').toString('utf8'));\n  } catch (_) {\n    return parts;\n  }\n  const substepMatch = /^(\\d+)\\.\\d+/.exec(String(request.substep_id || '').trim());\n  parts.fromPage = true;\n  parts.substepId = substepMatch ? substepMatch[0] : '';\n  parts.stepId = substepMatch ? `stap${substepMatch[1]}` : '';\n  parts.caseText = String(request.case_text || '').trim();\n  parts.message = String(request.message || '').trim();\n  return parts;\n}\n\nfunction requestRaw(url, opts, hasFetch, fetchImpl, httpModule, httpsModule, urlModule) {\n  if (hasFetch) {\n    return fetchImpl(url, opts).then(async (res) => ({\n      ok: res.ok,\n      status: Number(res.status || 0),\n      text: await res.text(),\n    }));\n  }\n\n  return new Promise((resolve, reject) => {\n    try {\n      const target = new urlModule.URL(String(url));\n      const lib = target.protocol === 'https:' ? httpsModule : httpModule;\n      const method = String((opts && opts.method) || 'GET').toUpperCase();\n      const headers = (opts && opts.headers) || {};\n      const body = typeof (opts && opts.body) === 'string' ? opts.body : '';\n\n      const req = lib.request(\n        {\n          protocol: target.protocol,\n          hostname: target.hostname,\n          port: target.port || (target.protocol === 'https:' ? 443 : 80),\n          path: target.pathname + target.search,\n          method,\n          headers: { ...headers, ...(body ? { 'content-length': Buffer.byteLength(body, 'utf8') } : {}) },\n        },\n        (res) => {\n          const chunks = [];\n          res.on('data', (d) => chunks.push(Buffer.from(d)));\n          res.on('end', () => {\n            const text = Buffer.concat(chunks).toString('utf8');\n            const status = Number(res.statusCode || 0);\n            resolve({ ok: status >= 200 && status < 300, status, text });\n          });\n        },\n      );\n      req.on('error', reject);\n      if (body) req.write(body);\n      req.end();\n    } catch (e) {\n      reject(e);\n    }\n  });\n}\n\nasync function callLiteLLM({ baseUrl, apiKey, model, systemPrompt, userPrompt, timeoutMs, fetchImpl, httpModule, httpsModule, urlModule }) {\n  const hasFetch = typeof fetchImpl === 'function';\n  const url = String(baseUrl || '').replace(/\\/$/, '') + '/v1/chat/completions';\n  const body = JSON.stringify({\n    model,\n    messages: [\n      { role: 'system', content: systemPrompt },\n      { role: 'user', content: userPrompt },\n    ],\n    // No `temperature` override: some model families (e.g. reasoning-tier\n    // models) reject any value other than the default (1) and error with a\n    // 400. Deterministic-ish behavior is enforced via the system prompt\n    // instead (\"Redeneer stap voor stap\", \"geen aannames\").\n  });\n\n  const controller = hasFetch && typeof AbortController === 'function' ? new AbortController() : null;\n  const timer = controller && timeoutMs ? setTimeout(() => controller.abort(), timeoutMs) : null;\n\n  try {\n    const res = await requestRaw(\n      url,\n      {\n        method: 'POST',\n        headers: { 'content-type': 'application/json', authorization: 'Bearer ' + apiKey },\n        body,\n        signal: controller ? controller.signal : undefined,\n      },\n      hasFetch,\n      fetchImpl,\n      httpModule,\n      httpsModule,\n      urlModule,\n    );\n    if (!res.ok) {\n      const err = new Error('LiteLLM HTTP ' + res.status);\n      err.status = res.status;\n      err.body = res.text;\n      throw err;\n    }\n    let payload = {};\n    try {\n      payload = JSON.parse(res.text || '{}');\n    } catch (_) {\n      payload = {};\n    }\n    const content = payload && payload.choices && payload.choices[0] && payload.choices[0].message && payload.choices[0].message.content;\n    return String(content || '').trim();\n  } finally {\n    if (timer) clearTimeout(timer);\n  }\n}\n\nfunction isTitleRequest(text) {\n  return String(text || '').includes(TITLE_REQUEST_MARKER);\n}\n\nfunction buildFallbackTitle(text) {\n  const cleaned = String(text || '')\n    .replaceAll(TITLE_REQUEST_MARKER, '')\n    .replace(/[#*_`]/g, '')\n    .replace(/\\s+/g, ' ')\n    .trim();\n  if (!cleaned) return 'Beleidskompas casus';\n  const words = cleaned.split(' ').slice(0, 8);\n  const joined = words.join(' ');\n  return joined.length < cleaned.length ? joined + '…' : joined;\n}\n\nfunction extractConvoCaseText(text) {\n  const s = String(text || '');\n  const userIdx = s.indexOf('User:');\n  if (userIdx === -1) return s.trim();\n  const afterUser = s.slice(userIdx + 'User:'.length);\n  const aiIdx = afterUser.indexOf('\\nAI:');\n  return (aiIdx === -1 ? afterUser : afterUser.slice(0, aiIdx)).trim();\n}\n\nasync function buildTitleResponse({ titleSource, env, fetchImpl, httpModule, httpsModule, urlModule }) {\n  const source = extractConvoCaseText(String(titleSource || '').replaceAll(TITLE_REQUEST_MARKER, ''));\n  const litellmUrl = String((env && env.LITELLM_URL) || '').trim();\n  const litellmApiKey = String((env && (env.LITELLM_API_KEY || env.OPENAI_API_KEY)) || '').trim();\n\n  let title = '';\n  if (litellmUrl && litellmApiKey && source) {\n    try {\n      const raw = await callLiteLLM({\n        baseUrl: litellmUrl,\n        apiKey: litellmApiKey,\n        model: (env && env.BELEIDSKOMPAS_MODEL) || 'govchat-default',\n        systemPrompt:\n          'Je genereert uitsluitend een korte titel (maximaal 6 woorden) voor een gesprek, in het Nederlands. ' +\n          'Geen opmaak, geen aanhalingstekens, geen toelichting: alleen de titel zelf.',\n        userPrompt: source.slice(0, 2000),\n        timeoutMs: 20000,\n        fetchImpl,\n        httpModule,\n        httpsModule,\n        urlModule,\n      });\n      const wrapperChars = new Set(['\"', \"'\", '#', '*', '_']);\n      let start = 0;\n      let end = raw.length;\n      while (start < end && (wrapperChars.has(raw[start]) || /\\s/.test(raw[start]))) start += 1;\n      while (end > start && (wrapperChars.has(raw[end - 1]) || /\\s/.test(raw[end - 1]))) end -= 1;\n      title = raw.slice(start, end);\n    } catch (_) {\n      // A failed title must never break the conversation: fall through to\n      // the deterministic title below.\n      title = '';\n    }\n  }\n  if (!title) title = buildFallbackTitle(source);\n  // Prefixed so Beleidskompas conversations are visually grouped in\n  // LibreChat's conversation-list sidebar, alongside other endpoints/agents.\n  title = TITLE_PREFIX + title;\n\n  return { ok: true, step_id: null, mode: 'title', answer: title, text: title };\n}\n\nasync function storeRequest({ baseUrl, token, method, path, query, body, timeoutMs, fetchImpl, httpModule, httpsModule, urlModule }) {\n  const params = Object.entries(query || {})\n    .filter(([, value]) => value !== undefined && value !== null && value !== '')\n    .map(([key, value]) => `${encodeURIComponent(key)}=${encodeURIComponent(String(value))}`)\n    .join('&');\n  const url = String(baseUrl || '').replace(/\\/$/, '') + path + (params ? `?${params}` : '');\n  const hasFetch = typeof fetchImpl === 'function';\n  const controller = hasFetch && typeof AbortController === 'function' ? new AbortController() : null;\n  const timer = controller && timeoutMs ? setTimeout(() => controller.abort(), timeoutMs) : null;\n\n  let res;\n  try {\n    res = await requestRaw(\n      url,\n      {\n        method,\n        headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },\n        body: body ? JSON.stringify(body) : undefined,\n        signal: controller ? controller.signal : undefined,\n      },\n      hasFetch,\n      fetchImpl,\n      httpModule,\n      httpsModule,\n      urlModule,\n    );\n  } catch (err) {\n    return { ok: false, status: 0, error: `Store unreachable (${String((err && err.message) || err)})` };\n  } finally {\n    if (timer) clearTimeout(timer);\n  }\n\n  let payload = null;\n  try {\n    payload = JSON.parse(res.text || '');\n  } catch (_) {\n    payload = null;\n  }\n  if (!res.ok) {\n    const message = payload && payload.error ? payload.error : `HTTP ${res.status}`;\n    return { ok: false, status: res.status, error: `Store ${method} ${path}: ${message}` };\n  }\n  return { ok: true, status: res.status, payload };\n}\n\nfunction createStoreClient({ env, fetchImpl, httpModule, httpsModule, urlModule }) {\n  const baseUrl = String((env && env.BELEIDSKOMPAS_STORE_URL) || '').trim();\n  const token = String((env && env.BELEIDSKOMPAS_STORE_TOKEN) || '').trim();\n  const enabled = Boolean(baseUrl && token);\n  const disabled = () => Promise.resolve({ ok: false, status: 0, error: 'Store disabled' });\n\n  const send = (method, path, { query, body } = {}) =>\n    enabled\n      ? storeRequest({ baseUrl, token, method, path, query, body, timeoutMs: 10000, fetchImpl, httpModule, httpsModule, urlModule })\n      : disabled();\n\n  const casePath = (caseId) => `/api/beleidskompas/cases/${encodeURIComponent(String(caseId))}`;\n\n  return {\n    enabled,\n    setCaseText: ({ caseId, userId, text }) => send('PUT', `${casePath(caseId)}/text`, { body: { user_id: userId, text } }),\n    setTitle: ({ caseId, userId, title }) => send('PUT', `${casePath(caseId)}/title`, { body: { user_id: userId, title } }),\n    addReport: ({ caseId, userId, substepId, text, citations, retrievalTrace }) =>\n      send('POST', `${casePath(caseId)}/reports`, {\n        body: { user_id: userId, substep_id: substepId, text, citations, retrieval_trace: retrievalTrace },\n      }),\n    addTurn: ({ caseId, userId, role, stepId, askedFrom, text }) =>\n      send('POST', `${casePath(caseId)}/turns`, { body: { user_id: userId, role, step_id: stepId, asked_from: askedFrom, text } }),\n    getState: ({ caseId, userId, maxTurns }) => send('GET', casePath(caseId), { query: { user_id: userId, max_turns: maxTurns } }),\n  };\n}\n\nfunction incomingMessage(body) {\n  const b = body && typeof body === 'object' ? body : {};\n  return String(b.currentMessage || b.chatInput || b.question || '');\n}\n\nfunction determineStep(parts, routes) {\n  const stepId = String((parts && parts.stepId) || '');\n  return Object.prototype.hasOwnProperty.call(routes, stepId) ? stepId : '';\n}\n\nasync function chooseStep({ message, activeStepId, summaries, routes, env, fetchImpl, httpModule, httpsModule, urlModule }) {\n  const steps = Array.isArray(summaries) ? summaries : [];\n  const litellmUrl = String((env && env.LITELLM_URL) || '').trim();\n  const litellmApiKey = String((env && (env.LITELLM_API_KEY || env.OPENAI_API_KEY)) || '').trim();\n  const active = steps.find((s) => s.id === activeStepId);\n  if (!litellmUrl || !litellmApiKey || !active || !String(message || '').trim()) return activeStepId;\n\n  const list = steps\n    .map((s) => `${s.nr}. ${s.title}. ${String(s.role || '').trim()} Deelstappen: ${(s.substeps || []).join(', ')}.`)\n    .join('\\n');\n  const systemPrompt = ORCHESTRATOR_PROMPT_TEMPLATE.replaceAll('{{steps}}', list).replaceAll('{{active_nr}}', String(active.nr));\n\n  let raw;\n  try {\n    raw = await callLiteLLM({\n      baseUrl: litellmUrl,\n      apiKey: litellmApiKey,\n      model: (env && env.BELEIDSKOMPAS_MODEL) || 'govchat-default',\n      systemPrompt,\n      userPrompt: String(message).slice(0, 4000),\n      timeoutMs: 20000,\n      fetchImpl,\n      httpModule,\n      httpsModule,\n      urlModule,\n    });\n  } catch (_) {\n    return activeStepId;\n  }\n  const number = /\\d+/.exec(String(raw || ''));\n  const chosen = number && steps.find((s) => String(s.nr) === number[0]);\n  return chosen && Object.prototype.hasOwnProperty.call(routes || {}, chosen.id) ? chosen.id : activeStepId;\n}\n\nfunction contextFromState(state, { substepId, forReport, summaries }) {\n  const order = (Array.isArray(summaries) ? summaries : []).flatMap((s) => s.substep_ids || []);\n  const reports = (state && state.reports) || {};\n  let ids = Object.keys(reports).sort((a, b) => order.indexOf(a) - order.indexOf(b));\n  if (forReport && substepId) {\n    const upTo = order.indexOf(substepId);\n    ids = ids.filter((id) => upTo === -1 || order.indexOf(id) <= upTo);\n  }\n  const findings = ids\n    .map((id) => String(reports[id].text || '').trim())\n    .filter(Boolean)\n    .join('\\n\\n');\n  const conversation = ((state && state.turns) || [])\n    .map((t) => `${t.role === 'user' ? 'Gebruiker' : 'Beleidskompas'}: ${String(t.text || '').trim()}`)\n    .join('\\n');\n  return {\n    caseText: String((state && state.case_text && state.case_text.text) || '').trim(),\n    findings,\n    conversation,\n  };\n}\n\nfunction buildStepRequest(stepId, parts, body) {\n  const b = body && typeof body === 'object' ? body : {};\n  const ownSubstep = stepId === parts.stepId ? parts.substepId || null : null;\n  return {\n    step_id: stepId,\n    substep_id: ownSubstep,\n    asked_from: parts.substepId || null,\n    case_text: parts.caseText,\n    findings: parts.findings || '',\n    conversation: parts.conversation || '',\n    message: parts.message,\n    sessionId: b.sessionId || null,\n    userId: b.userId || null,\n  };\n}\n\nasync function forwardToStep({ baseUrl, path, stepId, body, callerToken, timeoutMs, fetchImpl, httpModule, httpsModule, urlModule }) {\n  const url = String(baseUrl || 'http://n8n:5678').replace(/\\/$/, '') + '/webhook/' + path;\n  const hasFetch = typeof fetchImpl === 'function';\n  const controller = hasFetch && typeof AbortController === 'function' ? new AbortController() : null;\n  const timer = controller && timeoutMs ? setTimeout(() => controller.abort(), timeoutMs) : null;\n\n  let res;\n  try {\n    res = await requestRaw(\n      url,\n      {\n        method: 'POST',\n        headers: { 'content-type': 'application/json', 'x-govchat-token': String(callerToken || '') },\n        body: JSON.stringify(body || {}),\n        signal: controller ? controller.signal : undefined,\n      },\n      hasFetch,\n      fetchImpl,\n      httpModule,\n      httpsModule,\n      urlModule,\n    );\n  } catch (err) {\n    const text = `Beleidskompas kon de workflow van ${stepId} niet bereiken (${String((err && err.message) || err)}).`;\n    return { ok: false, step_id: stepId, error: 'Step workflow unreachable', text, answer: text };\n  } finally {\n    if (timer) clearTimeout(timer);\n  }\n\n  let payload = null;\n  try {\n    payload = JSON.parse(res.text || '');\n  } catch (_) {\n    payload = null;\n  }\n  if (!res.ok || !payload || typeof payload !== 'object') {\n    const text = `Beleidskompas kreeg geen geldig antwoord van de workflow van ${stepId} (HTTP ${res.status}).`;\n    return { ok: false, step_id: stepId, error: 'Step workflow HTTP ' + res.status, text, answer: text };\n  }\n\n  return Object.assign({}, payload, {\n    text: String(payload.text || payload.answer || ''),\n    answer: String(payload.answer || payload.text || ''),\n  });\n}\n\nasync function runOrchestrator(ctx) {\n  const { input, env, summaries, fetchImpl, httpModule, httpsModule, urlModule } = ctx;\n  const raw = input || {};\n  const body = raw.body || {};\n  const headers = raw.headers || {};\n\n  // What this request writes to the store, and what went wrong doing so.\n  // Nothing is written without the conversation and the user from the\n  // bridge: without them there is no case to write to.\n  const store = createStoreClient({ env, fetchImpl, httpModule, httpsModule, urlModule });\n  const caseId = String(body.sessionId || '').trim();\n  const userId = String(body.userId || '').trim();\n  const stored = { enabled: store.enabled && Boolean(caseId && userId), written: [], errors: [] };\n  async function write(name, call) {\n    if (!stored.enabled) return;\n    const result = await call();\n    if (result.ok) stored.written.push(name);\n    else stored.errors.push(`${name}: ${result.error}`);\n  }\n\n  // The same token check as in the step workflows. A wrong token gives a\n  // normal answer with ok: false, not a thrown error: n8n can turn a thrown\n  // error into an empty response, and then the caller sees nothing at all.\n  const callerToken = extractSuppliedToken(headers);\n  const expectedToken = String((env && (env.BELEIDSKOMPAS_N8N_WEBHOOK_TOKEN || env.N8N_WEBHOOK_TOKEN)) || '').trim();\n  if (expectedToken && callerToken !== expectedToken) {\n    return { ok: false, step_id: null, error: 'Unauthorized webhook token', text: '', answer: '' };\n  }\n\n  // LibreChat asks for a conversation title through this same endpoint. That\n  // request carries TITLE_REQUEST_MARKER (set in librechat.yaml), sometimes\n  // in systemPrompt and sometimes in the message itself. It names no step,\n  // so it is answered here with a title instead of being forwarded.\n  const message = incomingMessage(body);\n  if (isTitleRequest(message) || isTitleRequest(String(body.systemPrompt || ''))) {\n    // The title is made from the case itself, not from the block the page\n    // put behind it.\n    const caseText = parsePageMessage(extractConvoCaseText(message)).caseText;\n    const titled = await buildTitleResponse({ titleSource: caseText || message, env, fetchImpl, httpModule, httpsModule, urlModule });\n    await write('title', () => store.setTitle({ caseId, userId, title: titled.answer }));\n    return Object.assign({}, titled, { store: stored });\n  }\n\n  const parts = parsePageMessage(message);\n  let activeStepId = determineStep(parts, STEP_ROUTES);\n  // A message without the block of the page was typed in LibreChat's own\n  // chat: it is a question, and there is no page to say where the user is.\n  if (!activeStepId && !parts.fromPage) activeStepId = DEFAULT_STEP_ID;\n  if (!activeStepId) {\n    return { ok: false, step_id: null, error: 'No step recognised in the request', text: UNKNOWN_STEP_TEXT, answer: UNKNOWN_STEP_TEXT };\n  }\n  if (!stored.enabled) {\n    const error = store.enabled ? 'No conversation or user from the bridge' : 'Store not configured';\n    return { ok: false, step_id: null, error, text: STORE_MISSING_TEXT, answer: STORE_MISSING_TEXT, store: stored };\n  }\n\n  // A report is always written by the step of the substep the page named.\n  // A typed message is answered by the step it is about.\n  const stepId = parts.message\n    ? await chooseStep({ message: parts.message, activeStepId, summaries, routes: STEP_ROUTES, env, fetchImpl, httpModule, httpsModule, urlModule })\n    : activeStepId;\n\n  // The case text goes to the store first, so the state read next has it.\n  // The user's message is written after the state is read, so the\n  // conversation the step gets does not already contain it. Writing before\n  // the step answers keeps the message even when the step fails.\n  if (parts.caseText) await write('case_text', () => store.setCaseText({ caseId, userId, text: parts.caseText }));\n  let context = parts;\n  stored.read = false;\n  const state = await store.getState({ caseId, userId, maxTurns: 100 });\n  if (state.ok && state.payload) {\n    context = Object.assign({}, parts, contextFromState(state.payload, { substepId: parts.substepId, forReport: !parts.message, summaries }));\n    stored.read = true;\n  } else {\n    stored.errors.push(`state: ${state.error || 'no state in the answer'}`);\n  }\n  if (parts.message) await write('user_turn', () => store.addTurn({ caseId, userId, role: 'user', askedFrom: parts.substepId || null, text: parts.message }));\n  // An error so far means the step would answer without the state of the\n  // case, or the user's message would not be kept. Then better no answer.\n  if (stored.errors.length) {\n    return { ok: false, step_id: null, error: stored.errors.join('; '), text: STORE_FAILED_TEXT, answer: STORE_FAILED_TEXT, store: stored };\n  }\n\n  const result = await forwardToStep({\n    baseUrl: env && env.BELEIDSKOMPAS_N8N_BASE_URL,\n    path: STEP_ROUTES[stepId],\n    stepId,\n    body: buildStepRequest(stepId, context, body),\n    callerToken,\n    timeoutMs: 120000,\n    fetchImpl,\n    httpModule,\n    httpsModule,\n    urlModule,\n  });\n\n  if (result.ok && result.mode === 'report') {\n    const substepId = String(result.substep_id || parts.substepId || '').trim();\n    if (substepId) {\n      await write('report', () =>\n        store.addReport({\n          caseId,\n          userId,\n          substepId,\n          text: result.answer,\n          citations: result.citations,\n          retrievalTrace: result.retrieval_trace,\n        }),\n      );\n    } else {\n      stored.errors.push('report: no substep to file the report under');\n    }\n  }\n  if (result.ok && parts.message) {\n    await write('assistant_turn', () => store.addTurn({ caseId, userId, role: 'assistant', stepId: result.step_id || stepId, askedFrom: parts.substepId || null, text: result.answer }));\n  }\n\n  // `text` carries the meta block behind the answer, so the warning goes\n  // in front, in both.\n  const warned = result.ok && stored.errors.length\n    ? Object.assign({}, result, { answer: `${STORE_WARNING_TEXT}\\n\\n${result.answer}`, text: `${STORE_WARNING_TEXT}\\n\\n${result.text}` })\n    : result;\n  return Object.assign({}, warned, { store: stored });\n}\n\nconst httpModule = require('http');\nconst httpsModule = require('https');\nconst urlModule = require('url');\n\nconst result = await runOrchestrator({\n  input: $json,\n  summaries: STEP_SUMMARIES,\n  env: {\n    N8N_WEBHOOK_TOKEN: $env.N8N_WEBHOOK_TOKEN,\n    BELEIDSKOMPAS_N8N_WEBHOOK_TOKEN: $env.BELEIDSKOMPAS_N8N_WEBHOOK_TOKEN,\n    BELEIDSKOMPAS_N8N_BASE_URL: $env.BELEIDSKOMPAS_N8N_BASE_URL,\n    LITELLM_URL: $env.LITELLM_URL,\n    LITELLM_API_KEY: $env.LITELLM_API_KEY,\n    OPENAI_API_KEY: $env.OPENAI_API_KEY,\n    BELEIDSKOMPAS_MODEL: $env.BELEIDSKOMPAS_MODEL,\n    BELEIDSKOMPAS_STORE_URL: $env.BELEIDSKOMPAS_STORE_URL,\n    BELEIDSKOMPAS_STORE_TOKEN: $env.BELEIDSKOMPAS_STORE_TOKEN,\n  },\n  fetchImpl: typeof fetch === 'function' ? fetch : null,\n  httpModule,\n  httpsModule,\n  urlModule,\n});\n\nreturn [{ json: result }];"
+          "conditions": {
+            "options": {
+              "caseSensitive": true,
+              "leftValue": "",
+              "typeValidation": "strict",
+              "version": 2
+            },
+            "conditions": [
+              {
+                "leftValue": "={{ $json.ok === true }}",
+                "rightValue": true,
+                "operator": {
+                  "type": "boolean",
+                  "operation": "equals"
+                }
+              }
+            ],
+            "combinator": "and"
+          }
         },
-        "id": "RouteToStep",
-        "name": "Route To Step",
+        "id": "Verzoekgeldig",
+        "name": "Verzoek geldig?",
+        "type": "n8n-nodes-base.if",
+        "typeVersion": 2.2,
+        "position": [
+          440,
+          540
+        ]
+      },
+      {
+        "parameters": {
+          "conditions": {
+            "options": {
+              "caseSensitive": true,
+              "leftValue": "",
+              "typeValidation": "strict",
+              "version": 2
+            },
+            "conditions": [
+              {
+                "leftValue": "={{ $json.kind === 'title' }}",
+                "rightValue": true,
+                "operator": {
+                  "type": "boolean",
+                  "operation": "equals"
+                }
+              }
+            ],
+            "combinator": "and"
+          }
+        },
+        "id": "Titelverzoek",
+        "name": "Titelverzoek?",
+        "type": "n8n-nodes-base.if",
+        "typeVersion": 2.2,
+        "position": [
+          660,
+          540
+        ]
+      },
+      {
+        "parameters": {
+          "promptType": "define",
+          "text": "={{ $json.title_source }}",
+          "hasOutputParser": false,
+          "options": {
+            "systemMessage": "Je genereert uitsluitend een korte titel (maximaal 6 woorden) voor een gesprek, in het Nederlands. Geen opmaak, geen aanhalingstekens, geen toelichting: alleen de titel zelf.",
+            "enableStreaming": false,
+            "maxIterations": 1,
+            "returnIntermediateSteps": true
+          }
+        },
+        "id": "AIAgentTitel",
+        "name": "AI Agent Titel",
+        "type": "@n8n/n8n-nodes-langchain.agent",
+        "typeVersion": 3.1,
+        "position": [
+          880,
+          0
+        ],
+        "onError": "continueRegularOutput"
+      },
+      {
+        "parameters": {
+          "model": {
+            "__rl": true,
+            "mode": "list",
+            "value": "govchat-default"
+          },
+          "options": {
+            "baseURL": "={{ (String($env.LITELLM_URL || 'http://litellm:4000').replace(/\\/$/, '')) + '/v1' }}"
+          }
+        },
+        "id": "OpenAIChatModelTitel",
+        "name": "OpenAI Chat Model (Titel)",
+        "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+        "typeVersion": 1.3,
+        "position": [
+          880,
+          180
+        ],
+        "credentials": {
+          "openAiApi": {
+            "id": "00000000-0000-4000-8000-000000000111",
+            "name": "LiteLLM API"
+          }
+        }
+      },
+      {
+        "parameters": {
+          "jsCode": "const TITLE_REQUEST_MARKER = \"__BELEIDSKOMPAS_TITLE_REQUEST__\";\nconst TITLE_PREFIX = \"Beleidskompas - \";\n\nfunction nodeError(output) {\n  const error = output && output.error;\n  if (!error) return null;\n  return String((typeof error === 'object' && error.message) || error);\n}\n\nfunction buildFallbackTitle(text) {\n  const cleaned = String(text || '')\n    .replaceAll(TITLE_REQUEST_MARKER, '')\n    .replace(/[#*_`]/g, '')\n    .replace(/\\s+/g, ' ')\n    .trim();\n  if (!cleaned) return 'Beleidskompas casus';\n  const words = cleaned.split(' ').slice(0, 8);\n  const joined = words.join(' ');\n  return joined.length < cleaned.length ? joined + '…' : joined;\n}\n\nfunction buildTitle({ request, agent }) {\n  const raw = nodeError(agent) ? '' : String((agent && agent.output) || '');\n  const wrapperChars = new Set(['\"', \"'\", '#', '*', '_']);\n  let start = 0;\n  let end = raw.length;\n  while (start < end && (wrapperChars.has(raw[start]) || /\\s/.test(raw[start]))) start += 1;\n  while (end > start && (wrapperChars.has(raw[end - 1]) || /\\s/.test(raw[end - 1]))) end -= 1;\n  // Prefixed so Beleidskompas conversations are visually grouped in\n  // LibreChat's conversation-list sidebar, alongside other endpoints/agents.\n  const title = TITLE_PREFIX + (raw.slice(start, end) || buildFallbackTitle(request.title_source));\n  return { ok: true, step_id: null, mode: 'title', case_id: request.case_id, user_id: request.user_id, answer: title, text: title };\n}\n\nreturn [{ json: buildTitle({ request: $('Verzoek voorbereiden').first().json, agent: $json }) }];"
+        },
+        "id": "Titelopbouwen",
+        "name": "Titel opbouwen",
         "type": "n8n-nodes-base.code",
         "typeVersion": 2,
         "position": [
-          -340,
-          220
+          1320,
+          0
+        ]
+      },
+      {
+        "parameters": {
+          "method": "PUT",
+          "url": "={{ String($env.BELEIDSKOMPAS_STORE_URL || '').replace(/\\/$/, '') + '/api/beleidskompas/cases/' + encodeURIComponent($json.case_id) + '/title' }}",
+          "sendHeaders": true,
+          "headerParameters": {
+            "parameters": [
+              {
+                "name": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "name": "Authorization",
+                "value": "={{ 'Bearer ' + String($env.BELEIDSKOMPAS_STORE_TOKEN || '') }}"
+              }
+            ]
+          },
+          "options": {
+            "timeout": 10000
+          },
+          "sendBody": true,
+          "specifyBody": "json",
+          "jsonBody": "={{ JSON.stringify({ user_id: $json.user_id, title: $json.answer }) }}"
+        },
+        "id": "Titelopslaan",
+        "name": "Titel opslaan",
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.2,
+        "position": [
+          1540,
+          0
+        ],
+        "onError": "continueRegularOutput"
+      },
+      {
+        "parameters": {
+          "respondWith": "json",
+          "responseBody": "={{ JSON.stringify($('Titel opbouwen').first().json) }}",
+          "options": {}
+        },
+        "id": "Respondtitel",
+        "name": "Respond titel",
+        "type": "n8n-nodes-base.respondToWebhook",
+        "typeVersion": 1,
+        "position": [
+          1760,
+          0
+        ]
+      },
+      {
+        "parameters": {
+          "conditions": {
+            "options": {
+              "caseSensitive": true,
+              "leftValue": "",
+              "typeValidation": "strict",
+              "version": 2
+            },
+            "conditions": [
+              {
+                "leftValue": "={{ $json.case_text !== '' }}",
+                "rightValue": true,
+                "operator": {
+                  "type": "boolean",
+                  "operation": "equals"
+                }
+              }
+            ],
+            "combinator": "and"
+          }
+        },
+        "id": "Casustekstmeegestuurd",
+        "name": "Casustekst meegestuurd?",
+        "type": "n8n-nodes-base.if",
+        "typeVersion": 2.2,
+        "position": [
+          880,
+          540
+        ]
+      },
+      {
+        "parameters": {
+          "method": "PUT",
+          "url": "={{ String($env.BELEIDSKOMPAS_STORE_URL || '').replace(/\\/$/, '') + '/api/beleidskompas/cases/' + encodeURIComponent($json.case_id) + '/text' }}",
+          "sendHeaders": true,
+          "headerParameters": {
+            "parameters": [
+              {
+                "name": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "name": "Authorization",
+                "value": "={{ 'Bearer ' + String($env.BELEIDSKOMPAS_STORE_TOKEN || '') }}"
+              }
+            ]
+          },
+          "options": {
+            "timeout": 10000
+          },
+          "sendBody": true,
+          "specifyBody": "json",
+          "jsonBody": "={{ JSON.stringify({ user_id: $json.user_id, text: $json.case_text }) }}"
+        },
+        "id": "Casustekstopslaan",
+        "name": "Casustekst opslaan",
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.2,
+        "position": [
+          1100,
+          360
+        ],
+        "onError": "continueRegularOutput"
+      },
+      {
+        "parameters": {
+          "method": "GET",
+          "url": "={{ String($env.BELEIDSKOMPAS_STORE_URL || '').replace(/\\/$/, '') + '/api/beleidskompas/cases/' + encodeURIComponent($('Verzoek voorbereiden').first().json.case_id) + '' }}",
+          "sendHeaders": true,
+          "headerParameters": {
+            "parameters": [
+              {
+                "name": "Authorization",
+                "value": "={{ 'Bearer ' + String($env.BELEIDSKOMPAS_STORE_TOKEN || '') }}"
+              }
+            ]
+          },
+          "options": {
+            "timeout": 10000
+          },
+          "sendQuery": true,
+          "queryParameters": {
+            "parameters": [
+              {
+                "name": "user_id",
+                "value": "={{ $('Verzoek voorbereiden').first().json.user_id }}"
+              },
+              {
+                "name": "max_turns",
+                "value": "100"
+              }
+            ]
+          }
+        },
+        "id": "Standvandecasusophalen",
+        "name": "Stand van de casus ophalen",
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.2,
+        "position": [
+          1320,
+          540
+        ],
+        "onError": "continueRegularOutput"
+      },
+      {
+        "parameters": {
+          "jsCode": "const STORE_FAILED_TEXT = \"De opslag van Beleidskompas gaf een fout. Dit bericht is daarom niet beantwoord; probeer het later opnieuw.\";\nconst SUBSTEP_IDS = [\"1.1\",\"1.2\",\"1.3\",\"1.4\",\"1.5\",\"2.1\",\"3.1\",\"3.2\",\"3.3\",\"3.4\",\"4.1\",\"4.2\",\"4.3\"];\n\nfunction nodeError(output) {\n  const error = output && output.error;\n  if (!error) return null;\n  return String((typeof error === 'object' && error.message) || error);\n}\n\nfunction buildContext({ request, state, caseTextError, substepIds }) {\n  const stateError = nodeError(state) || (state && state.reports !== null && typeof state.reports === 'object' ? null : 'No state in the answer of the store');\n  if (caseTextError || stateError) {\n    const error = [caseTextError && `case_text: ${caseTextError}`, stateError && `state: ${stateError}`].filter(Boolean).join('; ');\n    return { ...request, ok: false, step_id: null, error, text: STORE_FAILED_TEXT, answer: STORE_FAILED_TEXT };\n  }\n\n  const reports = state.reports;\n  const order = Array.isArray(substepIds) ? substepIds : [];\n  const ids = Object.keys(reports).sort((a, b) => order.indexOf(a) - order.indexOf(b));\n  const reportTexts = (reportIds) =>\n    reportIds\n      .map((id) => String(reports[id].text || '').trim())\n      .filter(Boolean)\n      .join('\\n\\n');\n\n  const upTo = request.kind === 'report' ? order.indexOf(request.substep_id) : -1;\n  const findings = reportTexts(ids.filter((id) => upTo === -1 || order.indexOf(id) <= upTo));\n  const allReports = reportTexts(ids);\n  const turns = Array.isArray(state.turns) ? state.turns : [];\n  const conversation = turns.map((t) => `${t.role === 'user' ? 'Gebruiker' : 'Beleidskompas'}: ${String(t.text || '').trim()}`).join('\\n');\n  const case_text = request.case_text || String((state.case_text && state.case_text.text) || '').trim();\n  const asked =\n    request.kind === 'message'\n      ? `Bericht van de gebruiker (de gebruiker zit in deelstap ${request.substep_id || 'onbekend'}):\\n${request.message}`\n      : `Verzoek: werk deelstap ${request.substep_id} uit.`;\n\n  const prompt = [\n    case_text ? `Casus:\\n${case_text}` : 'Casus: (nog geen casus bekend)',\n    allReports ? `Bevindingen tot nu toe:\\n${allReports}` : 'Bevindingen tot nu toe: (nog geen deelstap uitgewerkt)',\n    conversation && `Laatste beurten van het gesprek:\\n${conversation}`,\n    asked,\n  ]\n    .filter(Boolean)\n    .join('\\n\\n');\n\n  return {\n    ...request,\n    case_text,\n    findings,\n    conversation,\n    prompt,\n    versions_before: Object.fromEntries(ids.map((id) => [id, reports[id].version])),\n  };\n}\n\nconst request = $('Verzoek voorbereiden').first().json;\n\n// The case text was only written when the request carried one.\nlet caseTextError = null;\nif (request.case_text) {\n  caseTextError = nodeError($('Casustekst opslaan').first().json);\n}\n\nreturn [{ json: buildContext({ request, state: $json, caseTextError, substepIds: SUBSTEP_IDS }) }];"
+        },
+        "id": "Contextsamenstellen",
+        "name": "Context samenstellen",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          1540,
+          540
+        ]
+      },
+      {
+        "parameters": {
+          "conditions": {
+            "options": {
+              "caseSensitive": true,
+              "leftValue": "",
+              "typeValidation": "strict",
+              "version": 2
+            },
+            "conditions": [
+              {
+                "leftValue": "={{ $json.ok === true }}",
+                "rightValue": true,
+                "operator": {
+                  "type": "boolean",
+                  "operation": "equals"
+                }
+              }
+            ],
+            "combinator": "and"
+          }
+        },
+        "id": "Opslagbereikbaar",
+        "name": "Opslag bereikbaar?",
+        "type": "n8n-nodes-base.if",
+        "typeVersion": 2.2,
+        "position": [
+          1760,
+          540
+        ]
+      },
+      {
+        "parameters": {
+          "conditions": {
+            "options": {
+              "caseSensitive": true,
+              "leftValue": "",
+              "typeValidation": "strict",
+              "version": 2
+            },
+            "conditions": [
+              {
+                "leftValue": "={{ $json.kind === 'message' }}",
+                "rightValue": true,
+                "operator": {
+                  "type": "boolean",
+                  "operation": "equals"
+                }
+              }
+            ],
+            "combinator": "and"
+          }
+        },
+        "id": "Getyptbericht",
+        "name": "Getypt bericht?",
+        "type": "n8n-nodes-base.if",
+        "typeVersion": 2.2,
+        "position": [
+          1980,
+          540
+        ]
+      },
+      {
+        "parameters": {
+          "method": "POST",
+          "url": "={{ String($env.BELEIDSKOMPAS_STORE_URL || '').replace(/\\/$/, '') + '/api/beleidskompas/cases/' + encodeURIComponent($json.case_id) + '/turns' }}",
+          "sendHeaders": true,
+          "headerParameters": {
+            "parameters": [
+              {
+                "name": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "name": "Authorization",
+                "value": "={{ 'Bearer ' + String($env.BELEIDSKOMPAS_STORE_TOKEN || '') }}"
+              }
+            ]
+          },
+          "options": {
+            "timeout": 10000
+          },
+          "sendBody": true,
+          "specifyBody": "json",
+          "jsonBody": "={{ JSON.stringify({ user_id: $json.user_id, role: 'user', asked_from: $json.substep_id || null, text: $json.message }) }}"
+        },
+        "id": "Berichtvandegebruikeropslaan",
+        "name": "Bericht van de gebruiker opslaan",
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.2,
+        "position": [
+          2200,
+          360
+        ],
+        "onError": "continueRegularOutput"
+      },
+      {
+        "parameters": {
+          "conditions": {
+            "options": {
+              "caseSensitive": true,
+              "leftValue": "",
+              "typeValidation": "strict",
+              "version": 2
+            },
+            "conditions": [
+              {
+                "leftValue": "={{ !$json.error }}",
+                "rightValue": true,
+                "operator": {
+                  "type": "boolean",
+                  "operation": "equals"
+                }
+              }
+            ],
+            "combinator": "and"
+          }
+        },
+        "id": "Berichtopgeslagen",
+        "name": "Bericht opgeslagen?",
+        "type": "n8n-nodes-base.if",
+        "typeVersion": 2.2,
+        "position": [
+          2420,
+          360
+        ]
+      },
+      {
+        "parameters": {
+          "jsCode": "const STORE_FAILED_TEXT = \"De opslag van Beleidskompas gaf een fout. Dit bericht is daarom niet beantwoord; probeer het later opnieuw.\";\n\nfunction nodeError(output) {\n  const error = output && output.error;\n  if (!error) return null;\n  return String((typeof error === 'object' && error.message) || error);\n}\n\nreturn [{ json: {\n  ok: false,\n  step_id: null,\n  error: `user_turn: ${nodeError($json)}`,\n  text: STORE_FAILED_TEXT,\n  answer: STORE_FAILED_TEXT,\n} }];"
+        },
+        "id": "Opslagfoutmelden",
+        "name": "Opslagfout melden",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          2640,
+          180
+        ]
+      },
+      {
+        "parameters": {
+          "promptType": "define",
+          "text": "={{ $('Context samenstellen').first().json.prompt }}",
+          "hasOutputParser": false,
+          "options": {
+            "systemMessage": "Je bent de orchestrator van Beleidskompas, een hulpmiddel waarmee beleidsmedewerkers van de provincie een casus in stappen doordenken. Je werkt een stap nooit zelf uit: daarvoor roep je met een tool de agent van die stap aan. Er is per stap een agent:\n- stap1_agent: stap 1, Publiek en provinciaal belang (1.1 Probleemdefinitie, 1.2 Overheidsinterventie, 1.3 Stakeholderanalyse, 1.4 Provinciaal doel, 1.5 Integrale afweging)\n- stap2_agent: stap 2, Rolbepaling provincie (2.1 Rolbepaling)\n- stap3_agent: stap 3, Instrumentkeuze (3.1 Sturingsbepaling, 3.2 Instrumentarium, 3.3 Afwegingskader, 3.4 Gevolgenanalyse)\n- stap4_agent: stap 4, Governance-inrichting (4.1 Good governance-principes, 4.2 Organisatorische governance, 4.3 Governance-richtlijnen)\n\nRegels:\n- Staat er \"Verzoek: werk deelstap X uit\", roep dan altijd de agent aan van de stap waar X bij hoort (deelstap 3.2 hoort bij stap 3), met substep_id X en als opdracht het woord \"uitwerken\". Sla dit alleen over als er geen casus bekend is; zeg dan wat je nodig hebt.\n- Stelt de gebruiker een vraag, roep dan de agent aan van de stap waar de vraag over gaat, met de vraag letterlijk als opdracht en als substep_id de deelstap waar de vraag over gaat (leeg als de vraag over de hele stap gaat). Is niet duidelijk over welke stap de vraag gaat, neem dan de stap waarin de gebruiker zit.\n- Gaat een vraag over meer dan één stap, roep dan de agent van elke betrokken stap aan en leg zelf kort het verband tussen hun antwoorden.\n- Na een uitwerking krijg je het rapport van de stap-agent terug. Het is dan al opgeslagen en wordt los van jou getoond. Herhaal het rapport niet. Lees het, en schrijf een kort bericht van hooguit vijf zinnen: dat de deelstap is uitgewerkt, en wat er nog ontbreekt of welke vragen de gebruiker kan beantwoorden om het rapport te verbeteren.\n- Na een vraag aan één stap geef je het antwoord van de stap-agent ongewijzigd door.\n- Verzin zelf niets over de inhoud van de casus.",
+            "enableStreaming": false,
+            "maxIterations": 8,
+            "returnIntermediateSteps": true
+          }
+        },
+        "id": "AIAgentOrchestrator",
+        "name": "AI Agent Orchestrator",
+        "type": "@n8n/n8n-nodes-langchain.agent",
+        "typeVersion": 3.1,
+        "position": [
+          2640,
+          540
+        ],
+        "onError": "continueRegularOutput"
+      },
+      {
+        "parameters": {
+          "model": {
+            "__rl": true,
+            "mode": "list",
+            "value": "govchat-default"
+          },
+          "options": {
+            "baseURL": "={{ (String($env.LITELLM_URL || 'http://litellm:4000').replace(/\\/$/, '')) + '/v1' }}"
+          }
+        },
+        "id": "OpenAIChatModelOrchestrator",
+        "name": "OpenAI Chat Model (Orchestrator)",
+        "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+        "typeVersion": 1.3,
+        "position": [
+          2640,
+          720
+        ],
+        "credentials": {
+          "openAiApi": {
+            "id": "00000000-0000-4000-8000-000000000111",
+            "name": "LiteLLM API"
+          }
+        }
+      },
+      {
+        "parameters": {
+          "description": "De agent van stap 1 (Publiek en provinciaal belang), met de deelstappen 1.1 Probleemdefinitie, 1.2 Overheidsinterventie, 1.3 Stakeholderanalyse, 1.4 Provinciaal doel, 1.5 Integrale afweging. Werkt een deelstap van deze stap uit, of beantwoordt een vraag over deze stap. Bij een uitwerking slaat de agent het rapport zelf op en geeft hij het rapport terug.",
+          "source": "database",
+          "workflowId": {
+            "__rl": true,
+            "mode": "list",
+            "value": "govchat-beleidskompas-agent-stap1",
+            "cachedResultName": "Beleidskompas - Agent stap 1"
+          },
+          "workflowInputs": {
+            "mappingMode": "defineBelow",
+            "value": {
+              "substep_id": "={{ $fromAI('substep_id', 'De deelstap, bijvoorbeeld 1.1. Leeg bij een vraag over de hele stap.', 'string', '') }}",
+              "assignment": "={{ $fromAI('assignment', 'Het woord uitwerken, of de vraag van de gebruiker, letterlijk.', 'string') }}",
+              "case_id": "={{ $('Context samenstellen').first().json.case_id }}",
+              "user_id": "={{ $('Context samenstellen').first().json.user_id }}",
+              "case_text": "={{ $('Context samenstellen').first().json.case_text }}",
+              "findings": "={{ $('Context samenstellen').first().json.findings }}",
+              "conversation": "={{ $('Context samenstellen').first().json.conversation }}"
+            },
+            "matchingColumns": [],
+            "schema": [
+              {
+                "id": "substep_id",
+                "displayName": "substep_id",
+                "required": false,
+                "defaultMatch": false,
+                "display": true,
+                "canBeUsedToMatch": true,
+                "type": "string"
+              },
+              {
+                "id": "assignment",
+                "displayName": "assignment",
+                "required": true,
+                "defaultMatch": false,
+                "display": true,
+                "canBeUsedToMatch": true,
+                "type": "string"
+              },
+              {
+                "id": "case_id",
+                "displayName": "case_id",
+                "required": true,
+                "defaultMatch": false,
+                "display": true,
+                "canBeUsedToMatch": true,
+                "type": "string"
+              },
+              {
+                "id": "user_id",
+                "displayName": "user_id",
+                "required": true,
+                "defaultMatch": false,
+                "display": true,
+                "canBeUsedToMatch": true,
+                "type": "string"
+              },
+              {
+                "id": "case_text",
+                "displayName": "case_text",
+                "required": false,
+                "defaultMatch": false,
+                "display": true,
+                "canBeUsedToMatch": true,
+                "type": "string"
+              },
+              {
+                "id": "findings",
+                "displayName": "findings",
+                "required": false,
+                "defaultMatch": false,
+                "display": true,
+                "canBeUsedToMatch": true,
+                "type": "string"
+              },
+              {
+                "id": "conversation",
+                "displayName": "conversation",
+                "required": false,
+                "defaultMatch": false,
+                "display": true,
+                "canBeUsedToMatch": true,
+                "type": "string"
+              }
+            ],
+            "attemptToConvertTypes": false,
+            "convertFieldsToString": false
+          }
+        },
+        "id": "stap1agent",
+        "name": "stap1_agent",
+        "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
+        "typeVersion": 2.2,
+        "position": [
+          2860,
+          720
+        ]
+      },
+      {
+        "parameters": {
+          "description": "De agent van stap 2 (Rolbepaling provincie), met de deelstappen 2.1 Rolbepaling. Werkt een deelstap van deze stap uit, of beantwoordt een vraag over deze stap. Bij een uitwerking slaat de agent het rapport zelf op en geeft hij het rapport terug.",
+          "source": "database",
+          "workflowId": {
+            "__rl": true,
+            "mode": "list",
+            "value": "govchat-beleidskompas-agent-stap2",
+            "cachedResultName": "Beleidskompas - Agent stap 2"
+          },
+          "workflowInputs": {
+            "mappingMode": "defineBelow",
+            "value": {
+              "substep_id": "={{ $fromAI('substep_id', 'De deelstap, bijvoorbeeld 2.1. Leeg bij een vraag over de hele stap.', 'string', '') }}",
+              "assignment": "={{ $fromAI('assignment', 'Het woord uitwerken, of de vraag van de gebruiker, letterlijk.', 'string') }}",
+              "case_id": "={{ $('Context samenstellen').first().json.case_id }}",
+              "user_id": "={{ $('Context samenstellen').first().json.user_id }}",
+              "case_text": "={{ $('Context samenstellen').first().json.case_text }}",
+              "findings": "={{ $('Context samenstellen').first().json.findings }}",
+              "conversation": "={{ $('Context samenstellen').first().json.conversation }}"
+            },
+            "matchingColumns": [],
+            "schema": [
+              {
+                "id": "substep_id",
+                "displayName": "substep_id",
+                "required": false,
+                "defaultMatch": false,
+                "display": true,
+                "canBeUsedToMatch": true,
+                "type": "string"
+              },
+              {
+                "id": "assignment",
+                "displayName": "assignment",
+                "required": true,
+                "defaultMatch": false,
+                "display": true,
+                "canBeUsedToMatch": true,
+                "type": "string"
+              },
+              {
+                "id": "case_id",
+                "displayName": "case_id",
+                "required": true,
+                "defaultMatch": false,
+                "display": true,
+                "canBeUsedToMatch": true,
+                "type": "string"
+              },
+              {
+                "id": "user_id",
+                "displayName": "user_id",
+                "required": true,
+                "defaultMatch": false,
+                "display": true,
+                "canBeUsedToMatch": true,
+                "type": "string"
+              },
+              {
+                "id": "case_text",
+                "displayName": "case_text",
+                "required": false,
+                "defaultMatch": false,
+                "display": true,
+                "canBeUsedToMatch": true,
+                "type": "string"
+              },
+              {
+                "id": "findings",
+                "displayName": "findings",
+                "required": false,
+                "defaultMatch": false,
+                "display": true,
+                "canBeUsedToMatch": true,
+                "type": "string"
+              },
+              {
+                "id": "conversation",
+                "displayName": "conversation",
+                "required": false,
+                "defaultMatch": false,
+                "display": true,
+                "canBeUsedToMatch": true,
+                "type": "string"
+              }
+            ],
+            "attemptToConvertTypes": false,
+            "convertFieldsToString": false
+          }
+        },
+        "id": "stap2agent",
+        "name": "stap2_agent",
+        "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
+        "typeVersion": 2.2,
+        "position": [
+          3080,
+          720
+        ]
+      },
+      {
+        "parameters": {
+          "description": "De agent van stap 3 (Instrumentkeuze), met de deelstappen 3.1 Sturingsbepaling, 3.2 Instrumentarium, 3.3 Afwegingskader, 3.4 Gevolgenanalyse. Werkt een deelstap van deze stap uit, of beantwoordt een vraag over deze stap. Bij een uitwerking slaat de agent het rapport zelf op en geeft hij het rapport terug.",
+          "source": "database",
+          "workflowId": {
+            "__rl": true,
+            "mode": "list",
+            "value": "govchat-beleidskompas-agent-stap3",
+            "cachedResultName": "Beleidskompas - Agent stap 3"
+          },
+          "workflowInputs": {
+            "mappingMode": "defineBelow",
+            "value": {
+              "substep_id": "={{ $fromAI('substep_id', 'De deelstap, bijvoorbeeld 3.1. Leeg bij een vraag over de hele stap.', 'string', '') }}",
+              "assignment": "={{ $fromAI('assignment', 'Het woord uitwerken, of de vraag van de gebruiker, letterlijk.', 'string') }}",
+              "case_id": "={{ $('Context samenstellen').first().json.case_id }}",
+              "user_id": "={{ $('Context samenstellen').first().json.user_id }}",
+              "case_text": "={{ $('Context samenstellen').first().json.case_text }}",
+              "findings": "={{ $('Context samenstellen').first().json.findings }}",
+              "conversation": "={{ $('Context samenstellen').first().json.conversation }}"
+            },
+            "matchingColumns": [],
+            "schema": [
+              {
+                "id": "substep_id",
+                "displayName": "substep_id",
+                "required": false,
+                "defaultMatch": false,
+                "display": true,
+                "canBeUsedToMatch": true,
+                "type": "string"
+              },
+              {
+                "id": "assignment",
+                "displayName": "assignment",
+                "required": true,
+                "defaultMatch": false,
+                "display": true,
+                "canBeUsedToMatch": true,
+                "type": "string"
+              },
+              {
+                "id": "case_id",
+                "displayName": "case_id",
+                "required": true,
+                "defaultMatch": false,
+                "display": true,
+                "canBeUsedToMatch": true,
+                "type": "string"
+              },
+              {
+                "id": "user_id",
+                "displayName": "user_id",
+                "required": true,
+                "defaultMatch": false,
+                "display": true,
+                "canBeUsedToMatch": true,
+                "type": "string"
+              },
+              {
+                "id": "case_text",
+                "displayName": "case_text",
+                "required": false,
+                "defaultMatch": false,
+                "display": true,
+                "canBeUsedToMatch": true,
+                "type": "string"
+              },
+              {
+                "id": "findings",
+                "displayName": "findings",
+                "required": false,
+                "defaultMatch": false,
+                "display": true,
+                "canBeUsedToMatch": true,
+                "type": "string"
+              },
+              {
+                "id": "conversation",
+                "displayName": "conversation",
+                "required": false,
+                "defaultMatch": false,
+                "display": true,
+                "canBeUsedToMatch": true,
+                "type": "string"
+              }
+            ],
+            "attemptToConvertTypes": false,
+            "convertFieldsToString": false
+          }
+        },
+        "id": "stap3agent",
+        "name": "stap3_agent",
+        "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
+        "typeVersion": 2.2,
+        "position": [
+          3300,
+          720
+        ]
+      },
+      {
+        "parameters": {
+          "description": "De agent van stap 4 (Governance-inrichting), met de deelstappen 4.1 Good governance-principes, 4.2 Organisatorische governance, 4.3 Governance-richtlijnen. Werkt een deelstap van deze stap uit, of beantwoordt een vraag over deze stap. Bij een uitwerking slaat de agent het rapport zelf op en geeft hij het rapport terug.",
+          "source": "database",
+          "workflowId": {
+            "__rl": true,
+            "mode": "list",
+            "value": "govchat-beleidskompas-agent-stap4",
+            "cachedResultName": "Beleidskompas - Agent stap 4"
+          },
+          "workflowInputs": {
+            "mappingMode": "defineBelow",
+            "value": {
+              "substep_id": "={{ $fromAI('substep_id', 'De deelstap, bijvoorbeeld 4.1. Leeg bij een vraag over de hele stap.', 'string', '') }}",
+              "assignment": "={{ $fromAI('assignment', 'Het woord uitwerken, of de vraag van de gebruiker, letterlijk.', 'string') }}",
+              "case_id": "={{ $('Context samenstellen').first().json.case_id }}",
+              "user_id": "={{ $('Context samenstellen').first().json.user_id }}",
+              "case_text": "={{ $('Context samenstellen').first().json.case_text }}",
+              "findings": "={{ $('Context samenstellen').first().json.findings }}",
+              "conversation": "={{ $('Context samenstellen').first().json.conversation }}"
+            },
+            "matchingColumns": [],
+            "schema": [
+              {
+                "id": "substep_id",
+                "displayName": "substep_id",
+                "required": false,
+                "defaultMatch": false,
+                "display": true,
+                "canBeUsedToMatch": true,
+                "type": "string"
+              },
+              {
+                "id": "assignment",
+                "displayName": "assignment",
+                "required": true,
+                "defaultMatch": false,
+                "display": true,
+                "canBeUsedToMatch": true,
+                "type": "string"
+              },
+              {
+                "id": "case_id",
+                "displayName": "case_id",
+                "required": true,
+                "defaultMatch": false,
+                "display": true,
+                "canBeUsedToMatch": true,
+                "type": "string"
+              },
+              {
+                "id": "user_id",
+                "displayName": "user_id",
+                "required": true,
+                "defaultMatch": false,
+                "display": true,
+                "canBeUsedToMatch": true,
+                "type": "string"
+              },
+              {
+                "id": "case_text",
+                "displayName": "case_text",
+                "required": false,
+                "defaultMatch": false,
+                "display": true,
+                "canBeUsedToMatch": true,
+                "type": "string"
+              },
+              {
+                "id": "findings",
+                "displayName": "findings",
+                "required": false,
+                "defaultMatch": false,
+                "display": true,
+                "canBeUsedToMatch": true,
+                "type": "string"
+              },
+              {
+                "id": "conversation",
+                "displayName": "conversation",
+                "required": false,
+                "defaultMatch": false,
+                "display": true,
+                "canBeUsedToMatch": true,
+                "type": "string"
+              }
+            ],
+            "attemptToConvertTypes": false,
+            "convertFieldsToString": false
+          }
+        },
+        "id": "stap4agent",
+        "name": "stap4_agent",
+        "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
+        "typeVersion": 2.2,
+        "position": [
+          3520,
+          720
+        ]
+      },
+      {
+        "parameters": {
+          "method": "GET",
+          "url": "={{ String($env.BELEIDSKOMPAS_STORE_URL || '').replace(/\\/$/, '') + '/api/beleidskompas/cases/' + encodeURIComponent($('Context samenstellen').first().json.case_id) + '' }}",
+          "sendHeaders": true,
+          "headerParameters": {
+            "parameters": [
+              {
+                "name": "Authorization",
+                "value": "={{ 'Bearer ' + String($env.BELEIDSKOMPAS_STORE_TOKEN || '') }}"
+              }
+            ]
+          },
+          "options": {
+            "timeout": 10000
+          },
+          "sendQuery": true,
+          "queryParameters": {
+            "parameters": [
+              {
+                "name": "user_id",
+                "value": "={{ $('Context samenstellen').first().json.user_id }}"
+              },
+              {
+                "name": "max_turns",
+                "value": "100"
+              }
+            ]
+          }
+        },
+        "id": "Standnaafloopophalen",
+        "name": "Stand na afloop ophalen",
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.2,
+        "position": [
+          3740,
+          540
+        ],
+        "onError": "continueRegularOutput"
+      },
+      {
+        "parameters": {
+          "jsCode": "const NO_ANSWER_TEXT = \"Beleidskompas kon dit bericht niet beantwoorden. Probeer het later opnieuw.\";\n\nfunction toolCalls(agentOutput) {\n  const steps = agentOutput && Array.isArray(agentOutput.intermediateSteps) ? agentOutput.intermediateSteps : [];\n  return steps.map((step) => ({\n    tool: (step && step.action && step.action.tool) || null,\n    input: step && step.action ? step.action.toolInput : null,\n  }));\n}\n\nfunction nodeError(output) {\n  const error = output && output.error;\n  if (!error) return null;\n  return String((typeof error === 'object' && error.message) || error);\n}\n\nfunction buildAnswer({ context, agent, state, now }) {\n  const tools = toolCalls(agent);\n  const error = nodeError(agent);\n  const text = error ? '' : String((agent && agent.output) || '').trim();\n  const called = tools.map((t) => /^stap(\\d+)_agent$/.exec(String(t.tool || ''))).find(Boolean);\n\n  const reports = !nodeError(state) && state && state.reports && typeof state.reports === 'object' ? state.reports : {};\n  const before = context.versions_before || {};\n  const fresh = Object.keys(reports)\n    .sort()\n    .filter((id) => reports[id].version !== before[id]);\n\n  const base = {\n    case_id: context.case_id,\n    user_id: context.user_id,\n    mode: context.kind === 'report' ? 'report' : 'conversation',\n    step_id: called ? `stap${called[1]}` : null,\n    asked_from: context.substep_id || null,\n    reports: fresh.map((id) => ({ substep_id: id, version: reports[id].version })),\n    tools,\n    duration_ms: now - context.started_at,\n  };\n  if (!text) return { ...base, ok: false, error: error || 'The orchestrator returned no text', text: NO_ANSWER_TEXT, answer: NO_ANSWER_TEXT };\n  return { ...base, ok: true, text, answer: text };\n}\n\nreturn [{ json: buildAnswer({ context: $('Context samenstellen').first().json, agent: $('AI Agent Orchestrator').first().json, state: $json, now: Date.now() }) }];"
+        },
+        "id": "Antwoordopbouwen",
+        "name": "Antwoord opbouwen",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          3960,
+          540
+        ]
+      },
+      {
+        "parameters": {
+          "conditions": {
+            "options": {
+              "caseSensitive": true,
+              "leftValue": "",
+              "typeValidation": "strict",
+              "version": 2
+            },
+            "conditions": [
+              {
+                "leftValue": "={{ $json.ok === true }}",
+                "rightValue": true,
+                "operator": {
+                  "type": "boolean",
+                  "operation": "equals"
+                }
+              }
+            ],
+            "combinator": "and"
+          }
+        },
+        "id": "Antwoordgelukt",
+        "name": "Antwoord gelukt?",
+        "type": "n8n-nodes-base.if",
+        "typeVersion": 2.2,
+        "position": [
+          4180,
+          540
+        ]
+      },
+      {
+        "parameters": {
+          "method": "POST",
+          "url": "={{ String($env.BELEIDSKOMPAS_STORE_URL || '').replace(/\\/$/, '') + '/api/beleidskompas/cases/' + encodeURIComponent($json.case_id) + '/turns' }}",
+          "sendHeaders": true,
+          "headerParameters": {
+            "parameters": [
+              {
+                "name": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "name": "Authorization",
+                "value": "={{ 'Bearer ' + String($env.BELEIDSKOMPAS_STORE_TOKEN || '') }}"
+              }
+            ]
+          },
+          "options": {
+            "timeout": 10000
+          },
+          "sendBody": true,
+          "specifyBody": "json",
+          "jsonBody": "={{ JSON.stringify({ user_id: $json.user_id, role: 'assistant', step_id: $json.step_id, asked_from: $json.asked_from, text: $json.text }) }}"
+        },
+        "id": "Antwoordopslaan",
+        "name": "Antwoord opslaan",
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.2,
+        "position": [
+          4400,
+          360
+        ],
+        "onError": "continueRegularOutput"
+      },
+      {
+        "parameters": {
+          "jsCode": "const STORE_WARNING_TEXT = \"Let op: de opslag van Beleidskompas gaf een fout. Dit antwoord is mogelijk niet bewaard.\";\n\nfunction nodeError(output) {\n  const error = output && output.error;\n  if (!error) return null;\n  return String((typeof error === 'object' && error.message) || error);\n}\n\nfunction finishAnswer({ answer, saveError }) {\n  if (!saveError) return answer;\n  const text = `${STORE_WARNING_TEXT}\\n\\n${answer.text}`;\n  return { ...answer, text, answer: text, store_error: `assistant_turn: ${saveError}` };\n}\n\nreturn [{ json: finishAnswer({ answer: $('Antwoord opbouwen').first().json, saveError: nodeError($json) }) }];"
+        },
+        "id": "Antwoordafronden",
+        "name": "Antwoord afronden",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          4620,
+          360
         ]
       },
       {
@@ -46,8 +1055,8 @@
         "type": "n8n-nodes-base.respondToWebhook",
         "typeVersion": 1,
         "position": [
-          -80,
-          220
+          4840,
+          540
         ]
       }
     ],
@@ -56,14 +1065,349 @@
         "main": [
           [
             {
-              "node": "Route To Step",
+              "node": "Verzoek voorbereiden",
               "type": "main",
               "index": 0
             }
           ]
         ]
       },
-      "Route To Step": {
+      "Verzoek voorbereiden": {
+        "main": [
+          [
+            {
+              "node": "Verzoek geldig?",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Verzoek geldig?": {
+        "main": [
+          [
+            {
+              "node": "Titelverzoek?",
+              "type": "main",
+              "index": 0
+            }
+          ],
+          [
+            {
+              "node": "Respond Orchestrator",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Titelverzoek?": {
+        "main": [
+          [
+            {
+              "node": "AI Agent Titel",
+              "type": "main",
+              "index": 0
+            }
+          ],
+          [
+            {
+              "node": "Casustekst meegestuurd?",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "OpenAI Chat Model (Titel)": {
+        "ai_languageModel": [
+          [
+            {
+              "node": "AI Agent Titel",
+              "type": "ai_languageModel",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "AI Agent Titel": {
+        "main": [
+          [
+            {
+              "node": "Titel opbouwen",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Titel opbouwen": {
+        "main": [
+          [
+            {
+              "node": "Titel opslaan",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Titel opslaan": {
+        "main": [
+          [
+            {
+              "node": "Respond titel",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Casustekst meegestuurd?": {
+        "main": [
+          [
+            {
+              "node": "Casustekst opslaan",
+              "type": "main",
+              "index": 0
+            }
+          ],
+          [
+            {
+              "node": "Stand van de casus ophalen",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Casustekst opslaan": {
+        "main": [
+          [
+            {
+              "node": "Stand van de casus ophalen",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Stand van de casus ophalen": {
+        "main": [
+          [
+            {
+              "node": "Context samenstellen",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Context samenstellen": {
+        "main": [
+          [
+            {
+              "node": "Opslag bereikbaar?",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Opslag bereikbaar?": {
+        "main": [
+          [
+            {
+              "node": "Getypt bericht?",
+              "type": "main",
+              "index": 0
+            }
+          ],
+          [
+            {
+              "node": "Respond Orchestrator",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Getypt bericht?": {
+        "main": [
+          [
+            {
+              "node": "Bericht van de gebruiker opslaan",
+              "type": "main",
+              "index": 0
+            }
+          ],
+          [
+            {
+              "node": "AI Agent Orchestrator",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Bericht van de gebruiker opslaan": {
+        "main": [
+          [
+            {
+              "node": "Bericht opgeslagen?",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Bericht opgeslagen?": {
+        "main": [
+          [
+            {
+              "node": "AI Agent Orchestrator",
+              "type": "main",
+              "index": 0
+            }
+          ],
+          [
+            {
+              "node": "Opslagfout melden",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Opslagfout melden": {
+        "main": [
+          [
+            {
+              "node": "Respond Orchestrator",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "OpenAI Chat Model (Orchestrator)": {
+        "ai_languageModel": [
+          [
+            {
+              "node": "AI Agent Orchestrator",
+              "type": "ai_languageModel",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "stap1_agent": {
+        "ai_tool": [
+          [
+            {
+              "node": "AI Agent Orchestrator",
+              "type": "ai_tool",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "stap2_agent": {
+        "ai_tool": [
+          [
+            {
+              "node": "AI Agent Orchestrator",
+              "type": "ai_tool",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "stap3_agent": {
+        "ai_tool": [
+          [
+            {
+              "node": "AI Agent Orchestrator",
+              "type": "ai_tool",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "stap4_agent": {
+        "ai_tool": [
+          [
+            {
+              "node": "AI Agent Orchestrator",
+              "type": "ai_tool",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "AI Agent Orchestrator": {
+        "main": [
+          [
+            {
+              "node": "Stand na afloop ophalen",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Stand na afloop ophalen": {
+        "main": [
+          [
+            {
+              "node": "Antwoord opbouwen",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Antwoord opbouwen": {
+        "main": [
+          [
+            {
+              "node": "Antwoord gelukt?",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Antwoord gelukt?": {
+        "main": [
+          [
+            {
+              "node": "Antwoord opslaan",
+              "type": "main",
+              "index": 0
+            }
+          ],
+          [
+            {
+              "node": "Respond Orchestrator",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Antwoord opslaan": {
+        "main": [
+          [
+            {
+              "node": "Antwoord afronden",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Antwoord afronden": {
         "main": [
           [
             {
