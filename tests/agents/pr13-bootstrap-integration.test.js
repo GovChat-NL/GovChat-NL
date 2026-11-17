@@ -65,7 +65,8 @@ test('regenerating the moved orchestrator does not create duplicate utility expo
     for (const file of ['update-orchestrator-workflow.js', 'orchestrator-utility-workflow.js',
       'orchestrator-document-workflow.js', 'n8n-document-context.js',
       'orchestrator-image-workflow.js', 'orchestrator-prompt-workflow.js',
-      'orchestrator-image-edit-workflow.js', 'openbesluitvorming-statistics-workflow.js']) {
+      'orchestrator-image-edit-workflow.js', 'openbesluitvorming-statistics-workflow.js',
+      'workflow-function-source.js']) {
       fs.copyFileSync(path.resolve(__dirname, '../../scripts', file), path.join(scripts, file));
     }
     const workflowsDir = path.join(temporary, 'agents/n8n/workflows');
