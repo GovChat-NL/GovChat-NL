@@ -50,11 +50,15 @@ test('authorized fixture yields exact native arguments, while filtering preserve
   assert.equal(result.mcp_capabilities.length, 1);
   const contextual = run(orchestrator, 'Filter MCP Capabilities', registry(), {
     'Webhook Orchestrator': { body: authorized() },
-    'Detect Image Messages': { orchestratorPrompt: 'DEV policy', statistics_context: { count: 56475 }, image_edit_context: { prompt: 'edit' } },
+    'Detect Image Messages': { orchestratorPrompt: 'DEV policy', statistics_context: { count: 56475 }, image_edit_context: { prompt: 'edit' },
+      documentContext: { ok: false, code: 'INLINE_BYTES_REQUIRED' }, image_intent: 'analyze', precomputed_response: 'Document failure' },
   });
   assert.equal(contextual.orchestratorPrompt, 'DEV policy');
   assert.deepEqual(contextual.statistics_context, { count: 56475 });
   assert.deepEqual(contextual.image_edit_context, { prompt: 'edit' });
+  assert.deepEqual(contextual.documentContext, { ok: false, code: 'INLINE_BYTES_REQUIRED' });
+  assert.equal(contextual.image_intent, 'analyze');
+  assert.equal(contextual.precomputed_response, 'Document failure');
 });
 
 test('message roles, nested bodies, and caller registries do not authorize normal chat', () => {

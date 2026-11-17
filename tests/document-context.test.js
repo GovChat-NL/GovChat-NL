@@ -177,8 +177,14 @@ test("document context reaches mixed-image vision and document failures are pres
     if (url.endsWith("/v1/chat/completions")) {
       assert.match(JSON.stringify(JSON.parse(options.body).messages), /13/);
       assert.doesNotMatch(options.body, /data:application\/pdf;base64/);
-      const classification = JSON.parse(options.body).messages[0].content.includes('Classify the latest');
-      if (classification) { intentCalls++; assert.doesNotMatch(options.body, /data:image\//); }
+      const body = JSON.parse(options.body);
+      // Identify the deterministic intent request independently of prompt language.
+      const classification = body.temperature === 0;
+      if (classification) {
+        assert.equal(body.messages[0].role, 'system');
+        assert.match(body.messages[0].content, /\bedit\b[\s\S]*\bgenerate\b[\s\S]*\banalyze\b/);
+        intentCalls++; assert.doesNotMatch(options.body, /data:image\//);
+      }
       else visionCalls++;
       response = { choices: [{ message: { content: classification ? "analyze" : "13" } }] };
     }

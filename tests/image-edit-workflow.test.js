@@ -107,8 +107,13 @@ async function detect(intent, messages, options = {}) {
       else if (url.includes('/api/config/orchestrator')) value = {};
       else {
         const body = JSON.parse(opts.body);
-        const classification = body.messages[0].content.includes('Classify the latest');
-        if (classification) { assert.equal(opts.body.includes('data:image/'),false); value = {choices:[{message:{content:intent}}]}; }
+        // Intent requests are deterministic; their maintained system prompt may be localized.
+        const classification = body.temperature === 0;
+        if (classification) {
+          assert.equal(body.messages[0].role,'system');
+          assert.match(body.messages[0].content,/\bedit\b[\s\S]*\bgenerate\b[\s\S]*\banalyze\b/);
+          assert.equal(opts.body.includes('data:image/'),false); value = {choices:[{message:{content:intent}}]};
+        }
         else { assert.equal(body.messages[0].content,'Runtime organization prompt'); value = {choices:[{message:{content:'synthetic vision answer'}}]}; }
       }
       return {ok:true,status:200,text:async()=>JSON.stringify(value)};
