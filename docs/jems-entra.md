@@ -63,6 +63,9 @@ logs or online token-decoding sites.
 
 Use private deployment configuration, not real values in the
 [environment example](../.env.example). Preserve current settings and passwords.
+The example preserves normal SSO defaults. For JEMS, explicitly request the full
+approved API scope plus refresh capability and enable token reuse and user-info
+OBO in private candidate configuration; do not infer activation from defaults.
 
 | Setting | Purpose |
 | --- | --- |
