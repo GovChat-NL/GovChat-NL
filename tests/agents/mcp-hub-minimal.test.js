@@ -96,7 +96,7 @@ test('invalid JSON, non-objects, arrays and extra arguments are not silently def
   assert.doesNotMatch(JSON.stringify(result), /secret/);
 });
 
-test('workflow graph binds original webhook identity outside AI and uses the pinned native class contract', () => {
+test('workflow graph binds original webhook identity outside AI and preserves DEV integrations', () => {
   const native = find(executor, 'JEMS MCP');
   assert.equal(native.type, '@n8n/n8n-nodes-langchain.mcpClient');
   assert.equal(native.typeVersion, 1.1);
@@ -144,7 +144,12 @@ test('workflow graph binds original webhook identity outside AI and uses the pin
       }
     }
   }
-  // This is a pinned-class contract assertion, not a live SSE/Entra E2E test.
+});
+
+test('pinned n8n image contains the configured native MCP class', {
+  skip: !fs.existsSync('/usr/local/lib/node_modules/n8n/node_modules/.pnpm') && 'Requires the pinned n8n image, not the public Node-only suite',
+}, () => {
+  // Availability check only; native staging execution and real Entra are separate checks.
   const pnpm = '/usr/local/lib/node_modules/n8n/node_modules/.pnpm';
   const pkg = fs.readdirSync(pnpm).find(p => p.startsWith('@n8n+n8n-nodes-langchain@'));
   const nativePath = path.join(pnpm, pkg, 'node_modules/@n8n/n8n-nodes-langchain/dist/nodes/mcp/McpClient/McpClient.node.js');
