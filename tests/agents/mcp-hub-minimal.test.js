@@ -145,3 +145,29 @@ test('essential bootstrap discovers hub IDs, updates old seed markers and preser
   const enabled = bootstrap.configureTopdeskIntegration(orchestrator, { N8N_ENABLE_TOPDESK_SEARCH: 'true' });
   assert.equal(enabled.connections.topdesk_knowledge_search_tool.ai_tool[0].length, 2);
 });
+
+test('credential metadata accepts only the CLI not-found result and never exports secret data', () => {
+  const { readExistingCredential } = require('../../n8n/bootstrap');
+  const missing = () => { throw Object.assign(new Error('CLI failed'), {
+    status: 1, stdout: 'No credentials found with specified filters',
+  }); };
+  assert.equal(readExistingCredential('test-only-missing', missing), null);
+  for (const failure of [{ status: 1, stdout: 'database connection failed' },
+    { status: 2, stdout: 'No credentials found with specified filters' }]) {
+    assert.throws(() => readExistingCredential('test-only-missing', () => {
+      throw Object.assign(new Error('CLI failed'), failure);
+    }), /refusing import/);
+  }
+  assert.deepEqual(readExistingCredential('test-only-existing', (command, args) => {
+    assert.equal(command, 'n8n');
+    assert.equal(args.includes('--decrypted'), false);
+    const output = args.find(arg => arg.startsWith('--output=')).slice('--output='.length);
+    fs.writeFileSync(output, JSON.stringify([{ name: 'Test Auth', type: 'httpHeaderAuth', data: 'encrypted-test-data' }]));
+    return '';
+  }), { name: 'Test Auth', type: 'httpHeaderAuth' });
+  assert.throws(() => readExistingCredential('test-only-malformed', (command, args) => {
+    const output = args.find(arg => arg.startsWith('--output=')).slice('--output='.length);
+    fs.writeFileSync(output, 'malformed');
+    return 'No credentials found with specified filters';
+  }), /refusing import/);
+});

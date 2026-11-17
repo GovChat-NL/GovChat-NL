@@ -81,7 +81,7 @@ async function waitForSettings(maxRetries = 30, delayMs = 2000) {
   for (let attempt = 1; attempt <= maxRetries; attempt += 1) {
     try {
       const response = await fetch(`${N8N_URL}/rest/settings`);
-      if (response.ok) return response.json();
+      if (response.ok) return await response.json();
     } catch {
       // n8n may need time to finish booting.
     }
@@ -239,18 +239,22 @@ function assertCredentialCompatibility(existing, jems, topdesk) {
   }
 }
 
-function readExistingCredential(id) {
+function readExistingCredential(id, execute = execFileSync) {
   const dir = fs.mkdtempSync('/tmp/govchat-credential-check-');
   const output = path.join(dir, 'encrypted.json');
   fs.writeFileSync(output, '', { mode: 0o600 });
   try {
-    const log = execFileSync('n8n', ['export:credentials', `--id=${id}`, `--output=${output}`], { encoding: 'utf8', stdio: 'pipe' });
+    const log = execute('n8n', ['export:credentials', `--id=${id}`, `--output=${output}`], { encoding: 'utf8', stdio: 'pipe' });
     const content = fs.readFileSync(output, 'utf8');
     if (!content && log.includes('No credentials found with specified filters')) return null;
     if (!content) throw new Error('Credential metadata check failed; refusing import');
     const existing = JSON.parse(content)[0];
     return existing ? { name: existing.name, type: existing.type } : null;
-  } catch {
+  } catch (error) {
+    // n8n 2.25.7 exits 1 for this expected, read-only not-found result.
+    const log = String(error.stdout || '') + String(error.stderr || '');
+    if (error.status === 1 && !fs.readFileSync(output, 'utf8')
+      && log.includes('No credentials found with specified filters')) return null;
     throw new Error('Credential metadata check failed; refusing import');
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
@@ -457,6 +461,7 @@ module.exports = {
   getTopdeskBaseUrl,
   getWorkflowImportPlan,
   isTopdeskSearchEnabled,
+  readExistingCredential,
   renderWorkflowTemplate,
   writeRenderedWorkflow,
 };

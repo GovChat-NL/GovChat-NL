@@ -27,7 +27,10 @@ test('the merged bootstrap imports new workflows after either parent marker, the
   for (const version of [6, 7]) {
     assert.deepEqual(getWorkflowImportPlan(workflows, JSON.stringify({ version, topdeskSearchEnabled: false }), false, env), workflows);
   }
-  const marker = JSON.stringify({ version: 8, topdeskSearchEnabled: false });
+  const legacyMarker = JSON.stringify({ version: 8, topdeskSearchEnabled: false });
+  assert.deepEqual(getWorkflowImportPlan(workflows, legacyMarker, false, env).flatMap(entry => entry.ids).sort(),
+    ['govchat-mcp-executor-hub', 'govchat-mcp-registry-sync', 'govchat-orchestrator-litellm']);
+  const marker = JSON.stringify({ version: 8, mcpHubVersion: 1, topdeskSearchEnabled: false });
   assert.deepEqual(getWorkflowImportPlan(workflows, marker, false, env), []);
   const changed = getWorkflowImportPlan(workflows, marker, false, { N8N_ENABLE_TOPDESK_SEARCH: 'true' });
   assert.deepEqual(changed.map(entry => entry.file).sort(), ['algemeen/orchestrator-litellm.json', 'topdesk-knowledge-items-search.json']);
@@ -68,6 +71,8 @@ test('regenerating the moved orchestrator does not create duplicate utility expo
     }
     const workflowsDir = path.join(temporary, 'agents/n8n/workflows');
     fs.cpSync(directory, workflowsDir, { recursive: true });
+    fs.cpSync(path.resolve(directory, '../../mcp-hub/workflows'),
+      path.join(temporary, 'agents/mcp-hub/workflows'), { recursive: true });
     execFileSync(process.execPath, [path.join(scripts, 'update-orchestrator-workflow.js')]);
     const workflows = discoverWorkflows(workflowsDir, env);
     assert.equal(workflows.length, discoverWorkflows(directory, env).length);
