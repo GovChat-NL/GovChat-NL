@@ -172,5 +172,5 @@ than its previous null/1 setting. The native registry and executor must be
 published even though their only triggers are internal workflow-call triggers;
 the scoped bootstrap marker upgrades this publication state without a schedule.
 
-Keep reviewed-registry/manual-refresh and language-only policy limitations
+Keep reviewed-registry/manual-refresh and the [current five-tool schema limitations](../agents/mcp-hub/README.md)
 explicit. Successful testserver use does not authorize production deployment.
