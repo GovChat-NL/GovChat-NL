@@ -1,4 +1,5 @@
 'use strict';
+const { workflowFunctionSource } = require('./workflow-function-source');
 const id = 'govchat-obv-statistics';
 const name = 'openbesluitvorming_statistics_tool';
 const marker = '[OPENBESLUITVORMING STATISTICS]';
@@ -38,7 +39,7 @@ function statisticsWorkflow() {
   return { id, name:'OpenBesluitvorming - Exact Metadata Statistics', active:true,
     nodes:[
       {id:'StatisticsTrigger',name:'Statistics Input',type:'n8n-nodes-base.executeWorkflowTrigger',typeVersion:1.1,position:[0,0],parameters:{workflowInputs:{values:[{name:'query',type:'string'}]}}},
-      {id:'NormalizeStatistics',name:'Normalize Statistics Query',type:'n8n-nodes-base.code',typeVersion:2,position:[240,0],parameters:{jsCode:`const normalizeQuery = ${normalizeQuery.toString()};\nreturn [{json: normalizeQuery($json)}];`}},
+      {id:'NormalizeStatistics',name:'Normalize Statistics Query',type:'n8n-nodes-base.code',typeVersion:2,position:[240,0],parameters:{jsCode:`const normalizeQuery = ${workflowFunctionSource(normalizeQuery)};\nreturn [{json: normalizeQuery($json)}];`}},
       {id:'StatisticsHTTP',name:'Read Exact Statistics',type:'n8n-nodes-base.httpRequest',typeVersion:4.2,position:[480,0],parameters:{method:'POST',url:'http://openbesluitvorming-statistics:8092/query',sendHeaders:true,headerParameters:{parameters:[{name:'Authorization',value:"={{ 'Bearer ' + ($env.OBV_STATS_TOKEN || $env.N8N_WEBHOOK_TOKEN) }}"}]},sendBody:true,specifyBody:'json',jsonBody:'={{ $json }}',options:{timeout:240000,response:{response:{neverError:true,responseFormat:'json'}}}}},
     ],
     connections:{'Statistics Input':{main:[[{node:'Normalize Statistics Query',type:'main',index:0}]]},'Normalize Statistics Query':{main:[[{node:'Read Exact Statistics',type:'main',index:0}]]}},
