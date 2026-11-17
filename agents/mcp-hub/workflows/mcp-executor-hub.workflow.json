@@ -1,7 +1,7 @@
 {
   "id": "govchat-mcp-executor-hub",
   "name": "GovChat MCP Executor Hub",
-  "active": false,
+  "active": true,
   "nodes": [
     {
       "id": "ExecutorTrigger",

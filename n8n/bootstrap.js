@@ -66,7 +66,7 @@ function getWorkflowImportPlan(workflows, markerContent, force = false, env = pr
   }
   if (force || !marker || marker.version !== 8) return workflows;
   const needsStatisticsImport = marker.statisticsIntegrationVersion !== 1;
-  const needsMcpImport = marker.mcpHubVersion !== 1;
+  const needsMcpImport = marker.mcpHubVersion !== 2;
   // Upgrade each integration independently without reimporting unrelated workflows.
   return workflows.filter((entry) =>
     (needsStatisticsImport && (entry.ids.includes(ORCHESTRATOR_ID) || entry.ids.includes('govchat-obv-statistics')))
@@ -424,7 +424,7 @@ function importVerifyAndPublish(workflows) {
   }
 
   fs.mkdirSync(path.dirname(MARKER_FILE), { recursive: true });
-  fs.writeFileSync(MARKER_FILE, JSON.stringify({ version: 8, statisticsIntegrationVersion: 1, mcpHubVersion: 1, seededAt: new Date().toISOString(), topdeskSearchEnabled: isTopdeskSearchEnabled() }), 'utf8');
+  fs.writeFileSync(MARKER_FILE, JSON.stringify({ version: 8, statisticsIntegrationVersion: 1, mcpHubVersion: 2, seededAt: new Date().toISOString(), topdeskSearchEnabled: isTopdeskSearchEnabled() }), 'utf8');
   console.log('[bootstrap] Workflow import/publish geverifieerd');
 }
 

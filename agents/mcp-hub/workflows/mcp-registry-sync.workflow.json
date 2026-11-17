@@ -1,7 +1,7 @@
 {
   "id": "govchat-mcp-registry-sync",
   "name": "GovChat MCP Approved Registry",
-  "active": false,
+  "active": true,
   "nodes": [
     {
       "id": "RegistryTrigger",

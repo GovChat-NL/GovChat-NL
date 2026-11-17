@@ -68,8 +68,8 @@ test('only search becomes active when enabled; ingest scheduling stays opt-in', 
 
 test('flag changes update orchestrator and search even after the bootstrap seed marker', () => {
   const workflows = discoverWorkflows(dir, disabled);
-  const offMarker = JSON.stringify({ version: 8, statisticsIntegrationVersion: 1, mcpHubVersion: 1, topdeskSearchEnabled: false });
-  const onMarker = JSON.stringify({ version: 8, statisticsIntegrationVersion: 1, mcpHubVersion: 1, topdeskSearchEnabled: true });
+  const offMarker = JSON.stringify({ version: 8, statisticsIntegrationVersion: 1, mcpHubVersion: 2, topdeskSearchEnabled: false });
+  const onMarker = JSON.stringify({ version: 8, statisticsIntegrationVersion: 1, mcpHubVersion: 2, topdeskSearchEnabled: true });
   assert.deepEqual(getWorkflowImportPlan(workflows, offMarker, false, disabled), []);
   const change = getWorkflowImportPlan(workflows, offMarker, false, enabled);
   assert.deepEqual(change.map((entry) => entry.file).sort(), ['algemeen/orchestrator-litellm.json', 'topdesk-knowledge-items-search.json']);

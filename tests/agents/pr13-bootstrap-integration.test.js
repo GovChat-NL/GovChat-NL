@@ -30,7 +30,7 @@ test('the merged bootstrap imports new workflows after either parent marker, the
   const legacyMarker = JSON.stringify({ version: 8, statisticsIntegrationVersion: 1, topdeskSearchEnabled: false });
   assert.deepEqual(getWorkflowImportPlan(workflows, legacyMarker, false, env).flatMap(entry => entry.ids).sort(),
     ['govchat-mcp-executor-hub', 'govchat-mcp-registry-sync', 'govchat-orchestrator-litellm']);
-  const marker = JSON.stringify({ version: 8, statisticsIntegrationVersion: 1, mcpHubVersion: 1, topdeskSearchEnabled: false });
+  const marker = JSON.stringify({ version: 8, statisticsIntegrationVersion: 1, mcpHubVersion: 2, topdeskSearchEnabled: false });
   assert.deepEqual(getWorkflowImportPlan(workflows, marker, false, env), []);
   const changed = getWorkflowImportPlan(workflows, marker, false, { N8N_ENABLE_TOPDESK_SEARCH: 'true' });
   assert.deepEqual(changed.map(entry => entry.file).sort(), ['algemeen/orchestrator-litellm.json', 'topdesk-knowledge-items-search.json']);

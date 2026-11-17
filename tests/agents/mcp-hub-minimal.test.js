@@ -37,6 +37,9 @@ test('reviewed registry exposes only the discovered no-argument schema, without 
   assert.equal(run(registryWorkflow, 'Approved Registry', {}, {}, {}).servers[0].enabled, false);
   assert.throws(() => run(registryWorkflow, 'Approved Registry', {}, {}, { ...env, MCP_HUB_JEMS_REQUIRED_GROUP_IDS: '{' }));
   assert.equal(registryWorkflow.nodes.length, 2);
+  assert.equal(registryWorkflow.active, true);
+  assert.equal(executor.active, true);
+  assert.ok(![...registryWorkflow.nodes, ...executor.nodes].some(n => /schedule|webhook/i.test(n.type)));
 });
 
 test('authorized fixture yields exact native arguments, while filtering preserves unrelated context', () => {
@@ -168,8 +171,10 @@ test('essential bootstrap discovers hub IDs, updates old seed markers and preser
   const entries = bootstrap.discoverWorkflows(path.join(root, 'agents/n8n/workflows'), {});
   const plan = bootstrap.getWorkflowImportPlan(entries, JSON.stringify({ version: 8, statisticsIntegrationVersion: 1, topdeskSearchEnabled: false }), false, {});
   assert.deepEqual(plan.flatMap(e => e.ids).sort(), ['govchat-mcp-executor-hub', 'govchat-mcp-registry-sync', 'govchat-orchestrator-litellm']);
-  const marker = { version: 8, topdeskSearchEnabled: false, mcpHubVersion: 1, statisticsIntegrationVersion: 1 };
+  const marker = { version: 8, topdeskSearchEnabled: false, mcpHubVersion: 2, statisticsIntegrationVersion: 1 };
   assert.deepEqual(bootstrap.getWorkflowImportPlan(entries, JSON.stringify(marker), false, {}), []);
+  const legacy = { ...marker, mcpHubVersion: 1 };
+  assert.deepEqual(bootstrap.getWorkflowImportPlan(entries, JSON.stringify(legacy), false, {}).flatMap(e => e.ids).sort(), ['govchat-mcp-executor-hub', 'govchat-mcp-registry-sync', 'govchat-orchestrator-litellm']);
   assert.deepEqual(bootstrap.getWorkflowImportPlan(entries, JSON.stringify({ ...marker, statisticsIntegrationVersion: 0 }), false, {}).flatMap(e => e.ids).sort(),
     ['govchat-obv-statistics', 'govchat-orchestrator-litellm']);
   assert.deepEqual(bootstrap.getWorkflowImportPlan(entries, JSON.stringify({ version: 8, topdeskSearchEnabled: false }), false, {}).flatMap(e => e.ids).sort(),
