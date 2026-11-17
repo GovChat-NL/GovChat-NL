@@ -1,4 +1,5 @@
 "use strict";
+const { workflowFunctionSource } = require('./workflow-function-source');
 const fs = require("node:fs");
 const path = require("node:path");
 const { normalizeDocumentContext } = require("./n8n-document-context");
@@ -10,7 +11,7 @@ function applyDocumentContext(workflow) {
   const node = {
     id: "ExtractDocumentContext", name, type: "n8n-nodes-base.code", typeVersion: 2,
     position: [detector.position[0] - 220, detector.position[1]],
-    parameters: { jsCode: `return await (${normalizeDocumentContext.toString()})($json, $env);` },
+    parameters: { jsCode: `return await (${workflowFunctionSource(normalizeDocumentContext)})($json, $env);` },
   };
   const index = workflow.nodes.findIndex((item) => item.id === node.id);
   if (index < 0) workflow.nodes.push(node); else workflow.nodes[index] = node;

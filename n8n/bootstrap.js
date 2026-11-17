@@ -65,11 +65,12 @@ function getWorkflowImportPlan(workflows, markerContent, force = false, env = pr
     marker = null;
   }
   if (force || !marker || marker.version !== 8) return workflows;
+  const needsStatisticsImport = marker.statisticsIntegrationVersion !== 1;
   const needsMcpImport = marker.mcpHubVersion !== 1;
-  if (marker.topdeskSearchEnabled === enabled && !needsMcpImport) return [];
-  // Only update this feature's workflows on a flag change; leave other
-  // deployed workflows and the ingest schedule untouched.
-  return workflows.filter((entry) => (needsMcpImport && entry.ids.some((id) => MCP_WORKFLOW_IDS.includes(id)))
+  // Upgrade each integration independently without reimporting unrelated workflows.
+  return workflows.filter((entry) =>
+    (needsStatisticsImport && (entry.ids.includes(ORCHESTRATOR_ID) || entry.ids.includes('govchat-obv-statistics')))
+    || (needsMcpImport && entry.ids.some((id) => MCP_WORKFLOW_IDS.includes(id)))
     || (marker.topdeskSearchEnabled !== enabled && (entry.ids.includes(ORCHESTRATOR_ID) || entry.ids.includes(TOPDESK_SEARCH_ID))));
 }
 
@@ -387,8 +388,9 @@ function writeRenderedWorkflow(workflow, env = process.env, outputDir = '/tmp/go
 function importVerifyAndPublish(workflows) {
   const force = String(process.env.AGENTS_BOOTSTRAP_FORCE || 'false').trim().toLowerCase() === 'true';
   const markerContent = fs.existsSync(MARKER_FILE) ? fs.readFileSync(MARKER_FILE, 'utf8') : null;
+  const publishPriority = (entry) => entry.ids.includes('govchat-obv-statistics') ? 0 : entry.ids.includes(TOPDESK_SEARCH_ID) ? 1 : entry.ids.includes(ORCHESTRATOR_ID) ? 3 : 2;
   const planned = getWorkflowImportPlan(workflows, markerContent, force)
-    .slice().sort((a, b) => Number(b.ids.includes(TOPDESK_SEARCH_ID)) - Number(a.ids.includes(TOPDESK_SEARCH_ID)));
+    .slice().sort((a, b) => publishPriority(a) - publishPriority(b));
   if (!planned.length) {
     console.log('[bootstrap] Skip import/publish (already seeded; featureflags unchanged)');
     return;
@@ -422,7 +424,7 @@ function importVerifyAndPublish(workflows) {
   }
 
   fs.mkdirSync(path.dirname(MARKER_FILE), { recursive: true });
-  fs.writeFileSync(MARKER_FILE, JSON.stringify({ version: 8, mcpHubVersion: 1, seededAt: new Date().toISOString(), topdeskSearchEnabled: isTopdeskSearchEnabled() }), 'utf8');
+  fs.writeFileSync(MARKER_FILE, JSON.stringify({ version: 8, statisticsIntegrationVersion: 1, mcpHubVersion: 1, seededAt: new Date().toISOString(), topdeskSearchEnabled: isTopdeskSearchEnabled() }), 'utf8');
   console.log('[bootstrap] Workflow import/publish geverifieerd');
 }
 

@@ -45,6 +45,13 @@ test('authorized fixture yields exact native arguments, while filtering preserve
   assert.equal(result.mcp_enabled, true);
   assert.equal(result.context, 'preserved');
   assert.equal(result.mcp_capabilities.length, 1);
+  const contextual = run(orchestrator, 'Filter MCP Capabilities', registry(), {
+    'Webhook Orchestrator': { body: authorized() },
+    'Detect Image Messages': { orchestratorPrompt: 'DEV policy', statistics_context: { count: 56475 }, image_edit_context: { prompt: 'edit' } },
+  });
+  assert.equal(contextual.orchestratorPrompt, 'DEV policy');
+  assert.deepEqual(contextual.statistics_context, { count: 56475 });
+  assert.deepEqual(contextual.image_edit_context, { prompt: 'edit' });
 });
 
 test('message roles, nested bodies, and caller registries do not authorize normal chat', () => {
@@ -111,6 +118,32 @@ test('workflow graph binds original webhook identity outside AI and uses the pin
   assert.equal(find(orchestrator, 'Webhook Orchestrator').parameters.authentication, 'headerAuth');
   const prompt = find(orchestrator, 'AI Agent Authorized MCP').parameters.options.systemMessage;
   assert.doesNotThrow(() => new Function('$json', '$env', `return (${prompt.slice(3, -2)});`));
+  const baseAgent = find(orchestrator, 'AI Agent Orchestrator');
+  const authorizedAgent = find(orchestrator, 'AI Agent Authorized MCP');
+  assert.equal(authorizedAgent.parameters.text, baseAgent.parameters.text);
+  const streamId = '12345678-1234-4123-8123-123456789012';
+  for (const agent of [baseAgent, authorizedAgent]) {
+    const expression = agent.parameters.options.systemMessage;
+    const rendered = new Function('$json', `return (${expression.slice(3, -2)});`)({
+      orchestratorPrompt: 'DEV organization policy', body: { streamId }, mcp_capabilities: [],
+    });
+    assert.match(rendered, /DEV organization policy/);
+    assert.match(rendered, /OPENBESLUITVORMING STATISTICS/);
+    assert.match(rendered, /NOOIT eerst embeddings of RAG/);
+    assert.match(rendered, /dead_letter zijn definitief niet geslaagde/);
+    assert.ok(rendered.endsWith(`[govchat-stream-id:${streamId}]`));
+  }
+  assert.deepEqual(orchestrator.connections.openbesluitvorming_statistics_tool.ai_tool[0].map(edge => edge.node),
+    ['AI Agent Orchestrator', 'AI Agent Authorized MCP']);
+  for (const connection of Object.values(orchestrator.connections)) {
+    for (const kind of ['ai_tool', 'ai_memory', 'ai_languageModel']) {
+      for (const branch of connection[kind] || []) {
+        if (branch.some(edge => edge.node === baseAgent.name)) {
+          assert.ok(branch.some(edge => edge.node === authorizedAgent.name), `${kind} must reach both agents`);
+        }
+      }
+    }
+  }
   // This is a pinned-class contract assertion, not a live SSE/Entra E2E test.
   const pnpm = '/usr/local/lib/node_modules/n8n/node_modules/.pnpm';
   const pkg = fs.readdirSync(pnpm).find(p => p.startsWith('@n8n+n8n-nodes-langchain@'));
@@ -128,9 +161,14 @@ test('workflow graph binds original webhook identity outside AI and uses the pin
 test('essential bootstrap discovers hub IDs, updates old seed markers and preserves owner/credential collisions', () => {
   const bootstrap = require('../../n8n/bootstrap');
   const entries = bootstrap.discoverWorkflows(path.join(root, 'agents/n8n/workflows'), {});
-  const plan = bootstrap.getWorkflowImportPlan(entries, JSON.stringify({ version: 8, topdeskSearchEnabled: false }), false, {});
+  const plan = bootstrap.getWorkflowImportPlan(entries, JSON.stringify({ version: 8, statisticsIntegrationVersion: 1, topdeskSearchEnabled: false }), false, {});
   assert.deepEqual(plan.flatMap(e => e.ids).sort(), ['govchat-mcp-executor-hub', 'govchat-mcp-registry-sync', 'govchat-orchestrator-litellm']);
-  assert.deepEqual(bootstrap.getWorkflowImportPlan(entries, JSON.stringify({ version: 8, topdeskSearchEnabled: false, mcpHubVersion: 1 }), false, {}), []);
+  const marker = { version: 8, topdeskSearchEnabled: false, mcpHubVersion: 1, statisticsIntegrationVersion: 1 };
+  assert.deepEqual(bootstrap.getWorkflowImportPlan(entries, JSON.stringify(marker), false, {}), []);
+  assert.deepEqual(bootstrap.getWorkflowImportPlan(entries, JSON.stringify({ ...marker, statisticsIntegrationVersion: 0 }), false, {}).flatMap(e => e.ids).sort(),
+    ['govchat-obv-statistics', 'govchat-orchestrator-litellm']);
+  assert.deepEqual(bootstrap.getWorkflowImportPlan(entries, JSON.stringify({ version: 8, topdeskSearchEnabled: false }), false, {}).flatMap(e => e.ids).sort(),
+    ['govchat-mcp-executor-hub', 'govchat-mcp-registry-sync', 'govchat-obv-statistics', 'govchat-orchestrator-litellm']);
   assert.equal(bootstrap.buildJemsCredential({}), null);
   assert.throws(() => bootstrap.buildJemsCredential({ JEMS_MCP_API_KEY: 'dummy' }), /All three/);
   const jems = bootstrap.buildJemsCredential({ JEMS_MCP_API_KEY: 'dummy-key', JEMS_MCP_USERNAME: 'dummy-email', JEMS_MCP_PASSWORD: 'dummy-password' });
