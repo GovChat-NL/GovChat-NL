@@ -32,8 +32,8 @@ BEGIN
   flow := $json$
   {
     "title": "Beleidskompas Omgevingsvisie",
-    "orchestrator_workflow_id": "govchat-beleidskompas-hoofdagent",
-    "orchestrator_webhook_path": "beleidskompas-hoofdagent",
+    "orchestrator_workflow_id": "govchat-beleidskompas-orchestrator",
+    "orchestrator_webhook_path": "beleidskompas-orchestrator",
     "webhook_token": "",
     "disclaimer": "Voorbeeldtemplate met testdata.",
     "specialist_team": "Betrek de omgevingsjurist bij ruimtelijke besluiten.",

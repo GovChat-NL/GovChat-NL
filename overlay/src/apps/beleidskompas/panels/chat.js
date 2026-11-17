@@ -198,27 +198,6 @@ export function setupChat(store, { refreshState }) {
         store.setAsking("");
         chatInputEl.focus();
       }
-<<<<<<< HEAD
-    }
-  }
-
-  /** What the user types first is the case. The case is stored, and
-   *  Beleidskompas writes the report of the active substep. Everything typed
-   *  after that is a message about the active substep. */
-  function sendUserMessage() {
-    const text = chatInputEl.value.trim();
-    if (!text || state.asking) return;
-    chatInputEl.value = "";
-    if (store.caseStarted()) {
-      // A message about the active substep.
-      ask(store.activeSubstep(), text);
-    } else {
-      // The first text is the case. Sending it asks for the report of the
-      // active substep. The user's bubble shows the case.
-      store.setCaseText(text);
-      ask(store.activeSubstep(), "", text);
-=======
->>>>>>> 91e73b8d82c15b5b13c8264737dc03bcd3d75fe8
     }
   }
 
