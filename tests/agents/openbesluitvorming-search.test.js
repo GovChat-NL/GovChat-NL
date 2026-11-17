@@ -6,7 +6,10 @@ const path = require('node:path');
 const workflow = JSON.parse(fs.readFileSync(path.join(__dirname, '../../agents/n8n/workflows/openbesluitvorming/openbesluitvorming-search.json'), 'utf8'));
 const names = { validate: '1. Validate And Normalise Parameters', retrieve: '3. Retrieve Broad Candidate Pool (Qdrant)', format: '4. Format Candidate Pool For Reranker', output: '6. Dynamic Cut-off, Coverage And Provenance' };
 function run(name, items, context = {}) {
-  const code = workflow.nodes.find(n => n.name === names[name]).parameters.jsCode;
+  // Pure fusion/provenance tests supply already-hydrated fixture payloads.
+  // The asynchronous hydration stage is exercised separately against Qdrant.
+  const code = workflow.nodes.find(n => n.name === names[name]).parameters.jsCode
+    .replace(/\/\/ BEGIN OBV BOUNDED HYDRATION[\s\S]*?\/\/ END OBV BOUNDED HYDRATION/, '');
   const wrap = values => ({ first: () => values[0], all: () => values });
   return new Function('$input', '$', '$env', code)(wrap(items.map(json => ({ json }))), node => wrap(context[node] || []), {}).map(item => item.json);
 }
@@ -28,7 +31,7 @@ test('workflow stays inactive and keeps the original document-vector endpoints',
   assert.equal(requests[0].request_body.query.length, 3072);
   assert.equal(requests[0].request_body.using, undefined);
   assert.equal(requests[0].request_body.with_vector, false);
-  assert.equal(requests[0].request_body.with_payload, true);
+  assert.deepEqual(requests[0].request_body.with_payload, {include:['source_id','source_key','kind']});
   assert.equal(requests[0].candidate_limit, 500);
   assert.equal(requests[0].rerank_limit, 500);
   assert.equal(requests[0].request_body.filter.must, undefined);
@@ -59,7 +62,7 @@ test('raw, unknown, malformed and conflicting filters fail before embedding', ()
   for (const input of [
     { filter: {} }, { qdrant_filter: {} }, { metadata_filter: {} }, { filters: [] }, { filters: null },
     { filters: { unknown: 'x' } }, { source_key: {} }, { filters: { organization: ['Limburg'] } },
-    { filters: { supplier: true } }, { document_type: '' }, { meeting_id: 'bad\nvalue' },
+    { filters: { supplier: true } }, { filters: { document_type: '' } }, { meeting_id: 'bad\nvalue' },
     { source_key: 'bad:key' }, { source_key: 'a', sourceKey: 'b' },
     { source_key: 'a', filters: { source_key: 'b' } }, { supplier: 'x'.repeat(301) },
   ]) assert.throws(() => validate(input), /filter|must|Invalid|Conflicting/);
@@ -148,7 +151,7 @@ test('rerank ceiling and excluded-score coverage remain observable', () => {
 });
 
 test('complete valid reranking is applied; malformed or partial responses fall back consistently', () => {
-  const prepared = format([[point('a'), point('b')]]);
+  const prepared = format([[point('a'), point('b')]], { reranker_model: 'configured-test-reranker' });
   const valid = { results: [{ index: 1, relevance_score: 0.9 }, { index: 0, relevance_score: 0.1 }] };
   assert.equal(output(prepared, valid).results[0].source.source_id, 'b');
   assert.equal(output(prepared, valid).reranking.applied, true);
@@ -169,7 +172,7 @@ test('empty candidate pools return an explicit no-results response', () => {
 test('actual n8n HTTP-error output preserves candidates and uses explicit rerank fallback', () => {
   const node = workflow.nodes.find(n => n.id === 'ob-search-rerank');
   assert.equal(node.onError, 'continueRegularOutput');
-  const prepared = format([[point('coronavirus', { full_text: 'Provinciale maatregelen tegen het coronavirus' })]], { include_content: true });
+  const prepared = format([[point('coronavirus', { full_text: 'Provinciale maatregelen tegen het coronavirus' })]], { include_content: true, reranker_model: 'configured-test-reranker' });
   const result = output(prepared, { error: { message: '400 - Invalid model name passed in model=cohere-rerank-v4.0-fast' } });
   assert.equal(result.reranking.applied, false);
   assert.equal(result.reranking.fallback_used, true);
@@ -226,7 +229,7 @@ test('real Qdrant executes filters against legacy and enriched document-vector f
     assert.deepEqual(result.result.points.map(p => p.id).sort(), [1, 2]);
     const unfiltered = await api('/collections/' + collection + '/points/query', 'POST', retrieve(validate({ collection }))[0].request_body);
     assert.equal(unfiltered.result.points.length, 5);
-    const dates = await api('/collections/' + collection + '/points/query', 'POST', retrieve(validate({ collection, source_key: 'provincie_limburg', date_from: '2024-02-29', date_to: '2024-02-29' }))[0].request_body);
+    const dates = await api('/collections/' + collection + '/points/query', 'POST', retrieve(validate({ collection, source_key: 'provincie_limburg', date_start: '2024-02-29', date_end: '2024-02-29' }))[0].request_body);
     assert.deepEqual(dates.result.points.map(p => p.id).sort(), [1, 2, 6]);
   } finally {
     await api('/collections/' + collection, 'DELETE');

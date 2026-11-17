@@ -374,7 +374,7 @@ def state_files(state):
             require('n8n' not in rel.lower(), 'unrelated_state_path')
             mode = path.lstat().st_mode
             require(stat.S_ISREG(mode) or stat.S_ISDIR(mode), 'state_link_or_device')
-            if stat.S_ISREG(mode) and rel not in {'ingest.sqlite', 'ingest.sqlite-wal', 'ingest.sqlite-shm'}:
+            if stat.S_ISREG(mode) and rel not in {'ingest.sqlite', 'ingest.sqlite-wal', 'ingest.sqlite-shm', 'metadata-catalog.sqlite', 'metadata-catalog.sqlite-wal', 'metadata-catalog.sqlite-shm'} and not rel.startswith('metadata-catalog.building.sqlite'):
                 files.append((path, rel))
     return sorted(files, key=lambda p: p[1])
 
@@ -388,6 +388,12 @@ def backup_state(state, output, run_id, qdrant):
             with contextlib.closing(readonly_db(state / 'ingest.sqlite')) as src:
                 with contextlib.closing(sqlite3.connect(backup)) as dst:
                     src.backup(dst)
+            catalog_backup = None
+            if (state / 'metadata-catalog.sqlite').is_file():
+                catalog_backup = Path(tmp) / 'metadata-catalog.sqlite'
+                with contextlib.closing(readonly_db(state / 'metadata-catalog.sqlite')) as src:
+                    with contextlib.closing(sqlite3.connect(catalog_backup)) as dst:
+                        src.backup(dst)
             metadata = sqlite_metadata(backup, run_id)
             metadata['qdrant'] = qdrant.inspect(metadata['run']['collection'], metadata)
             native = qdrant.snapshot(metadata['run']['collection'], output / 'dataset.snapshot')
@@ -400,6 +406,8 @@ def backup_state(state, output, run_id, qdrant):
                     'qdrant_changed_during_export')
             with tarfile.open(output / 'ingest-state.tar.gz', 'w:gz') as archive:
                 archive.add(backup, arcname='ingest.sqlite', recursive=False)
+                if catalog_backup is not None:
+                    archive.add(catalog_backup, arcname='metadata-catalog.sqlite', recursive=False)
                 for path, rel in files:
                     archive.add(path, arcname=rel, recursive=False)
             check_archive(output / 'ingest-state.tar.gz', 'state')

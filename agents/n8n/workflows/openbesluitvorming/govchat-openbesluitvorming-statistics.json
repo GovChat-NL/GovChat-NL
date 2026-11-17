@@ -14,11 +14,68 @@
           0
         ],
         "parameters": {
+          "inputSource": "workflowInputs",
           "workflowInputs": {
             "values": [
               {
-                "name": "query",
+                "name": "operation",
                 "type": "string"
+              },
+              {
+                "name": "field",
+                "type": "string"
+              },
+              {
+                "name": "interval",
+                "type": "string"
+              },
+              {
+                "name": "filters",
+                "type": "array"
+              },
+              {
+                "name": "date_start",
+                "type": "string"
+              },
+              {
+                "name": "date_end",
+                "type": "string"
+              },
+              {
+                "name": "source_key",
+                "type": "string"
+              },
+              {
+                "name": "organization",
+                "type": "string"
+              },
+              {
+                "name": "supplier",
+                "type": "string"
+              },
+              {
+                "name": "document_type",
+                "type": "string"
+              },
+              {
+                "name": "meeting_id",
+                "type": "string"
+              },
+              {
+                "name": "referenced_by",
+                "type": "string"
+              },
+              {
+                "name": "classification",
+                "type": "string"
+              },
+              {
+                "name": "limit",
+                "type": "number"
+              },
+              {
+                "name": "offset",
+                "type": "number"
               }
             ]
           }
@@ -34,7 +91,7 @@
           0
         ],
         "parameters": {
-          "jsCode": "const normalizeQuery = function normalizeQuery(input) {\n  const fail = () => { throw new Error('Invalid statistics query: use the documented JSON operation/filter schema only'); };\n  let q;\n  try { q = typeof input.query === 'string' ? JSON.parse(input.query) : input.query; } catch { fail(); }\n  const object = v => v !== null && typeof v === 'object' && !Array.isArray(v);\n  if (!object(q) || Object.keys(q).some(k => !['operation','field','interval','filters','limit','offset'].includes(k))) fail();\n  if (!['fields','count','group','status','overview'].includes(q.operation)) fail();\n  const path = v => typeof v === 'string' && v.length <= 200 && (v.match(/[A-Za-z_][A-Za-z0-9_-]*|\\[(?:\\d*)\\]/g) || []).length <= 20 && /^[A-Za-z_][A-Za-z0-9_-]*(?:\\[(?:\\d*)\\])*(?:\\.[A-Za-z_][A-Za-z0-9_-]*(?:\\[(?:\\d*)\\])*)*$/.test(v);\n  if (q.field != null && !path(q.field)) fail();\n  if (q.operation === 'group' && !path(q.field)) fail();\n  if (q.operation !== 'group' && (q.field != null || q.interval != null)) fail();\n  if (q.interval != null && !['year','month'].includes(q.interval)) fail();\n  if (q.limit !== undefined && (!Number.isInteger(q.limit) || q.limit < 1 || q.limit > 1000)) fail();\n  if (q.offset !== undefined && (!Number.isInteger(q.offset) || q.offset < 0 || q.offset > 1000000)) fail();\n  const scalar = v => v === null || ['string','boolean'].includes(typeof v) || (typeof v === 'number' && Number.isFinite(v));\n  if (q.filters !== undefined) {\n    if (!Array.isArray(q.filters) || q.filters.length > 32) fail();\n    for (const f of q.filters) {\n      if (!object(f) || !path(f.field)) fail();\n      const keys = { eq: ['value'], in: ['values'], exists: [], missing: [], range: ['gt','gte','lt','lte'] }[f.operator];\n      if (!keys || Object.keys(f).some(k => !['field','operator',...keys].includes(k))) fail();\n      if (f.operator === 'eq' && (!Object.hasOwn(f,'value') || !scalar(f.value))) fail();\n      if (f.operator === 'in' && (!Array.isArray(f.values) || !f.values.length || f.values.length > 100 || !f.values.every(scalar))) fail();\n      if (f.operator === 'range' && (!keys.some(k => Object.hasOwn(f,k)) || keys.some(k => Object.hasOwn(f,k) && !['string','number'].includes(typeof f[k])))) fail();\n    }\n  }\n  return { operation: q.operation, ...(q.field != null ? {field:q.field} : {}), ...(q.interval != null ? {interval:q.interval} : {}), filters:q.filters || [], limit:q.limit ?? 100, offset:q.offset ?? 0 };\n};\nreturn [{json: normalizeQuery($json)}];"
+          "jsCode": "const normalizeQuery = function normalizeQuery(input) {\n  const fail = () => { throw new Error('Invalid statistics query: use the documented JSON operation/filter schema only'); };\n  let q;\n  const object = v => v !== null && typeof v === 'object' && !Array.isArray(v);\n  if (input.operation !== undefined) {\n    const metadata = ['source_key','organization','supplier','document_type','meeting_id','referenced_by','classification'];\n    const allowed = ['operation','field','interval','filters','limit','offset','date_start','date_end',...metadata];\n    // ToolWorkflow v2 includes rawData.query (the original arguments object)\n    // alongside the mapped fields. It is transport metadata, not another input.\n    if (input.query !== undefined) {\n      if (!object(input.query)) fail();\n      for (const [key, rawValue] of Object.entries(input.query)) {\n        if (!allowed.includes(key)) fail();\n        let value = rawValue;\n        if (key === 'filters' && typeof value === 'string') { try { value = JSON.parse(value); } catch { fail(); } }\n        if (JSON.stringify(value) !== JSON.stringify(input[key])) fail();\n      }\n      allowed.push('query');\n    }\n    if (Object.keys(input).some(k => !allowed.includes(k))) fail();\n    q = Object.fromEntries(Object.entries(input).filter(([k,v]) => ['operation','field','interval','filters','limit','offset'].includes(k) && v !== '' && v != null));\n    if (q.filters !== undefined && !Array.isArray(q.filters)) fail();\n    q.filters = [...(q.filters || [])];\n    const day = value => {\n      if (typeof value !== 'string' || !/^\\d{4}-\\d{2}-\\d{2}$/.test(value)) fail();\n      const date = new Date(value + 'T00:00:00Z');\n      if (!Number.isFinite(date.getTime()) || date.toISOString().slice(0,10) !== value) fail();\n      return date;\n    };\n    const from = input.date_start ? day(input.date_start) : null;\n    const to = input.date_end ? day(input.date_end) : null;\n    if (from && to && from > to) fail();\n    if (from || to) q.filters.push({field:'date',operator:'range',\n      ...(from ? {gte:from.toISOString()} : {}),\n      ...(to ? {lt:new Date(to.getTime()+86400000).toISOString()} : {}),\n    });\n    for (const field of metadata) {\n      const value = input[field];\n      if (value == null || value === '') continue;\n      if (typeof value !== 'string' || !value.trim() || value.length > 300) fail();\n      q.filters.push({field,operator:'eq',value:value.trim()});\n    }\n  } else {\n    // Compatibility for existing callers; the model sees only named fields.\n    if (Object.keys(input).some(k => k !== 'query')) fail();\n    try { q = typeof input.query === 'string' ? JSON.parse(input.query) : input.query; } catch { fail(); }\n  }\n  if (!object(q) || Object.keys(q).some(k => !['operation','field','interval','filters','limit','offset'].includes(k))) fail();\n  if (!['fields','count','group','status','overview'].includes(q.operation)) fail();\n  const path = v => typeof v === 'string' && v.length <= 200 && (v.match(/[A-Za-z_][A-Za-z0-9_-]*|\\[(?:\\d*)\\]/g) || []).length <= 20 && /^[A-Za-z_][A-Za-z0-9_-]*(?:\\[(?:\\d*)\\])*(?:\\.[A-Za-z_][A-Za-z0-9_-]*(?:\\[(?:\\d*)\\])*)*$/.test(v);\n  if (q.field != null && !path(q.field)) fail();\n  if (q.operation === 'group' && !path(q.field)) fail();\n  if (q.operation !== 'group' && (q.field != null || q.interval != null)) fail();\n  if (q.interval != null && !['year','month'].includes(q.interval)) fail();\n  if (q.limit !== undefined && (!Number.isInteger(q.limit) || q.limit < 1 || q.limit > 1000)) fail();\n  if (q.offset !== undefined && (!Number.isInteger(q.offset) || q.offset < 0 || q.offset > 1000000)) fail();\n  const scalar = v => v === null || ['string','boolean'].includes(typeof v) || (typeof v === 'number' && Number.isFinite(v));\n  if (q.filters !== undefined) {\n    if (!Array.isArray(q.filters) || q.filters.length > 32) fail();\n    for (const f of q.filters) {\n      if (!object(f) || !path(f.field)) fail();\n      const keys = { eq: ['value'], in: ['values'], exists: [], missing: [], range: ['gt','gte','lt','lte'] }[f.operator];\n      if (!keys || Object.keys(f).some(k => !['field','operator',...keys].includes(k))) fail();\n      if (f.operator === 'eq' && (!Object.hasOwn(f,'value') || !scalar(f.value))) fail();\n      if (f.operator === 'in' && (!Array.isArray(f.values) || !f.values.length || f.values.length > 100 || !f.values.every(scalar))) fail();\n      if (f.operator === 'range' && (!keys.some(k => Object.hasOwn(f,k)) || keys.some(k => Object.hasOwn(f,k) && !['string','number'].includes(typeof f[k])))) fail();\n    }\n  }\n  return { operation: q.operation, ...(q.field != null ? {field:q.field} : {}), ...(q.interval != null ? {interval:q.interval} : {}), filters:q.filters || [], limit:q.limit ?? 100, offset:q.offset ?? 0 };\n};\nreturn [{json: normalizeQuery($json)}];"
         }
       },
       {

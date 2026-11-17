@@ -584,6 +584,10 @@ services:
       N8N_ORCHESTRATOR_IMAGE_MAX_RESOLUTION_PX: ${N8N_ORCHESTRATOR_IMAGE_MAX_RESOLUTION_PX:-1568}
       N8N_WEBHOOK_TOKEN: ${N8N_WEBHOOK_TOKEN}
       OBV_STATS_TOKEN: ${OBV_STATS_TOKEN:-${N8N_WEBHOOK_TOKEN}}
+      OBV_CANONICAL_DATE_FIELD: ${OBV_CANONICAL_DATE_FIELD:-}
+      OBV_QDRANT_API_KEY: ${OBV_QDRANT_API_KEY:-}
+      OBV_CANONICAL_TYPE_FIELD: ${OBV_CANONICAL_TYPE_FIELD:-}
+      OBV_RERANKER_MODEL: ${OBV_RERANKER_MODEL:-}
       PUBLIC_BASE_URL: ${PUBLIC_BASE_URL}
       CRAWLER_ADMIN_BASE_URL: ${CRAWLER_ADMIN_BASE_URL:-http://govchat-overlay-admin:3002}
       CRAWLER_INTERNAL_TOKEN: ${CRAWLER_INTERNAL_TOKEN:-${N8N_WEBHOOK_TOKEN}}
@@ -651,6 +655,10 @@ services:
       N8N_WEBHOOK_TOKEN: ${N8N_WEBHOOK_TOKEN}
       OBV_STATS_TOKEN: ${OBV_STATS_TOKEN:-${N8N_WEBHOOK_TOKEN}}
       # Nodig voor Code node gebruik van $env.* in runner context
+      OBV_CANONICAL_DATE_FIELD: ${OBV_CANONICAL_DATE_FIELD:-}
+      OBV_QDRANT_API_KEY: ${OBV_QDRANT_API_KEY:-}
+      OBV_CANONICAL_TYPE_FIELD: ${OBV_CANONICAL_TYPE_FIELD:-}
+      OBV_RERANKER_MODEL: ${OBV_RERANKER_MODEL:-}
       N8N_BLOCK_ENV_ACCESS_IN_NODE: "false"
       CRAWLER_ADMIN_BASE_URL: ${CRAWLER_ADMIN_BASE_URL:-http://govchat-overlay-admin:3002}
       CRAWLER_INTERNAL_TOKEN: ${CRAWLER_INTERNAL_TOKEN:-${N8N_WEBHOOK_TOKEN}}
@@ -676,7 +684,7 @@ services:
       N8N_ORCHESTRATOR_IMAGE_MAX_RESOLUTION_PX: ${N8N_ORCHESTRATOR_IMAGE_MAX_RESOLUTION_PX:-1568}
       PUBLIC_BASE_URL: ${PUBLIC_BASE_URL}
       N8N_RUNNERS_AUTO_SHUTDOWN_TIMEOUT: "30"
-      N8N_RUNNERS_TASK_TIMEOUT: "180"
+      N8N_RUNNERS_TASK_TIMEOUT: ${N8N_RUNNERS_TASK_TIMEOUT:-600}
       N8N_RUNNERS_LAUNCHER_LOG_LEVEL: warn
     volumes:
       - ${GOVCHAT_DATA_ROOT:-/opt/librechat}/images:/shared-images
@@ -748,6 +756,8 @@ services:
       N8N_WEBHOOK_BEARER_TOKEN: ${N8N_WEBHOOK_TOKEN}
       MODEL_LOADER_TYPE: file
       MODELS_CONFIG_FILE: /app/models.json
+      GOVCHAT_AUTHORITATIVE_TOOL_EVENTS: "true"
+      NODE_OPTIONS: --require=/app/govchat-overlay/n8n-bridge-tool-events.js
       LOG_REQUESTS: ${N8N_OPENAI_BRIDGE_LOG_REQUESTS:-false}
       ENABLE_TASK_DETECTION: ${N8N_OPENAI_BRIDGE_ENABLE_TASK_DETECTION:-false}
       SESSION_ID_HEADERS: ${N8N_OPENAI_BRIDGE_SESSION_ID_HEADERS:-X-Session-Id,X-Chat-Id,X-OpenWebUI-Chat-Id}
@@ -757,6 +767,7 @@ services:
       USER_ROLE_HEADERS: ${N8N_OPENAI_BRIDGE_USER_ROLE_HEADERS:-X-User-Role,X-OpenWebUI-User-Role}
     volumes:
       - ./bridge/models.json:/app/models.json:ro
+      - ./scripts/n8n-bridge-tool-events.js:/app/govchat-overlay/n8n-bridge-tool-events.js:ro
     healthcheck:
       test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3333/health"]
       interval: 30s
@@ -852,6 +863,11 @@ services:
       OBV_STATS_RUN_ID: ${OBV_STATS_RUN_ID:-limburg-full-20261111}
       OBV_STATS_SOURCE_KEY: ${OBV_STATS_SOURCE_KEY:-provincie_limburg}
       OBV_STATS_STATE_DIR: /state
+      OBV_STATS_CATALOG_FILE: /state/metadata-catalog.sqlite
+      OBV_STATS_REQUIRE_CATALOG: ${OBV_STATS_REQUIRE_CATALOG:-true}
+      OBV_CANONICAL_TYPE_FIELD: ${OBV_CANONICAL_TYPE_FIELD:-}
+      OBV_STATS_PRECOMPUTE: "false"
+      OBV_CANONICAL_DATE_FIELD: ${OBV_CANONICAL_DATE_FIELD:-}
       OBV_STATS_MAX_SECONDS: "180"
       OBV_STATS_PAGE_SIZE: ${OBV_STATS_PAGE_SIZE:-256}
       OBV_STATS_MAX_PAGE_SIZE: ${OBV_STATS_MAX_PAGE_SIZE:-1000}
@@ -872,7 +888,8 @@ services:
   # One-shot operator worker. No daemon, scheduler, or ingestion on compose up.
   openbesluitvorming-ingest:
     build:
-      context: ./services/openbesluitvorming-ingest
+      context: ./services
+      dockerfile: openbesluitvorming-ingest/Dockerfile
     image: govchat-openbesluitvorming-ingest:local
     profiles:
       - openbesluitvorming-ingest
