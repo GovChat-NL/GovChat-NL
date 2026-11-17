@@ -8,7 +8,7 @@ import { buildConfig } from "../config.js";
 
 const STEPS_DATA = {
   steps: [
-    { id: "stap1", nr: 1, title: "Publiek en provinciaal belang", substeps: [{ id: "1.1", label: "1.1", title: "Probleemdefinitie" }, { id: "1.2", label: "1.2", title: "Overheidsinterventie" }] },
+    { id: "stap1", nr: 1, title: "Publiek en provinciaal belang", substeps: [{ id: "1.1", title: "Probleemdefinitie" }, { id: "1.2", title: "Overheidsinterventie" }] },
     { id: "stap2", nr: 2, title: "Rolbepaling provincie", substeps: [{ id: "2.1", title: "Rolbepaling" }] },
   ],
 };
