@@ -3285,14 +3285,6 @@ realtimeWss.on("connection", (clientWs, req) => {
 // ── Start ──────────────────────────────────────────────────────────
 initDefaults();
 loadPersistedImageJobs();
-setInterval(cleanupImageJobs, 10 * 60 * 1000);
-setImmediate(pumpImageJobs);
-
-// Wait a bit for Open WebUI to finish its startup copy, then publish admin data
-setTimeout(() => {
-  publishAll();
-  console.log(`[govchat-admin] Published config to ${PUBLISH_DIR}`);
-}, 15000);
 
 const server = http.createServer(app);
 
@@ -3315,22 +3307,36 @@ server.on("upgrade", (req, socket, head) => {
   });
 });
 
-// Beleidskompas reaches its database in the background (see
-// lib/beleidskompas/index.js), so the service listens straight away.
-beleidskompas.start(app, { resolveUser: resolveUserFromVerifiedRefreshToken });
-server.listen(PORT, "0.0.0.0", () => {
-  console.log(`[govchat-admin] Running on http://0.0.0.0:${PORT}`);
-  console.log(`[govchat-admin] Data directory: ${DATA_DIR}`);
-  console.log(`[govchat-admin] Publish directory: ${PUBLISH_DIR}`);
-  if (IMAGE_JOBS_ENABLED) {
-    console.log(`[govchat-admin] Image jobs enabled (concurrency=${IMAGE_JOBS_CONCURRENCY})`);
-  } else {
-    console.log("[govchat-admin] Image jobs disabled");
-  }
-  console.log(
-    `[govchat-admin] Crawler webhook: ${CRAWLER_N8N_WEBHOOK_URL} (internal token configured=${Boolean(CRAWLER_INTERNAL_TOKEN)})`,
-  );
-  console.log(
-    `[govchat-admin] Realtime STT bridge: /api/realtime-stt (provider=${REALTIME_STT_PROVIDER_DEFAULT})`,
-  );
-});
+// The tests require this file for its functions; only a direct start runs the service.
+module.exports = { app, normalizeBeleidskompasFlow, publicBeleidskompasConfig };
+
+if (require.main === module) {
+  setInterval(cleanupImageJobs, 10 * 60 * 1000);
+  setImmediate(pumpImageJobs);
+
+  // Wait a bit for Open WebUI to finish its startup copy, then publish admin data
+  setTimeout(() => {
+    publishAll();
+    console.log(`[govchat-admin] Published config to ${PUBLISH_DIR}`);
+  }, 15000);
+
+  // Beleidskompas reaches its database in the background (see
+  // lib/beleidskompas/index.js), so the service listens straight away.
+  beleidskompas.start(app, { resolveUser: resolveUserFromVerifiedRefreshToken });
+  server.listen(PORT, "0.0.0.0", () => {
+    console.log(`[govchat-admin] Running on http://0.0.0.0:${PORT}`);
+    console.log(`[govchat-admin] Data directory: ${DATA_DIR}`);
+    console.log(`[govchat-admin] Publish directory: ${PUBLISH_DIR}`);
+    if (IMAGE_JOBS_ENABLED) {
+      console.log(`[govchat-admin] Image jobs enabled (concurrency=${IMAGE_JOBS_CONCURRENCY})`);
+    } else {
+      console.log("[govchat-admin] Image jobs disabled");
+    }
+    console.log(
+      `[govchat-admin] Crawler webhook: ${CRAWLER_N8N_WEBHOOK_URL} (internal token configured=${Boolean(CRAWLER_INTERNAL_TOKEN)})`,
+    );
+    console.log(
+      `[govchat-admin] Realtime STT bridge: /api/realtime-stt (provider=${REALTIME_STT_PROVIDER_DEFAULT})`,
+    );
+  });
+}
