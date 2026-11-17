@@ -15,6 +15,12 @@
       "content": "<p>Om je toegang te geven worden je naam en e-mailadres gebruikt. {{APP_NAME}} draait op de eigen digitale omgeving van jouw organisatie. Persoonsgegevens worden niet gedeeld met externe partijen.</p><p><strong>Belangrijk:</strong> jij blijft altijd verantwoordelijk voor de uiteindelijke inhoud en besluitvorming.</p>"
     },
     {
+      "id": "beleidskompas",
+      "emoji": "🧭",
+      "title": "Beleidskompas gebruiken",
+      "content": "<p>Het Beleidskompas helpt je een beleidsvraagstuk stap voor stap doordenken volgens SiS 4.0. Je opent het vanaf het startscherm of via de App Launcher.</p><p><strong>De vier stappen</strong></p><ol><li><strong>Publiek en provinciaal belang</strong> — is er een publiek belang en is handelen door de provincie legitiem?</li><li><strong>Rolbepaling</strong> — welke rol past: regulerend, regisserend, stimulerend of faciliterend?</li><li><strong>Instrumentkeuze</strong> — welke instrumenten wegen het beste, met alternatieven en risico's?</li><li><strong>Governance-inrichting</strong> — hoe richt je sturing, toezicht, beheersing en verantwoording in?</li></ol><p><strong>Zo werk je ermee</strong></p><ul><li>Je begint op het stappenoverzicht. Kies een stap om die uit te werken; met <em>Stappenoverzicht</em> in de kopbalk kom je er altijd terug.</li><li>Beschrijf je casus in het gesprek (midden). De uitwerking van de gekozen stap verschijnt rechts, per onderdeel uitklapbaar met het oordeel per criterium.</li><li>Links zie je waar je bent. Wisselen van stap kan altijd: je casus en eerdere uitwerkingen blijven bewaard.</li><li>Met de <strong>i</strong> bij een stap open je de toelichting met checkvragen en diepere vragen.</li><li>Onder een antwoord staan de gebruikte bronnen. Klik een bron aan om de passage te bekijken waarop het advies zich baseert.</li><li>Met 👍 of 👎 geef je anoniem feedback op een antwoord. Er wordt geen gebruiker of casus bij opgeslagen.</li></ul><p><strong>Let op</strong></p><ul><li>Het Beleidskompas is ondersteunend: het denkt mee en onderbouwt, maar neemt geen besluit. Jij weegt en besluit.</li><li>Is een casus niet eenduidig te beoordelen, dan verschijnt een verwijzing naar het specialistenteam. Betrek dat team bij hoge juridische, financiële of bestuurlijke impact.</li><li>In deze demo is stap 1 volledig uitgewerkt; de overige stappen zijn nog in ontwikkeling.</li></ul>"
+    },
+    {
       "id": "sec3",
       "emoji": "⚖️",
       "title": "Jouw rechten",
@@ -22,4 +28,3 @@
     }
   ]
 }
-

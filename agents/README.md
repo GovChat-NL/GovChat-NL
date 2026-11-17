@@ -7,23 +7,15 @@ Deze directory is de monorepo-bron van waarheid voor GovChat-NL n8n-workflows. D
 
 ## Integratie
 
-- Workflows: [`n8n/workflows/`](n8n/workflows/).
+- Workflows: [`n8n/workflows/`](n8n/workflows/), per functie in een submap (`algemeen/`, `beleidskompas/`, `openbesluitvorming/`).
+- Broncode van de Beleidskompas-workflow voor stap 1, waaruit `n8n/workflows/beleidskompas/beleidskompas-step-stap1.json` wordt gegenereerd: [`beleidskompas/`](beleidskompas/README.md).
 - Compose mount de directory read-only op `/workspace/agents`; `n8n-bootstrap` importeert uit `/workspace/agents/n8n/workflows`.
-- Bootstrap scant alle top-level `.json`-bestanden in deze map, valideert JSON en stabiele IDs, en importeert/publiceert ze; er is geen handmatige lijst of sibling-checkout nodig.
+- Bootstrap scant alle `.json`-bestanden in deze map en de submappen ervan, valideert JSON en stabiele IDs, en importeert/publiceert ze; er is geen handmatige lijst of sibling-checkout nodig.
 - De bootstrap maakt de `LiteLLM API` credential aan. Workflows gebruiken `${LITELLM_URL}/v1` en `${LITELLM_API_KEY}`.
 
-De OpenBesluitvorming-exports staan direct in `n8n/workflows/` zodat ze door dezelfde bootstrap worden ontdekt. De snapshot-ingest en delta-sync gebruiken de interne Compose-service `qdrant`; configureer de workflow-nodes voor de gewenste bron en collectie voordat ingest of sync wordt geactiveerd. Raadpleeg [`../docs/openbesluitvorming-release-artifacts.md`](../docs/openbesluitvorming-release-artifacts.md) voor release- en herstelprocedures.
+De OpenBesluitvorming-exports staan direct in `n8n/workflows/` zodat ze door dezelfde bootstrap worden ontdekt. De ingest- en synchronisatieworkflows gebruiken de interne Compose-service `qdrant`; configureer de workflow-nodes voor de gewenste bron, collectie en credentials voordat een workflow wordt geactiveerd.
 
-## Gekoppelde systemen
-
-GovChat kan bronnen en diensten via eigen workflows of tools ontsluiten. De koppeling maakt GovChat niet tot het bronsysteem: actuele gegevens, formele registraties en officiële indieningen blijven bij de betreffende dienst.
-
-| Systeem | Doel en gebruik in GovChat | Documentatie |
-| --- | --- | --- |
-| **OpenBesluitvorming** | Openbare informatie over besluiten wordt doorzoekbaar gemaakt via de OpenBesluitvorming-workflows en Qdrant. De huidige starterdataset richt zich op `provincie_limburg`; verversen en publiceren zijn expliciete beheerprocessen. | [`../docs/openbesluitvorming-release-artifacts.md`](../docs/openbesluitvorming-release-artifacts.md) |
-| **JEMS (NWE Joint Electronic Monitoring System)** | JEMS is de online monitoringomgeving van het Interreg North-West Europe-programma voor de projectcyclus. Aanvragers gebruiken het voor projectaanvragen; na goedkeuring wordt het gebruikt voor inhoudelijke en financiële voortgangsrapportage. Controllers beoordelen de subsidiabiliteit van uitgaven en het NWE Joint Secretariat volgt projecten in JEMS. De aanvragen voor stap 1 en stap 2 van NWE-calls moeten in het Engels en uitsluitend via JEMS worden ingediend. GovChat ontsluit geautoriseerde JEMS-functies via de MCP Hub; dit vervangt de officiële JEMS-indieningsroute niet. | [Officiële JEMS-informatie](https://www.nweurope.eu/jems) · [`mcp-hub/README.md`](mcp-hub/README.md) |
-
-Toegang tot gekoppelde diensten kan beperkt zijn op basis van account- of Entra-groepen. De workflowdocumentatie beschrijft de ingestelde rechten, gegevensstromen en operationele randvoorwaarden; raadpleeg die documentatie voordat een koppeling wordt geactiveerd of gebruikt.
+De generieke TOPdesk-kennisitemworkflows staan ook in `n8n/workflows/`. Met `N8N_ENABLE_TOPDESK_SEARCH=true` publiceert bootstrap TOPdesk Search en koppelt de tool automatisch aan de GovChat Orchestrator, naast OpenBesluitvorming. Standaard is de koppeling uit en ingest/planning blijven onafhankelijk inactief. Configureer eerst de TOPdesk-, embedding- en Qdrant-instellingen en credentials; zie [`docs/topdesk-knowledge-items.md`](../docs/topdesk-knowledge-items.md). De ingest-workflow kan Apache Tika gebruiken om tekst uit bijlagen te extraheren.
 
 ## Verzoekroute en modelroute
 
@@ -31,7 +23,7 @@ Toegang tot gekoppelde diensten kan beperkt zijn op basis van account- of Entra-
 2. De bridge routeert `govchat-orchestrator` naar de n8n `orchestrator` webhook.
 3. De orchestrator gebruikt de volledige berichtenhistorie en roept specialisten zoals de B1-versimpelaar als interne tools aan.
 4. n8n roept LiteLLM rechtstreeks aan; dit modelverkeer loopt niet door de bridge.
-5. De streamed webhookrespons gaat terug via de bridge. Native live tool-cards zijn het beoogde lifecyclegedrag, maar de bijbehorende runtimepatches zijn niet opgenomen in deze migratiebranch; zie [`../docs/live-tool-calling.md`](../docs/live-tool-calling.md).
+5. De streamed webhookrespons gaat via de GovChat-NL-bridge terug. De standaard Compose bouwt branch `main` en laadt de runtimepatches voor native live tool-cards; zie [`../docs/live-tool-calling.md`](../docs/live-tool-calling.md).
 
 ## Wijzigingen en workflow-ID's
 

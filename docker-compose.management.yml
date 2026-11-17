@@ -1,0 +1,40 @@
+# Opt-in HTTP adapters for an authenticated reverse proxy running on this host.
+# Loopback is deliberate: these adapters do NOT authenticate requests themselves.
+services:
+  management-proxy:
+    image: ${NGINX_IMAGE:-nginx:1.28-alpine}
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - SETUID
+      - SETGID
+    read_only: true
+    tmpfs:
+      - /var/cache/nginx
+      - /var/run
+      - /etc/nginx/conf.d
+    ports:
+      - "127.0.0.1:${N8N_MANAGEMENT_PORT:-5678}:5678"
+      - "127.0.0.1:${QDRANT_MANAGEMENT_PORT:-6333}:6333"
+      - "127.0.0.1:${MEILI_MANAGEMENT_PORT:-7700}:7700"
+      - "127.0.0.1:${BRIDGE_MANAGEMENT_PORT:-3333}:3333"
+      - "127.0.0.1:${MANAGEMENT_SINK_PORT:-8080}:8080"
+    environment:
+      GOVCHAT_PROXY_CONFIG: management
+      N8N_MANAGEMENT_PATH: ${N8N_MANAGEMENT_PATH:-/}
+      QDRANT_MANAGEMENT_PATH: ${QDRANT_MANAGEMENT_PATH:-/}
+      MANAGEMENT_FORWARDED_PROTO: ${MANAGEMENT_FORWARDED_PROTO:-https}
+    volumes:
+      - ./nginx/management-proxy.conf:/opt/govchat/nginx/management-proxy.conf:ro
+      - ./scripts/render-proxy-config.sh:/docker-entrypoint.d/40-govchat-config.sh:ro
+    networks:
+      - librechat-net
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8080/healthz"]
+      interval: 20s
+      timeout: 5s
+      retries: 3

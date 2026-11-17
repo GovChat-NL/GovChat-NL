@@ -2,99 +2,156 @@
 'use strict';
 
 const path = require('path');
-const { buildJemsCredential, discoverWorkflows } = require('../../n8n/bootstrap');
+const {
+  buildEmbeddingHeaderCredential,
+  buildTopdeskCredential,
+  discoverWorkflows,
+  getTopdeskBaseUrl,
+  renderWorkflowTemplate,
+} = require('../../n8n/bootstrap');
 
 const workflowsDir = path.resolve(__dirname, '../../agents/n8n/workflows');
-const mcpHubWorkflowsDir = path.resolve(__dirname, '../../agents/mcp-hub/workflows');
-const workflows = discoverWorkflows(workflowsDir, [mcpHubWorkflowsDir]);
+const workflows = discoverWorkflows(workflowsDir, { N8N_ENABLE_TOPDESK_SEARCH: 'false' });
 const workflowIds = workflows.flatMap((entry) => entry.ids);
+const inactiveWorkflowIds = workflows.flatMap((entry) => entry.inactiveIds || []);
 if (new Set(workflowIds).size !== workflowIds.length) {
   throw new Error('Discovered workflow IDs are not unique');
 }
-
-for (const workflow of workflows) {
-  const data = require(workflow.fullPath);
-  const exports = Array.isArray(data) ? data : [data];
-  for (const workflowExport of exports) {
-    const jemsNodes = workflowExport.nodes.filter((node) => node.type === '@n8n/n8n-nodes-langchain.mcpClientTool');
-    if (workflowExport.id === 'govchat-mcp-executor-hub' && jemsNodes.length !== 1) {
-      throw new Error('MCP executor hub must expose JEMS as one native MCP Client Tool node');
-    }
-    if (workflowExport.id === 'govchat-mcp-executor-hub' && jemsNodes[0]?.name !== 'JEMS MCP') {
-      throw new Error('JEMS MCP Client Tool node is missing its clear server-specific name');
-    }
-    if (workflowExport.id === 'govchat-mcp-executor-hub') {
-      const dispatcherCode = workflowExport.nodes.find((node) => node.id === 'McpHubAuthorizeJemsTool')?.parameters?.jsCode || '';
-      if (!dispatcherCode.includes('MCP_HUB_JEMS_REQUIRED_GROUP_IDS') || /\bfetch\s*\(/.test(dispatcherCode)) {
-        throw new Error('Hub must keep authorization in Code and MCP transport in the native MCP Client Tool node');
-      }
-    }
-  }
-  console.log(`[PASS] ${workflow.file}`);
+if (workflowIds.some((id) => id.length > 36)) {
+  throw new Error('A workflow ID exceeds the n8n/Postgres 36-character limit');
 }
 
-const getWorkflow = (id) => {
-  for (const { fullPath } of workflows) {
-    const parsed = require(fullPath);
-    const exports = Array.isArray(parsed) ? parsed : [parsed];
-    const match = exports.find((item) => item.id === id);
-    if (match) return match;
-  }
-  throw new Error(`Missing workflow ${id}`);
+const assert = (condition, message) => {
+  if (!condition) throw new Error(message);
 };
+const readWorkflow = (file) => JSON.parse(require('fs').readFileSync(path.join(workflowsDir, file), 'utf8'));
+const nodeByName = (workflow, name) => workflow.nodes.find((node) => node.name === name);
+const ingest = readWorkflow('topdesk-knowledge-items-ingest.json');
+const search = readWorkflow('topdesk-knowledge-items-search.json');
 
-const registryWorkflow = getWorkflow('govchat-mcp-registry-sync');
-const registryHttpNodes = registryWorkflow.nodes.filter((node) => node.type === 'n8n-nodes-base.httpRequest');
-if (registryHttpNodes.length !== 3 || registryHttpNodes.some((node) => !node.credentials?.httpMultipleHeadersAuth)) {
-  throw new Error('JEMS registry sync must use authenticated HTTP nodes for initialize, ready, and tools/list');
+assert(ingest.active === false && search.active === false, 'TOPdesk workflows must remain inactive until configured');
+assert(inactiveWorkflowIds.includes(ingest.id) && inactiveWorkflowIds.includes(search.id), 'Bootstrap must preserve TOPdesk inactive defaults');
+assert(nodeByName(ingest, '1. Configuration (edit after import)'), 'TOPdesk ingest configuration node is missing');
+assert(nodeByName(ingest, 'Run with parameters'), 'TOPdesk ingest runtime parameter trigger is missing');
+assert(nodeByName(ingest, 'Run with parameters').parameters.workflowInputs.values.some((value) => value.name === 'root_knowledge_item_id'), 'TOPdesk parent ID input is missing');
+assert(nodeByName(ingest, 'Run with parameters').parameters.workflowInputs.values.some((value) => value.name === 'root_knowledge_item_number'), 'TOPdesk parent number input is missing');
+assert(nodeByName(ingest, 'Run with parameters').parameters.workflowInputs.values.some((value) => value.name === 'include_attachments'), 'TOPdesk attachment toggle input is missing');
+assert(nodeByName(ingest, '2. Fetch child knowledge items'), 'TOPdesk item-fetch node is missing');
+const fetchTopdeskNode = nodeByName(ingest, '2. Fetch child knowledge items');
+const fetchTopdeskHeaders = fetchTopdeskNode.parameters.headerParameters.parameters;
+assert(fetchTopdeskHeaders.some((header) => header.name === 'Accept' && header.value === 'application/json'), 'TOPdesk list request must accept JSON');
+assert(fetchTopdeskHeaders.some((header) => header.name === 'Content-Type' && header.value === 'application/json'), 'TOPdesk list request must match the working sample Content-Type header');
+assert(fetchTopdeskNode.parameters.options.timeout === undefined, 'TOPdesk list request should not impose the previous 60-second timeout');
+assert(nodeByName(ingest, '1b. Check Qdrant collection'), 'TOPdesk ingest must check for its Qdrant collection');
+assert(nodeByName(ingest, '1d. Create Qdrant collection'), 'TOPdesk ingest must create a missing Qdrant collection');
+assert(nodeByName(ingest, '1. Configuration (edit after import)').parameters.jsCode.includes("configuredRootKnowledgeItemNumber='KI 0975'"), 'TOPdesk root item number default is missing');
+assert(nodeByName(ingest, '1. Configuration (edit after import)').parameters.jsCode.includes("embeddingModel:'govchat-embedding'"), 'TOPdesk ingest LiteLLM embedding alias is not configured');
+const ingestConfigCode = nodeByName(ingest, '1. Configuration (edit after import)').parameters.jsCode;
+const runIngestConfig = new Function('$input', ingestConfigCode);
+const defaultIngestConfig = runIngestConfig({ first: () => ({ json: {} }) })[0].json;
+assert(defaultIngestConfig.rootQuery === "parent.number=='KI 0975'", 'TOPdesk default query must select children by parent item number');
+assert(defaultIngestConfig.vectorSize === 3072 && defaultIngestConfig.vectorDistance === 'Cosine', 'Qdrant collection defaults must match the embedding dimensions and distance');
+for (const nodeName of ['4a. Prepare article text', '6a. Build article point', '8b. Prepare attachment text', '10b. Build attachment point']) {
+  assert(nodeByName(ingest, nodeName).parameters.mode === 'runOnceForEachItem', `${nodeName} must process every incoming item independently`);
 }
-const manualRegistryTrigger = registryWorkflow.nodes.find((node) => node.id === 'McpRegistryManualTrigger');
-const manualRegistryRoute = registryWorkflow.connections?.['Manual Registry Refresh']?.main?.[0]?.[0];
-if (manualRegistryTrigger?.type !== 'n8n-nodes-base.manualTrigger' || manualRegistryRoute?.node !== 'Initialize JEMS MCP session') {
-  throw new Error('JEMS registry sync must expose a manual trigger connected to session initialization');
+const attachmentNormalizer = nodeByName(ingest, '5b. Normalize attachments');
+const normalizeAttachments = new Function('$input', '$', attachmentNormalizer.parameters.jsCode);
+const fakeParents = [
+  { json: { id: 'parent-1', _govchat: { includeAttachments: true } } },
+  { json: { id: 'parent-2', _govchat: { includeAttachments: true } } },
+];
+const normalizedAttachments = normalizeAttachments(
+  { all: () => [{ json: { item: [{ id: 'attachment-1' }] } }, { json: { item: [{ id: 'attachment-2' }] } }] },
+  () => ({ all: () => fakeParents }),
+);
+assert(normalizedAttachments.length === 2, 'Attachment normalizer must fan out attachments for every parent item');
+assert(normalizedAttachments[1].json.knowledgeItemId === 'parent-2', 'Attachment normalizer must preserve parent-to-attachment pairing');
+const collectionDecisionCode = nodeByName(ingest, '1c. Validate or create collection').parameters.jsCode;
+const runCollectionDecision = new Function('$', '$json', collectionDecisionCode);
+const decisionContext = () => ({ first: () => ({ json: defaultIngestConfig }) });
+assert(runCollectionDecision(decisionContext, { statusCode: 404 })[0].json.createCollection === true, 'Missing Qdrant collection should trigger creation');
+const existingCollection = { statusCode: 200, body: { result: { config: { params: { vectors: { size: 3072, distance: 'Cosine' } } } } } };
+assert(runCollectionDecision(decisionContext, existingCollection)[0].json.createCollection === false, 'Existing matching Qdrant collection should be reused');
+let mismatchedCollectionRejected = false;
+try {
+  runCollectionDecision(decisionContext, { statusCode: 200, body: { result: { config: { params: { vectors: { size: 1536, distance: 'Cosine' } } } } } });
+} catch {
+  mismatchedCollectionRejected = true;
 }
-if (!registryWorkflow.nodes.some((node) => node.type === 'n8n-nodes-base.dataTable' && node.parameters.operation === 'upsert')) {
-  throw new Error('JEMS registry sync must upsert discovered functions into the MCP table');
+assert(mismatchedCollectionRejected, 'Existing incompatible Qdrant collection must not be overwritten');
+const idOverrideConfig = runIngestConfig({ first: () => ({ json: { root_knowledge_item_id: 'sample-id', include_attachments: false } }) })[0].json;
+assert(idOverrideConfig.rootQuery === "parent.id=='sample-id'", 'TOPdesk ID override must query parent.id');
+assert(idOverrideConfig.includeAttachments === false, 'TOPdesk per-run attachment toggle must be honored');
+assert(nodeByName(ingest, '7b. Extract attachment text (Apache Tika)'), 'Tika attachment extraction node is missing');
+assert(nodeByName(ingest, '7a. Upsert article in Qdrant'), 'Qdrant article upsert node is missing');
+const topdeskHttpNodes = ingest.nodes.filter((node) => node.type === 'n8n-nodes-base.httpRequest' && node.credentials?.httpBasicAuth);
+assert(topdeskHttpNodes.length === 3, 'Expected the three TOPdesk API HTTP Request nodes');
+assert(topdeskHttpNodes.every((node) => node.credentials?.httpBasicAuth?.id === '00000000-0000-4000-8000-000000000222'), 'TOPdesk API nodes must share the bootstrap-managed Basic Auth credential');
+const bootstrapSource = require('fs').readFileSync(path.resolve(__dirname, '../../n8n/bootstrap.js'), 'utf8');
+for (const marker of ['TOPDESK_API_USERNAME', 'TOPDESK_API_PASSWORD', "type: 'httpBasicAuth'", "data: { user: username, password }"]) {
+  assert(bootstrapSource.includes(marker), `TOPdesk credential bootstrap is missing ${marker}`);
 }
-
-const orchestrator = getWorkflow('govchat-orchestrator-litellm');
-const capabilityNode = orchestrator.nodes.find((node) => node.id === 'PrepareMcpHubCapabilities');
-const mcpToolNode = orchestrator.nodes.find((node) => node.id === 'ToolMcpHub');
-if (!capabilityNode?.parameters?.jsCode?.includes('user_authorized_groups') || !capabilityNode.parameters.jsCode.includes('required_group_ids')) {
-  throw new Error('Orchestrator must filter registry functions using verified Entra groups');
-}
-if (!String(mcpToolNode?.parameters?.description || '').includes('mcp_hub_tool_description')) {
-  throw new Error('Orchestrator MCP Hub description must be generated dynamically per user');
-}
-if (!String(mcpToolNode?.parameters?.workflowInputs?.value?.user_authorized_groups || '').includes('$json.user_authorized_groups')) {
-  throw new Error('Verified Entra groups must be passed to the executor outside AI-generated inputs');
-}
-
-const credential = buildJemsCredential({
-  JEMS_MCP_API_KEY: 'test-api-key',
-  JEMS_MCP_USERNAME: 'test-user',
-  JEMS_MCP_PASSWORD: 'test-password',
-});
-if (credential.type !== 'httpMultipleHeadersAuth' || credential.data.headers.values.length !== 3) {
-  throw new Error('JEMS credential bootstrap must create a multiple-header credential with all three values');
-}
-if (credential.data.headers.values.map(({ name }) => name).join(',') !== 'X-API-Key,X-Jems-Email,X-Jems-Password') {
-  throw new Error('JEMS credential bootstrap must use the fixed staging gateway header names');
-}
-if (credential.data.headers.values.some(({ value }) => !value)) {
-  throw new Error('JEMS bootstrap credential omitted an environment-supplied value');
-}
-if (buildJemsCredential({}) !== null) {
-  throw new Error('JEMS credential bootstrap should be optional when all JEMS variables are unset');
-}
+const embeddingCredential = buildEmbeddingHeaderCredential({ LITELLM_API_KEY: 'test-only-key' });
+assert(embeddingCredential.type === 'httpHeaderAuth' && embeddingCredential.data.name === 'Authorization', 'LiteLLM header credential schema is incorrect');
+assert(embeddingCredential.data.value === 'Bearer test-only-key', 'LiteLLM Bearer header is not constructed from LITELLM_API_KEY');
+const embeddingHttpNodes = [...ingest.nodes, ...search.nodes].filter((node) => node.credentials?.httpHeaderAuth);
+assert(embeddingHttpNodes.length === 3, 'Expected all three embedding HTTP nodes to use the managed header credential');
+assert(embeddingHttpNodes.every((node) => node.credentials.httpHeaderAuth.id === embeddingCredential.id), 'Embedding nodes must reference the bootstrap-managed credential');
+const generatedTopdeskCredential = buildTopdeskCredential({ TOPDESK_API_USERNAME: 'APILAICA', TOPDESK_API_PASSWORD: 'test-only-password' });
+assert(generatedTopdeskCredential.type === 'httpBasicAuth' && generatedTopdeskCredential.data.user === 'APILAICA', 'TOPdesk Basic Auth credential username/type is incorrect');
+assert(generatedTopdeskCredential.id === '00000000-0000-4000-8000-000000000222', 'TOPdesk Basic Auth credential ID is not stable');
+assert(buildTopdeskCredential({ TOPDESK_API_USERNAME: '', TOPDESK_API_PASSWORD: '' }) === null, 'Empty TOPdesk credentials should be skipped');
 let partialCredentialRejected = false;
 try {
-  buildJemsCredential({ JEMS_MCP_API_KEY: 'partial' });
+  buildTopdeskCredential({ TOPDESK_API_USERNAME: 'APILAICA', TOPDESK_API_PASSWORD: '' });
 } catch {
   partialCredentialRejected = true;
 }
-if (!partialCredentialRejected) throw new Error('Partial JEMS credentials must fail bootstrap validation');
-if (workflows.some(({ fullPath }) => require('fs').readFileSync(fullPath, 'utf8').includes('test-api-key'))) {
-  throw new Error('JEMS secret values must not appear in source workflow exports');
+assert(partialCredentialRejected, 'Incomplete TOPdesk Basic Auth environment must be rejected');
+const composeSource = require('fs').readFileSync(path.resolve(__dirname, '../../docker-compose.yml'), 'utf8');
+assert((composeSource.match(/^\s+TOPDESK_API_USERNAME:/gm) || []).length === 1, 'TOPdesk username must be passed only to the bootstrap service');
+assert((composeSource.match(/^\s+TOPDESK_API_PASSWORD:/gm) || []).length === 1, 'TOPdesk password must be passed only to the bootstrap service');
+assert(nodeByName(search, 'Execute Workflow Trigger'), 'TOPdesk search must be callable as a subworkflow');
+assert(nodeByName(search, '4. Search Qdrant'), 'TOPdesk Qdrant search node is missing');
+assert(nodeByName(search, '5. Return ranked sources'), 'TOPdesk search result formatter is missing');
+assert(nodeByName(search, '1. Validate and configure search').parameters.jsCode.includes("embeddingModel='govchat-embedding'"), 'TOPdesk search LiteLLM embedding alias is not configured');
+assert(getTopdeskBaseUrl({ TOPDESK_TENANT: 'prvlimburg', TOPDESK_BASE_DOMAIN: 'topdesk.net' }) === 'https://prvlimburg.topdesk.net', 'TOPdesk tenant URL is not assembled from environment settings');
+assert(getTopdeskBaseUrl({ TOPDESK_TENANT: '', TOPDESK_BASE_DOMAIN: 'topdesk.net' }) === '', 'Missing TOPdesk tenant should not produce an organization URL');
+assert(!JSON.stringify(ingest).includes('prvlimburg') && !JSON.stringify(ingest).includes('example.org'), 'TOPdesk organization URL must not be hardcoded in the workflow template');
+const renderedIngest = JSON.parse(renderWorkflowTemplate(require('fs').readFileSync(path.join(workflowsDir, 'topdesk-knowledge-items-ingest.json'), 'utf8'), {
+  TOPDESK_TENANT: 'example',
+  TOPDESK_BASE_DOMAIN: 'service.example',
+  TOPDESK_PUBLIC_BASE_URL: 'https://portal.example/knowledge',
+}));
+const renderedConfig = nodeByName(renderedIngest, '1. Configuration (edit after import)').parameters.jsCode;
+assert(renderedConfig.includes("topdeskBaseUrl:'https://example.service.example'"), 'TOPdesk API base URL placeholder was not rendered');
+assert(renderedConfig.includes("publicKnowledgeItemUrl:'https://portal.example/knowledge'"), 'TOPdesk public base URL placeholder was not rendered');
+
+for (const workflow of [ingest, search]) {
+  const names = new Set(workflow.nodes.map((node) => node.name));
+  const ids = new Set(workflow.nodes.map((node) => node.id));
+  assert(names.size === workflow.nodes.length, `${workflow.name} has duplicate node names`);
+  assert(ids.size === workflow.nodes.length, `${workflow.name} has duplicate node ids`);
+  for (const node of workflow.nodes) {
+    if (node.type === 'n8n-nodes-base.code') {
+      try {
+        // Catch syntax errors in embedded JavaScript before importing into n8n.
+        new Function(node.parameters.jsCode);
+      } catch (error) {
+        throw new Error(`${workflow.name} has invalid JavaScript in node "${node.name}": ${error.message}`);
+      }
+    }
+  }
+  for (const [source, outputs] of Object.entries(workflow.connections)) {
+    assert(names.has(source), `${workflow.name} connection source is unknown: ${source}`);
+    for (const output of outputs.main || []) {
+      for (const edge of output || []) assert(names.has(edge.node), `${workflow.name} connection target is unknown: ${edge.node}`);
+    }
+  }
+  const serialized = JSON.stringify(workflow);
+  assert(!/(?:sk-[A-Za-z0-9]{12,}|password\s*[:=]\s*['"][^'"]+['"])/i.test(serialized), `${workflow.name} appears to contain a hardcoded secret`);
 }
+
+for (const workflow of workflows) console.log(`[PASS] ${workflow.file}`);
 console.log(`Validated ${workflows.length} discovered workflow export(s); ${workflowIds.length} unique workflow ID(s).`);
+console.log('[PASS] TOPdesk ingest/search structure, inactive defaults, connection references, and secret hygiene');

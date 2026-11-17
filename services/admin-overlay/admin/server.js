@@ -6,16 +6,22 @@ const http = require("http");
 const path = require("path");
 const sharp = require("sharp");
 const { WebSocket, WebSocketServer } = require("ws");
+const { environmentDefaults, normalizeConfig, mergeConfig, atomicWriteJSON } = require("./lib/orchestrator-config");
+const { createPromptStore } = require("./lib/orchestrator-prompt");
+const { registerPromptRoutes } = require("./lib/orchestrator-prompt-routes");
+const { createNameStore } = require("./lib/orchestrator-name");
+const { registerNameRoutes } = require("./lib/orchestrator-name-routes");
+const { createUtilityHandler } = require("./lib/utility-tools");
 
 const app = express();
 const PORT = process.env.PORT || 3002;
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "changeme";
 const CORS_ORIGIN = process.env.CORS_ORIGIN || "*";
+const PUBLIC_BASE_URL = String(process.env.PUBLIC_BASE_URL || "").trim();
 const DATA_DIR = process.env.DATA_DIR || "/data";
 const PUBLISH_DIR = process.env.PUBLISH_DIR || "/publish";
 const SESSION_SECRET = crypto.randomBytes(32).toString("hex");
 const IMAGE_JOBS_ENABLED = String(process.env.IMAGE_JOBS_ENABLED || "false").toLowerCase() === "true";
-const IMAGE_JOBS_TOKEN = String(process.env.IMAGE_JOBS_TOKEN || "").trim();
 const IMAGE_JOBS_WEBHOOK_URL = String(
   process.env.IMAGE_JOBS_WEBHOOK_URL || "http://n8n:5678/webhook/image-generator",
 ).trim();
@@ -68,6 +74,8 @@ const LIBRECHAT_INTERNAL_URL = String(process.env.LIBRECHAT_INTERNAL_URL || "htt
 const TRANSCRIPT_SESSIONS_FILE = "transcript-sessions.json";
 const BELEIDSKOMPAS_STATE_FILE = "beleidskompas-state.json";
 const BELEIDSKOMPAS_LIVE_FILE = "beleidskompas-config.json";
+const BELEIDSKOMPAS_FEEDBACK_FILE = "beleidskompas-feedback.json";
+const BELEIDSKOMPAS_FEEDBACK_MAX = 500;
 const BELEIDSKOMPAS_WORKFLOWS_DIR_NAME = "beleidskompas-workflows";
 const BELEIDSKOMPAS_HOOFDAGENT_WEBHOOK_PATH_DEFAULT = "beleidskompas-hoofdagent";
 const BELEIDSKOMPAS_N8N_BASE_URL = String(process.env.BELEIDSKOMPAS_N8N_BASE_URL || "http://n8n:5678").replace(/\/$/, "");
@@ -146,7 +154,7 @@ function verifyJwtHs256(token, secret) {
 
     const payload = JSON.parse(decodeBase64Url(payloadB64));
     const nowSec = Math.floor(Date.now() / 1000);
-    if (Number.isFinite(Number(payload?.exp)) && Number(payload.exp) < nowSec) return null;
+    if (!Number.isFinite(Number(payload?.exp)) || Number(payload.exp) <= nowSec) return null;
     if (Number.isFinite(Number(payload?.nbf)) && Number(payload.nbf) > nowSec) return null;
     return payload;
   } catch {
@@ -257,11 +265,36 @@ function extractTranscriptFromRealtimeEvent(evt) {
 }
 
 // ── Middleware ──────────────────────────────────────────────────────
+app.use("/api/orchestrator/name", (req, res, next) => {
+  res.set("Cache-Control", "no-store");
+  next();
+}, express.json({ limit: "2kb", strict: false }));
+app.use("/api/orchestrator/name", (err, req, res, next) => {
+  if (!err) return next();
+  res.status(err.status === 413 ? 413 : 400).json({ error: "Ongeldige of te grote JSON-invoer" });
+});
+app.use(["/api/orchestrator/prompt", "/api/internal/orchestrator/prompt"], (req, res, next) => {
+  res.set("Cache-Control", "no-store");
+  res.set("Pragma", "no-cache");
+  next();
+}, express.json({ limit: "200kb", strict: false }));
+app.use(["/api/orchestrator/prompt", "/api/internal/orchestrator/prompt"], (err, req, res, next) => {
+  if (!err) return next();
+  return res.status(err.status === 413 ? 413 : 400).json({ error: "Ongeldige of te grote JSON-invoer" });
+});
+app.use("/api/orchestrator/tools", express.json({ limit: "16kb", strict: false }));
+app.use("/api/orchestrator/tools", (err, req, res, next) => {
+  if (!err) return next();
+  return res.status(err.status === 413 ? 413 : 400).json({
+    ok: false,
+    error: { code: err.status === 413 ? "INPUT_TOO_LARGE" : "INVALID_JSON", message: "Invalid or oversized JSON request body" },
+  });
+});
 app.use(express.json({ limit: "20mb" }));
 app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
 
-// CORS for public API endpoints
+// CORS for public, read-only configuration endpoints
 app.use("/api/config", (req, res, next) => {
   res.set("Access-Control-Allow-Origin", CORS_ORIGIN);
   res.set("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
@@ -270,18 +303,18 @@ app.use("/api/config", (req, res, next) => {
   next();
 });
 
-app.use("/api/image-jobs", (req, res, next) => {
-  res.set("Access-Control-Allow-Origin", CORS_ORIGIN);
-  res.set("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
-  res.set("Access-Control-Allow-Headers", "Content-Type, Authorization, x-govchat-token");
-  if (req.method === "OPTIONS") return res.sendStatus(204);
-  next();
-});
-
 app.use("/api/transcript-sessions", (req, res, next) => {
   res.set("Access-Control-Allow-Origin", CORS_ORIGIN);
   res.set("Access-Control-Allow-Methods", "GET, POST, PATCH, DELETE, OPTIONS");
   res.set("Access-Control-Allow-Headers", "Content-Type, Authorization");
+  if (req.method === "OPTIONS") return res.sendStatus(204);
+  next();
+});
+
+app.use("/api/beleidskompas-feedback", (req, res, next) => {
+  res.set("Access-Control-Allow-Origin", CORS_ORIGIN);
+  res.set("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+  res.set("Access-Control-Allow-Headers", "Content-Type");
   if (req.method === "OPTIONS") return res.sendStatus(204);
   next();
 });
@@ -323,18 +356,6 @@ function initDefaults() {
   if (fs.existsSync(appsSource)) {
     fs.copyFileSync(appsSource, appsTarget);
     console.log(`[init] Synced runtime config apps.json to ${DATA_DIR}`);
-  }
-
-  // Keep runtime assets in sync with repository defaults on each start.
-  // This prevents stale loader/custom.css from old named volumes.
-  const runtimeAssets = ["loader.js", "custom.css"];
-  for (const file of runtimeAssets) {
-    const source = path.join(__dirname, "defaults", file);
-    const target = path.join(DATA_DIR, file);
-    if (fs.existsSync(source)) {
-      fs.copyFileSync(source, target);
-      console.log(`[init] Synced runtime asset ${file} to ${DATA_DIR}`);
-    }
   }
 
   const crawlerRunsPath = path.join(DATA_DIR, "crawler-runs.json");
@@ -1078,33 +1099,27 @@ function publishFile(filename, data) {
   }
 }
 
-function publishFileRaw(filename) {
+function publishOrchestratorConfig() {
   try {
-    if (!fs.existsSync(PUBLISH_DIR)) {
-      fs.mkdirSync(PUBLISH_DIR, { recursive: true });
-    }
-    const source = path.join(DATA_DIR, filename);
-    if (!fs.existsSync(source)) return;
-    const target = path.join(PUBLISH_DIR, filename);
-    fs.copyFileSync(source, target);
-    console.log(`[publish] ${filename} → ${PUBLISH_DIR}`);
-  } catch (err) {
-    console.warn(`[publish] Failed to publish ${filename}: ${err.message}`);
+    atomicWriteJSON(PUBLISH_DIR, "orchestrator-config.json", readOrchestratorConfig());
+  } catch (error) {
+    // Never leave an obsolete enabled policy after a failed update/startup.
+    try { fs.rmSync(path.join(PUBLISH_DIR, "orchestrator-config.json"), { force: true }); }
+    catch (cleanupError) { console.error(`[publish] Cannot invalidate orchestrator policy: ${cleanupError.message}`); }
+    throw error;
   }
 }
 
 function publishAll() {
-  const jsonFiles = ["help-content.json", "apps.json", "orchestrator-config.json"];
+  // This shared policy must always be complete and replaced atomically, never copied raw.
+  publishOrchestratorConfig();
+  const jsonFiles = ["help-content.json", "apps.json"];
   for (const file of jsonFiles) {
     const data = readJSON(file);
     if (data) publishFile(file, data);
   }
   const bkState = readBeleidskompasState();
   publishBeleidskompasLiveConfig(bkState.live || bkState.draft || defaultBeleidskompasFlow());
-  const rawFiles = ["loader.js", "custom.css"];
-  for (const file of rawFiles) {
-    publishFileRaw(file);
-  }
 }
 
 function readCrawlerConfig() {
@@ -1134,51 +1149,12 @@ function readCrawlerConfig() {
 }
 
 function readOrchestratorConfig() {
-  const fallback = {
-    image_data_url_max_chars: ORCHESTRATOR_IMAGE_DATA_URL_MAX_CHARS_DEFAULT,
-    image_max_resolution_px: ORCHESTRATOR_IMAGE_MAX_RESOLUTION_PX_DEFAULT,
-  };
   const stored = readJSON("orchestrator-config.json");
-  if (!stored || typeof stored !== "object") return fallback;
-  const maxChars = Math.max(
-    50000,
-    Number.parseInt(String(stored.image_data_url_max_chars || fallback.image_data_url_max_chars), 10) ||
-      fallback.image_data_url_max_chars,
-  );
-  const maxResolutionPx = Math.max(
-    512,
-    Number.parseInt(String(stored.image_max_resolution_px || fallback.image_max_resolution_px), 10) ||
-      fallback.image_max_resolution_px,
-  );
-  return {
-    image_data_url_max_chars: maxChars,
-    image_max_resolution_px: maxResolutionPx,
-  };
+  return normalizeConfig(stored === null && !fs.existsSync(path.join(DATA_DIR, "orchestrator-config.json")) ? {} : stored, environmentDefaults());
 }
 
 function validateOrchestratorConfig(input) {
-  if (!input || typeof input !== "object") {
-    throw new Error("Orchestrator-configuratie ontbreekt of is ongeldig");
-  }
-
-  const imageDataUrlMaxChars = Math.max(
-    50000,
-    Number.parseInt(String(input.image_data_url_max_chars || ORCHESTRATOR_IMAGE_DATA_URL_MAX_CHARS_DEFAULT), 10) ||
-      ORCHESTRATOR_IMAGE_DATA_URL_MAX_CHARS_DEFAULT,
-  );
-
-  const imageMaxResolutionPx = Math.max(
-    512,
-    Number.parseInt(
-      String(input.image_max_resolution_px || ORCHESTRATOR_IMAGE_MAX_RESOLUTION_PX_DEFAULT),
-      10,
-    ) || ORCHESTRATOR_IMAGE_MAX_RESOLUTION_PX_DEFAULT,
-  );
-
-  return {
-    image_data_url_max_chars: imageDataUrlMaxChars,
-    image_max_resolution_px: imageMaxResolutionPx,
-  };
+  return mergeConfig(input, readOrchestratorConfig(), environmentDefaults());
 }
 
 function decodeDataUrlImage(dataUrl) {
@@ -2111,15 +2087,31 @@ function requireImageJobsAuth(req, res, next) {
   if (!IMAGE_JOBS_ENABLED) {
     return res.status(404).json({ error: "Image jobs endpoint staat uit" });
   }
-  if (!IMAGE_JOBS_TOKEN) {
-    return res.status(503).json({ error: "Server misconfiguratie: IMAGE_JOBS_TOKEN ontbreekt" });
+
+  const user = resolveUserFromVerifiedRefreshToken(req);
+  if (!user || !/^[A-Za-z0-9_-]{8,64}$/.test(user.id)) {
+    return res.status(401).json({ error: "Niet ingelogd" });
   }
 
-  const supplied = extractToken(req);
-  if (!supplied || supplied !== IMAGE_JOBS_TOKEN) {
-    return res.status(401).json({ error: "Unauthorized" });
+  const requestOrigin = String(req.get("origin") || "").trim();
+  if (req.method !== "GET" || requestOrigin) {
+    let expectedOrigin = "";
+    try {
+      expectedOrigin = new URL(PUBLIC_BASE_URL).origin;
+    } catch {
+      return res.status(503).json({ error: "Server misconfiguratie: PUBLIC_BASE_URL is ongeldig" });
+    }
+    if (!requestOrigin || requestOrigin !== expectedOrigin) {
+      return res.status(403).json({ error: "Cross-origin verzoek geweigerd" });
+    }
   }
 
+  const fetchSite = String(req.get("sec-fetch-site") || "").trim().toLowerCase();
+  if (fetchSite && fetchSite !== "same-origin") {
+    return res.status(403).json({ error: "Cross-site verzoek geweigerd" });
+  }
+
+  req.librechatUser = user;
   return next();
 }
 
@@ -2291,7 +2283,7 @@ async function runImageJob(jobId) {
     updateImageJob(existing, {
       status: "failed",
       completed_at: new Date().toISOString(),
-      error: "Server misconfiguratie: IMAGE_JOBS_WEBHOOK_TOKEN ontbreekt",
+      error: "Afbeelding-generatie is tijdelijk niet beschikbaar.",
     });
     return;
   }
@@ -2313,6 +2305,7 @@ async function runImageJob(jobId) {
         prompt: running.prompt,
         size: running.size,
         quality: running.quality,
+        user_id: running.user_id,
       }),
       signal: AbortSignal.timeout(240000),
     });
@@ -2326,18 +2319,29 @@ async function runImageJob(jobId) {
     }
 
     if (!res.ok) {
-      const msg = String(payload?.error || payload?.message || raw || "").trim();
       updateImageJob(running, {
         status: "failed",
         completed_at: new Date().toISOString(),
-        error: msg || `Image-webhook gaf HTTP ${res.status}`,
+        error: "Afbeelding-generatie is mislukt; probeer het later opnieuw.",
       });
       return;
     }
 
-    const imageUrl = String(payload?.image_url || "").trim() || null;
-    const markdown = String(payload?.markdown || "").trim() || null;
-    const responseText = String(payload?.response || "").trim() || null;
+    const imageUrl = String(payload?.image_url || "").trim();
+    const expectedImagePrefix = `/images/${running.user_id}/`;
+    const imageName = imageUrl.startsWith(expectedImagePrefix)
+      ? imageUrl.slice(expectedImagePrefix.length)
+      : "";
+    if (!/^generated-\d+-[0-9a-f-]{36}\.(png|jpg)$/.test(imageName)) {
+      updateImageJob(running, {
+        status: "failed",
+        completed_at: new Date().toISOString(),
+        error: "Afbeelding-generatie is mislukt; probeer het later opnieuw.",
+      });
+      return;
+    }
+    const markdown = `![gegenereerde afbeelding](${imageUrl})`;
+    const responseText = markdown;
 
     updateImageJob(running, {
       status: "succeeded",
@@ -2351,7 +2355,7 @@ async function runImageJob(jobId) {
     updateImageJob(running, {
       status: "failed",
       completed_at: new Date().toISOString(),
-      error: String(err?.message || err || "Onbekende fout"),
+      error: "Afbeelding-generatie is tijdelijk niet beschikbaar.",
     });
   }
 }
@@ -2379,7 +2383,7 @@ function pumpImageJobs() {
   }
 }
 
-function createImageJob({ prompt, size, quality }) {
+function createImageJob({ prompt, size, quality, userId }) {
   const now = new Date().toISOString();
   const job = {
     id: crypto.randomUUID(),
@@ -2391,6 +2395,7 @@ function createImageJob({ prompt, size, quality }) {
     prompt,
     size,
     quality,
+    user_id: userId,
     image_url: null,
     markdown: null,
     result_text: null,
@@ -2436,6 +2441,17 @@ function sendView(res, name, vars = {}) {
 }
 
 // ── Public API endpoints (no auth) ────────────────────────────────
+registerNameRoutes(app, {
+  store: createNameStore({ dataDir: DATA_DIR, publishDir: PUBLISH_DIR }),
+  isAuthenticated,
+});
+registerPromptRoutes(app, {
+  store: createPromptStore({ dataDir: DATA_DIR, publishDir: PUBLISH_DIR }),
+  isAuthenticated,
+  token: CRAWLER_INTERNAL_TOKEN,
+  extractToken,
+});
+
 app.get("/api/config/help-content", (req, res) => {
   const data = readJSON("help-content.json");
   if (!data) return res.status(404).json({ error: "Not found" });
@@ -2513,24 +2529,49 @@ app.post("/api/crawler/internal/runs", requireCrawlerInternalAuth, (req, res) =>
   }
 });
 
+app.get("/api/internal/image-auth", (req, res) => {
+  res.set("Cache-Control", "no-store");
+  const owner = String(req.get("x-image-owner") || "").trim();
+  if (!/^[A-Za-z0-9_-]{8,64}$/.test(owner)) return res.sendStatus(401);
+
+  const user = resolveUserFromVerifiedRefreshToken(req);
+  if (!user || user.id !== owner) return res.sendStatus(401);
+  return res.sendStatus(204);
+});
+
 app.post("/api/image-jobs", requireImageJobsAuth, (req, res) => {
-  const prompt = String(req.body?.prompt || "").trim();
-  const size = String(req.body?.size || "1024x1024").trim();
-  const quality = String(req.body?.quality || "standard").trim();
+  const prompt = String(req.body?.prompt || "")
+    .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, "")
+    .trim();
+  const size = String(req.body?.size || "1024x1024").trim().toLowerCase();
+  const quality = String(req.body?.quality || "standard").trim().toLowerCase();
 
   if (!prompt) {
     return res.status(400).json({ error: "Veld \"prompt\" is verplicht" });
   }
 
-  if (prompt.length > 3000) {
-    return res.status(400).json({ error: "Prompt is te lang (maximaal 3000 tekens)" });
+  if (prompt.length > 2000) {
+    return res.status(400).json({ error: "Prompt is te lang (maximaal 2000 tekens)" });
   }
 
-  const job = createImageJob({ prompt, size, quality });
+  const allowedSizes = new Set(["1024x1024", "1536x1024", "1024x1536", "1792x1024", "1024x1792"]);
+  const allowedQualities = new Set(["standard", "auto", "low", "medium", "high", "hd"]);
+  if (!allowedSizes.has(size) || !allowedQualities.has(quality)) {
+    return res.status(400).json({ error: "Ongeldig formaat of kwaliteitsniveau" });
+  }
+
+  const activeUserJobs = [...imageJobs.values()].filter(
+    (job) => job.user_id === req.librechatUser.id && ["queued", "running"].includes(job.status),
+  ).length;
+  if (activeUserJobs >= 2) {
+    return res.status(429).json({ error: "Je hebt al twee afbeeldingsopdrachten in uitvoering" });
+  }
+
+  const job = createImageJob({ prompt, size, quality, userId: req.librechatUser.id });
   return res.status(202).json({
     ...toPublicImageJob(job),
-    status_url: `/api/image-jobs/${job.id}`,
-    result_url: `/api/image-jobs/${job.id}`,
+    status_url: `/govchat-api/image-jobs/${job.id}`,
+    result_url: `/govchat-api/image-jobs/${job.id}`,
   });
 });
 
@@ -2538,6 +2579,10 @@ app.get("/api/image-jobs/:jobId", requireImageJobsAuth, (req, res) => {
   const jobId = String(req.params.jobId || "").trim();
   const job = imageJobs.get(jobId);
   if (!job) {
+    return res.status(404).json({ error: "Job niet gevonden" });
+  }
+
+  if (job.user_id !== req.librechatUser.id) {
     return res.status(404).json({ error: "Job niet gevonden" });
   }
 
@@ -2618,7 +2663,7 @@ app.get("/crawler-editor", requireAuth, (req, res) => {
 
 app.get("/orchestrator-editor", requireAuth, (req, res) => {
   sendView(res, "orchestrator-editor.html", {
-    orchestratorData: JSON.stringify(readOrchestratorConfig()),
+    orchestratorData: JSON.stringify(readOrchestratorConfig()).replace(/</g, "\\u003c"),
   });
 });
 
@@ -2665,6 +2710,48 @@ app.get("/api/beleidskompas/state", requireAuth, (req, res) => {
   const state = readBeleidskompasState();
   const workflow_manifest = readBeleidskompasWorkflowManifest();
   return res.json({ ok: true, state, workflow_manifest });
+});
+
+// ── Beleidskompas user feedback ──────────────────────────────────
+//
+// Deliberately anonymous: only the rating, an optional comment and the step
+// the feedback is about. No user, e-mail or conversation id, so the feedback
+// cannot be traced back to a person or a case.
+function readBeleidskompasFeedback() {
+  const stored = readPrivateJSON(BELEIDSKOMPAS_FEEDBACK_FILE);
+  const items = stored && Array.isArray(stored.items) ? stored.items : [];
+  return items;
+}
+
+app.post("/api/beleidskompas-feedback", (req, res) => {
+  const rating = String(req.body?.rating || "").trim().toLowerCase();
+  if (rating !== "up" && rating !== "down") {
+    return res.status(400).json({ error: 'Veld "rating" moet "up" of "down" zijn' });
+  }
+  const comment = String(req.body?.comment || "").trim().slice(0, 2000);
+  const stepId = String(req.body?.step_id || "").trim().slice(0, 64);
+
+  const items = readBeleidskompasFeedback();
+  items.push({
+    id: crypto.randomUUID(),
+    rating,
+    comment,
+    step_id: stepId,
+    created_at: new Date().toISOString(),
+  });
+  writePrivateJSON(BELEIDSKOMPAS_FEEDBACK_FILE, {
+    items: items.slice(-BELEIDSKOMPAS_FEEDBACK_MAX),
+  });
+  return res.status(201).json({ ok: true });
+});
+
+app.get("/api/beleidskompas-feedback", requireAuth, (req, res) => {
+  const items = readBeleidskompasFeedback();
+  const up = items.filter((i) => i.rating === "up").length;
+  return res.json({
+    items: items.slice().reverse(),
+    totals: { total: items.length, up, down: items.length - up },
+  });
 });
 
 app.get("/api/beleidskompas/export", requireAuth, (req, res) => {
@@ -3071,10 +3158,18 @@ app.get("/api/orchestrator/config", requireAuth, (req, res) => {
   res.json(readOrchestratorConfig());
 });
 
+app.post("/api/orchestrator/tools/:tool", createUtilityHandler({
+  readConfig: readOrchestratorConfig,
+  token: CRAWLER_INTERNAL_TOKEN,
+  extractToken,
+}));
+
 app.post("/api/orchestrator/config", requireAuth, (req, res) => {
   try {
-    const next = validateOrchestratorConfig(req.body || {});
-    writeJSON("orchestrator-config.json", next);
+    const next = validateOrchestratorConfig(req.body);
+    atomicWriteJSON(DATA_DIR, "orchestrator-config.json", next);
+    try { publishOrchestratorConfig(); }
+    catch { return res.status(503).json({ ok: false, error: "Orchestrator-policy kon niet worden gepubliceerd" }); }
     return res.json({ ok: true, config: next });
   } catch (err) {
     return res.status(400).json({ error: err.message || String(err) });
@@ -3354,6 +3449,8 @@ realtimeWss.on("connection", (clientWs, req) => {
 
 // ── Start ──────────────────────────────────────────────────────────
 initDefaults();
+// Publish policy before accepting requests (publishAll refreshes it again after startup).
+publishOrchestratorConfig();
 loadPersistedImageJobs();
 setInterval(cleanupImageJobs, 10 * 60 * 1000);
 setImmediate(pumpImageJobs);

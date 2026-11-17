@@ -1,8 +1,0 @@
-# Optional bridge build override for native n8n tool-call cards.
-# LibreChat and n8n runtime overlays are mounted by the base compose file.
-services:
-  n8n-openai-bridge:
-    build:
-      context: ../n8n-openai-bridge
-      dockerfile: docker/Dockerfile.build
-    image: govchat-n8n-openai-bridge:local

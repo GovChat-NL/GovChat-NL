@@ -1,0 +1,126 @@
+[
+  {
+    "id": "govchat-beleidskompas-hoofdagent",
+    "name": "Beleidskompas Hoofdagent",
+    "active": true,
+    "isArchived": false,
+    "nodes": [
+      {
+        "parameters": {
+          "httpMethod": "POST",
+          "path": "beleidskompas-hoofdagent",
+          "responseMode": "responseNode",
+          "options": {}
+        },
+        "id": "WebhookHoofdagent",
+        "name": "Webhook Hoofdagent",
+        "type": "n8n-nodes-base.webhook",
+        "typeVersion": 2,
+        "webhookId": "govchat-beleidskompas-hoofdagent",
+        "position": [
+          -680,
+          220
+        ]
+      },
+      {
+        "parameters": {
+          "jsCode": "const raw = $json || {};\nconst body = raw.body || {};\nconst headers = raw.headers || {};\n// The n8n-openai-bridge (LibreChat's real custom-endpoint chat pipeline) sends\n// the shared webhook secret as `Authorization: Bearer <token>`, not the\n// `x-govchat-token` header used by direct/manual webhook calls. Accept either.\nconst directToken = String(headers['x-govchat-token'] || headers['X-Govchat-Token'] || '').trim();\nconst authHeader = String(headers['authorization'] || headers['Authorization'] || '').trim();\nconst bearerToken = /^Bearer\\s/i.test(authHeader) ? authHeader.slice(authHeader.indexOf(' ') + 1).trim() : '';\nconst callerToken = directToken || bearerToken;\n\nconst stepId = String(body.step_id || '').trim();\nconst routeMap = {\n  'stap1': 'beleidskompas-step-stap1',\n  'stap2': 'beleidskompas-step-stap2',\n  'stap3': 'beleidskompas-step-stap3',\n  'stap4': 'beleidskompas-step-stap4'\n};\nconst path = routeMap[stepId] || routeMap.stap1;\n// Forward the CALLER's own token, not the internal env token: each step\n// workflow validates it against BELEIDSKOMPAS_N8N_WEBHOOK_TOKEN/N8N_WEBHOOK_TOKEN\n// itself and returns a clear ok:false (never throws) on mismatch, so an\n// unauthenticated caller cannot get a real answer just by reaching this router.\nreturn [{ json: { route_path: path, payload: body, caller_token: callerToken } }];"
+        },
+        "id": "RouteStep",
+        "name": "Route Step",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          -430,
+          220
+        ]
+      },
+      {
+        "parameters": {
+          "method": "POST",
+          "url": "={{ (String($env.BELEIDSKOMPAS_N8N_BASE_URL || 'http://n8n:5678').replace(/\\/$/, '')) + '/webhook/' + $json.route_path }}",
+          "sendHeaders": true,
+          "headerParameters": {
+            "parameters": [
+              {
+                "name": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "name": "x-govchat-token",
+                "value": "={{ String($json.caller_token || '') }}"
+              }
+            ]
+          },
+          "sendBody": true,
+          "specifyBody": "json",
+          "jsonBody": "={{ JSON.stringify($json.payload || {}) }}",
+          "options": {
+            "timeout": 120000
+          }
+        },
+        "id": "CallStepWorkflow",
+        "name": "Call Step Workflow",
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.2,
+        "position": [
+          -180,
+          220
+        ]
+      },
+      {
+        "parameters": {
+          "respondWith": "json",
+          "responseBody": "={{ JSON.stringify(Object.assign({ ok: true }, $json, { answer: $json.answer || $json.text || '' })) }}",
+          "options": {}
+        },
+        "id": "RespondHoofdagent",
+        "name": "Respond Hoofdagent",
+        "type": "n8n-nodes-base.respondToWebhook",
+        "typeVersion": 1,
+        "position": [
+          60,
+          220
+        ]
+      }
+    ],
+    "connections": {
+      "Webhook Hoofdagent": {
+        "main": [
+          [
+            {
+              "node": "Route Step",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Route Step": {
+        "main": [
+          [
+            {
+              "node": "Call Step Workflow",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Call Step Workflow": {
+        "main": [
+          [
+            {
+              "node": "Respond Hoofdagent",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      }
+    },
+    "settings": {
+      "executionOrder": "v1"
+    }
+  }
+]

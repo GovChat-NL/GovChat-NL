@@ -1,370 +1,56 @@
 {
-    "id":  "govchat-mcp-registry-sync",
-    "name":  "GovChat MCP Registry Sync",
-    "active":  false,
-    "nodes":  [
-                  {
-                      "parameters":  {
-                                         "rule":  {
-                                                      "interval":  [
-                                                                       {
-                                                                           "field":  "weeks"
-                                                                       }
-                                                                   ]
-                                                  }
-                                     },
-                      "id":  "McpRegistrySchedule",
-                      "name":  "Weekly JEMS Registry Refresh",
-                      "type":  "n8n-nodes-base.scheduleTrigger",
-                      "typeVersion":  1.2,
-                      "position":  [
-                                       -1000,
-                                       200
-                                   ]
-                  },
-                  {
-                      "parameters":  {
-                                         "method":  "POST",
-                                         "url":  "https://emr-jems-stage.rechenwerk.com/mcp",
-                                         "authentication":  "genericCredentialType",
-                                         "genericAuthType":  "httpMultipleHeadersAuth",
-                                         "sendHeaders":  true,
-                                         "headerParameters":  {
-                                                                  "parameters":  [
-                                                                                     {
-                                                                                         "name":  "Accept",
-                                                                                         "value":  "application/json, text/event-stream"
-                                                                                     }
-                                                                                 ]
-                                                              },
-                                         "sendBody":  true,
-                                         "specifyBody":  "json",
-                                         "jsonBody":  "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{\"protocolVersion\":\"2025-03-26\",\"capabilities\":{},\"clientInfo\":{\"name\":\"govchat-mcp-registry\",\"version\":\"1.0.0\"}}}",
-                                         "options":  {
-                                                         "timeout":  30000,
-                                                         "response":  {
-                                                                          "response":  {
-                                                                                           "fullResponse":  true,
-                                                                                           "responseFormat":  "text"
-                                                                                       }
-                                                                      }
-                                                     }
-                                     },
-                      "id":  "McpRegistryJemsInitialize",
-                      "name":  "Initialize JEMS MCP session",
-                      "type":  "n8n-nodes-base.httpRequest",
-                      "typeVersion":  4.2,
-                      "credentials":  {
-                                          "httpMultipleHeadersAuth":  {
-                                                                          "id":  "00000000-0000-4000-8000-000000000222",
-                                                                          "name":  "JEMS MCP Auth"
-                                                                      }
-                                      },
-                      "position":  [
-                                       -760,
-                                       200
-                                   ]
-                  },
-                  {
-                      "parameters":  {
-                                         "method":  "POST",
-                                         "url":  "https://emr-jems-stage.rechenwerk.com/mcp",
-                                         "authentication":  "genericCredentialType",
-                                         "genericAuthType":  "httpMultipleHeadersAuth",
-                                         "sendHeaders":  true,
-                                         "headerParameters":  {
-                                                                  "parameters":  [
-                                                                                     {
-                                                                                         "name":  "Accept",
-                                                                                         "value":  "application/json, text/event-stream"
-                                                                                     },
-                                                                                     {
-                                                                                         "name":  "mcp-session-id",
-                                                                                         "value":  "={{ Object.entries($(\u0027Initialize JEMS MCP session\u0027).first().json.headers || {}).find(([key]) =\u003e key.toLowerCase() === \u0027mcp-session-id\u0027)?.[1] || \u0027\u0027 }}"
-                                                                                     }
-                                                                                 ]
-                                                              },
-                                         "sendBody":  true,
-                                         "specifyBody":  "json",
-                                         "jsonBody":  "{\"jsonrpc\":\"2.0\",\"method\":\"notifications/initialized\"}",
-                                         "options":  {
-                                                         "timeout":  30000,
-                                                         "response":  {
-                                                                          "response":  {
-                                                                                           "fullResponse":  true,
-                                                                                           "neverError":  true,
-                                                                                           "responseFormat":  "text"
-                                                                                       }
-                                                                      }
-                                                     }
-                                     },
-                      "id":  "McpRegistryJemsReady",
-                      "name":  "Acknowledge JEMS MCP initialization",
-                      "type":  "n8n-nodes-base.httpRequest",
-                      "typeVersion":  4.2,
-                      "credentials":  {
-                                          "httpMultipleHeadersAuth":  {
-                                                                          "id":  "00000000-0000-4000-8000-000000000222",
-                                                                          "name":  "JEMS MCP Auth"
-                                                                      }
-                                      },
-                      "position":  [
-                                       -520,
-                                       200
-                                   ]
-                  },
-                  {
-                      "parameters":  {
-                                         "method":  "POST",
-                                         "url":  "https://emr-jems-stage.rechenwerk.com/mcp",
-                                         "authentication":  "genericCredentialType",
-                                         "genericAuthType":  "httpMultipleHeadersAuth",
-                                         "sendHeaders":  true,
-                                         "headerParameters":  {
-                                                                  "parameters":  [
-                                                                                     {
-                                                                                         "name":  "Accept",
-                                                                                         "value":  "application/json, text/event-stream"
-                                                                                     },
-                                                                                     {
-                                                                                         "name":  "mcp-session-id",
-                                                                                         "value":  "={{ Object.entries($(\u0027Initialize JEMS MCP session\u0027).first().json.headers || {}).find(([key]) =\u003e key.toLowerCase() === \u0027mcp-session-id\u0027)?.[1] || \u0027\u0027 }}"
-                                                                                     }
-                                                                                 ]
-                                                              },
-                                         "sendBody":  true,
-                                         "specifyBody":  "json",
-                                         "jsonBody":  "{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"tools/list\",\"params\":{}}",
-                                         "options":  {
-                                                         "timeout":  30000,
-                                                         "response":  {
-                                                                          "response":  {
-                                                                                           "fullResponse":  true,
-                                                                                           "responseFormat":  "text"
-                                                                                       }
-                                                                      }
-                                                     }
-                                     },
-                      "id":  "McpRegistryJemsList",
-                      "name":  "Fetch JEMS MCP functions",
-                      "type":  "n8n-nodes-base.httpRequest",
-                      "typeVersion":  4.2,
-                      "credentials":  {
-                                          "httpMultipleHeadersAuth":  {
-                                                                          "id":  "00000000-0000-4000-8000-000000000222",
-                                                                          "name":  "JEMS MCP Auth"
-                                                                      }
-                                      },
-                      "position":  [
-                                       -280,
-                                       200
-                                   ]
-                  },
-                  {
-                      "parameters":  {
-                                         "jsCode":  "const response = $json || {};\r\nconst raw = response.body || response;\r\nconst headers = response.headers || {};\r\nconst contentType = String(Object.entries(headers).find(([key]) =\u003e key.toLowerCase() === \u0027content-type\u0027)?.[1] || \u0027\u0027).toLowerCase();\r\nlet message;\r\nif (typeof raw === \u0027string\u0027) {\r\n  if (contentType.includes(\u0027text/event-stream\u0027)) {\r\n    const data = raw.split(/\\r?\\n/).filter((line) =\u003e line.startsWith(\u0027data:\u0027)).map((line) =\u003e line.slice(5).trim()).filter(Boolean);\r\n    if (!data.length) throw new Error(\u0027JEMS MCP tools/list stream is empty\u0027);\r\n    message = JSON.parse(data[data.length - 1]);\r\n  } else message = JSON.parse(raw);\r\n} else message = raw;\r\nconst tools = message?.result?.tools;\r\nif (message?.error || !Array.isArray(tools)) throw new Error(\u0027JEMS MCP tools/list response is invalid\u0027);\r\nlet groups;\r\ntry { groups = JSON.parse(String($env.MCP_HUB_JEMS_REQUIRED_GROUP_IDS || \u0027[]\u0027)); } catch { throw new Error(\u0027MCP_HUB_JEMS_REQUIRED_GROUP_IDS must be a JSON array\u0027); }\r\nif (!Array.isArray(groups) || groups.length === 0) throw new Error(\u0027JEMS MCP access groups are not configured\u0027);\r\nreturn tools.filter((tool) =\u003e tool \u0026\u0026 typeof tool.name === \u0027string\u0027 \u0026\u0026 tool.name.trim()).map((tool) =\u003e ({ json: {\r\n  mcp_id: \u0027jems\u0027, server_name: \u0027JEMS MCP\u0027, tool_name: tool.name,\r\n  description: String(tool.description || \u0027\u0027),\r\n  input_schema: JSON.stringify(tool.inputSchema || { type: \u0027object\u0027, properties: {} }),\r\n  required_group_ids: JSON.stringify(groups), public: false, enabled: true,\r\n  synced_at: new Date().toISOString(),\r\n} }));"
-                                     },
-                      "id":  "McpRegistryJemsNormalize",
-                      "name":  "Normalize JEMS functions for registry",
-                      "type":  "n8n-nodes-base.code",
-                      "typeVersion":  2,
-                      "position":  [
-                                       -40,
-                                       200
-                                   ]
-                  },
-                  {
-                      "parameters":  {
-                                         "operation":  "upsert",
-                                         "dataTableId":  {
-                                                             "__rl":  true,
-                                                             "value":  "={{ String($env.MCP_HUB_REGISTRY_TABLE_ID || \u0027\u0027) }}",
-                                                             "mode":  "id"
-                                                         },
-                                         "filters":  {
-                                                         "conditions":  [
-                                                                            {
-                                                                                "keyName":  "mcp_id",
-                                                                                "keyValue":  "={{ $json.mcp_id }}"
-                                                                            },
-                                                                            {
-                                                                                "keyName":  "tool_name",
-                                                                                "keyValue":  "={{ $json.tool_name }}"
-                                                                            }
-                                                                        ]
-                                                     },
-                                         "columns":  {
-                                                         "mappingMode":  "defineBelow",
-                                                         "value":  {
-                                                                       "mcp_id":  "={{ $json.mcp_id }}",
-                                                                       "server_name":  "={{ $json.server_name }}",
-                                                                       "tool_name":  "={{ $json.tool_name }}",
-                                                                       "description":  "={{ $json.description }}",
-                                                                       "input_schema":  "={{ $json.input_schema }}",
-                                                                       "required_group_ids":  "={{ $json.required_group_ids }}",
-                                                                       "public":  "={{ $json.public }}",
-                                                                       "enabled":  "={{ $json.enabled }}",
-                                                                       "synced_at":  "={{ $json.synced_at }}"
-                                                                   },
-                                                         "matchingColumns":  [
-                                                                                 "mcp_id",
-                                                                                 "tool_name"
-                                                                             ],
-                                                         "schema":  [
-                                                                        {
-                                                                            "id":  "mcp_id",
-                                                                            "displayName":  "mcp_id",
-                                                                            "required":  true,
-                                                                            "type":  "string"
-                                                                        },
-                                                                        {
-                                                                            "id":  "server_name",
-                                                                            "displayName":  "server_name",
-                                                                            "type":  "string"
-                                                                        },
-                                                                        {
-                                                                            "id":  "tool_name",
-                                                                            "displayName":  "tool_name",
-                                                                            "required":  true,
-                                                                            "type":  "string"
-                                                                        },
-                                                                        {
-                                                                            "id":  "description",
-                                                                            "displayName":  "description",
-                                                                            "type":  "string"
-                                                                        },
-                                                                        {
-                                                                            "id":  "input_schema",
-                                                                            "displayName":  "input_schema",
-                                                                            "type":  "string"
-                                                                        },
-                                                                        {
-                                                                            "id":  "required_group_ids",
-                                                                            "displayName":  "required_group_ids",
-                                                                            "type":  "string"
-                                                                        },
-                                                                        {
-                                                                            "id":  "public",
-                                                                            "displayName":  "public",
-                                                                            "type":  "boolean"
-                                                                        },
-                                                                        {
-                                                                            "id":  "enabled",
-                                                                            "displayName":  "enabled",
-                                                                            "type":  "boolean"
-                                                                        },
-                                                                        {
-                                                                            "id":  "synced_at",
-                                                                            "displayName":  "synced_at",
-                                                                            "type":  "string"
-                                                                        }
-                                                                    ],
-                                                         "attemptToConvertTypes":  false,
-                                                         "convertFieldsToString":  false
-                                                     },
-                                         "options":  {
-
-                                                     }
-                                     },
-                      "id":  "McpRegistryJemsUpsert",
-                      "name":  "Upsert JEMS functions into MCP registry table",
-                      "type":  "n8n-nodes-base.dataTable",
-                      "typeVersion":  1.1,
-                      "position":  [
-                                       200,
-                                       200
-                                   ]
-                  },
-                  {
-                      "parameters":  {
-
-                                     },
-                      "id":  "McpRegistryManualTrigger",
-                      "name":  "Manual Registry Refresh",
-                      "type":  "n8n-nodes-base.manualTrigger",
-                      "typeVersion":  1,
-                      "position":  [
-                                       -1000,
-                                       400
-                                   ]
-                  }
-              ],
-    "connections":  {
-                        "Weekly JEMS Registry Refresh":  {
-                                                             "main":  [
-                                                                          [
-                                                                              {
-                                                                                  "node":  "Initialize JEMS MCP session",
-                                                                                  "type":  "main",
-                                                                                  "index":  0
-                                                                              }
-                                                                          ]
-                                                                      ]
-                                                         },
-                        "Initialize JEMS MCP session":  {
-                                                            "main":  [
-                                                                         [
-                                                                             {
-                                                                                 "node":  "Acknowledge JEMS MCP initialization",
-                                                                                 "type":  "main",
-                                                                                 "index":  0
-                                                                             }
-                                                                         ]
-                                                                     ]
-                                                        },
-                        "Acknowledge JEMS MCP initialization":  {
-                                                                    "main":  [
-                                                                                 [
-                                                                                     {
-                                                                                         "node":  "Fetch JEMS MCP functions",
-                                                                                         "type":  "main",
-                                                                                         "index":  0
-                                                                                     }
-                                                                                 ]
-                                                                             ]
-                                                                },
-                        "Fetch JEMS MCP functions":  {
-                                                         "main":  [
-                                                                      [
-                                                                          {
-                                                                              "node":  "Normalize JEMS functions for registry",
-                                                                              "type":  "main",
-                                                                              "index":  0
-                                                                          }
-                                                                      ]
-                                                                  ]
-                                                     },
-                        "Normalize JEMS functions for registry":  {
-                                                                      "main":  [
-                                                                                   [
-                                                                                       {
-                                                                                           "node":  "Upsert JEMS functions into MCP registry table",
-                                                                                           "type":  "main",
-                                                                                           "index":  0
-                                                                                       }
-                                                                                   ]
-                                                                               ]
-                                                                  },
-                        "Manual Registry Refresh":  {
-                                                        "main":  [
-                                                                     [
-                                                                         {
-                                                                             "node":  "Initialize JEMS MCP session",
-                                                                             "type":  "main",
-                                                                             "index":  0
-                                                                         }
-                                                                     ]
-                                                                 ]
-                                                    }
-                    },
-    "settings":  {
-                     "executionOrder":  "v1",
-                     "saveDataSuccessExecution":  "none"
-                 },
-    "pinData":  [
-
-                ],
-    "tags":  [
-
-             ]
+  "id": "govchat-mcp-registry-sync",
+  "name": "GovChat MCP Approved Registry",
+  "active": false,
+  "nodes": [
+    {
+      "id": "RegistryTrigger",
+      "name": "When Called",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "parameters": {
+        "inputSource": "passthrough"
+      },
+      "position": [
+        -300,
+        240
+      ]
+    },
+    {
+      "id": "ApprovedRegistry",
+      "name": "Approved Registry",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "parameters": {
+        "jsCode": "// Operator-reviewed metadata, not autonomous network discovery.\nconst uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;\nconst groups = JSON.parse($env.MCP_HUB_JEMS_REQUIRED_GROUP_IDS || '[]');\nif (!Array.isArray(groups) || groups.some(g => typeof g !== 'string' || !uuid.test(g))) throw new Error('MCP_POLICY_INVALID');\nconst tenant = String($env.ENTRA_TENANT_ID || '').trim().toLowerCase();\nconst server = {\"server_name\": \"jems\", \"endpoint\": \"https://emr-jems-stage.rechenwerk.com/sse\", \"transport\": \"sse\", \"tools\": [{\"name\": \"jems_languages_list\", \"description\": \"\\n<usecase>\\nWHAT: Lists the fallback language and all available language codes supported by JEMS translations.\\nWHEN: Use before jems_project_fetch when you need to select a language or confirm the fallback language.\\nNOT: Does not translate arbitrary text; it only exposes supported language tags.\\n</usecase>\\n\\n<instructions>\\nPARAM RULES:\\n- none; call without parameters.\\nVALUE DISCOVERY:\\n- Not needed; this tool is the source of truth for language codes.\\nWORKFLOW:\\n- Typical flow: jems_languages_list -> pick language -> jems_project_fetch.\\n</instructions>\\n\", \"inputSchema\": {\"type\": \"object\", \"properties\": {}, \"required\": []}, \"enabled\": true, \"operator_review\": \"Read-only language codes; remote default annotations are inaccurate. No other JEMS tools approved.\"}]};\nserver.tenant_id = tenant;\nserver.required_group_ids = groups.map(g => g.toLowerCase());\nserver.enabled = uuid.test(tenant) && groups.length > 0;\nreturn [{ json: { servers: [server] } }];"
+      },
+      "position": [
+        0,
+        240
+      ]
+    }
+  ],
+  "connections": {
+    "When Called": {
+      "main": [
+        [
+          {
+            "node": "Approved Registry",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "callerPolicy": "workflowsFromSameOwner",
+    "saveDataSuccessExecution": "none",
+    "saveDataErrorExecution": "none",
+    "saveManualExecutions": false,
+    "saveExecutionProgress": false
+  },
+  "pinData": {},
+  "tags": []
 }

@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0"><channel><title>Mock officieel nieuws</title>
+<item><title>Ouder bericht</title><link>https://nos.nl/artikel/1</link><description>Een bericht</description><pubDate>Thu, 05 Nov 2026 08:00:00 GMT</pubDate></item>
+<item><title><![CDATA[<b>Nieuw &amp; veilig</b>]]></title><link>https://nos.nl/artikel/2</link><description><![CDATA[<p><strong>Sterk</strong> nieuws &amp; tekst<script>secret()</script></p>]]></description><pubDate>Fri, 06 Nov 2026 08:00:00 GMT</pubDate></item>
+<item><title>Geen veilige link</title><link>javascript:alert(1)</link><description>Niet tonen</description></item>
+</channel></rss>

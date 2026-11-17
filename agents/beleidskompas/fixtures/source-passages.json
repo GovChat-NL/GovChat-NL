@@ -1,0 +1,35 @@
+{
+  "_comment": "Demo fixture passages for Beleidskompas step 1 (public/provincial interest). 'sis40-strategisch-1' and 'instrumentenkoffer-1' are illustrative text written for this demo. 'energie-medebewind-1' and 'leefbaarheidsfonds-cofinanciering-1' are short excerpts adapted from real Provincie Limburg beleidskaders that were already part of the org's prior Beleidskompas PoC test fixtures (see old-framework repo: src/module/text_embedder/.../tests/data/beleidskaders). Trimmed for length; re-verify against the source PDF before any non-demo use.",
+  "passages": [
+    {
+      "id": "sis40-strategisch-1",
+      "filename": "SiS 4.0 Strategisch kader (illustratief)",
+      "tags": ["Beleid", "Governance"],
+      "text": "Een vraagstuk kwalificeert als publiek belang wanneer de markt het probleem niet vanzelf oplost en er aantoonbare maatschappelijke schade optreedt als de overheid niet handelt. De provincie toetst dit expliciet voordat een rol wordt overwogen: is er sprake van marktfalen, en wie ondervindt nadeel bij uitblijven van handelen?"
+    },
+    {
+      "id": "energie-medebewind-1",
+      "filename": "Beleidskader Nieuwe energie en een schoon leefmilieu 2024-2027, par. 3.1-3.2",
+      "tags": ["Beleid", "Governance"],
+      "text": "Naast de formele medebewindstaken heeft de Provincie zich de afgelopen jaren vanuit haar autonome provinciale afwegingen actief gemengd in het belang van zowel het leefmilieu als een duurzame energievoorziening in Limburg. De Provincie kan haar ruimtelijk instrumentarium inzetten om de energietransitie in Limburg in goede banen te leiden (o.a. via energieplanologie). Acties leggen vaak een ruimtelijk beslag op schaarse Limburgse grond; niet alle belangen zijn in te passen op schaarse vierkante (kilo)meters, wat bewuste, politiek-bestuurlijke afwegingen vergt."
+    },
+    {
+      "id": "leefbaarheidsfonds-cofinanciering-1",
+      "filename": "Statenvoorstel Beleidskader Leefbare Steden en Dorpen (GS DOC-00615441), par. 5.2",
+      "tags": ["Beleid", "Compliance"],
+      "text": "Vanuit het Leefbaarheidsfonds ondersteunt de Provincie initiatieven via een financiele bijdrage. De omvang van de provinciale bijdrage en de mate van cofinanciering verschilt per schaalniveau, maar is nooit meer dan 50% van de subsidiabele kosten en nooit meer dan de gemeentelijke bijdrage. Instemming en medewerking van de gemeente is randvoorwaardelijk voor realisatie en instandhouding van het initiatief."
+    },
+    {
+      "id": "instrumentenkoffer-1",
+      "filename": "Provinciale Instrumentenkoffer (illustratief)",
+      "tags": ["Beleid"],
+      "text": "Wanneer meerdere gemeenten gezamenlijk een regionaal vraagstuk voorleggen dat de uitvoeringskracht van een enkele gemeente overstijgt, kan de provincie een regisserende of stimulerende rol vervullen, bijvoorbeeld via cofinanciering, coordinatie of het beschikbaar stellen van expertise."
+    },
+    {
+      "id": "governance-hfd10-1",
+      "filename": "SiS 4.0 Uitvoeringskader (illustratief)",
+      "tags": ["Governance", "Compliance"],
+      "text": "Voor elk provinciaal instrument geldt dat sturing, toezicht en verantwoording vooraf belegd moeten zijn: wie is opdrachtgever, wie toetst voortgang, en welke KPI's worden gerapporteerd aan Provinciale Staten. Dit geldt onverkort voor cofinancieringsregelingen aan gemeenten of regionale samenwerkingsverbanden."
+    }
+  ]
+}

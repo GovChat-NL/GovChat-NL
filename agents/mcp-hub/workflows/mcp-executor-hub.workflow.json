@@ -1,216 +1,207 @@
 {
-    "id":  "govchat-mcp-executor-hub",
-    "name":  "GovChat MCP Executor Hub",
-    "active":  false,
-    "nodes":  [
-                  {
-                      "parameters":  {
-                                         "workflowInputs":  {
-                                                                "values":  [
-                                                                               {
-                                                                                   "name":  "server_id"
-                                                                               },
-                                                                               {
-                                                                                   "name":  "tool_name"
-                                                                               },
-                                                                               {
-                                                                                   "name":  "arguments",
-                                                                                   "type":  "any"
-                                                                               },
-                                                                               {
-                                                                                   "name":  "user_authorized_groups",
-                                                                                   "type":  "any"
-                                                                               }
-                                                                           ]
-                                                            }
-                                     },
-                      "id":  "McpHubTrigger",
-                      "name":  "When Executed by Orchestrator",
-                      "type":  "n8n-nodes-base.executeWorkflowTrigger",
-                      "typeVersion":  1.2,
-                      "position":  [
-                                       -800,
-                                       200
-                                   ]
-                  },
-                  {
-                      "parameters":  {
-                                         "operation":  "get",
-                                         "dataTableId":  {
-                                                             "__rl":  true,
-                                                             "value":  "={{ String($env.MCP_HUB_REGISTRY_TABLE_ID || \u0027\u0027) }}",
-                                                             "mode":  "id"
-                                                         },
-                                         "returnAll":  true,
-                                         "filters":  {
-                                                         "conditions":  [
-
-                                                                        ]
-                                                     },
-                                         "options":  {
-
-                                                     }
-                                     },
-                      "id":  "McpHubRegistryRead",
-                      "name":  "Read MCP registry",
-                      "type":  "n8n-nodes-base.dataTable",
-                      "typeVersion":  1.1,
-                      "position":  [
-                                       -560,
-                                       200
-                                   ]
-                  },
-                  {
-                      "parameters":  {
-                                         "jsCode":  "const input = $(\u0027When Executed by Orchestrator\u0027).first().json || {};\r\nconst records = $input.all().map((item) =\u003e item.json || {});\r\nconst userGroups = input.user_authorized_groups;\r\nif (!Array.isArray(userGroups) || userGroups.some((group) =\u003e typeof group !== \u0027string\u0027)) throw new Error(\u0027Missing verified Entra groups; access denied\u0027);\r\nif (String(input.server_id || \u0027\u0027).trim().toLowerCase() !== \u0027jems\u0027) throw new Error(\u0027Only JEMS is configured\u0027);\r\nconst toolName = String(input.tool_name || \u0027\u0027).trim();\r\nif (!toolName) throw new Error(\u0027tool_name is required\u0027);\r\nconst parse = (value) =\u003e typeof value === \u0027string\u0027 ? JSON.parse(value) : value;\r\nconst configuredGroups = parse(String($env.MCP_HUB_JEMS_REQUIRED_GROUP_IDS || \u0027[]\u0027));\r\nif (!Array.isArray(configuredGroups) || configuredGroups.length === 0) throw new Error(\u0027JEMS access groups are not configured\u0027);\r\nconst userHasConfiguredAccess = configuredGroups.some((allowed) =\u003e userGroups.some((group) =\u003e group.toLowerCase() === String(allowed).toLowerCase()));\r\nif (!userHasConfiguredAccess) throw new Error(\u0027JEMS MCP access denied\u0027);\r\nconst row = records.find((record) =\u003e String(record.mcp_id || \u0027\u0027).toLowerCase() === \u0027jems\u0027 \u0026\u0026 String(record.tool_name || \u0027\u0027) === toolName \u0026\u0026 record.enabled !== false);\r\nif (!row) throw new Error(\u0027JEMS MCP function is not in the current registry\u0027);\r\nconst rowGroups = parse(row.required_group_ids || \u0027[]\u0027);\r\nif (!Array.isArray(rowGroups) || !rowGroups.some((required) =\u003e userGroups.some((group) =\u003e group.toLowerCase() === String(required).toLowerCase()))) throw new Error(\u0027JEMS function access denied\u0027);\r\nconst schema = parse(row.input_schema || \u0027{}\u0027);\r\nif (!schema || typeof schema !== \u0027object\u0027 || Array.isArray(schema)) throw new Error(\u0027Invalid registered MCP input schema\u0027);\r\nconst args = input.arguments \u0026\u0026 typeof input.arguments === \u0027object\u0027 \u0026\u0026 !Array.isArray(input.arguments) ? input.arguments : {};\r\nfor (const key of schema.required || []) if (!Object.prototype.hasOwnProperty.call(args, key)) throw new Error(\u0027Missing required tool argument: \u0027 + key);\r\nif (schema.additionalProperties === false) for (const key of Object.keys(args)) if (!Object.prototype.hasOwnProperty.call(schema.properties || {}, key)) throw new Error(\u0027Unknown tool argument: \u0027 + key);\r\nreturn [{ json: { server_id: \u0027jems\u0027, tool_name: toolName, arguments: args } }];"
-                                     },
-                      "id":  "McpHubAuthorizeJemsTool",
-                      "name":  "Authorize JEMS tool call",
-                      "type":  "n8n-nodes-base.code",
-                      "typeVersion":  2,
-                      "position":  [
-                                       -300,
-                                       200
-                                   ]
-                  },
-                  {
-                      "parameters":  {
-                                         "promptType":  "define",
-                                         "text":  "={{ JSON.stringify($json) }}",
-                                         "options":  {
-                                                         "systemMessage":  "Dispatch the pre-authorized JEMS MCP tool. Call the exact tool_name once with the supplied arguments unchanged. Do not use any other tool or add commentary; return only the tool result.",
-                                                         "maxIterations":  2
-                                                     }
-                                     },
-                      "id":  "McpHubJemsDispatcher",
-                      "name":  "Dispatch authorized JEMS tool",
-                      "type":  "@n8n/n8n-nodes-langchain.agent",
-                      "typeVersion":  3.1,
-                      "position":  [
-                                       0,
-                                       200
-                                   ]
-                  },
-                  {
-                      "parameters":  {
-                                         "model":  {
-                                                       "__rl":  true,
-                                                       "mode":  "list",
-                                                       "value":  "gpt-5.4"
-                                                   },
-                                         "options":  {
-                                                         "baseURL":  "={{ (String($env.LITELLM_URL || \u0027http://litellm:4000\u0027).replace(/\\/$/, \u0027\u0027)) + \u0027/v1\u0027 }}"
-                                                     }
-                                     },
-                      "id":  "McpHubDispatcherModel",
-                      "name":  "LiteLLM Dispatcher Model",
-                      "type":  "@n8n/n8n-nodes-langchain.lmChatOpenAi",
-                      "typeVersion":  1.3,
-                      "credentials":  {
-                                          "openAiApi":  {
-                                                            "id":  "00000000-0000-4000-8000-000000000111",
-                                                            "name":  "LiteLLM API"
-                                                        }
-                                      },
-                      "position":  [
-                                       0,
-                                       440
-                                   ]
-                  },
-                  {
-                      "parameters":  {
-                                         "endpointUrl":  "https://emr-jems-stage.rechenwerk.com/mcp",
-                                         "serverTransport":  "httpStreamable",
-                                         "authentication":  "multipleHeadersAuth",
-                                         "include":  "selected",
-                                         "includeTools":  [
-                                                              "={{ $json.tool_name }}"
-                                                          ],
-                                         "options":  {
-                                                         "timeout":  60000
-                                                     }
-                                     },
-                      "id":  "McpHubJemsClient",
-                      "name":  "JEMS MCP",
-                      "type":  "@n8n/n8n-nodes-langchain.mcpClientTool",
-                      "typeVersion":  1.3,
-                      "credentials":  {
-                                          "httpMultipleHeadersAuth":  {
-                                                                          "id":  "00000000-0000-4000-8000-000000000222",
-                                                                          "name":  "JEMS MCP Auth"
-                                                                      }
-                                      },
-                      "position":  [
-                                       340,
-                                       440
-                                   ]
-                  }
-              ],
-    "connections":  {
-                        "When Executed by Orchestrator":  {
-                                                              "main":  [
-                                                                           [
-                                                                               {
-                                                                                   "node":  "Read MCP registry",
-                                                                                   "type":  "main",
-                                                                                   "index":  0
-                                                                               }
-                                                                           ]
-                                                                       ]
-                                                          },
-                        "Authorize JEMS tool call":  {
-                                                         "main":  [
-                                                                      [
-                                                                          {
-                                                                              "node":  "Dispatch authorized JEMS tool",
-                                                                              "type":  "main",
-                                                                              "index":  0
-                                                                          }
-                                                                      ]
-                                                                  ]
-                                                     },
-                        "LiteLLM Dispatcher Model":  {
-                                                         "ai_languageModel":  [
-                                                                                  [
-                                                                                      {
-                                                                                          "node":  "Dispatch authorized JEMS tool",
-                                                                                          "type":  "ai_languageModel",
-                                                                                          "index":  0
-                                                                                      }
-                                                                                  ]
-                                                                              ]
-                                                     },
-                        "JEMS MCP":  {
-                                         "ai_tool":  [
-                                                         [
-                                                             {
-                                                                 "node":  "Dispatch authorized JEMS tool",
-                                                                 "type":  "ai_tool",
-                                                                 "index":  0
-                                                             }
-                                                         ]
-                                                     ]
-                                     },
-                        "Read MCP registry":  {
-                                                  "main":  [
-                                                               [
-                                                                   {
-                                                                       "node":  "Authorize JEMS tool call",
-                                                                       "type":  "main",
-                                                                       "index":  0
-                                                                   }
-                                                               ]
-                                                           ]
-                                              }
-                    },
-    "settings":  {
-                     "executionOrder":  "v1",
-                     "saveDataSuccessExecution":  "none"
-                 },
-    "pinData":  [
-
-                ],
-    "tags":  [
-
-             ]
+  "id": "govchat-mcp-executor-hub",
+  "name": "GovChat MCP Executor Hub",
+  "active": false,
+  "nodes": [
+    {
+      "id": "ExecutorTrigger",
+      "name": "When Executed by Orchestrator",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "parameters": {
+        "workflowInputs": {
+          "values": [
+            {
+              "name": "server_name",
+              "type": "string"
+            },
+            {
+              "name": "tool_name",
+              "type": "string"
+            },
+            {
+              "name": "tool_arguments",
+              "type": "any"
+            },
+            {
+              "name": "user_authorization_verified",
+              "type": "boolean"
+            },
+            {
+              "name": "user_authorization_mode",
+              "type": "string"
+            },
+            {
+              "name": "user_authorized_groups",
+              "type": "any"
+            },
+            {
+              "name": "user_tid",
+              "type": "string"
+            },
+            {
+              "name": "user_oid",
+              "type": "string"
+            },
+            {
+              "name": "user_sub",
+              "type": "string"
+            },
+            {
+              "name": "user_token_expires_at",
+              "type": "number"
+            }
+          ]
+        }
+      },
+      "position": [
+        -800,
+        240
+      ]
+    },
+    {
+      "id": "ExecutorRegistry",
+      "name": "Read Approved Registry",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.3,
+      "parameters": {
+        "source": "database",
+        "workflowId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "govchat-mcp-registry-sync"
+        },
+        "mode": "once",
+        "options": {
+          "waitForSubWorkflow": true
+        }
+      },
+      "position": [
+        -560,
+        240
+      ]
+    },
+    {
+      "id": "AuthorizeJems",
+      "name": "Authorize JEMS tool call",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "parameters": {
+        "jsCode": "const input = $('When Executed by Orchestrator').first().json;\nconst registry = $input.first().json; // Result of our own registry call, never caller data.\nconst uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;\nconst validIdentity = (input, server) => server?.enabled === true\n  && input.user_authorization_verified === true && input.user_authorization_mode === 'entra_delegated'\n  && typeof input.user_tid === 'string' && uuid.test(input.user_tid) && input.user_tid.toLowerCase() === server.tenant_id\n  && typeof input.user_oid === 'string' && uuid.test(input.user_oid)\n  && typeof input.user_sub === 'string' && input.user_sub.trim().length > 0\n  && Number.isSafeInteger(input.user_token_expires_at) && input.user_token_expires_at > Math.floor(Date.now() / 1000)\n  && Array.isArray(input.user_authorized_groups) && input.user_authorized_groups.every(g => typeof g === 'string' && uuid.test(g))\n  && server.required_group_ids.some(g => input.user_authorized_groups.some(u => u.toLowerCase() === g));\nconst server = registry.servers?.find(s => s.server_name === 'jems');\nif (!validIdentity(input, server)) throw new Error('MCP_ACCESS_DENIED');\nif (input.server_name !== server.server_name || input.tool_name !== 'jems_languages_list') throw new Error('MCP_TOOL_DENIED');\nconst tool = server.tools.find(t => t.name === input.tool_name && t.enabled === true);\nif (!tool) throw new Error('MCP_TOOL_DENIED');\nconst schema = tool.inputSchema;\n// Deliberately support only the reviewed no-parameter schema. Extensions require review.\nif (schema?.type !== 'object' || !schema.properties || Object.keys(schema.properties).length !== 0\n  || !Array.isArray(schema.required) || schema.required.length !== 0) throw new Error('MCP_SCHEMA_NOT_SUPPORTED');\nlet args = input.tool_arguments;\nif (typeof args === 'string') {\n  try { args = JSON.parse(args); } catch { throw new Error('MCP_ARGUMENTS_INVALID'); }\n}\nif (!args || typeof args !== 'object' || Array.isArray(args) || Object.keys(args).length !== 0) throw new Error('MCP_ARGUMENTS_INVALID');\nreturn [{ json: { tool_name: tool.name, tool_arguments: args } }];"
+      },
+      "position": [
+        -300,
+        240
+      ]
+    },
+    {
+      "id": "NativeJems",
+      "name": "JEMS MCP",
+      "type": "@n8n/n8n-nodes-langchain.mcpClient",
+      "typeVersion": 1.1,
+      "parameters": {
+        "endpointUrl": "https://emr-jems-stage.rechenwerk.com/sse",
+        "serverTransport": "sse",
+        "authentication": "multipleHeadersAuth",
+        "tool": {
+          "__rl": true,
+          "mode": "id",
+          "value": "={{ $json.tool_name }}"
+        },
+        "inputMode": "json",
+        "jsonInput": "={{ $json.tool_arguments }}",
+        "options": {
+          "timeout": 60000,
+          "convertToBinary": false
+        }
+      },
+      "position": [
+        0,
+        240
+      ],
+      "credentials": {
+        "httpMultipleHeadersAuth": {
+          "id": "00000000-0000-4000-8000-000000000777",
+          "name": "JEMS MCP Auth"
+        }
+      },
+      "onError": "continueErrorOutput"
+    },
+    {
+      "id": "JemsError",
+      "name": "Controlled MCP Result",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "parameters": {
+        "jsCode": "const result = $input.first().json;\nif (result.error || (!result.content && !result.structuredContent)) {\n  return [{ json: { error: { code: 'MCP_UNAVAILABLE', message: 'JEMS language list is unavailable.' } } }];\n}\nreturn [{ json: { ...(result.content ? { content: result.content } : {}), ...(result.structuredContent ? { structuredContent: result.structuredContent } : {}) } }];"
+      },
+      "position": [
+        240,
+        440
+      ]
+    }
+  ],
+  "connections": {
+    "When Executed by Orchestrator": {
+      "main": [
+        [
+          {
+            "node": "Read Approved Registry",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read Approved Registry": {
+      "main": [
+        [
+          {
+            "node": "Authorize JEMS tool call",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Authorize JEMS tool call": {
+      "main": [
+        [
+          {
+            "node": "JEMS MCP",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "JEMS MCP": {
+      "main": [
+        [
+          {
+            "node": "Controlled MCP Result",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Controlled MCP Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "callerPolicy": "workflowsFromSameOwner",
+    "saveDataSuccessExecution": "none",
+    "saveDataErrorExecution": "none",
+    "saveManualExecutions": false,
+    "saveExecutionProgress": false
+  },
+  "pinData": {},
+  "tags": []
 }

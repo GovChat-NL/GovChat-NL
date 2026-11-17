@@ -1,9 +1,0 @@
-# Optional local bridge development overlay.
-# The sibling checkout is deliberately external to this monorepo; this file is
-# not included in the standard deployment or clean-checkout workflow.
-services:
-  n8n-openai-bridge:
-    image: govchat-nl/n8n-openai-bridge:dev
-    build:
-      context: ../n8n-openai-bridge
-      dockerfile: docker/Dockerfile.build

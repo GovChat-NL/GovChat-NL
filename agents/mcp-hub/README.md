@@ -1,71 +1,44 @@
-# GovChat MCP Hub
+# Minimal native JEMS route
 
-The MCP executor hub connects to each remote MCP service through its own native
-n8n **MCP Client Tool** node. JEMS is the first configured server and appears as
-the dedicated **JEMS MCP** node in `mcp-executor-hub.workflow.json`.
+See the [Entra setup, testing and deployment guide](../../docs/jems-entra.md).
 
-## JEMS settings
+Three workflows: the existing [orchestrator](../n8n/workflows/algemeen/orchestrator-litellm.json), the [approved registry](workflows/mcp-registry-sync.workflow.json), and the [executor](workflows/mcp-executor-hub.workflow.json). No custom package, second dispatch model, database migration, HMAC, proxy, or scheduled discovery.
 
-Set these in the deployment `.env` (do not commit real credential values):
+## Approved registry, not autonomous discovery
 
-| Variable | Purpose |
+The registry retains its stable historical ID but returns **operator-reviewed static metadata** when called. The regular native MCP Client has no workflow discovery operation. Refresh the registry manually after an operator performs authenticated legacy-SSE discovery and reviews the returned schema and policy. Do not use a stateless HTTP POST to the SSE endpoint as discovery.
+
+Only the language-list capability is enabled. Its description and empty object schema match the previously discovered metadata. The operator confirmed that it returns language codes without business mutation, despite inaccurate remote default annotations. The other four discovered tools remain unavailable. Future tools or parameterized schemas require explicit operator review and implementation; this executor intentionally supports only the reviewed no-argument schema.
+
+## Trust and execution
+
+The orchestrator webhook requires the shared bridge bearer through native header authentication. Keep n8n private to the bridge and trusted operators: same-owner workflow policy is not cryptographic proof of bridge origin. Do not give untrusted workflows the same owner or editor access. Registry and executor must share the orchestrator owner.
+
+The parent bridge must verify Entra delegated tokens and forward these top-level authenticated request-body fields: user_authorization_verified (strict true), user_authorization_mode (entra_delegated), user_authorized_groups (verified UUID array), user_tid, user_oid, user_sub, and user_token_expires_at (integer epoch seconds). Identity is never read from messages, roles, nested bodies, model arguments, or caller-supplied registry data. No Entra token is mapped to tools or prompts.
+
+The orchestrator reads the registry, checks tenant/identity/expiry/group intersection, and offers only approved metadata to its authorized agent branch. Ordinary chat follows the original agent with **no JEMS tool**; existing document/image processing and unrelated tools remain intact. The model supplies only server name, tool name, and tool arguments. All identity mappings reference the original authenticated webhook body.
+
+The executor independently calls the same authoritative registry and repeats policy checks. It rejects unknown/disabled tools, malformed JSON, non-object inputs, arrays, and non-empty objects. The exact accepted empty object goes directly to native MCP Client version 1.1 over the fixed staging SSE endpoint; the native SDK manages the session and message path. The model cannot select an endpoint. Both native error paths return a controlled unavailability response without forwarding raw error details. Execution-data saving is disabled; maintain deployment log redaction and do not enable verbose secret/payload logging.
+
+## Bootstrap settings and review
+
+Required settings, to be wired by the parent deployment owner (deployment configuration is unchanged here):
+
+| Setting | Destination / purpose |
 | --- | --- |
-| `JEMS_MCP_API_KEY` | JEMS API key |
-| `JEMS_MCP_USERNAME` | JEMS account email (sent in the `X-Jems-Email` header) |
-| `JEMS_MCP_PASSWORD` | JEMS account password |
-| `MCP_HUB_JEMS_REQUIRED_GROUP_IDS` | JSON array of Entra group IDs allowed to use JEMS |
-| `MCP_HUB_REGISTRY_TABLE_ID` | n8n Data Table ID used for the MCP function registry |
+| JEMS_MCP_API_KEY, JEMS_MCP_USERNAME, JEMS_MCP_PASSWORD | Bootstrap only; all three or none. Native credential headers: X-API-Key, X-Jems-Email, X-Jems-Password. Never pass secrets to model prompts or Code runners. |
+| N8N_WEBHOOK_TOKEN | Bridge and bootstrap; native Authorization header credential with Bearer prefix. |
+| ENTRA_TENANT_ID | n8n and Code runners; expected verified tenant UUID. |
+| MCP_HUB_JEMS_REQUIRED_GROUP_IDS | n8n and Code runners; JSON array of allowed group UUIDs. Absent/empty configuration disables JEMS capability exposure, not ordinary chat. |
 
-The JEMS staging MCP endpoint is fixed in the JEMS-specific MCP Client Tool and
-registry-sync workflow nodes: `https://emr-jems-stage.rechenwerk.com/mcp`.
-It is intentionally not an environment variable because it belongs to this
-specific integration.
+The [bootstrap](../../n8n/bootstrap.js) recursively includes the hub directory from the existing agents mount. Old version-8 seed markers get a one-time scoped import of these three stable workflow IDs. Later manual registry/workflow changes use the existing reviewed force-import mechanism (AGENTS_BOOTSTRAP_FORCE=true); **back up first**, since force imports all discovered templates. Inactive registry/executor exports are callable subworkflows, not scheduled jobs. Existing Data Tables and rows are untouched.
 
-The one-shot bootstrap imports these three values as an encrypted n8n
-`httpMultipleHeadersAuth` credential named **JEMS MCP Auth**. The secret values
-are passed only to the bootstrap container, are written to a mode-0600 temporary
-file for the n8n credential import, and that file is deleted immediately after
-import. They are not embedded in a workflow export or passed to the n8n Code
-task runners. The header names are fixed to `X-API-Key`, `X-Jems-Email`, and
-`X-Jems-Password`, matching the JEMS staging gateway contract.
+Credential import uses the supported native CLI and its existing-owner personal-project default, matching workflow import. JEMS credential ID ends in 777; bridge bearer credential ID ends in 444. TOPdesk retains its existing ID ending in 222. Temporary credential files are private and deleted, and managed-import errors suppress raw details. Existing owners are never reset on login mismatch.
 
-After changing a JEMS credential value, restart/re-run the bootstrap service so
-it re-imports the credential. After changing a workflow JSON, set
-`AGENTS_BOOTSTRAP_FORCE=true` for the bootstrap run so n8n imports and publishes
-the updated workflow.
+The initial feature reused TOPdesk's ID; this candidate gives JEMS a distinct ID instead of replacing or migrating TOPdesk. Bootstrap refuses any existing cross-type/name collision at either managed ID. Existing credentials are preserved. With all JEMS secrets absent, normal chat bootstrap has no JEMS import or active sync. The shared bridge token remains mandatory.
 
-The n8n bootstrap creates a **MCP Hub Registry** Data Table in the project that
-owns the MCP workflows. Its ID defaults to `GovChatMcpHubRegistry01` and is
-passed to n8n and its task runners as `MCP_HUB_REGISTRY_TABLE_ID`. The table has
-these columns:
+## Verification limits
 
-| Column | Type |
-| --- | --- |
-| `mcp_id` | String |
-| `server_name` | String |
-| `tool_name` | String |
-| `description` | String |
-| `input_schema` | String |
-| `required_group_ids` | String |
-| `public` | Boolean |
-| `enabled` | Boolean |
-| `synced_at` | String |
+The [focused tests](../../tests/agents/mcp-hub-minimal.test.js) execute the exported policy/filter code, verify the workflow graph and pinned native class contract, and check bootstrap planning/collision behavior. Run them and the [existing validator](../../tests/agents/validate-workflows.js) in the pinned n8n 2.25.7 image with networking disabled and only this checkout mounted read-only.
 
-The scheduled registry workflow initializes JEMS, fetches `tools/list`, and
-upserts each function name, description, input schema, and configured Entra
-group allowlist into this table. The table is created idempotently during
-bootstrap. If overriding its ID in `.env`, use a 1–36 character alphanumeric ID
-and keep it the same for n8n, the runners, and bootstrap. After the first
-bootstrap, run the registry-sync workflow once to populate the table before
-testing JEMS calls.
-
-`n8n-openai-bridge` verifies the signed Entra access token and forwards its
-verified group IDs as `user_authorized_groups`. Before each model run, the
-orchestrator filters registry entries against those groups and injects only the
-authorized JEMS names, descriptions, and schemas into the `mcp_hub` tool
-description. The executor repeats the group and registry checks before calling
-the native JEMS MCP Client Tool node. An empty group list denies access.
-
-Add future MCP integrations as their own named MCP Client Tool nodes and their
-own bootstrap-managed credentials; do not put remote MCP transport or
-credentials into a catch-all Code node.
+These are policy/contract checks, **not end-to-end acceptance**. Prior native legacy-SSE dummy verification is the transport basis. No real JEMS call, live credential import, deployment, or real Entra acceptance was performed for this change. Real Entra/LibreChat acceptance and any explicitly authorized staging read remain pending parent instruction.

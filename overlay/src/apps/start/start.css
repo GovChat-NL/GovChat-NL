@@ -1,0 +1,180 @@
+/* Styles of the start page (/start/): a choice between the apps from
+   apps.json. The help modal and the base rules come from custom.css. */
+#gc-landing {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background:
+    radial-gradient(circle at 15% 10%, rgba(37, 99, 235, 0.12), transparent 45%),
+    radial-gradient(circle at 85% 90%, rgba(14, 165, 233, 0.12), transparent 45%),
+    #f8fafc;
+  color: #111827;
+}
+
+.dark #gc-landing {
+  background:
+    radial-gradient(circle at 15% 10%, rgba(59, 130, 246, 0.18), transparent 45%),
+    radial-gradient(circle at 85% 90%, rgba(14, 165, 233, 0.14), transparent 45%),
+    #0b1220;
+  color: #f9fafb;
+}
+
+.gc-landing-inner {
+  width: 100%;
+  max-width: 880px;
+  padding: 40px 24px;
+  text-align: center;
+}
+
+#gc-landing-title {
+  margin: 0 0 10px;
+  font-size: 36px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  line-height: 1.15;
+}
+
+.gc-landing-subtitle {
+  margin: 0 0 36px;
+  font-size: 17px;
+  color: #4b5563;
+}
+
+.dark .gc-landing-subtitle {
+  color: #9ca3af;
+}
+
+.gc-landing-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 20px;
+}
+
+/* Accent colour per tile; the default is blue, other apps get their own. */
+.gc-landing-card {
+  --gc-accent: 37, 99, 235;
+}
+
+.gc-landing-card[data-id="beleidskompas"] {
+  --gc-accent: 13, 148, 136;
+}
+
+.gc-landing-card {
+  position: relative;
+  min-height: 230px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 28px 28px 26px;
+  text-align: left;
+  text-decoration: none;
+  border: 1px solid #e5e7eb;
+  border-radius: 16px;
+  background: #fff;
+  color: inherit;
+  cursor: pointer;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04), 0 8px 24px rgba(15, 23, 42, 0.06);
+  transition: border-color 150ms ease, transform 150ms ease, box-shadow 150ms ease;
+}
+
+.gc-landing-card:hover {
+  border-color: rgb(var(--gc-accent));
+  transform: translateY(-3px);
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04), 0 14px 32px rgba(var(--gc-accent), 0.18);
+}
+
+.gc-landing-card:focus-visible {
+  outline: 2px solid rgb(var(--gc-accent));
+  outline-offset: 3px;
+}
+
+.dark .gc-landing-card {
+  background: #111827;
+  border-color: #374151;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+}
+
+.gc-landing-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 56px;
+  height: 56px;
+  margin-bottom: 4px;
+  border-radius: 14px;
+  background: rgba(var(--gc-accent), 0.12);
+  font-size: 28px;
+  line-height: 1;
+}
+
+.dark .gc-landing-icon {
+  background: rgba(var(--gc-accent), 0.24);
+}
+
+.gc-landing-name {
+  font-size: 21px;
+  font-weight: 700;
+}
+
+.gc-landing-desc {
+  font-size: 15px;
+  line-height: 1.55;
+  color: #6b7280;
+}
+
+.dark .gc-landing-desc {
+  color: #9ca3af;
+}
+
+/* "Openen →" hint at the bottom of each tile. */
+.gc-landing-open {
+  margin-top: auto;
+  padding: 8px 14px;
+  border-radius: 9999px;
+  background: rgba(var(--gc-accent), 0.1);
+  font-size: 14px;
+  font-weight: 600;
+  color: rgb(var(--gc-accent));
+  transition: background-color 150ms ease, color 150ms ease;
+}
+
+.gc-landing-card:hover .gc-landing-open,
+.gc-landing-card:focus-visible .gc-landing-open {
+  background: rgb(var(--gc-accent));
+  color: #fff;
+}
+
+/* "Bekijk de handleiding" line under the tiles. */
+.gc-landing-help {
+  margin: 28px 0 0;
+  font-size: 14px;
+  color: #6b7280;
+}
+
+.dark .gc-landing-help {
+  color: #9ca3af;
+}
+
+#gc-landing-help-btn {
+  padding: 0;
+  border: none;
+  background: none;
+  font: inherit;
+  font-weight: 600;
+  color: #2563eb;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.dark #gc-landing-help-btn {
+  color: #60a5fa;
+}
+
+#gc-landing-help-btn:focus-visible {
+  outline: 2px solid #2563eb;
+  outline-offset: 2px;
+  border-radius: 4px;
+}

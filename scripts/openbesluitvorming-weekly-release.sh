@@ -13,7 +13,7 @@ Required environment variables:
   OPENBESLUITVORMING_WEEKLY_RELEASE_APPROVED=yes
 
 Optional environment variables:
-  GOVCHAT_REPOSITORY=GovChat-NL/GovChat-NL-LibreChat
+  GOVCHAT_REPOSITORY=GovChat-NL/GovChat-NL
   QDRANT_CONTAINER=librechat-qdrant
   QDRANT_URL=http://127.0.0.1:6333
   OPENBESLUITVORMING_COLLECTION=openraadsinformatie_v1
@@ -41,7 +41,7 @@ done
 [ "${OPENBESLUITVORMING_WEEKLY_RELEASE_APPROVED:-}" = "yes" ] || { echo 'Missing OPENBESLUITVORMING_WEEKLY_RELEASE_APPROVED=yes' >&2; exit 3; }
 
 ROOT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
-REPOSITORY=${GOVCHAT_REPOSITORY:-GovChat-NL/GovChat-NL-LibreChat}
+REPOSITORY=${GOVCHAT_REPOSITORY:-GovChat-NL/GovChat-NL}
 QDRANT_CONTAINER=${QDRANT_CONTAINER:-librechat-qdrant}
 QDRANT_URL=${QDRANT_URL:-http://127.0.0.1:6333}
 COLLECTION=${OPENBESLUITVORMING_COLLECTION:-openraadsinformatie_v1}
