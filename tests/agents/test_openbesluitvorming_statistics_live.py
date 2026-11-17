@@ -51,7 +51,10 @@ class LiveFixtureTests(unittest.TestCase):
                     "source_id": str(n), "source_key": config.source, "ingest_run_id": config.run_id,
                     "entity_type": "Document", "entity_detail": {"sortDate": date},
                     "classification": ["A", "B", "A"] if n == 1 else ["B"],
-                    "source_payload": {"custom": [{"name": "N"}], "markdownText": "DO NOT RETURN"},
+                    "source_payload": {"custom": [{"name": "N", "score": n, "flag": n == 1, "null": None},
+                                                   {"name": "Second", "score": n + 10}],
+                                       "document_type": "C" if n == 2 else None,
+                                       "markdownText": "DO NOT RETURN"},
                     "full_text": "DO NOT RETURN"}})
             fixture_points.append({"id": 4, "vector": [1.0], "payload": {
                 "source_key": config.source, "ingest_run_id": config.run_id, "entity_type": "Checkpoint"}})
@@ -65,6 +68,36 @@ class LiveFixtureTests(unittest.TestCase):
             self.assertEqual(years["null_documents"], 1)
             types = statistics.query({"operation": "group", "field": "classification"})
             self.assertEqual(types["group_memberships"], 4)
+            class FullMetadataClient(metadata.Qdrant):
+                def request(self, operation, body, timeout):
+                    if operation == "scroll":
+                        body = {**body, "with_payload": {"exclude": metadata.payload_exclusions()}}
+                    return super().request(operation, body, timeout)
+
+            baseline = metadata.Statistics(config, FullMetadataClient(config))
+            queries = [
+                {"operation": "group", "field": "document_type"},
+                {"operation": "group", "field": "source_payload.custom[].name"},
+                {"operation": "group", "field": "source_payload.custom[0].name"},
+                {"operation": "group", "field": "source_payload.custom[1].score"},
+                {"operation": "group", "field": "source_payload.custom[].null"},
+                {"operation": "group", "field": "source_payload.custom[0].flag"},
+                {"operation": "group", "field": "date", "interval": "year", "filters": [
+                    {"field": "source_payload.custom[0].score", "operator": "range", "gte": 2}]},
+                {"operation": "count", "filters": [
+                    {"field": "source_payload.custom[].name", "operator": "eq", "value": "Second"}]},
+                {"operation": "count", "filters": [
+                    {"field": "source_payload.absent", "operator": "missing"}]},
+            ]
+            for query in queries:
+                with self.subTest(query=query):
+                    projected = statistics.query(query)
+                    original = baseline.query(query)
+                    for result in (projected, original):
+                        result.pop("query_as_of")
+                        result.pop("evidence")
+                    self.assertEqual(projected, original)
+                    self.assertNotIn("DO NOT RETURN", json.dumps(projected))
             fields = statistics.query({"operation": "fields", "limit": 1000})
             self.assertIn("source_payload.custom[].name", {r["field"] for r in fields["fields"]})
             self.assertNotIn("DO NOT RETURN", json.dumps(fields))

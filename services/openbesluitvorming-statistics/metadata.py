@@ -265,6 +265,8 @@ class Config:
     source: str = "provincie_limburg"
     api_key: str = ""
     page_size: int = 256
+    max_page_size: int = 1000
+    target_page_bytes: int = 4 * 1024 * 1024
     max_pages: int = 2000
     max_documents: int = 250000
     max_seconds: float = 180
@@ -280,7 +282,7 @@ class Config:
                    "run_id": "OBV_STATS_RUN_ID", "source": "OBV_STATS_SOURCE_KEY",
                    "api_key": "OBV_QDRANT_API_KEY"}
         options = {k: os.environ.get(v, getattr(defaults, k)) for k, v in strings.items()}
-        for key in ("page_size", "max_pages", "max_documents", "max_seconds", "http_timeout", "max_groups", "max_fields", "max_group_bytes"):
+        for key in ("page_size", "max_page_size", "target_page_bytes", "max_pages", "max_documents", "max_seconds", "http_timeout", "max_groups", "max_fields", "max_group_bytes"):
             options[key] = type(getattr(defaults, key))(os.environ.get("OBV_STATS_" + key.upper(), getattr(defaults, key)))
         config = cls(**options)
         parsed = urllib.parse.urlsplit(config.url)
@@ -288,7 +290,7 @@ class Config:
             raise ValueError("invalid_server_qdrant_url")
         if not re.fullmatch(r"[A-Za-z0-9_-]{1,128}", config.collection) or not config.run_id or not config.source:
             raise ValueError("invalid_server_scope")
-        if any(getattr(config, k) <= 0 for k in ("page_size", "max_pages", "max_documents", "max_seconds", "http_timeout", "max_groups", "max_fields", "max_group_bytes")) or config.page_size > 1000:
+        if any(getattr(config, k) <= 0 for k in ("page_size", "max_page_size", "target_page_bytes", "max_pages", "max_documents", "max_seconds", "http_timeout", "max_groups", "max_fields", "max_group_bytes")) or not config.page_size <= config.max_page_size <= 1000 or config.target_page_bytes > 8 * 1024 * 1024:
             raise ValueError("invalid_server_budget")
         return config
 
@@ -330,6 +332,23 @@ def payload_exclusions():
              "vector", "vectors", "embedding", "embeddings", "binary", "base64",
              "password", "secret", "token", "api_key", "authorization", "credentials")
     return [root + name for root in roots for name in names]
+
+
+def query_payload_selector(operation, needed):
+    """Project dependencies, retaining array containers for exact traversal.
+
+    Fixed aliases expand to all candidates so precedence/null semantics survive.
+    Selecting the container before the first array index preserves positions,
+    empty arrays and object membership across Qdrant selector versions.
+    Discovery needs all safe metadata and retains the content-exclusion selector.
+    """
+    if operation in ("fields", "overview"):
+        return {"exclude": payload_exclusions()}
+    selected = {"source_id", "source_key", "ingest_run_id", "entity_type"}
+    for path in needed:
+        paths = DATE_PATHS if path in ("date", "year") else TYPE_PATHS if path == "document_type" else (path,)
+        selected.update(candidate.split("[", 1)[0] for candidate in paths)
+    return {"include": sorted(selected)}
 
 
 def native_filters(filters):
@@ -423,19 +442,26 @@ class Statistics:
         needed = {f["field"] for f in query["filters"]}
         if field:
             needed.add(field)
-        selected = {"source_id", "source_key", "ingest_run_id", "entity_type"}
-        for path in needed:
-            selected.update(DATE_PATHS if path in ("date", "year") else TYPE_PATHS if path == "document_type" else (path,))
-        # Select top-level roots for array/index paths to avoid Qdrant version-
-        # dependent payload selector semantics. Text is still excluded remotely.
-        # Qdrant selectors are include OR exclude, never a combination. For
-        # nested roots use exclusion to avoid downloading their known content.
-        selector = {"exclude": payload_exclusions()} if operation in ("fields", "overview") or any("." in p or "[" in p for p in selected) else {"include": sorted(selected)}
+        selector = query_payload_selector(operation, needed)
+        page_limit = config.page_size
+        scroll_requests = 0
         for page in range(config.max_pages):
-            body = {"filter": scope, "limit": config.page_size, "with_vector": False, "with_payload": selector}
+            body = {"filter": scope, "limit": page_limit, "with_vector": False, "with_payload": selector}
             if offset is not None:
                 body["offset"] = offset
-            result = request("scroll", body)
+            while True:
+                try:
+                    scroll_requests += 1
+                    result = request("scroll", body)
+                    break
+                except QueryError as error:
+                    # An unusually large page must not disable exact queries.
+                    # Retry the same offset, before accepting any points, within
+                    # the existing scan deadline; never return partial counts.
+                    if error.code != "qdrant_response_budget_exceeded" or page_limit == 1:
+                        raise
+                    page_limit = max(1, page_limit // 2)
+                    body["limit"] = page_limit
             if not isinstance(result, dict) or not isinstance(result.get("points"), list):
                 raise QueryError("invalid_qdrant_scroll", 502)
             for point in result["points"]:
@@ -508,6 +534,14 @@ class Statistics:
                 raise QueryError("unstable_scroll_offset", 409, True)
             offsets.add(next_offset)
             offset = next_offset
+            if "include" in selector:
+                # Adapt from observed serialized bytes, not guessed field size.
+                # Larger batches reduce repeated unindexed-filter work; large
+                # arrays/strings shrink batches instead. Keep ample headroom
+                # below the hard 16 MiB transport cap; outliers retry above.
+                size = len(json.dumps(result, ensure_ascii=False, separators=(",", ":")).encode("utf-8"))
+                page_limit = max(1, min(config.max_page_size,
+                    len(result["points"]) * config.target_page_bytes // max(1, size * 2)))
         else:
             raise QueryError("scan_page_budget_exceeded", 422, True)
         after = count()
@@ -519,6 +553,8 @@ class Statistics:
                               "source_complete": None, "failed_source_documents_included": False},
                     evidence={"scan_started_at": as_of, "scan_finished_at": clock(),
                               "native_point_count_before": before, "native_point_count_after": after,
+                              "scroll_requests": scroll_requests,
+                              "payload_selection": "projected_dependencies" if "include" in selector else "safe_metadata_discovery",
                               "consistency": "non-transactional scroll; counts checked before/after; same-count concurrent edits cannot be detected"})
         if operation == "group":
             ordered = sorted(rows.items(), key=lambda row: (-row[1], row[0]))

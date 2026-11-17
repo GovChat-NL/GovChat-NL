@@ -93,6 +93,93 @@ class MetadataTests(unittest.TestCase):
                 self.assertIn("exclude", body["with_payload"])
                 self.assertNotIn("include", body["with_payload"])
 
+    def test_calendar_queries_project_only_date_aliases_and_identity(self):
+        points = [point(1, date="2020-01-01", source_payload={"date": "2021-01-01"}),
+                  point(2, entity_detail={"sortDate": "2020-06-01"}),
+                  point(3, source_payload={"date": "2021-01-01"}), point(4)]
+        result, client = self.query(points, {"operation": "group", "field": "date", "interval": "year"})
+        self.assertEqual({g["value"]: g["count"] for g in result["groups"]}, {"2020": 2, "2021": 1})
+        self.assertEqual(result["missing_documents"], 1)
+        expected = {"source_id", "source_key", "ingest_run_id", "entity_type", *metadata.DATE_PATHS}
+        for op, body in client.calls:
+            if op == "scroll":
+                self.assertEqual(set(body["with_payload"]["include"]), expected)
+                self.assertNotIn("exclude", body["with_payload"])
+
+        _, client = self.query(points, {"operation": "count", "filters": [
+            {"field": "date", "operator": "range", "gte": "2020-01-01", "lt": "2021-01-01"}]})
+        self.assertTrue(all("include" in body["with_payload"] for op, body in client.calls if op == "scroll"))
+
+        _, client = self.query(points, {"operation": "group", "field": "date", "interval": "year", "filters": [
+            {"field": "source_payload.custom", "operator": "missing"}]})
+        self.assertTrue(all("source_payload.custom" in body["with_payload"]["include"] for op, body in client.calls if op == "scroll"))
+
+    def test_generic_projection_expands_types_filters_and_array_containers(self):
+        selector = metadata.query_payload_selector("group", {
+            "document_type", "source_payload.custom[0].names[].label", "extraction.pages"})
+        expected = {"source_id", "source_key", "ingest_run_id", "entity_type",
+                    "source_payload.custom", "extraction.pages", *metadata.TYPE_PATHS}
+        self.assertEqual(set(selector["include"]), expected)
+        self.assertNotIn("exclude", selector)
+        for operation in ("fields", "overview"):
+            self.assertEqual(metadata.query_payload_selector(operation, {"date"}),
+                             {"exclude": metadata.payload_exclusions()})
+
+    def test_small_metadata_adapts_batches_without_changing_counts(self):
+        points = [point(i, source_payload={"kind": "A" if i % 2 else "B"}) for i in range(100)]
+        result, client = self.query(points, {"operation": "group", "field": "source_payload.kind"})
+        self.assertEqual({g["value"]: g["count"] for g in result["groups"]}, {"A": 50, "B": 50})
+        pages = [body for op, body in client.calls if op == "scroll"]
+        self.assertEqual(len(pages), 2)
+        self.assertEqual(pages[0]["limit"], 2)
+        self.assertEqual(pages[1]["limit"], 1000)
+        self.assertEqual(result["evidence"]["scroll_requests"], 2)
+        self.assertTrue(result["exact"])
+
+    def test_large_metadata_reduces_batches_and_retries_same_offset(self):
+        points = [point(i, nested={"value": "x" * 3000}) for i in range(7)]
+        result, client = self.query(points, {"operation": "group", "field": "nested.value"}, target_page_bytes=4096)
+        self.assertEqual(result["groups"][0]["count"], 7)
+        pages = [body for op, body in client.calls if op == "scroll"]
+        self.assertEqual(pages[0]["limit"], 2)
+        self.assertTrue(all(body["limit"] == 1 for body in pages[1:]))
+
+        client = FakeQdrant([point(i, x="A") for i in range(9)])
+        original = client.request
+        attempts = []
+        def limited(operation, body, timeout):
+            if operation == "scroll":
+                attempts.append(copy.deepcopy(body))
+                if body["limit"] > 3:
+                    raise metadata.QueryError("qdrant_response_budget_exceeded", 502, True)
+            return original(operation, body, timeout)
+        client.request = limited
+        result = metadata.Statistics(metadata.Config(page_size=4, max_page_size=4), client).query({"operation": "group", "field": "x"})
+        self.assertEqual(result["groups"][0]["count"], 9)
+        self.assertEqual(attempts[0]["limit"], 4)
+        self.assertEqual(attempts[1]["limit"], 2)
+        self.assertEqual(attempts[0].get("offset"), attempts[1].get("offset"))
+
+    def test_adaptive_config_limits_and_irreducible_response_budget(self):
+        for name, value in (("MAX_PAGE_SIZE", "1001"), ("MAX_PAGE_SIZE", "1"),
+                            ("TARGET_PAGE_BYTES", "0"), ("TARGET_PAGE_BYTES", str(9 * 1024 * 1024))):
+            with self.subTest(name=name, value=value), patch.dict(os.environ, {"OBV_STATS_" + name: value}):
+                with self.assertRaises(ValueError):
+                    metadata.Config.environment()
+        client = FakeQdrant([point(1, x="A")])
+        original = client.request
+        attempts = []
+        def oversized(operation, body, timeout):
+            if operation == "scroll":
+                attempts.append(body["limit"])
+                raise metadata.QueryError("qdrant_response_budget_exceeded", 502, True)
+            return original(operation, body, timeout)
+        client.request = oversized
+        with self.assertRaises(metadata.QueryError) as caught:
+            metadata.Statistics(metadata.Config(page_size=4), client).query({"operation": "group", "field": "x"})
+        self.assertEqual(attempts, [4, 2, 1])
+        self.assertEqual(caught.exception.code, "qdrant_response_budget_exceeded")
+
     def test_arrays_count_once_per_value_and_union_explicit(self):
         points = [point(1, classification=["A", "A", "B"]), point(2, classification=["A"]),
                   point(3), point(4, classification=[None, "B", {"bad": 1}]), point(5, classification=[])]

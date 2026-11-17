@@ -95,10 +95,12 @@ values: they contribute to invalid_documents. Unaddressable keys or excessive
 schema/depth/scalar budgets fail explicitly rather than claiming complete schema.
 
 Content (full_text, content_preview, markdownText), vectors/binary, and recognized
-credential keys are not metadata and cannot be queried. Known content paths are
-excluded on the Qdrant request; blocked keys are omitted from schema at every
-depth. Qdrant has no recursive key-name exclusion wildcard: unknown content
-locations can transit the bounded response but are never returned as discovered
+credential keys are not metadata and cannot be queried. Discovery excludes known
+content paths on the Qdrant request; blocked keys are omitted from schema at every
+depth. Targeted queries request only required leaves and array containers.
+Qdrant has no recursive key-name exclusion wildcard: blocked siblings inside a
+required container and unknown content locations can transit the bounded
+response but are never returned as discovered
 fields or grouped content. This is not a general DLP scanner; do not put secrets
 in metadata values, titles or URLs. Responses never return raw payload objects.
 
@@ -135,6 +137,31 @@ or repeated point IDs fail explicitly rather than arbitrarily choosing a payload
 No payload-index creation is required. Strict-mode Qdrant servers prohibiting
 unindexed filters must be configured to permit these read-only queries; the
 service will return an upstream error, not mutate indexes.
+
+### Generic scan optimization
+
+Counts requiring evaluation and all groups project only document identity/scope,
+the requested field and filter dependencies. Date and document-type aliases expand
+to every candidate, preserving precedence, nulls and invalid values. Arbitrary
+nested scalar leaves are projected directly. Indexed/array paths select their
+first array container so positions, empty arrays and membership remain intact;
+no raw payload objects or blocked sibling values enter the result. Fields and
+overview retain full safe-metadata discovery, not a misleading narrow schema.
+
+Projected scans start at OBV_STATS_PAGE_SIZE (256), then adapt to observed response
+bytes up to OBV_STATS_MAX_PAGE_SIZE (1000). OBV_STATS_TARGET_PAGE_BYTES (4 MiB,
+maximum 8 MiB) includes a 2x safety margin when estimating the next batch. Small
+metadata uses fewer scrolls; large arrays/strings reduce batches. The hard 16 MiB
+transport cap remains: oversized pages retry the same offset with half the batch
+size before any points are accepted, within the original scan deadline. A single
+oversized document still fails explicitly; no partial exact result is returned.
+Discovery keeps its conservative page size (with bounded oversized-page retries).
+Scan evidence reports scroll_requests and payload_selection.
+
+No cached totals or groups are used: every query observes live scoped metadata and
+checks counts before/after. Same-count concurrent edits remain a documented
+consistency limitation. Preaggregation would require a trustworthy revision and
+invalidation contract for every writer, not just a count or last-sync timestamp.
 
 Group rows have value, value_type, count. Results also include total_groups,
 limit/offset, groups_paginated, missing_documents, null_documents,
