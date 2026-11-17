@@ -53,7 +53,7 @@ async function start() {
   // When the start page is switched off, anyone who opens /start/ (from a
   // bookmark or by typing it) is redirected to the chat and does not see
   // the start page.
-  if (!apps?.landing || cfg.enabled === false || ids.length === 0) {
+  if (!apps?.landing || cfg.enabled === false || ids.length === 0 || tiles.length === 0) {
     window.location.replace(chatUrl);
     return;
   }

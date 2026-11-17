@@ -1,0 +1,330 @@
+{
+  "mode": "offline_fixed_latency",
+  "documents_per_trial": 5,
+  "recorded_at_utc": "2026-11-11T17:27:49.592391+00:00",
+  "timing_scope": "perf_counter around execute; fresh/tokenizer/verify excluded for every trial",
+  "trials": [
+    {
+      "implementation": "d9b48e8",
+      "workers": 1,
+      "run_id": "perf-5ea7f8ec4f54-0-w1",
+      "collection": "limburg_perf_5ea7f8ec4f54_0_w1",
+      "state_dir": "temporary",
+      "elapsed_seconds": 1.7546459001023322,
+      "documents_per_second": 2.8495777978385246,
+      "counts": {
+        "indexed": 5
+      },
+      "verified_points": 5,
+      "methods": {
+        "tika": 2,
+        "source_markdown": 3
+      },
+      "metadata_fulltext_exact": true,
+      "http_stages": {
+        "source": {
+          "calls": 1,
+          "seconds": 0.02021769993007183
+        },
+        "detail": {
+          "calls": 8,
+          "seconds": 0.28104760008864105
+        },
+        "attachment": {
+          "calls": 2,
+          "seconds": 0.20079099969007075
+        },
+        "tika": {
+          "calls": 2,
+          "seconds": 0.20087770000100136
+        },
+        "embedding": {
+          "calls": 5,
+          "seconds": 0.5018982996698469
+        },
+        "upsert": {
+          "calls": 5,
+          "seconds": 0.5019175002817065
+        }
+      },
+      "performance": null
+    },
+    {
+      "implementation": "current",
+      "workers": 2,
+      "run_id": "perf-d3eb42fd257e-1-w2",
+      "collection": "limburg_perf_d3eb42fd257e_1_w2",
+      "state_dir": "temporary",
+      "elapsed_seconds": 1.077294799964875,
+      "documents_per_second": 4.641255114350337,
+      "counts": {
+        "indexed": 5
+      },
+      "verified_points": 5,
+      "methods": {
+        "tika": 2,
+        "source_markdown": 3
+      },
+      "metadata_fulltext_exact": true,
+      "http_stages": {
+        "source": {
+          "calls": 1,
+          "seconds": 0.020264900056645274
+        },
+        "detail": {
+          "calls": 8,
+          "seconds": 0.43688030005432665
+        },
+        "attachment": {
+          "calls": 2,
+          "seconds": 0.20088250027038157
+        },
+        "tika": {
+          "calls": 2,
+          "seconds": 0.20100999996066093
+        },
+        "embedding": {
+          "calls": 5,
+          "seconds": 0.5021317000500858
+        },
+        "upsert": {
+          "calls": 5,
+          "seconds": 0.5017363002989441
+        }
+      },
+      "performance": {
+        "workers": 2,
+        "peak_inflight": 2,
+        "elapsed_seconds": 1.0772752000484616,
+        "documents_per_second": 4.641339557222772,
+        "stages": {
+          "source": {
+            "calls": 1,
+            "seconds": 0.020273200003430247
+          },
+          "detail": {
+            "calls": 8,
+            "seconds": 0.4370019000489265
+          },
+          "attachment": {
+            "calls": 2,
+            "seconds": 0.20089250011369586
+          },
+          "tika": {
+            "calls": 2,
+            "seconds": 0.20101939979940653
+          },
+          "embedding": {
+            "calls": 5,
+            "seconds": 0.5056295997928828
+          },
+          "upsert": {
+            "calls": 5,
+            "seconds": 0.501763999927789
+          }
+        }
+      }
+    },
+    {
+      "implementation": "current",
+      "workers": 2,
+      "run_id": "perf-37b6d379dbf5-2-w2",
+      "collection": "limburg_perf_37b6d379dbf5_2_w2",
+      "state_dir": "temporary",
+      "elapsed_seconds": 1.0754814001265913,
+      "documents_per_second": 4.649080866867123,
+      "counts": {
+        "indexed": 5
+      },
+      "verified_points": 5,
+      "methods": {
+        "tika": 2,
+        "source_markdown": 3
+      },
+      "metadata_fulltext_exact": true,
+      "http_stages": {
+        "source": {
+          "calls": 1,
+          "seconds": 0.02018680004402995
+        },
+        "detail": {
+          "calls": 8,
+          "seconds": 0.4355977000668645
+        },
+        "attachment": {
+          "calls": 2,
+          "seconds": 0.20039370004087687
+        },
+        "tika": {
+          "calls": 2,
+          "seconds": 0.20040030009113252
+        },
+        "embedding": {
+          "calls": 5,
+          "seconds": 0.5018163002096117
+        },
+        "upsert": {
+          "calls": 5,
+          "seconds": 0.5016141002997756
+        }
+      },
+      "performance": {
+        "workers": 2,
+        "peak_inflight": 2,
+        "elapsed_seconds": 1.0754631999880075,
+        "documents_per_second": 4.649159543586201,
+        "stages": {
+          "source": {
+            "calls": 1,
+            "seconds": 0.02019249997101724
+          },
+          "detail": {
+            "calls": 8,
+            "seconds": 0.43575449963100255
+          },
+          "attachment": {
+            "calls": 2,
+            "seconds": 0.20040809991769493
+          },
+          "tika": {
+            "calls": 2,
+            "seconds": 0.2004167998675257
+          },
+          "embedding": {
+            "calls": 5,
+            "seconds": 0.5078485999256372
+          },
+          "upsert": {
+            "calls": 5,
+            "seconds": 0.5016523997765034
+          }
+        }
+      }
+    },
+    {
+      "implementation": "d9b48e8",
+      "workers": 1,
+      "run_id": "perf-5974d5796d14-3-w1",
+      "collection": "limburg_perf_5974d5796d14_3_w1",
+      "state_dir": "temporary",
+      "elapsed_seconds": 1.7536845998838544,
+      "documents_per_second": 2.851139823164979,
+      "counts": {
+        "indexed": 5
+      },
+      "verified_points": 5,
+      "methods": {
+        "tika": 2,
+        "source_markdown": 3
+      },
+      "metadata_fulltext_exact": true,
+      "http_stages": {
+        "source": {
+          "calls": 1,
+          "seconds": 0.02026979997754097
+        },
+        "detail": {
+          "calls": 8,
+          "seconds": 0.2812617998570204
+        },
+        "attachment": {
+          "calls": 2,
+          "seconds": 0.20079410006292164
+        },
+        "tika": {
+          "calls": 2,
+          "seconds": 0.20101860002614558
+        },
+        "embedding": {
+          "calls": 5,
+          "seconds": 0.5017966998275369
+        },
+        "upsert": {
+          "calls": 5,
+          "seconds": 0.5012615998275578
+        }
+      },
+      "performance": null
+    },
+    {
+      "implementation": "current",
+      "workers": 4,
+      "run_id": "perf-acc3ffe1b1bc-4-w4",
+      "collection": "limburg_perf_acc3ffe1b1bc_4_w4",
+      "state_dir": "temporary",
+      "elapsed_seconds": 0.7274627999868244,
+      "documents_per_second": 6.8732036883405705,
+      "counts": {
+        "indexed": 5
+      },
+      "verified_points": 5,
+      "methods": {
+        "tika": 2,
+        "source_markdown": 3
+      },
+      "metadata_fulltext_exact": true,
+      "http_stages": {
+        "source": {
+          "calls": 1,
+          "seconds": 0.020243299892172217
+        },
+        "detail": {
+          "calls": 8,
+          "seconds": 0.8110610998701304
+        },
+        "embedding": {
+          "calls": 5,
+          "seconds": 0.5012926997151226
+        },
+        "attachment": {
+          "calls": 2,
+          "seconds": 0.20056709996424615
+        },
+        "upsert": {
+          "calls": 5,
+          "seconds": 0.5021661000791937
+        },
+        "tika": {
+          "calls": 2,
+          "seconds": 0.20069809979759157
+        }
+      },
+      "performance": {
+        "workers": 4,
+        "peak_inflight": 4,
+        "elapsed_seconds": 0.7274430000688881,
+        "documents_per_second": 6.873390766735683,
+        "stages": {
+          "source": {
+            "calls": 1,
+            "seconds": 0.020245499908924103
+          },
+          "detail": {
+            "calls": 8,
+            "seconds": 0.8112963009625673
+          },
+          "attachment": {
+            "calls": 2,
+            "seconds": 0.20058780000545084
+          },
+          "tika": {
+            "calls": 2,
+            "seconds": 0.20073199993930757
+          },
+          "embedding": {
+            "calls": 5,
+            "seconds": 0.5074905997607857
+          },
+          "upsert": {
+            "calls": 5,
+            "seconds": 0.5021965000778437
+          }
+        }
+      }
+    }
+  ],
+  "sequential_mean_seconds": 1.7541652499930933,
+  "parallel2_mean_seconds": 1.0763881000457332,
+  "observed_speedup": 1.6296772975458973,
+  "metadata_fulltext_sha256": "363f474d84c7e677cf423a8773df2efbbab328aec1494ea4b97e025f5b0144f7"
+}

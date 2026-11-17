@@ -1,0 +1,182 @@
+[
+  {
+    "id": "ed5688ab-e8f6-48e5-ba56-505962770355",
+    "startDate": "2026-01-01",
+    "endDate": "2026-01-01",
+    "type": "Public",
+    "name": [
+      {
+        "language": "NL",
+        "text": "Nieuwjaarsdag"
+      }
+    ],
+    "regionalScope": "National",
+    "temporalScope": "FullDay",
+    "nationwide": true
+  },
+  {
+    "id": "54ce9b56-55bf-4a92-9134-c111bcbd1abf",
+    "startDate": "2026-04-05",
+    "endDate": "2026-04-05",
+    "type": "Public",
+    "name": [
+      {
+        "language": "NL",
+        "text": "Pasen"
+      }
+    ],
+    "regionalScope": "National",
+    "temporalScope": "FullDay",
+    "nationwide": true
+  },
+  {
+    "id": "63ef9e69-f2d3-4165-9bc4-6bcf5e32a6a0",
+    "startDate": "2026-04-06",
+    "endDate": "2026-04-06",
+    "type": "Public",
+    "name": [
+      {
+        "language": "NL",
+        "text": "Paasmaandag"
+      }
+    ],
+    "regionalScope": "National",
+    "temporalScope": "FullDay",
+    "nationwide": true
+  },
+  {
+    "id": "baa20ef3-b64a-417f-b42d-2cef313b2ef1",
+    "startDate": "2026-05-01",
+    "endDate": "2026-05-01",
+    "type": "Public",
+    "name": [
+      {
+        "language": "NL",
+        "text": "Dag van de Arbeid"
+      }
+    ],
+    "regionalScope": "National",
+    "temporalScope": "FullDay",
+    "nationwide": true
+  },
+  {
+    "id": "ce16ed86-4327-42ea-b165-9f787258934b",
+    "startDate": "2026-05-14",
+    "endDate": "2026-05-14",
+    "type": "Public",
+    "name": [
+      {
+        "language": "NL",
+        "text": "O.L.H. Hemelvaart"
+      }
+    ],
+    "regionalScope": "National",
+    "temporalScope": "FullDay",
+    "nationwide": true
+  },
+  {
+    "id": "48a27bde-b58d-4d42-bca5-7175db5dfe30",
+    "startDate": "2026-05-24",
+    "endDate": "2026-05-24",
+    "type": "Public",
+    "name": [
+      {
+        "language": "NL",
+        "text": "Pinksteren"
+      }
+    ],
+    "regionalScope": "National",
+    "temporalScope": "FullDay",
+    "nationwide": true
+  },
+  {
+    "id": "fbaf2bb4-46fb-4320-8cf4-30b63744382a",
+    "startDate": "2026-05-25",
+    "endDate": "2026-05-25",
+    "type": "Public",
+    "name": [
+      {
+        "language": "NL",
+        "text": "Pinkstermaandag"
+      }
+    ],
+    "regionalScope": "National",
+    "temporalScope": "FullDay",
+    "nationwide": true
+  },
+  {
+    "id": "f28f2051-d438-4a0f-952e-656bce7d984f",
+    "startDate": "2026-07-21",
+    "endDate": "2026-07-21",
+    "type": "Public",
+    "name": [
+      {
+        "language": "NL",
+        "text": "Nationale feestdag"
+      }
+    ],
+    "regionalScope": "National",
+    "temporalScope": "FullDay",
+    "nationwide": true
+  },
+  {
+    "id": "a13dcc3e-2f9a-4752-af93-f2ba4715e8a5",
+    "startDate": "2026-08-15",
+    "endDate": "2026-08-15",
+    "type": "Public",
+    "name": [
+      {
+        "language": "NL",
+        "text": "O.L.V. Hemelvaart"
+      }
+    ],
+    "regionalScope": "National",
+    "temporalScope": "FullDay",
+    "nationwide": true
+  },
+  {
+    "id": "0fad0035-6b77-404a-953d-c66dac014483",
+    "startDate": "2026-11-01",
+    "endDate": "2026-11-01",
+    "type": "Public",
+    "name": [
+      {
+        "language": "NL",
+        "text": "Allerheiligen"
+      }
+    ],
+    "regionalScope": "National",
+    "temporalScope": "FullDay",
+    "nationwide": true
+  },
+  {
+    "id": "b1c5d2c0-edfb-4ec7-b81c-68b485497792",
+    "startDate": "2026-11-11",
+    "endDate": "2026-11-11",
+    "type": "Public",
+    "name": [
+      {
+        "language": "NL",
+        "text": "Wapenstilstand van 1918"
+      }
+    ],
+    "regionalScope": "National",
+    "temporalScope": "FullDay",
+    "nationwide": true
+  },
+  {
+    "id": "d90e5f53-bc92-4860-bdae-f7e75935848d",
+    "startDate": "2026-12-25",
+    "endDate": "2026-12-25",
+    "type": "Public",
+    "name": [
+      {
+        "language": "NL",
+        "text": "Kerstmis"
+      }
+    ],
+    "regionalScope": "National",
+    "temporalScope": "FullDay",
+    "nationwide": true
+  }
+]

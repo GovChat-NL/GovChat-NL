@@ -1,0 +1,28 @@
+{
+  "id": "govchat-obv-runtime-smoke",
+  "name": "OpenBesluitvorming - Temporary Runner Smoke (No Ingestion)",
+  "active": false,
+  "settings": { "executionOrder": "v1" },
+  "nodes": [
+    {
+      "id": "obv-smoke-webhook",
+      "name": "Protected Smoke Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "webhookId": "govchat-obv-runtime-smoke",
+      "position": [0, 0],
+      "parameters": { "httpMethod": "POST", "path": "govchat-obv-runtime-smoke", "responseMode": "lastNode", "options": {} }
+    },
+    {
+      "id": "obv-smoke-code",
+      "name": "External Runner And Tika Probe",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [220, 0],
+      "parameters": {
+        "jsCode": "const token=String($env.N8N_WEBHOOK_TOKEN||'');if(!token||$input.first().json.headers?.authorization!=='Bearer '+token)throw new Error('Unauthorized');const http=require('http');const status=await new Promise((resolve,reject)=>{const req=http.get('http://tika:9998/version',res=>{res.resume();res.on('end',()=>resolve(res.statusCode));});req.setTimeout(10000,()=>req.destroy(new Error('Tika probe timeout')));req.on('error',reject);});if(status!==200)throw new Error('Tika not ready');return [{json:{external_runner_executed:true,tika_http_status:status,ingestion_started:false}}];"
+      }
+    }
+  ],
+  "connections": { "Protected Smoke Webhook": { "main": [[{ "node": "External Runner And Tika Probe", "type": "main", "index": 0 }]] } }
+}

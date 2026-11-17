@@ -2,14 +2,156 @@
 'use strict';
 
 const path = require('path');
-const { discoverWorkflows } = require('../../n8n/bootstrap');
+const {
+  buildEmbeddingHeaderCredential,
+  buildTopdeskCredential,
+  discoverWorkflows,
+  getTopdeskBaseUrl,
+  renderWorkflowTemplate,
+} = require('../../n8n/bootstrap');
 
 const workflowsDir = path.resolve(__dirname, '../../agents/n8n/workflows');
-const workflows = discoverWorkflows(workflowsDir);
+const workflows = discoverWorkflows(workflowsDir, { N8N_ENABLE_TOPDESK_SEARCH: 'false' });
 const workflowIds = workflows.flatMap((entry) => entry.ids);
+const inactiveWorkflowIds = workflows.flatMap((entry) => entry.inactiveIds || []);
 if (new Set(workflowIds).size !== workflowIds.length) {
   throw new Error('Discovered workflow IDs are not unique');
+}
+if (workflowIds.some((id) => id.length > 36)) {
+  throw new Error('A workflow ID exceeds the n8n/Postgres 36-character limit');
+}
+
+const assert = (condition, message) => {
+  if (!condition) throw new Error(message);
+};
+const readWorkflow = (file) => JSON.parse(require('fs').readFileSync(path.join(workflowsDir, file), 'utf8'));
+const nodeByName = (workflow, name) => workflow.nodes.find((node) => node.name === name);
+const ingest = readWorkflow('topdesk-knowledge-items-ingest.json');
+const search = readWorkflow('topdesk-knowledge-items-search.json');
+
+assert(ingest.active === false && search.active === false, 'TOPdesk workflows must remain inactive until configured');
+assert(inactiveWorkflowIds.includes(ingest.id) && inactiveWorkflowIds.includes(search.id), 'Bootstrap must preserve TOPdesk inactive defaults');
+assert(nodeByName(ingest, '1. Configuration (edit after import)'), 'TOPdesk ingest configuration node is missing');
+assert(nodeByName(ingest, 'Run with parameters'), 'TOPdesk ingest runtime parameter trigger is missing');
+assert(nodeByName(ingest, 'Run with parameters').parameters.workflowInputs.values.some((value) => value.name === 'root_knowledge_item_id'), 'TOPdesk parent ID input is missing');
+assert(nodeByName(ingest, 'Run with parameters').parameters.workflowInputs.values.some((value) => value.name === 'root_knowledge_item_number'), 'TOPdesk parent number input is missing');
+assert(nodeByName(ingest, 'Run with parameters').parameters.workflowInputs.values.some((value) => value.name === 'include_attachments'), 'TOPdesk attachment toggle input is missing');
+assert(nodeByName(ingest, '2. Fetch child knowledge items'), 'TOPdesk item-fetch node is missing');
+const fetchTopdeskNode = nodeByName(ingest, '2. Fetch child knowledge items');
+const fetchTopdeskHeaders = fetchTopdeskNode.parameters.headerParameters.parameters;
+assert(fetchTopdeskHeaders.some((header) => header.name === 'Accept' && header.value === 'application/json'), 'TOPdesk list request must accept JSON');
+assert(fetchTopdeskHeaders.some((header) => header.name === 'Content-Type' && header.value === 'application/json'), 'TOPdesk list request must match the working sample Content-Type header');
+assert(fetchTopdeskNode.parameters.options.timeout === undefined, 'TOPdesk list request should not impose the previous 60-second timeout');
+assert(nodeByName(ingest, '1b. Check Qdrant collection'), 'TOPdesk ingest must check for its Qdrant collection');
+assert(nodeByName(ingest, '1d. Create Qdrant collection'), 'TOPdesk ingest must create a missing Qdrant collection');
+assert(nodeByName(ingest, '1. Configuration (edit after import)').parameters.jsCode.includes("configuredRootKnowledgeItemNumber='KI 0975'"), 'TOPdesk root item number default is missing');
+assert(nodeByName(ingest, '1. Configuration (edit after import)').parameters.jsCode.includes("embeddingModel:'govchat-embedding'"), 'TOPdesk ingest LiteLLM embedding alias is not configured');
+const ingestConfigCode = nodeByName(ingest, '1. Configuration (edit after import)').parameters.jsCode;
+const runIngestConfig = new Function('$input', ingestConfigCode);
+const defaultIngestConfig = runIngestConfig({ first: () => ({ json: {} }) })[0].json;
+assert(defaultIngestConfig.rootQuery === "parent.number=='KI 0975'", 'TOPdesk default query must select children by parent item number');
+assert(defaultIngestConfig.vectorSize === 3072 && defaultIngestConfig.vectorDistance === 'Cosine', 'Qdrant collection defaults must match the embedding dimensions and distance');
+for (const nodeName of ['4a. Prepare article text', '6a. Build article point', '8b. Prepare attachment text', '10b. Build attachment point']) {
+  assert(nodeByName(ingest, nodeName).parameters.mode === 'runOnceForEachItem', `${nodeName} must process every incoming item independently`);
+}
+const attachmentNormalizer = nodeByName(ingest, '5b. Normalize attachments');
+const normalizeAttachments = new Function('$input', '$', attachmentNormalizer.parameters.jsCode);
+const fakeParents = [
+  { json: { id: 'parent-1', _govchat: { includeAttachments: true } } },
+  { json: { id: 'parent-2', _govchat: { includeAttachments: true } } },
+];
+const normalizedAttachments = normalizeAttachments(
+  { all: () => [{ json: { item: [{ id: 'attachment-1' }] } }, { json: { item: [{ id: 'attachment-2' }] } }] },
+  () => ({ all: () => fakeParents }),
+);
+assert(normalizedAttachments.length === 2, 'Attachment normalizer must fan out attachments for every parent item');
+assert(normalizedAttachments[1].json.knowledgeItemId === 'parent-2', 'Attachment normalizer must preserve parent-to-attachment pairing');
+const collectionDecisionCode = nodeByName(ingest, '1c. Validate or create collection').parameters.jsCode;
+const runCollectionDecision = new Function('$', '$json', collectionDecisionCode);
+const decisionContext = () => ({ first: () => ({ json: defaultIngestConfig }) });
+assert(runCollectionDecision(decisionContext, { statusCode: 404 })[0].json.createCollection === true, 'Missing Qdrant collection should trigger creation');
+const existingCollection = { statusCode: 200, body: { result: { config: { params: { vectors: { size: 3072, distance: 'Cosine' } } } } } };
+assert(runCollectionDecision(decisionContext, existingCollection)[0].json.createCollection === false, 'Existing matching Qdrant collection should be reused');
+let mismatchedCollectionRejected = false;
+try {
+  runCollectionDecision(decisionContext, { statusCode: 200, body: { result: { config: { params: { vectors: { size: 1536, distance: 'Cosine' } } } } } });
+} catch {
+  mismatchedCollectionRejected = true;
+}
+assert(mismatchedCollectionRejected, 'Existing incompatible Qdrant collection must not be overwritten');
+const idOverrideConfig = runIngestConfig({ first: () => ({ json: { root_knowledge_item_id: 'sample-id', include_attachments: false } }) })[0].json;
+assert(idOverrideConfig.rootQuery === "parent.id=='sample-id'", 'TOPdesk ID override must query parent.id');
+assert(idOverrideConfig.includeAttachments === false, 'TOPdesk per-run attachment toggle must be honored');
+assert(nodeByName(ingest, '7b. Extract attachment text (Apache Tika)'), 'Tika attachment extraction node is missing');
+assert(nodeByName(ingest, '7a. Upsert article in Qdrant'), 'Qdrant article upsert node is missing');
+const topdeskHttpNodes = ingest.nodes.filter((node) => node.type === 'n8n-nodes-base.httpRequest' && node.credentials?.httpBasicAuth);
+assert(topdeskHttpNodes.length === 3, 'Expected the three TOPdesk API HTTP Request nodes');
+assert(topdeskHttpNodes.every((node) => node.credentials?.httpBasicAuth?.id === '00000000-0000-4000-8000-000000000222'), 'TOPdesk API nodes must share the bootstrap-managed Basic Auth credential');
+const bootstrapSource = require('fs').readFileSync(path.resolve(__dirname, '../../n8n/bootstrap.js'), 'utf8');
+for (const marker of ['TOPDESK_API_USERNAME', 'TOPDESK_API_PASSWORD', "type: 'httpBasicAuth'", "data: { user: username, password }"]) {
+  assert(bootstrapSource.includes(marker), `TOPdesk credential bootstrap is missing ${marker}`);
+}
+const embeddingCredential = buildEmbeddingHeaderCredential({ LITELLM_API_KEY: 'test-only-key' });
+assert(embeddingCredential.type === 'httpHeaderAuth' && embeddingCredential.data.name === 'Authorization', 'LiteLLM header credential schema is incorrect');
+assert(embeddingCredential.data.value === 'Bearer test-only-key', 'LiteLLM Bearer header is not constructed from LITELLM_API_KEY');
+const embeddingHttpNodes = [...ingest.nodes, ...search.nodes].filter((node) => node.credentials?.httpHeaderAuth);
+assert(embeddingHttpNodes.length === 3, 'Expected all three embedding HTTP nodes to use the managed header credential');
+assert(embeddingHttpNodes.every((node) => node.credentials.httpHeaderAuth.id === embeddingCredential.id), 'Embedding nodes must reference the bootstrap-managed credential');
+const generatedTopdeskCredential = buildTopdeskCredential({ TOPDESK_API_USERNAME: 'APILAICA', TOPDESK_API_PASSWORD: 'test-only-password' });
+assert(generatedTopdeskCredential.type === 'httpBasicAuth' && generatedTopdeskCredential.data.user === 'APILAICA', 'TOPdesk Basic Auth credential username/type is incorrect');
+assert(generatedTopdeskCredential.id === '00000000-0000-4000-8000-000000000222', 'TOPdesk Basic Auth credential ID is not stable');
+assert(buildTopdeskCredential({ TOPDESK_API_USERNAME: '', TOPDESK_API_PASSWORD: '' }) === null, 'Empty TOPdesk credentials should be skipped');
+let partialCredentialRejected = false;
+try {
+  buildTopdeskCredential({ TOPDESK_API_USERNAME: 'APILAICA', TOPDESK_API_PASSWORD: '' });
+} catch {
+  partialCredentialRejected = true;
+}
+assert(partialCredentialRejected, 'Incomplete TOPdesk Basic Auth environment must be rejected');
+const composeSource = require('fs').readFileSync(path.resolve(__dirname, '../../docker-compose.yml'), 'utf8');
+assert((composeSource.match(/^\s+TOPDESK_API_USERNAME:/gm) || []).length === 1, 'TOPdesk username must be passed only to the bootstrap service');
+assert((composeSource.match(/^\s+TOPDESK_API_PASSWORD:/gm) || []).length === 1, 'TOPdesk password must be passed only to the bootstrap service');
+assert(nodeByName(search, 'Execute Workflow Trigger'), 'TOPdesk search must be callable as a subworkflow');
+assert(nodeByName(search, '4. Search Qdrant'), 'TOPdesk Qdrant search node is missing');
+assert(nodeByName(search, '5. Return ranked sources'), 'TOPdesk search result formatter is missing');
+assert(nodeByName(search, '1. Validate and configure search').parameters.jsCode.includes("embeddingModel='govchat-embedding'"), 'TOPdesk search LiteLLM embedding alias is not configured');
+assert(getTopdeskBaseUrl({ TOPDESK_TENANT: 'prvlimburg', TOPDESK_BASE_DOMAIN: 'topdesk.net' }) === 'https://prvlimburg.topdesk.net', 'TOPdesk tenant URL is not assembled from environment settings');
+assert(getTopdeskBaseUrl({ TOPDESK_TENANT: '', TOPDESK_BASE_DOMAIN: 'topdesk.net' }) === '', 'Missing TOPdesk tenant should not produce an organization URL');
+assert(!JSON.stringify(ingest).includes('prvlimburg') && !JSON.stringify(ingest).includes('example.org'), 'TOPdesk organization URL must not be hardcoded in the workflow template');
+const renderedIngest = JSON.parse(renderWorkflowTemplate(require('fs').readFileSync(path.join(workflowsDir, 'topdesk-knowledge-items-ingest.json'), 'utf8'), {
+  TOPDESK_TENANT: 'example',
+  TOPDESK_BASE_DOMAIN: 'service.example',
+  TOPDESK_PUBLIC_BASE_URL: 'https://portal.example/knowledge',
+}));
+const renderedConfig = nodeByName(renderedIngest, '1. Configuration (edit after import)').parameters.jsCode;
+assert(renderedConfig.includes("topdeskBaseUrl:'https://example.service.example'"), 'TOPdesk API base URL placeholder was not rendered');
+assert(renderedConfig.includes("publicKnowledgeItemUrl:'https://portal.example/knowledge'"), 'TOPdesk public base URL placeholder was not rendered');
+
+for (const workflow of [ingest, search]) {
+  const names = new Set(workflow.nodes.map((node) => node.name));
+  const ids = new Set(workflow.nodes.map((node) => node.id));
+  assert(names.size === workflow.nodes.length, `${workflow.name} has duplicate node names`);
+  assert(ids.size === workflow.nodes.length, `${workflow.name} has duplicate node ids`);
+  for (const node of workflow.nodes) {
+    if (node.type === 'n8n-nodes-base.code') {
+      try {
+        // Catch syntax errors in embedded JavaScript before importing into n8n.
+        new Function(node.parameters.jsCode);
+      } catch (error) {
+        throw new Error(`${workflow.name} has invalid JavaScript in node "${node.name}": ${error.message}`);
+      }
+    }
+  }
+  for (const [source, outputs] of Object.entries(workflow.connections)) {
+    assert(names.has(source), `${workflow.name} connection source is unknown: ${source}`);
+    for (const output of outputs.main || []) {
+      for (const edge of output || []) assert(names.has(edge.node), `${workflow.name} connection target is unknown: ${edge.node}`);
+    }
+  }
+  const serialized = JSON.stringify(workflow);
+  assert(!/(?:sk-[A-Za-z0-9]{12,}|password\s*[:=]\s*['"][^'"]+['"])/i.test(serialized), `${workflow.name} appears to contain a hardcoded secret`);
 }
 
 for (const workflow of workflows) console.log(`[PASS] ${workflow.file}`);
 console.log(`Validated ${workflows.length} discovered workflow export(s); ${workflowIds.length} unique workflow ID(s).`);
+console.log('[PASS] TOPdesk ingest/search structure, inactive defaults, connection references, and secret hygiene');

@@ -16,11 +16,37 @@ GovChat-NL is een open platform waarmee Nederlandse overheidsorganisaties AI-toe
 - **Verantwoord werken met AI** met aandacht voor AI-geletterdheid en de Nederlandse overheidscontext; zie de [AI-geletterdheidshandleiding](https://govchat-nl.github.io/docs/ai-geletterdheid).
 - **De toepassing zelf beheren** met Docker Compose, inclusief de configuratie, verbindingen en workflow-import.
 
+### Inhoudelijke orkestrator-masterprompt beheren
+
+Beheer de inhoudelijke masterprompt via **GovChat Admin → Orchestrator**, met veilige tekstpreview, actieve bron, opslaan en reset. Voorrang: private beheerdersoverride → omgevingsvariabele → bestaande GovChat-standaard. Beheerderswijzigingen werken vanaf het volgende verzoek; technische instructies en integraties blijven behouden. Zie [promptbeheer, beveiliging en gerichte uitrol](docs/orchestrator-prompt-management.md).
+
 ### Live aanroepen van n8n-hulpmiddelen in de chat
 
 Wanneer een n8n-agent tijdens een gesprek een hulpmiddel gebruikt, toont LibreChat die aanroep direct als een ingebouwde kaart in de chat. De gebruiker ziet het hulpmiddel starten, de voortgang en het resultaat of de foutmelding; de gewone tekst van de assistent blijft leesbaar. Dit werkt door de samenwerking tussen de GovChat-bridge, n8n en de LibreChat-interface.
 
 De architectuur en controlepunten staan in de uitleg over [live aanroepen van hulpmiddelen](docs/live-tool-calling.md).
+
+### Waarschuwing onder de chatinvoer
+
+De ingebouwde LibreChat-footer toont standaard **GovChat-NL kan fouten maken. Controleer belangrijke informatie.**
+Configureer de tekst via CUSTOM_FOOTER; een expliciet lege waarde verbergt de hoofdtekst.
+Er is geen aparte DOM-overlay of admin-aan/uit-schakelaar nodig. Zie [footerconfiguratie en migratie](docs/chat-disclaimer.md).
+
+De standaard orkestrator heeft ook vijf afzonderlijk configureerbare hulpmiddelen:
+de standaard n8n-rekenmachine, NOS- en L1-nieuws per RSS-categorie, feestdagen via
+OpenHolidays API en tijd-/datumrekenen met tijdzones en zomer-/wintertijd.
+Ze staan standaard aan en worden beheerd via de Orchestrator-pagina van het
+beheerportaal. Zie [configuratie, ingebruikname en tests](docs/orchestrator-utility-tools.md).
+
+PDF- en documentbijlagen worden vóór de n8n-chatagent via Apache Tika omgezet naar
+begrensde tekstcontext. Zie [documentondersteuning, veilige uitrol en regressietests](docs/chat-document-context.md).
+
+### OpenBesluitvorming Limburg: volledige document-ingest
+
+Een afzonderlijke, opt-in worker verwerkt volledige documenten en bijlagen met
+Tika-fallback, behoud van bronmetadata, hervatbare checkpoints en duurzame retries.
+Er start geen ingest of planning bij het opstarten van Compose. Zie
+[de operatorhandleiding voor fresh/resume/status/retry en de begrensde livevalidatie](docs/openbesluitvorming-ingestion.md).
 
 ## Verbonden systemen
 
@@ -31,6 +57,7 @@ De architectuur en controlepunten staan in de uitleg over [live aanroepen van hu
 | [n8n](https://n8n.io/) | Voert agenten, hulpmiddelen en andere geautomatiseerde workflows uit. De meegeleverde workflows worden bij het starten ingeladen. |
 | [LiteLLM](https://github.com/BerriAI/litellm) | Verbindt GovChat-NL en n8n met de gekozen taalmodellen. |
 | [OpenBesluitvorming](https://github.com/ontola/openbesluitvorming) · [website](https://openbesluitvorming.nl/) | Project voor het ontsluiten en doorzoeken van openbare besluitvormingsinformatie; GovChat-workflows kunnen hierop aansluiten. |
+| [TOPdesk Knowledge Base](https://www.topdesk.com/) | Generieke workflows om directe kinderen van een gekozen hoofdkennisitem in Qdrant te indexeren en semantisch te bevragen. Zie de [configuratiehandleiding](docs/topdesk-knowledge-items.md). |
 | Microsoft Entra ID | Optionele SSO-koppeling; vereist inrichting voor de eigen organisatie. |
 
 ## Apps en workflows
@@ -41,6 +68,7 @@ De installatie bevat onder andere workflows voor:
 - **Live transcriptie** — zet audio om naar tekst via de geconfigureerde spraak- en modeldiensten.
 - **Afbeeldingsgeneratie** — optioneel in te schakelen.
 - **OpenBesluitvorming** — workflows voor zoeken en werken met besluitvormingsinformatie; de organisatie configureert zelf de gegevensbron en toegang.
+- **TOPdesk Knowledge Base** — optionele workflows voor ingest en semantisch zoeken van kennisitems; met `N8N_ENABLE_TOPDESK_SEARCH=true` koppelt bootstrap de zoekworkflow automatisch als tool aan de orchestrator. Hoofditem, credentials, endpoints en bijlageverwerking configureert de organisatie zelf. Zie [TOPdesk-kennisitems instellen](docs/topdesk-knowledge-items.md).
 - **Beleidskompas** — ondersteunt beleidsafwegingen in vier stappen (SiS 4.0), op een eigen pagina. De gebruiker werkt een casus deelstap voor deelstap uit. Beleidskompas bewaart elke casus in een eigen database.
 
 Na het inloggen komt de gebruiker op een startscherm, met een tegel voor de chat en voor elke app.
@@ -68,13 +96,32 @@ De [`Makefile`](Makefile) bundelt de gebruikelijke commando's, zoals `make up` o
 
 Lees daarna de [omgevingsvariabelen](https://govchat-nl.github.io/docs/handleidingen/librechat-omgevingsvariabelen), de [snelle start](https://govchat-nl.github.io/docs/handleidingen/librechat-pre-release) en het [overzicht van de containers](docs/services.md). Open poorten, SSO, secrets, gegevensbewaring en back-ups moeten bij de eigen organisatie-inrichting passen.
 
+De drie configureerbare huisstijlopties en het plaatsen van eigen logo's staan in [Branding configureren](docs/BRANDING.md).
+
+De LibreChat-overrides en de instelbare Nederlandse vertalingen staan in het [overzicht van overrides](docs/OVERRIDES.md) en [Nederlandse vertalingen](docs/TRANSLATIONS.md). De vertaaloverride staat standaard aan en kan met [`LIBRECHAT_NL_TRANSLATIONS_ENABLED`](.env.example:11) op `false` worden uitgezet.
+
+### Eigen deployment zonder broncode-afwijkingen
+
+Ingress-hostnamen en bindadres, vertrouwde proxies, dataroot, bestaand Docker-netwerk,
+database-image, bridge-buildcontext, SSO/adminrolmapping en beheer-subpaden zijn
+configureerbaar. Optionele Compose-bestanden voegen SSO-only beleid en
+localhost-beheeradapters toe zonder installatiegegevens in de repo op te nemen.
+Zie [deploymentconfiguratie](docs/deployment-configuration.md) voor opties, veilige
+defaults, migratie van lokale overrides en de bijbehorende tests.
+
 ## Documentatie en bijdragen
 
 - [GovChat-NL-documentatie](https://govchat-nl.github.io/)
 - [Architectuur](https://govchat-nl.github.io/docs/architectuur/librechat)
 - [Containeroverzicht](docs/services.md)
-- [Een bestaande installatie bijwerken](UPGRADE.md)
+- [LibreChat-overrides](docs/OVERRIDES.md)
+- [Nederlandse LibreChat-vertalingen](docs/TRANSLATIONS.md)
 - [Bijdragen aan agents en workflows](agents/CONTRIBUTING.md)
 - [Bridge voor n8n](https://github.com/GovChat-NL/n8n-openai-bridge)
 
 De oude OpenWebUI-installatie staat in [GovChat-NL-legacy](https://github.com/GovChat-NL/GovChat-NL-legacy). Gesprekken, accounts en configuratie uit die installatie worden niet automatisch naar LibreChat overgezet.
+# Chatweergavenaam
+
+De publieke orkestratornaam is configureerbaar via N8N_ORCHESTRATOR_DISPLAY_NAME en GovChat Admin → Orchestrator.
+Adminoverride gaat vóór omgeving en generieke standaard; reset verwijdert de override. Dit verandert geen model-ID of masterprompt.
+Zie [naambeheer en veilige uitrol](docs/orchestrator-display-name.md).

@@ -1,0 +1,282 @@
+{
+  "mode": "live",
+  "documents_per_trial": 5,
+  "recorded_at_utc": "2026-11-11T17:27:58.464850+00:00",
+  "timing_scope": "perf_counter around execute; fresh/tokenizer/verify excluded for every trial",
+  "trials": [
+    {
+      "implementation": "d9b48e8",
+      "workers": 1,
+      "run_id": "perf-c21f53de17bc-0-w1",
+      "collection": "limburg_perf_c21f53de17bc_0_w1",
+      "state_dir": "/state/performance-benchmarks/perf-c21f53de17bc-0-w1",
+      "elapsed_seconds": 12.72825925401412,
+      "documents_per_second": 0.39282669375414764,
+      "counts": {
+        "indexed": 5
+      },
+      "verified_points": 5,
+      "methods": {
+        "tika": 2,
+        "source_markdown": 3
+      },
+      "metadata_fulltext_exact": true,
+      "http_stages": {
+        "source": {
+          "calls": 1,
+          "seconds": 0.09309037995990366
+        },
+        "detail": {
+          "calls": 8,
+          "seconds": 6.612926082103513
+        },
+        "attachment": {
+          "calls": 2,
+          "seconds": 0.3927757079945877
+        },
+        "tika": {
+          "calls": 2,
+          "seconds": 3.6812101680552587
+        },
+        "embedding": {
+          "calls": 6,
+          "seconds": 1.7527376279467717
+        },
+        "upsert": {
+          "calls": 5,
+          "seconds": 0.10719182796310633
+        }
+      },
+      "performance": null,
+      "process_cumulative_high_water_rss_mib": 100.96875
+    },
+    {
+      "implementation": "current",
+      "workers": 2,
+      "run_id": "perf-397990b962b5-1-w2",
+      "collection": "limburg_perf_397990b962b5_1_w2",
+      "state_dir": "/state/performance-benchmarks/perf-397990b962b5-1-w2",
+      "elapsed_seconds": 9.819624286028557,
+      "documents_per_second": 0.5091844508871934,
+      "counts": {
+        "indexed": 5
+      },
+      "verified_points": 5,
+      "methods": {
+        "tika": 2,
+        "source_markdown": 3
+      },
+      "metadata_fulltext_exact": true,
+      "http_stages": {
+        "source": {
+          "calls": 1,
+          "seconds": 0.06435295497067273
+        },
+        "detail": {
+          "calls": 8,
+          "seconds": 10.446872430038638
+        },
+        "attachment": {
+          "calls": 2,
+          "seconds": 0.39835809904616326
+        },
+        "tika": {
+          "calls": 2,
+          "seconds": 3.6857859129086137
+        },
+        "embedding": {
+          "calls": 6,
+          "seconds": 1.700599238043651
+        },
+        "upsert": {
+          "calls": 5,
+          "seconds": 0.07318925694562495
+        }
+      },
+      "performance": {
+        "workers": 2,
+        "peak_inflight": 2,
+        "elapsed_seconds": 9.819573674001731,
+        "documents_per_second": 0.5091870753246633,
+        "stages": {
+          "source": {
+            "calls": 1,
+            "seconds": 0.06436140392906964
+          },
+          "detail": {
+            "calls": 8,
+            "seconds": 10.4470863067545
+          },
+          "attachment": {
+            "calls": 2,
+            "seconds": 0.39837962412275374
+          },
+          "tika": {
+            "calls": 2,
+            "seconds": 3.6858006139518693
+          },
+          "embedding": {
+            "calls": 5,
+            "seconds": 1.7300819889642298
+          },
+          "upsert": {
+            "calls": 5,
+            "seconds": 0.07321156584657729
+          }
+        }
+      },
+      "process_cumulative_high_water_rss_mib": 115.42578125
+    },
+    {
+      "implementation": "current",
+      "workers": 2,
+      "run_id": "perf-d6e596c16760-2-w2",
+      "collection": "limburg_perf_d6e596c16760_2_w2",
+      "state_dir": "/state/performance-benchmarks/perf-d6e596c16760-2-w2",
+      "elapsed_seconds": 10.00236959697213,
+      "documents_per_second": 0.4998815482196915,
+      "counts": {
+        "indexed": 5
+      },
+      "verified_points": 5,
+      "methods": {
+        "tika": 2,
+        "source_markdown": 3
+      },
+      "metadata_fulltext_exact": true,
+      "http_stages": {
+        "source": {
+          "calls": 1,
+          "seconds": 0.061636436032131314
+        },
+        "detail": {
+          "calls": 8,
+          "seconds": 10.670106319827028
+        },
+        "attachment": {
+          "calls": 2,
+          "seconds": 0.4011796850245446
+        },
+        "tika": {
+          "calls": 2,
+          "seconds": 3.710394912981428
+        },
+        "embedding": {
+          "calls": 6,
+          "seconds": 1.7700510311406106
+        },
+        "upsert": {
+          "calls": 5,
+          "seconds": 0.06564409902784973
+        }
+      },
+      "performance": {
+        "workers": 2,
+        "peak_inflight": 2,
+        "elapsed_seconds": 10.002324405009858,
+        "documents_per_second": 0.4998838067575226,
+        "stages": {
+          "source": {
+            "calls": 1,
+            "seconds": 0.06164162897039205
+          },
+          "detail": {
+            "calls": 8,
+            "seconds": 10.670280009042472
+          },
+          "attachment": {
+            "calls": 2,
+            "seconds": 0.4011970820138231
+          },
+          "tika": {
+            "calls": 2,
+            "seconds": 3.710410834988579
+          },
+          "embedding": {
+            "calls": 5,
+            "seconds": 1.7974210552638397
+          },
+          "upsert": {
+            "calls": 5,
+            "seconds": 0.06566585798282176
+          }
+        }
+      },
+      "process_cumulative_high_water_rss_mib": 117.4453125
+    },
+    {
+      "implementation": "d9b48e8",
+      "workers": 1,
+      "run_id": "perf-c83e9f07cf8e-3-w1",
+      "collection": "limburg_perf_c83e9f07cf8e_3_w1",
+      "state_dir": "/state/performance-benchmarks/perf-c83e9f07cf8e-3-w1",
+      "elapsed_seconds": 12.923724852968007,
+      "documents_per_second": 0.38688536446609056,
+      "counts": {
+        "indexed": 5
+      },
+      "verified_points": 5,
+      "methods": {
+        "tika": 2,
+        "source_markdown": 3
+      },
+      "metadata_fulltext_exact": true,
+      "http_stages": {
+        "source": {
+          "calls": 1,
+          "seconds": 0.06301007198635489
+        },
+        "detail": {
+          "calls": 8,
+          "seconds": 7.043218638980761
+        },
+        "attachment": {
+          "calls": 2,
+          "seconds": 0.3571177370613441
+        },
+        "tika": {
+          "calls": 2,
+          "seconds": 3.6633905748603866
+        },
+        "embedding": {
+          "calls": 6,
+          "seconds": 1.6442143358290195
+        },
+        "upsert": {
+          "calls": 5,
+          "seconds": 0.0740678480360657
+        }
+      },
+      "performance": null,
+      "process_cumulative_high_water_rss_mib": 119.4765625
+    }
+  ],
+  "full_run_unchanged": true,
+  "full_run_before_and_after": {
+    "runs": [
+      {
+        "id": "limburg-full-20261111",
+        "collection": "limburg_full_20261111",
+        "source": "provincie_limburg",
+        "cursor": null,
+        "changes_cursor": null,
+        "pages": 0,
+        "snapshot_complete": 0,
+        "created_at": "2026-11-11T16:15:03.310645+00:00",
+        "updated_at": "2026-11-11T16:15:03.310662+00:00",
+        "last_error": null,
+        "model": "govchat-embedding",
+        "counts": {},
+        "complete": false,
+        "failures": []
+      }
+    ]
+  },
+  "full_collection_points": 0,
+  "old_sample_state_and_count_unchanged": true,
+  "old_sample_points": 5,
+  "sequential_mean_seconds": 12.825992053491063,
+  "parallel2_mean_seconds": 9.910996941500343,
+  "observed_speedup": 1.2941172446320464,
+  "metadata_fulltext_sha256": "294740eac6052f624b4ec6e33547b54addfe75352b5116f78180606812c401bd"
+}

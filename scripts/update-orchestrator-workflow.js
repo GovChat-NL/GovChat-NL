@@ -319,6 +319,18 @@ agent.parameters.options.systemMessage = originalSystem.includes('[FINAL_ANSWER]
   ? originalSystem
   : (originalSystem ? originalSystem + ' ' + finalRule : finalRule);
 
+const utilityBuilder = require('./orchestrator-utility-workflow');
+utilityBuilder.applyUtilityTools(wf);
+require('./orchestrator-document-workflow').applyDocumentContext(wf);
+require('./orchestrator-image-workflow').applyImageToolInputs(wf);
+require('./orchestrator-image-edit-workflow').applyOrchestratorImageEdits(wf);
+require('./orchestrator-prompt-workflow').configurePromptManagement(wf);
+// Keep dev's utility workflow IDs at their existing root paths. Moving the
+// orchestrator into algemeen must not create duplicate bootstrap exports.
+const utilityWorkflowsDir = require('path').resolve(__dirname, '../agents/n8n/workflows');
+for (const definition of utilityBuilder.definitions) {
+  const utility = utilityBuilder.utilityWorkflow(definition);
+  fs.writeFileSync(require('path').join(utilityWorkflowsDir, utility.id + '.json'), JSON.stringify([utility], null, 2) + '\n');
+}
 fs.writeFileSync(workflowPath, JSON.stringify(data, null, 2));
 console.log('Updated orchestrator workflow detect node + passthrough prompt');
-

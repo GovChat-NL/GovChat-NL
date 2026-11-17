@@ -1,0 +1,20 @@
+# Minimal validation routes. No optional STT routes requiring absent credentials.
+model_list:
+  - model_name: govchat-embedding
+    litellm_params:
+      model: azure/text-embedding-3-large
+      api_base: os.environ/AZURE_OPENAI_API_BASE
+      api_version: os.environ/AZURE_OPENAI_API_VERSION
+      api_key: os.environ/AZURE_OPENAI_API_KEY
+  - model_name: gpt-5.4
+    litellm_params: &chat
+      model: azure/gpt-5.4
+      api_base: os.environ/AZURE_OPENAI_API_BASE
+      api_version: os.environ/AZURE_OPENAI_API_VERSION
+      api_key: os.environ/AZURE_OPENAI_API_KEY
+  - model_name: govchat-default
+    litellm_params: *chat
+  - model_name: govchat-versimpelaar
+    litellm_params: *chat
+general_settings:
+  master_key: os.environ/LITELLM_MASTER_KEY

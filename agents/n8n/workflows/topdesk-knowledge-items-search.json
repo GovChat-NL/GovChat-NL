@@ -1,0 +1,70 @@
+{
+  "id": "3d74c6d5-0475-4b79-9f11-2a876fd1c002",
+  "name": "TOPdesk - Search Knowledge Items",
+  "description": "Configurable semantic search over a Qdrant collection populated by the TOPdesk ingest workflow.",
+  "active": false,
+  "settings": { "executionOrder": "v1", "availableInMCP": false },
+  "nodes": [
+    {
+      "parameters": { "workflowInputs": { "values": [
+        { "name": "question" },
+        { "name": "top_k", "type": "number" },
+        { "name": "collection" },
+        { "name": "score_threshold", "type": "number" }
+      ] } },
+      "type": "n8n-nodes-base.executeWorkflowTrigger", "typeVersion": 1.1,
+      "position": [-760, 0], "id": "tdki-search-trigger", "name": "Execute Workflow Trigger",
+      "notes": "Input: question (required), top_k (optional)."
+    },
+    {
+      "parameters": {
+        "jsCode": "// Keep these non-secret defaults aligned with the ingest workflow.\nconst embeddingUrl='http://litellm:4000/embeddings';const embeddingModel='govchat-embedding';const qdrantUrl='http://qdrant:6333';const vectorSize=3072;const input=$input.first()?.json||{};const question=String(input.question||input.query||'').trim();if(question.length<2)throw new Error('question must contain at least two characters');const integer=(v,d,min,max)=>{const n=Number(v);return Number.isFinite(n)?Math.max(min,Math.min(max,Math.floor(n))):d;};const threshold=Number(input.score_threshold);return [{json:{question,topK:integer(input.top_k,5,1,50),scoreThreshold:Number.isFinite(threshold)?Math.max(0,Math.min(1,threshold)):0.3,embeddingUrl,embeddingModel,qdrantUrl,collection:String(input.collection||'topdesk_knowledge_items'),vectorSize}}];"
+      },
+      "type": "n8n-nodes-base.code", "typeVersion": 2,
+      "position": [-520, 0], "id": "tdki-search-config", "name": "1. Validate and configure search"
+    },
+    {
+      "parameters": {
+        "method": "POST", "url": "={{ $json.embeddingUrl }}",
+        "authentication": "genericCredentialType", "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true, "headerParameters": { "parameters": [ { "name": "Content-Type", "value": "application/json" } ] },
+        "sendBody": true, "specifyBody": "json", "jsonBody": "={{ JSON.stringify({model:$json.embeddingModel,input:[$json.question]}) }}",
+        "options": { "timeout": 60000 }
+      },
+      "type": "n8n-nodes-base.httpRequest", "typeVersion": 4.2,
+      "position": [-260, 0], "id": "tdki-search-embed", "name": "2. Embed question",
+      "credentials": { "httpHeaderAuth": { "id": "00000000-0000-4000-8000-000000000333", "name": "LiteLLM Embeddings Header Auth" } }
+    },
+    {
+      "parameters": {
+        "jsCode": "const cfg=$('1. Validate and configure search').first().json;const vector=$json.data?.[0]?.embedding;if(!Array.isArray(vector)||vector.length!==cfg.vectorSize)throw new Error('Embedding dimension mismatch: expected '+cfg.vectorSize+', received '+(Array.isArray(vector)?vector.length:'no vector'));return [{json:{...cfg,request:{vector,limit:cfg.topK,with_payload:true,with_vector:false,score_threshold:cfg.scoreThreshold,filter:{must:[{key:'source',match:{value:'topdesk'}},{key:'visible',match:{value:true}}]}}}}];"
+      },
+      "type": "n8n-nodes-base.code", "typeVersion": 2,
+      "position": [0, 0], "id": "tdki-search-request", "name": "3. Build vector query"
+    },
+    {
+      "parameters": {
+        "method": "POST", "url": "={{ $json.qdrantUrl.replace(/\\/$/,'') + '/collections/' + encodeURIComponent($json.collection) + '/points/search' }}",
+        "sendHeaders": true, "headerParameters": { "parameters": [ { "name": "Content-Type", "value": "application/json" } ] },
+        "sendBody": true, "specifyBody": "json", "jsonBody": "={{ JSON.stringify($json.request) }}",
+        "options": { "timeout": 60000 }
+      },
+      "type": "n8n-nodes-base.httpRequest", "typeVersion": 4.2,
+      "position": [260, 0], "id": "tdki-search-qdrant", "name": "4. Search Qdrant"
+    },
+    {
+      "parameters": {
+        "jsCode": "const cfg=$('3. Build vector query').first().json;const hits=Array.isArray($json.result)?$json.result:($json.result?.points||[]);const results=hits.map((hit,index)=>{const p=hit.payload||{};return {rank:index+1,score:hit.score,source_id:p.source_id||hit.id,knowledge_item_id:p.knowledge_item_id||p.source_id,attachment_name:p.attachment_name||null,number:p.number||null,title:p.title||null,content:p.content||'',visible:p.visible,url:p.url||null};});return [{json:{question:cfg.question,collection:cfg.collection,results,count:results.length}}];"
+      },
+      "type": "n8n-nodes-base.code", "typeVersion": 2,
+      "position": [520, 0], "id": "tdki-search-results", "name": "5. Return ranked sources"
+    }
+  ],
+  "connections": {
+    "Execute Workflow Trigger": { "main": [[{ "node": "1. Validate and configure search", "type": "main", "index": 0 }]] },
+    "1. Validate and configure search": { "main": [[{ "node": "2. Embed question", "type": "main", "index": 0 }]] },
+    "2. Embed question": { "main": [[{ "node": "3. Build vector query", "type": "main", "index": 0 }]] },
+    "3. Build vector query": { "main": [[{ "node": "4. Search Qdrant", "type": "main", "index": 0 }]] },
+    "4. Search Qdrant": { "main": [[{ "node": "5. Return ranked sources", "type": "main", "index": 0 }]] }
+  }
+}

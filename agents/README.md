@@ -15,6 +15,8 @@ Deze directory is de monorepo-bron van waarheid voor GovChat-NL n8n-workflows. D
 
 De OpenBesluitvorming-exports staan direct in `n8n/workflows/` zodat ze door dezelfde bootstrap worden ontdekt. De ingest- en synchronisatieworkflows gebruiken de interne Compose-service `qdrant`; configureer de workflow-nodes voor de gewenste bron, collectie en credentials voordat een workflow wordt geactiveerd.
 
+De generieke TOPdesk-kennisitemworkflows staan ook in `n8n/workflows/`. Met `N8N_ENABLE_TOPDESK_SEARCH=true` publiceert bootstrap TOPdesk Search en koppelt de tool automatisch aan de GovChat Orchestrator, naast OpenBesluitvorming. Standaard is de koppeling uit en ingest/planning blijven onafhankelijk inactief. Configureer eerst de TOPdesk-, embedding- en Qdrant-instellingen en credentials; zie [`docs/topdesk-knowledge-items.md`](../docs/topdesk-knowledge-items.md). De ingest-workflow kan Apache Tika gebruiken om tekst uit bijlagen te extraheren.
+
 ## Verzoekroute en modelroute
 
 1. LibreChat stuurt een OpenAI-compatible verzoek naar de afzonderlijke bridge.

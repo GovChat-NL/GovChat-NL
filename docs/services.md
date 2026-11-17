@@ -21,6 +21,7 @@ De hoofdconfiguratie staat in [`docker-compose.yml`](../docker-compose.yml). Zon
 | `beleidskompas-postgres` | Slaat de casussen van Beleidskompas op: de casustekst, de uitwerkingen en het gesprek. Alleen de beheeromgeving praat ermee. |
 | `meilisearch` | Ondersteunt het zoeken binnen LibreChat. |
 | `qdrant` | Interne vectoropslag voor de daarvoor ingerichte workflows. De container heeft geen gepubliceerde hostpoort. |
+| `tika` | Interne Apache Tika-service voor tekstextractie uit TOPdesk-kennisitembijlagen. De container heeft geen gepubliceerde hostpoort; zie [`topdesk-knowledge-items.md`](topdesk-knowledge-items.md). |
 | `govchat-retention` | Ruimt gegevens op volgens het ingestelde bewaarbeleid; zie [`retention-policy.md`](retention-policy.md). |
 | `n8n-log-pruner` | Beperkt de bewaartermijn en omvang van n8n-logbestanden. |
 | `librechat-permissions` | Eenmalige voorbereiding van de rechten op gegevensmappen. |

@@ -1,0 +1,59 @@
+# Explicit local validation override; leaves the older stopped runtime untouched.
+# docker compose -f docker-compose.yml -f docker-compose.openbesluitvorming-local.yml ...
+services:
+  openbesluitvorming-ingest:
+    # Two pipelines, bounded 256 MiB downloads; no scheduling on compose up.
+    mem_limit: 2g
+    environment:
+      OBV_ATTACHMENT_MAX_BYTES: "268435456"
+  librechat-permissions:
+    container_name: govchat-obv-permissions
+    volumes:
+      - obv-local-logs:/app/n8n-logs
+      - obv-local-uploads:/app/uploads
+      - obv-local-images:/app/images
+  litellm-postgres:
+    container_name: govchat-obv-litellm-postgres
+    volumes:
+      - obv-local-litellm-postgres:/var/lib/postgresql/data
+  litellm:
+    container_name: govchat-obv-litellm
+    ports: !override
+      - "127.0.0.1:14000:4000"
+    volumes:
+      - ./litellm/openbesluitvorming-local.yaml:/app/config.yaml:ro
+  n8n-postgres:
+    container_name: govchat-obv-n8n-postgres
+  n8n:
+    container_name: govchat-obv-n8n
+    ports:
+      - "127.0.0.1:15678:5678"
+    environment:
+      N8N_EDITOR_BASE_URL: http://localhost:15678
+      WEBHOOK_URL: http://localhost:15678
+      N8N_SECURE_COOKIE: "false"
+    volumes:
+      - obv-local-logs:/var/log/n8n
+      - obv-local-images:/shared-images
+      - obv-local-publish:/govchat-config:ro
+  n8n-runners:
+    container_name: govchat-obv-n8n-runners
+    volumes:
+      - obv-local-images:/shared-images
+  n8n-bootstrap:
+    container_name: govchat-obv-n8n-bootstrap
+    environment:
+      # Never reset an existing owner during this validation.
+      N8N_OWNER_ENFORCE: "false"
+  n8n-openai-bridge:
+    container_name: govchat-obv-bridge
+    build:
+      context: ../n8n-openai-bridge
+    ports:
+      - "127.0.0.1:13333:3333"
+volumes:
+  obv-local-logs:
+  obv-local-uploads:
+  obv-local-images:
+  obv-local-publish:
+  obv-local-litellm-postgres:

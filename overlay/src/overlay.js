@@ -12,10 +12,8 @@ import { fetchHelpContent, openHelpModal as showHelpModal, closeHelpModal } from
   const CONFIG = {
     helpContentUrl: "/govchat-overlay/help-content.json",
     appsUrl: "/govchat-overlay/apps.json",
-    appName: document.title || "LibreChat",
+    appName: window.GOVCHAT_BRANDING?.appName || document.title || "GovChat-NL",
     storageKey: "govchat_help_dont_show",
-    footerBrandText: "GovChat-NL v0.0.1",
-    footerBrandUrl: "https://govchat-nl.github.io/",
     helpFaqUrl: "https://govchat-nl.github.io/",
     // sessionStorage key for the app requested via the URL
     // (see rememberRequestedScreen).
@@ -148,7 +146,6 @@ import { fetchHelpContent, openHelpModal as showHelpModal, closeHelpModal } from
   }
 
   function refreshOverlayState() {
-    applyFooterBranding();
     rewriteHelpFaqMenuLink();
 
     requestScreenAfterLogin();
@@ -199,24 +196,6 @@ import { fetchHelpContent, openHelpModal as showHelpModal, closeHelpModal } from
         window.open(targetUrl, "_blank", "noopener,noreferrer");
       });
     });
-  }
-
-  function applyFooterBranding() {
-    if (!isMainAppRoute(window.location.pathname)) return;
-
-    // Exact target as shared by user:
-    // <div role="contentinfo"><span><a href="https://librechat.ai">LibreChat</a> ...</span></div>
-    const libreChatLink = document.querySelector('div[role="contentinfo"] span > a[href*="librechat.ai"]');
-    if (!libreChatLink) return;
-
-    const span = libreChatLink.closest("span");
-    if (!span) return;
-
-    if (span.querySelector("a[data-govchat-brand='1']")) return;
-
-    span.innerHTML = `<a data-govchat-brand="1" class="gc-footer-brand" href="${escapeAttr(
-      CONFIG.footerBrandUrl
-    )}" target="_blank" rel="noopener noreferrer">${escapeHTML(CONFIG.footerBrandText)}</a>`;
   }
 
   function isLoginScreenVisible() {
@@ -2508,4 +2487,3 @@ import { fetchHelpContent, openHelpModal as showHelpModal, closeHelpModal } from
     renderSegments();
   }
 })();
-
