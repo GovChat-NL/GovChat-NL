@@ -35,6 +35,27 @@ function createAdminRouter({ store, requireAuth, flow }) {
   });
 
 
+  // Import an export as a separate template; deploying remains an explicit action.
+  router.post("/import", requireAuth, async (req, res) => {
+    try {
+      const incoming = req.body?.state ?? req.body;
+      const isFlow = (value) => value && typeof value === "object" && Array.isArray(value.steps);
+      if (!incoming || typeof incoming !== "object" || Array.isArray(incoming)
+        || (incoming.versions !== undefined && !Array.isArray(incoming.versions))
+        || (incoming.documents !== undefined && !Array.isArray(incoming.documents))
+        || (incoming.versions?.length
+          ? !incoming.versions.every((version) => isFlow(version?.snapshot))
+          : !isFlow(incoming.live || incoming.draft))) {
+        return res.status(400).json({ error: "Ongeldig Beleidskompas-exportbestand" });
+      }
+      const name = String(incoming.name || "Geïmporteerd template").trim() || "Geïmporteerd template";
+      const { templateId } = await store.importLegacyState(normalizeLegacyState(incoming), name);
+      return res.json({ ok: true, template_id: templateId });
+    } catch (err) {
+      return res.status(err.status || 400).json({ error: String(err?.message || err) });
+    }
+  });
+
   router.post("/templates", requireAuth, async (req, res) => {
     try {
       const name = String(req.body?.name || "").trim();

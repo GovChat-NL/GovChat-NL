@@ -15,6 +15,7 @@ const store = {
   saveVersion: async (...args) => { calls.push(["saveVersion", ...args]); return { version: { id: 8, version: 2 } }; },
   getDocument: async (id) => (id === 1 ? { id: 1, filename: "a.txt", mime_type: "text/plain", preview_text: "hi", content: Buffer.from("hello") } : null),
   listDocuments: async () => [{ id: 1, filename: "a.txt", active: true }],
+  importLegacyState: async (...args) => { calls.push(["importLegacyState", ...args]); return { templateId: 2 }; },
 };
 const flow = {
   DEFAULT_BELEIDSKOMPAS_SETTINGS: { retention_days: 365 },
@@ -64,6 +65,43 @@ test("unknown template gives 404", async () => {
 
 test("POST /templates requires a name", async () => {
   assert.equal((await json("POST", "/templates", { name: "  " })).status, 400);
+});
+
+test("POST /import restores an export as a new template without changing what is live", async () => {
+  calls.length = 0;
+  const exported = {
+    name: "Imported", versions: [{ id: 7, snapshot: { title: "T", steps: [] } }],
+    documents: [{ id: 1, filename: "a.txt", content_base64: "aGk=" }],
+  };
+  const res = await json("POST", "/import", exported);
+  assert.equal(res.status, 200);
+  assert.deepEqual(await res.json(), { ok: true, template_id: 2 });
+  assert.deepEqual(calls, [["importLegacyState", exported, "Imported"]]);
+});
+
+test("POST /import accepts wrapped legacy state and supplies a template name", async () => {
+  calls.length = 0;
+  const state = { live: { steps: [] } };
+  assert.equal((await json("POST", "/import", { state })).status, 200);
+  assert.deepEqual(calls, [["importLegacyState", state, "Geïmporteerd template"]]);
+});
+
+test("POST /import rejects malformed exports before writing", async () => {
+  calls.length = 0;
+  for (const body of [{}, [], { versions: {} }, { versions: [null] },
+    { live: { steps: [] }, documents: {} }]) {
+    assert.equal((await json("POST", "/import", body)).status, 400);
+  }
+  assert.deepEqual(calls, []);
+});
+
+test("POST /import requires admin authentication", async () => {
+  calls.length = 0;
+  authed = false;
+  try {
+    assert.equal((await json("POST", "/import", { live: { steps: [] } })).status, 401);
+  } finally { authed = true; }
+  assert.deepEqual(calls, []);
 });
 
 test("POST /templates/:id/versions saves a version without publishing", async () => {

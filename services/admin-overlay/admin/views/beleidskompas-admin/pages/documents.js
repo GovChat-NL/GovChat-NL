@@ -42,7 +42,8 @@ export function renderDocuments({ store, render }) {
   const uploadInput = h("input", { type: "file", multiple: true, hidden: true });
   uploadInput.addEventListener("change", async () => {
     try {
-      for (const file of uploadInput.files || []) await api.uploadDocument(tpl.id, file);
+      const uploaded = [];
+      for (const file of uploadInput.files || []) uploaded.push((await api.uploadDocument(tpl.id, file)).document);
       toast("Document(en) geüpload", "success");
       // Select and preview the (first) uploaded document.
       if (uploaded[0]) ui.docId = uploaded[0].id;

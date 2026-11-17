@@ -151,10 +151,10 @@ test("settings round-trip", opts, async () => {
 test("importLegacyState maps versions in date order and keeps the legacy live version", opts, async () => {
   const state = {
     versions: [
-      { id: "v2", published_at: "2026-02-01T00:00:00.000Z", published_by: "Bob", note: "second", snapshot: { n: 2 } },
+      { id: "v2", published_at: "2026-02-01T00:00:00.000Z", published_by: "Bob", note: "second", snapshot: { n: 2, steps: [{ document_ids: ["99001"] }] } },
       { id: "v1", published_at: "2026-01-01T00:00:00.000Z", published_by: "Ann", note: "first", snapshot: { n: 1 } },
     ],
-    documents: [{ filename: "legacy.txt", mime_type: "text/plain", content_base64: Buffer.from("x").toString("base64"), preview_text: "x" }],
+    documents: [{ id: 99001, filename: "legacy.txt", mime_type: "text/plain", content_base64: Buffer.from("x").toString("base64"), preview_text: "x" }],
     live_version_id: "v1",
   };
   const result = await store.importLegacyState(state, "Legacy");
@@ -164,6 +164,8 @@ test("importLegacyState maps versions in date order and keeps the legacy live ve
   assert.equal(result.newestVersionId, result.versionIds.v2);
   assert.equal(byId[result.versionIds.v1].snapshot.n, 1);
   assert.equal(byId[result.versionIds.v2].snapshot.n, 2);
+  const [importedDocument] = await store.listDocuments(result.templateId);
+  assert.deepEqual(byId[result.versionIds.v2].snapshot.steps[0].document_ids, [String(importedDocument.id)]);
   const nums = await db.query("SELECT id, version FROM template_versions WHERE template_id = $1", [result.templateId]);
   const num = Object.fromEntries(nums.rows.map((r) => [r.id, r.version]));
   assert.equal(num[result.versionIds.v1], 1);

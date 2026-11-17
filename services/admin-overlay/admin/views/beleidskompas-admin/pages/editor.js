@@ -102,9 +102,10 @@ export function renderEditor({ store, render, markDirty, selectTemplate, saveAsN
     if (!file) return;
     try {
       const json = JSON.parse(await file.text());
-      if (!confirm("De huidige configuratie wordt overschreven met dit bestand. Doorgaan?")) return;
-      await api.importState(json);
+      if (!confirm("Dit bestand wordt geïmporteerd als nieuw template. Live zetten doe je via Deploy. Doorgaan?")) return;
+      const { template_id } = await api.importState(json);
       await reload();
+      await selectTemplate(template_id);
       toast("Configuratie geïmporteerd", "success");
       render();
     } catch (err) {
@@ -115,7 +116,7 @@ export function renderEditor({ store, render, markDirty, selectTemplate, saveAsN
   });
   const transferCard = card(
     "Export en import",
-    h("p", { class: "muted" }, "De volledige configuratie (template, versies, documenten en instellingen) als JSON-bestand."),
+    h("p", { class: "muted" }, "Exporteer dit template met versies en documenten als JSON-bestand. Importeren maakt een nieuw template; live zetten doe je via Deploy."),
     h(
       "div",
       { class: "card-actions" },

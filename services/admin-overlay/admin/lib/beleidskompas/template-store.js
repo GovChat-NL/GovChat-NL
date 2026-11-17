@@ -149,12 +149,14 @@ function createTemplateStore(db) {
   function importLegacyState(state, name) {
     return db.transaction(async (q) => {
       const documentIds = [];
+      const documentIdMap = new Map();
       for (const d of state.documents || []) {
         const { id } = await insertDocument(q, {
           filename: d.filename, contentType: d.mime_type || "application/octet-stream",
           bytes: Buffer.from(d.content_base64, "base64"), previewText: d.preview_text,
         });
         documentIds.push(id);
+        if (d.id != null) documentIdMap.set(String(d.id), String(id));
       }
       const versions = [...(state.versions || [])].sort((a, b) => new Date(a.published_at) - new Date(b.published_at));
       if (!versions.length) versions.push({ snapshot: state.live || state.draft });
@@ -162,7 +164,13 @@ function createTemplateStore(db) {
       const versionIds = {};
       let newestVersionId = null;
       for (const v of versions) {
-        const { version } = await insertVersion(q, templateId, v.snapshot, documentIds, v.note, v.published_by || "Onbekend", v.published_at);
+        const snapshot = structuredClone(v.snapshot);
+        for (const step of snapshot?.steps || []) {
+          if (Array.isArray(step.document_ids)) {
+            step.document_ids = step.document_ids.map((id) => documentIdMap.get(String(id))).filter((id) => id !== undefined);
+          }
+        }
+        const { version } = await insertVersion(q, templateId, snapshot, documentIds, v.note, v.published_by || "Onbekend", v.published_at);
         if (v.id) versionIds[v.id] = version.id;
         newestVersionId = version.id;
       }
