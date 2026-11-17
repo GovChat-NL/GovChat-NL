@@ -325,6 +325,9 @@ require('./orchestrator-document-workflow').applyDocumentContext(wf);
 require('./orchestrator-image-workflow').applyImageToolInputs(wf);
 require('./orchestrator-image-edit-workflow').applyOrchestratorImageEdits(wf);
 require('./orchestrator-prompt-workflow').configurePromptManagement(wf);
+const statisticsBuilder = require('./openbesluitvorming-statistics-workflow');
+statisticsBuilder.applyStatisticsTool(wf);
+fs.writeFileSync(require('path').resolve(__dirname, '../agents/n8n/workflows/openbesluitvorming/govchat-openbesluitvorming-statistics.json'), JSON.stringify([statisticsBuilder.statisticsWorkflow()], null, 2) + '\n');
 // Keep dev's utility workflow IDs at their existing root paths. Moving the
 // orchestrator into algemeen must not create duplicate bootstrap exports.
 const utilityWorkflowsDir = require('path').resolve(__dirname, '../agents/n8n/workflows');

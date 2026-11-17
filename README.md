@@ -48,6 +48,11 @@ Tika-fallback, behoud van bronmetadata, hervatbare checkpoints en duurzame retri
 Er start geen ingest of planning bij het opstarten van Compose. Zie
 [de operatorhandleiding voor fresh/resume/status/retry en de begrensde livevalidatie](docs/openbesluitvorming-ingestion.md).
 
+Exacte aantallen, jaar-/documenttypeverdelingen, metadata en synchronisatiestatus
+in normale chat gebruiken een interne read-only statistics-service, los van RAG.
+Zie [integratie, serverrollout en werkelijke lokale chatvalidatie](docs/openbesluitvorming-statistics-integration.md),
+inclusief de expliciete backend-reviewblokkade voor volledige schemadiscovery.
+
 ## Verbonden systemen
 
 | Systeem | Rol binnen GovChat-NL |

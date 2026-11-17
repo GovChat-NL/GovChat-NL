@@ -508,6 +508,8 @@ services:
         condition: service_healthy
       litellm:
         condition: service_healthy
+      openbesluitvorming-statistics:
+        condition: service_healthy
     expose:
       - "5678"
       - "5679"
@@ -581,6 +583,7 @@ services:
       N8N_ORCHESTRATOR_IMAGE_DATA_URL_MAX_CHARS: ${N8N_ORCHESTRATOR_IMAGE_DATA_URL_MAX_CHARS:-450000}
       N8N_ORCHESTRATOR_IMAGE_MAX_RESOLUTION_PX: ${N8N_ORCHESTRATOR_IMAGE_MAX_RESOLUTION_PX:-1568}
       N8N_WEBHOOK_TOKEN: ${N8N_WEBHOOK_TOKEN}
+      OBV_STATS_TOKEN: ${OBV_STATS_TOKEN:-${N8N_WEBHOOK_TOKEN}}
       PUBLIC_BASE_URL: ${PUBLIC_BASE_URL}
       CRAWLER_ADMIN_BASE_URL: ${CRAWLER_ADMIN_BASE_URL:-http://govchat-overlay-admin:3002}
       CRAWLER_INTERNAL_TOKEN: ${CRAWLER_INTERNAL_TOKEN:-${N8N_WEBHOOK_TOKEN}}
@@ -646,6 +649,7 @@ services:
       N8N_RUNNERS_TASK_BROKER_URI: http://n8n:5679
       N8N_RUNNERS_AUTH_TOKEN: ${N8N_RUNNERS_AUTH_TOKEN}
       N8N_WEBHOOK_TOKEN: ${N8N_WEBHOOK_TOKEN}
+      OBV_STATS_TOKEN: ${OBV_STATS_TOKEN:-${N8N_WEBHOOK_TOKEN}}
       # Nodig voor Code node gebruik van $env.* in runner context
       N8N_BLOCK_ENV_ACCESS_IN_NODE: "false"
       CRAWLER_ADMIN_BASE_URL: ${CRAWLER_ADMIN_BASE_URL:-http://govchat-overlay-admin:3002}
@@ -822,6 +826,45 @@ services:
     entrypoint: ["python", "/restore.py"]
     networks:
       - librechat-net
+
+  # Always-on internal read-only metadata; never starts ingestion or embeddings.
+  openbesluitvorming-statistics:
+    build:
+      context: ./services/openbesluitvorming-statistics
+    image: govchat-openbesluitvorming-statistics:local
+    restart: unless-stopped
+    user: "10001:10001"
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=16m
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      qdrant:
+        condition: service_healthy
+    environment:
+      OBV_STATS_TOKEN: ${OBV_STATS_TOKEN:-${N8N_WEBHOOK_TOKEN}}
+      OBV_QDRANT_URL: http://qdrant:6333
+      OBV_QDRANT_API_KEY: ${OBV_QDRANT_API_KEY:-}
+      OBV_STATS_COLLECTION: ${OBV_STATS_COLLECTION:-limburg_full_20261111}
+      OBV_STATS_RUN_ID: ${OBV_STATS_RUN_ID:-limburg-full-20261111}
+      OBV_STATS_SOURCE_KEY: ${OBV_STATS_SOURCE_KEY:-provincie_limburg}
+      OBV_STATS_STATE_DIR: /state
+      OBV_STATS_MAX_SECONDS: "180"
+      OBV_STATS_MAX_GROUP_BYTES: ${OBV_STATS_MAX_GROUP_BYTES:-33554432}
+    volumes:
+      - openbesluitvorming-ingest-state:/state:ro
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8092/healthz', timeout=5)"]
+      interval: 20s
+      timeout: 10s
+      retries: 5
+      start_period: 10s
+    networks:
+      - librechat-net
+    mem_limit: 512m
 
   # One-shot operator worker. No daemon, scheduler, or ingestion on compose up.
   openbesluitvorming-ingest:

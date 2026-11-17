@@ -24,6 +24,7 @@
         "DEPLOYMENT_NAME",
         "HOME",
         "N8N_WEBHOOK_TOKEN",
+        "OBV_STATS_TOKEN",
         "CRAWLER_ADMIN_BASE_URL",
         "CRAWLER_INTERNAL_TOKEN",
         "N8N_DOCUMENT_TIKA_URL",
