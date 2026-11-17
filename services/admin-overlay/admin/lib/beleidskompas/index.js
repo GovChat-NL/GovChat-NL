@@ -69,7 +69,7 @@ async function connect(pool, { migrate, wait, log, delays }) {
   }
 }
 
-function start(app, { resolveUser } = {}, env = process.env, deps = {}) {
+function start(app, { resolveUser, onReady } = {}, env = process.env, deps = {}) {
   const { openPool = db.openPool, migrate = db.migrate, wait = sleep, log = console, delays = RETRY_DELAYS_MS } = deps;
   const internalToken = String(env.BELEIDSKOMPAS_STORE_TOKEN || "").trim();
   const pool = openPool(env);
@@ -83,6 +83,7 @@ function start(app, { resolveUser } = {}, env = process.env, deps = {}) {
   routes.mount(app, { store: waitingStore(() => store), internalToken, resolveUser });
   return connect(pool, { migrate, wait, log, delays }).then((ready) => {
     store = ready;
+    if (onReady) onReady(pool);
     return ready;
   });
 }
