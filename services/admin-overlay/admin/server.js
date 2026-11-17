@@ -2621,7 +2621,7 @@ const { templates: templateStore } = beleidskompas.start(
     init: initBeleidskompas,
     flow: {
       DEFAULT_BELEIDSKOMPAS_SETTINGS, normalizeBeleidskompasFlow, defaultBeleidskompasFlow,
-      readBeleidskompasWorkflowManifest, selectBeleidskompasRagDocs, normalizeLegacyState, publishLive,
+      readBeleidskompasWorkflowManifest, normalizeLegacyState, publishLive,
       n8nBaseUrl: BELEIDSKOMPAS_N8N_BASE_URL, n8nWebhookToken: BELEIDSKOMPAS_N8N_WEBHOOK_TOKEN,
     },
   },

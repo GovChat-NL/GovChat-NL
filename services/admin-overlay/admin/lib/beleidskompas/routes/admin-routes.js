@@ -14,7 +14,7 @@ function createAdminRouter({ store, requireAuth, flow }) {
   const { getCurrentOr404, setTemplateDocument, findTemplateDocument } = service;
   const {
     DEFAULT_BELEIDSKOMPAS_SETTINGS, normalizeBeleidskompasFlow, defaultBeleidskompasFlow,
-    readBeleidskompasWorkflowManifest, selectBeleidskompasRagDocs, normalizeLegacyState,
+    readBeleidskompasWorkflowManifest, normalizeLegacyState,
     publishLive, n8nBaseUrl, n8nWebhookToken,
   } = flow;
   const router = express.Router();
@@ -254,49 +254,6 @@ function createAdminRouter({ store, requireAuth, flow }) {
     }
   });
 
-  router.post("/rag/query", requireAuth, async (req, res) => {
-    try {
-      const live = await store.getLive();
-      if (!live) return res.status(400).json({ error: "Geen live versie" });
-      const flow = normalizeBeleidskompasFlow(live.snapshot);
-      const stepId = String(req.body?.step_id || "").trim();
-      let step = Array.isArray(flow.steps) ? flow.steps.find((s) => String(s?.id || "") === stepId) : null;
-      if (!step) step = Array.isArray(flow.steps) ? flow.steps[0] : null;
-      if (!step) return res.status(400).json({ error: "Geen stappen geconfigureerd" });
-
-      const result = selectBeleidskompasRagDocs({
-        step,
-        question: String(req.body?.question || ""),
-        caseText: String(req.body?.case_text || ""),
-        stepFields: req.body?.step_fields && typeof req.body.step_fields === "object" ? req.body.step_fields : {},
-        documents: live.documents,
-      });
-
-      return res.json({
-        ok: true,
-        step_id: String(step.id || stepId),
-        rag: result.rag,
-        citations: result.docs.map((d, i) => ({
-          rank: i + 1,
-          id: d.id,
-          filename: d.filename,
-          score: Number(d.score.toFixed(4)),
-          tags: d.tags,
-          preview: d.preview,
-        })),
-        trace: {
-          algorithm: result.rag.algorithm,
-          top_k: result.rag.top_k,
-          min_score: result.rag.min_score,
-          tag_filter_mode: result.rag.tag_filter_mode,
-          required_tags: result.rag.required_tags,
-          matched_docs: result.docs.length,
-        },
-      });
-    } catch (err) {
-      return res.status(400).json({ error: String(err?.message || err) });
-    }
-  });
 
   return router;
 }

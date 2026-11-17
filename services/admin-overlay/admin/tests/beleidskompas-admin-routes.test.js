@@ -21,7 +21,6 @@ const flow = {
   normalizeBeleidskompasFlow: (f) => f ?? { steps: [] },
   defaultBeleidskompasFlow: () => ({ steps: [] }),
   readBeleidskompasWorkflowManifest: () => null,
-  selectBeleidskompasRagDocs: () => ({ rag: {}, docs: [] }),
   normalizeLegacyState: (s) => s,
   publishLive: async () => { calls.push(["publishLive"]); return { synced: true }; },
   n8nBaseUrl: "http://n8n:5678",
