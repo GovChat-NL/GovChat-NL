@@ -47,9 +47,9 @@ async function processEventStream(ctx, eventStream, itemIndex) {
                                 messageLog: [output],
                                 additionalKwargs: output.additional_kwargs,
                             };
-                            toolCalls.push(normalizedToolCall);
-                            activeToolCalls.set(normalizedToolCall.toolCallId, normalizedToolCall);
                             if (!emittedToolCallIds.has(normalizedToolCall.toolCallId)) {
+                                toolCalls.push(normalizedToolCall);
+                                activeToolCalls.set(normalizedToolCall.toolCallId, normalizedToolCall);
                                 emittedToolCallIds.add(normalizedToolCall.toolCallId);
                                 ctx.sendChunk('tool_call', itemIndex, JSON.stringify({
                                     type: 'tool_call',

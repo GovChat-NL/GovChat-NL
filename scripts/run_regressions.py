@@ -33,6 +33,19 @@ NEW_FILES = {"scripts/librechat_release.py", "scripts/librechat-release-pin.js",
 SOURCE_TEST_PATTERNS = ["tests/*.test.js", "tests/branding/*.test.js", "tests/agents/*.test.js",
                         "agents/beleidskompas/*.test.js",
                         "overlay/src/apps/beleidskompas/tests/*.test.js", "tests/overlay/*.test.js"]
+# These contracts need the actual external bridge client, not LibreChat's /app.
+BRIDGE_TEST_PATTERNS = ["tests/n8n-bridge-tool-events.test.js"]
+BRIDGE_REVISION = "8aef82cf1cad904408b0b5fb86b51b401ba65d6d"
+BRIDGE_CONTEXT = "https://github.com/GovChat-NL/n8n-openai-bridge.git#" + BRIDGE_REVISION
+# Use only public source and locked dependencies; never copy a local bridge
+# checkout, configuration, tokens or the deployment image into the regression.
+BRIDGE_DOCKERFILE = """FROM node:20-alpine
+WORKDIR /app
+COPY package.json package-lock.json ./
+RUN npm ci --omit=dev --no-audit --no-fund
+COPY src/ ./src/
+USER node
+"""
 
 
 def clean_env():
@@ -41,14 +54,15 @@ def clean_env():
             "PYTHONDONTWRITEBYTECODE": "1", "GOVCHAT_DOCKER_TESTS": "0"}
 
 
-def run(args, cwd, env=None):
+def run(args, cwd, env=None, input_text=None):
     print("+ " + " ".join(map(str, args)), flush=True)
     environment = env or clean_env()
     if str(args[0]) == "docker":
         config = Path(cwd) / ".regression-docker-config"
         config.mkdir(mode=0o700, exist_ok=True)
         environment = {**environment, "DOCKER_CONFIG": str(config)}
-    subprocess.run(list(map(str, args)), cwd=cwd, env=environment, check=True)
+    subprocess.run(list(map(str, args)), cwd=cwd, env=environment, check=True,
+                   input=input_text, text=True)
 
 
 def public_path(name):
@@ -104,8 +118,9 @@ def n8n_spec(text):
     return f"docker.n8n.io/n8nio/n8n:{images[0]}", mounts
 
 
-def node_tests(source, patterns):
+def node_tests(source, patterns, exclude=()):
     files = sorted({str(path.relative_to(source)) for pattern in patterns for path in source.glob(pattern)})
+    files = [name for name in files if name not in exclude]
     if not files:
         raise ReleaseError("No tests matched")
     return ["node", "--test", "--test-concurrency=2", *files]
@@ -135,17 +150,27 @@ def execute_suite(source, offline=False):
     n8n_image, mounts = n8n_spec(text)
     nginx_image = "nginx:1.28-alpine"  # same isolated proxy-test default
     admin_image = "govchat-regression-admin:" + uuid.uuid4().hex
+    bridge_image = "govchat-regression-bridge:" + uuid.uuid4().hex
     for pinned in (image, n8n_image, nginx_image):
         run(["docker", "pull", pinned], source)
     try:
         run(["docker", "build", "--tag", admin_image, "services/admin-overlay/admin"], source)
+        run(["docker", "build", "--tag", bridge_image, "--file", "-", BRIDGE_CONTEXT], source,
+            input_text=BRIDGE_DOCKERFILE)
         # Fail rather than let upstream contract tests silently skip in a wrong image.
         preflight = ("const fs=require('node:fs'); const assert=require('node:assert/strict');"
                      f"assert.equal(JSON.parse(fs.readFileSync('/app/package.json')).version,{tag!r});"
                      "for(const p of ['/app/api/package.json','/app/client/src/components/Chat/Footer.tsx'])"
                      "assert.ok(fs.existsSync(p),p);")
         run(container_args(source, image, ["node", "-e", preflight]), source)
-        run(container_args(source, image, node_tests(source, SOURCE_TEST_PATTERNS)), source)
+        bridge_tests = node_tests(source, BRIDGE_TEST_PATTERNS)
+        run(container_args(source, image, node_tests(source, SOURCE_TEST_PATTERNS, exclude=bridge_tests[3:])), source)
+        bridge_preflight = ("const fs=require('node:fs'); const assert=require('node:assert/strict');"
+                            "assert.equal(JSON.parse(fs.readFileSync('/app/package.json')).name,'n8n-openai-bridge');"
+                            "assert.equal(typeof require('/app/src/n8nClient.js'),'function');"
+                            "require('/repo/scripts/n8n-bridge-tool-events.js').patchSource(fs.readFileSync('/app/src/n8nClient.js','utf8'));")
+        run(container_args(source, bridge_image, ["node", "-e", bridge_preflight]), source)
+        run(container_args(source, bridge_image, bridge_tests), source)
         for script in ("tests/translations/run-tests.js", "tests/translations/run-image-loader-test.js"):
             run(container_args(source, image, ["node", script]), source)
         run(container_args(source, admin_image, node_tests(source, ["tests/orchestrator/name*.test.js", "tests/orchestrator/prompt*.test.js", "tests/orchestrator/utility*.test.js"])), source)
@@ -157,8 +182,8 @@ def execute_suite(source, offline=False):
                "DOCKER_CONFIG": str(source / ".regression-docker-config")}
         run([sys.executable, "-m", "unittest", "discover", "-s", "tests", "-p", "test_*.py", "-v"], source, env)
     finally:
-        # Remove only the unique regression image, never any deployment image/container.
-        subprocess.run(["docker", "image", "rm", admin_image], cwd=source,
+        # Remove only unique regression images, never deployment images/containers.
+        subprocess.run(["docker", "image", "rm", admin_image, bridge_image], cwd=source,
                        env={**clean_env(), "DOCKER_CONFIG": str(source / ".regression-docker-config")}, check=False)
 
 

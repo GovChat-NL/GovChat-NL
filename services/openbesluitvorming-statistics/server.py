@@ -8,7 +8,7 @@ from socketserver import ThreadingMixIn
 import threading
 
 from metadata import Config, QueryError, Statistics, clock
-from state import read_status
+from state import read_status, read_revision
 
 
 def unique_object(pairs):
@@ -117,6 +117,30 @@ class Handler(BaseHTTPRequestHandler):
             self.reply(200, {"status": "ok"})
         elif not self.authorized():
             self.error(QueryError("unauthorized", 401))
+        elif self.path == "/tool-options":
+            try:
+                revision = self.server.statistics.revision_reader()
+                if not revision.get("available") or revision.get("ingest_in_progress") is not False:
+                    raise QueryError("metadata_catalog_not_ready", 409, True)
+                from catalog import prepared_query
+                from metadata import validate_query
+                options = {}
+                for field in ("document_type", "classification", "supplier", "organization", "source_key", "entity_type"):
+                    result = prepared_query(os.environ.get("OBV_STATS_CATALOG_FILE", "/state/metadata-catalog.sqlite"), self.server.statistics.config,
+                                            validate_query({"operation": "group", "field": field, "limit": 1000}), revision['dataset_revision'])
+                    if result is None:
+                        raise QueryError("metadata_catalog_not_ready", 409, True)
+                    values = [row['value'] for row in result['groups'] if isinstance(row['value'], str) and len(row['value']) <= 300]
+                    if result['total_groups'] > 64 or len(values) != result['total_groups'] or len(json.dumps(values)) > 4096:
+                        continue
+                    options[field] = values
+                if self.server.statistics.revision_reader().get('dataset_revision') != revision['dataset_revision']:
+                    raise QueryError("metadata_catalog_not_ready", 409, True)
+                self.reply(200, {"dataset_revision": revision['dataset_revision'], "options": options})
+            except QueryError as error:
+                self.error(error)
+            except Exception:
+                self.error(QueryError("metadata_options_unavailable", 503))
         else:
             self.error(QueryError("route_not_found", 404))
 
@@ -160,13 +184,17 @@ def main():
     config = Config.environment()
     token = os.environ.get("OBV_STATS_TOKEN") or os.environ.get("N8N_WEBHOOK_TOKEN", "")
     state = os.environ.get("OBV_STATS_STATE_DIR", "/state")
-    statistics = Statistics(config, status_reader=lambda: read_status(state, config))
+    statistics = Statistics(config, status_reader=lambda: read_status(state, config), revision_reader=lambda: read_revision(state, config))
     server = Server((os.environ.get("OBV_STATS_HOST", "0.0.0.0"), int(os.environ.get("OBV_STATS_PORT", "8092"))),
                     statistics, token, int(os.environ.get("OBV_STATS_WORKERS", "4")),
                     int(os.environ.get("OBV_STATS_MAX_REQUEST_BYTES", "32768")))
+    stop = threading.Event()
+    if os.environ.get("OBV_STATS_PRECOMPUTE", "false").lower() == "true":
+        threading.Thread(target=statistics.precompute, args=(stop,), daemon=True).start()
     try:
         server.serve_forever()
     finally:
+        stop.set()
         server.server_close()
 
 

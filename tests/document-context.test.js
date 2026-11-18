@@ -7,6 +7,7 @@ const path = require("node:path");
 const os = require("node:os");
 const { normalizeDocumentContext: normalize } = require("../scripts/n8n-document-context");
 const { applyDocumentContext } = require("../scripts/orchestrator-document-workflow");
+const { intentRule } = require("../scripts/orchestrator-image-edit-workflow");
 const { createTextPdf } = require("./fixtures/document-pdf");
 const dataUrl = (bytes = createTextPdf(), mime = "application/pdf") => `data:${mime};base64,${bytes.toString("base64")}`;
 const filePart = (data = dataUrl(), filename = "arbitrary-name.pdf") => ({ type: "file", file: { filename, file_data: data } });
@@ -178,14 +179,15 @@ test("document context reaches mixed-image vision and document failures are pres
       assert.match(JSON.stringify(JSON.parse(options.body).messages), /13/);
       assert.doesNotMatch(options.body, /data:application\/pdf;base64/);
       const body = JSON.parse(options.body);
-      // Identify the deterministic intent request independently of prompt language.
-      const classification = body.temperature === 0;
+      // Use the maintained prompt contract independently of its language.
+      const classification = body.messages[0].content === intentRule;
       if (classification) {
+        assert.equal(body.temperature, 0);
         assert.equal(body.messages[0].role, 'system');
         assert.match(body.messages[0].content, /\bedit\b[\s\S]*\bgenerate\b[\s\S]*\banalyze\b/);
         intentCalls++; assert.doesNotMatch(options.body, /data:image\//);
       }
-      else visionCalls++;
+      else { assert.equal(body.messages[0].content, "Synthetic prompt"); visionCalls++; }
       response = { choices: [{ message: { content: classification ? "analyze" : "13" } }] };
     }
     return { ok: true, status: 200, text: async () => JSON.stringify(response) };

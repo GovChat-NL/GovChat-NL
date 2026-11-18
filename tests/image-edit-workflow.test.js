@@ -6,7 +6,7 @@ const path = require('node:path');
 const os = require('node:os');
 const vm = require('node:vm');
 const { validatedImageSource, prepareImageEdit, applyImageEditWorkflow } = require('../scripts/image-edit-workflow');
-const { imageConversation, applyOrchestratorImageEdits } = require('../scripts/orchestrator-image-edit-workflow');
+const { imageConversation, intentRule, applyOrchestratorImageEdits } = require('../scripts/orchestrator-image-edit-workflow');
 const load = name => JSON.parse(fs.readFileSync(path.resolve(__dirname, '../agents/n8n/workflows/algemeen', name + '.json')))[0];
 const owner = 'synthetic-owner-123';
 const png = Buffer.concat([Buffer.from([137,80,78,71,13,10,26,10]), Buffer.alloc(120)]);
@@ -107,9 +107,10 @@ async function detect(intent, messages, options = {}) {
       else if (url.includes('/api/config/orchestrator')) value = {};
       else {
         const body = JSON.parse(opts.body);
-        // Intent requests are deterministic; their maintained system prompt may be localized.
-        const classification = body.temperature === 0;
+        // Use the maintained prompt contract independently of its language.
+        const classification = body.messages[0].content === intentRule;
         if (classification) {
+          assert.equal(body.temperature,0);
           assert.equal(body.messages[0].role,'system');
           assert.match(body.messages[0].content,/\bedit\b[\s\S]*\bgenerate\b[\s\S]*\banalyze\b/);
           assert.equal(opts.body.includes('data:image/'),false); value = {choices:[{message:{content:intent}}]};
