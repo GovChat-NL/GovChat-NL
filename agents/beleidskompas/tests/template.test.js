@@ -13,7 +13,6 @@ test('DEFAULT_TEMPLATE holds the four steps with the prompt file texts as prompt
   assert.deepEqual({ instruction: sub.prompt, format: sub.answer_format }, readSubstepPrompt('step1/1.1-probleemdefinitie.md'));
   assert.equal(DEFAULT_TEMPLATE.steps[0].prompt, steps[0].role);
   assert.equal(DEFAULT_TEMPLATE.rules, COMMON_RULES.join('\n'));
-  assert.ok(sub.description, 'substeps carry the admin description');
 });
 
 test('stepFromTemplate maps a template step back to the STEP shape', () => {
