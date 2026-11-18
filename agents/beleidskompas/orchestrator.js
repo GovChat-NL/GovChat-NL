@@ -12,8 +12,8 @@
  *
  * Around the agent, Code nodes do what must always happen in a fixed order.
  * Before it: check the caller's token, take the message of the page apart,
- * and put together what the agent gets to read from the state of the case
- * in the Beleidskompas store. After it: put the answer together. The
+ * and put together what the agent gets to read from the template the admin
+ * published and the state of the case in the Beleidskompas store. After it: put the answer together. The
  * functions for those Code nodes are in this file. Reading from and writing
  * to the store is done by HTTP Request nodes in the workflow.
  *
@@ -26,7 +26,6 @@
  */
 
 const {
-  ORCHESTRATOR_PROMPT_TEMPLATE,
   TITLE_REQUEST_MARKER,
   TITLE_PREFIX,
   extractSuppliedToken,
@@ -37,6 +36,7 @@ const {
   toolCalls,
   nodeError,
 } = require('./shared');
+const { stepFromTemplate } = require('./template');
 
 // Shown in the chat when the page asks for a report without naming a
 // substep that exists.
@@ -48,7 +48,8 @@ const UNKNOWN_STEP_TEXT =
 // agents get the case, the earlier reports and the conversation from, and
 // where a report is kept. Without it an agent would answer as if the case
 // were new and the answer would be lost, while the user sees a normal
-// answer. So the user is told instead.
+// answer. So the user is told instead. The same goes for the template,
+// which the same service keeps: without it there are no prompts.
 const STORE_MISSING_TEXT =
   'Beleidskompas kan zijn opslag niet gebruiken en heeft dit bericht daarom niet beantwoord. Meld dit bij de beheerder.';
 const STORE_FAILED_TEXT = 'De opslag van Beleidskompas gaf een fout. Dit bericht is daarom niet beantwoord; probeer het later opnieuw.';
@@ -70,19 +71,22 @@ function incomingMessage(body) {
   return String(b.currentMessage || b.chatInput || b.question || '');
 }
 
-/** The name of the tool that calls a step's agent, and the step id that
- *  name stands for. */
+/** The name of the tool that calls the agent of a step. */
 function stepToolName(step) {
-  return `stap${step.nr}_agent`;
+  return `${step.id}_agent`;
 }
 
-/** The system prompt of the orchestrator agent: the template with the list
- *  of step agents filled in. `steps` are the step definitions from steps/. */
-function buildOrchestratorPrompt(steps, template) {
+/** The system prompt of the orchestrator agent: `promptText` with the list
+ *  of step agents filled in. `steps` are the steps of the template that
+ *  have an agent. */
+function buildOrchestratorPrompt(steps, promptText) {
   const list = steps
-    .map((step) => `- ${stepToolName(step)}: stap ${step.nr}, ${step.title} (${step.substeps.map((s) => `${s.id} ${s.title}`).join(', ')})`)
+    .map((step, index) => {
+      const substeps = step.substeps.map((substep) => `${substep.id} ${substep.title}`).join(', ');
+      return `- ${stepToolName(step)}: stap ${step.nr || index + 1}, ${step.title} (${substeps})`;
+    })
     .join('\n');
-  return String(template || ORCHESTRATOR_PROMPT_TEMPLATE).replaceAll('{{steps}}', list);
+  return String(promptText || '').replaceAll('{{steps}}', list);
 }
 
 /** What kind of request came in, and its parts. `kind` is:
@@ -92,10 +96,11 @@ function buildOrchestratorPrompt(steps, template) {
  *  - "report": the page asks for the report of `substep_id`;
  *  - "message": the user typed `message`, from `substep_id` when the page
  *    said where the user is.
- *  The case is the conversation (`sessionId`) and belongs to the user
- *  (`userId`), both passed on by the bridge. `substepIds` are the substeps
- *  that exist. `now` is the time in milliseconds, for the duration. */
-function prepareRequest({ body, headers, env, substepIds, now }) {
+ *  Whether `substep_id` exists is checked later, against the template. The
+ *  case is the conversation (`sessionId`) and belongs to the user
+ *  (`userId`), both passed on by the bridge. `now` is the time in
+ *  milliseconds, for the duration. */
+function prepareRequest({ body, headers, env, now }) {
   const b = body && typeof body === 'object' ? body : {};
   const started_at = now;
   const refuse = (error, text) => ({ kind: 'refused', ok: false, step_id: null, error, text, answer: text, started_at });
@@ -126,41 +131,65 @@ function prepareRequest({ body, headers, env, substepIds, now }) {
   if (!case_id || !user_id) return refuse('No conversation or user from the bridge', STORE_MISSING_TEXT);
 
   const parts = parsePageMessage(text);
-  const known = Array.isArray(substepIds) ? substepIds : [];
-  const substep_id = known.includes(parts.substepId) ? parts.substepId : '';
-  if (!parts.message && !substep_id) return refuse('No substep recognised in the request', UNKNOWN_STEP_TEXT);
-
   return {
     kind: parts.message ? 'message' : 'report',
     ok: true,
     case_id,
     user_id,
-    substep_id,
+    substep_id: parts.substepId,
     message: parts.message,
     started_at,
   };
 }
 
-/** What the agents get to read, from the state of the case in the store:
- *  the reports so far, the last turns of the conversation and the request.
+/** What the agents get to read and work with, from the template the admin
+ *  published and the state of the case in the store.
  *
- *  The orchestrator reads `prompt`, with every report in it. The agent of a
- *  step gets the reports as `findings`. For a typed message that is every
- *  report too. For a request for a report it is every report up to and
- *  including the substep asked for, because a report builds on what came
- *  before. `substepIds` gives the order of the substeps.
+ *  From the state: the reports so far, the last turns of the conversation
+ *  and the request. The orchestrator reads `prompt`, with every report in
+ *  it. The agent of a step gets the reports as `findings`. For a typed
+ *  message that is every report too. For a request for a report it is
+ *  every report up to and including the substep asked for, because a report
+ *  builds on what came before.
  *
- *  `request` is what prepareRequest returned and `state` what the store
- *  answered. Without the store there is no answer: the result is then
- *  `ok: false` with a message for the chat. */
-function buildContext({ request, state, substepIds }) {
+ *  From the template: the instruction of the orchestrator (`system_prompt`),
+ *  the model, and per step what its agent needs (`step_templates`, as JSON
+ *  text, because an input of a workflow is text). Only the steps in
+ *  `stepIds` count, the steps that have an agent.
+ *
+ *  `request` is what prepareRequest returned, `state` what the store
+ *  answered and `live` what the admin answered. Without the store or the
+ *  template there is no answer: the result is then `ok: false` with a
+ *  message for the chat. */
+function buildContext({ request, state, live, stepIds }) {
+  const refuse = (error, text) => ({ ...request, ok: false, step_id: null, error, text, answer: text });
+
+  const flow = live && live.flow;
+  const templateError = nodeError(live) || (flow && Array.isArray(flow.steps) ? null : 'No template in the answer of the admin');
+  if (templateError) return refuse(`template: ${templateError}`, STORE_FAILED_TEXT);
+
   const stateError = nodeError(state) || (state && state.reports !== null && typeof state.reports === 'object' ? null : 'No state in the answer of the store');
-  if (stateError) {
-    return { ...request, ok: false, step_id: null, error: `state: ${stateError}`, text: STORE_FAILED_TEXT, answer: STORE_FAILED_TEXT };
+  if (stateError) return refuse(`state: ${stateError}`, STORE_FAILED_TEXT);
+
+  const steps = flow.steps.filter((step) => step && Array.isArray(step.substeps) && stepIds.includes(step.id));
+  const order = steps.flatMap((step) => step.substeps.map((substep) => substep.id));
+  const substep_id = order.includes(request.substep_id) ? request.substep_id : '';
+  if (request.kind === 'report' && !substep_id) return refuse('No substep recognised in the request', UNKNOWN_STEP_TEXT);
+
+  const model = String((live.settings && live.settings.default_model) || '').trim() || 'govchat-default';
+  const step_templates = {};
+  for (const step of steps) {
+    step_templates[step.id] = JSON.stringify({
+      model,
+      rules: String(flow.rules || ''),
+      report_prompt: String(flow.report_prompt || ''),
+      conversation_prompt: String(flow.conversation_prompt || ''),
+      report_disclaimer: String(flow.report_disclaimer || ''),
+      step: stepFromTemplate(flow, step.id),
+    });
   }
 
   const reports = state.reports;
-  const order = Array.isArray(substepIds) ? substepIds : [];
   const ids = Object.keys(reports).sort((a, b) => order.indexOf(a) - order.indexOf(b));
   const reportTexts = (reportIds) =>
     reportIds
@@ -168,15 +197,15 @@ function buildContext({ request, state, substepIds }) {
       .filter(Boolean)
       .join('\n\n');
 
-  const upTo = request.kind === 'report' ? order.indexOf(request.substep_id) : -1;
+  const upTo = request.kind === 'report' ? order.indexOf(substep_id) : -1;
   const findings = reportTexts(ids.filter((id) => upTo === -1 || order.indexOf(id) <= upTo));
   const allReports = reportTexts(ids);
   const turns = Array.isArray(state.turns) ? state.turns : [];
   const conversation = turns.map((t) => `${t.role === 'user' ? 'Gebruiker' : 'Beleidskompas'}: ${String(t.text || '').trim()}`).join('\n');
   const asked =
     request.kind === 'message'
-      ? `Bericht van de gebruiker (de gebruiker zit in deelstap ${request.substep_id || 'onbekend'}):\n${request.message}`
-      : `Verzoek: werk deelstap ${request.substep_id} uit.`;
+      ? `Bericht van de gebruiker (de gebruiker zit in deelstap ${substep_id || 'onbekend'}):\n${request.message}`
+      : `Verzoek: werk deelstap ${substep_id} uit.`;
 
   const prompt = [
     allReports ? `Bevindingen tot nu toe:\n${allReports}` : 'Bevindingen tot nu toe: (nog geen deelstap uitgewerkt)',
@@ -188,9 +217,13 @@ function buildContext({ request, state, substepIds }) {
 
   return {
     ...request,
+    substep_id,
     findings,
     conversation,
     prompt,
+    system_prompt: buildOrchestratorPrompt(steps, flow.orchestrator_prompt),
+    model,
+    step_templates,
   };
 }
 
@@ -219,13 +252,13 @@ function buildAnswer({ context, agent, now }) {
   const tools = toolCalls(agent);
   const error = nodeError(agent);
   const text = error ? '' : String((agent && agent.output) || '').trim();
-  const called = tools.map((t) => /^stap(\d+)_agent$/.exec(String(t.tool || ''))).find(Boolean);
+  const called = tools.map((t) => /^(.+)_agent$/.exec(String(t.tool || ''))).find(Boolean);
 
   const base = {
     case_id: context.case_id,
     user_id: context.user_id,
     mode: context.kind === 'report' ? 'report' : 'conversation',
-    step_id: called ? `stap${called[1]}` : null,
+    step_id: called ? called[1] : null,
     asked_from: context.substep_id || null,
     tools,
     duration_ms: now - context.started_at,

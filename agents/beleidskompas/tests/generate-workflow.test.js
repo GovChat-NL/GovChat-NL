@@ -6,6 +6,7 @@ const fs = require('node:fs');
 
 const { REQUEST_META_LABEL, TITLE_REQUEST_MARKER } = require('../shared');
 const { STEPS, STEP_AGENT_INPUTS, buildOrchestratorWorkflow, buildStepAgentWorkflow, buildAll } = require('../generate-workflow');
+const { DEFAULT_TEMPLATE } = require('../template');
 
 const orchestrator = buildOrchestratorWorkflow(STEPS)[0];
 const agents = STEPS.map((step) => buildStepAgentWorkflow(step)[0]);
@@ -94,21 +95,23 @@ test('every agent and chain has a model, and a failing model or store call does 
 const env = { N8N_WEBHOOK_TOKEN: 'geheim', BELEIDSKOMPAS_STORE_URL: 'http://store', BELEIDSKOMPAS_STORE_TOKEN: 'store-token' };
 const pageMessage = (request) => `Zichtbaar\n\n[${REQUEST_META_LABEL}]: data:application/json;base64,${Buffer.from(JSON.stringify(request), 'utf8').toString('base64')}`;
 const webhook = (body) => ({ headers: { authorization: 'Bearer geheim' }, body: { sessionId: 'c1', userId: 'u1', ...body } });
+// What the admin answers: the published template and its settings.
+const live = { version_id: 'v1', flow: DEFAULT_TEMPLATE, settings: { default_model: 'een-model' } };
 const state = { id: 'c1', reports: { '1.1': { version: 1, text: '### Probleemdefinitie\n**Probleem:** x\n\n---\nDisclaimer' } }, turns: [] };
 
 test('a request for a report passes through the Code nodes of the orchestrator and a step agent', () => {
   const request = runCode(orchestrator, 'Verzoek voorbereiden', webhook({ currentMessage: pageMessage({ substep_id: '2.1', message: '' }) }), {}, env);
   assert.deepEqual([request.kind, request.substep_id], ['report', '2.1']);
 
-  const context = runCode(orchestrator, 'Context samenstellen', state, { 'Verzoek voorbereiden': request });
+  const context = runCode(orchestrator, 'Gegevens voor de agents klaarzetten', state, { 'Verzoek voorbereiden': request, 'Template ophalen': live });
   assert.equal(context.ok, true);
   assert.ok(context.prompt.endsWith('Verzoek: werk deelstap 2.1 uit.'));
   assert.equal(context.findings, state.reports['1.1'].text);
 
   // What the orchestrator's tool call hands the agent of step 2.
-  const toolInput = { substep_id: '2.1', assignment: 'uitwerken', case_id: context.case_id, user_id: context.user_id, findings: context.findings, conversation: context.conversation };
+  const toolInput = { substep_id: '2.1', assignment: 'uitwerken', case_id: context.case_id, user_id: context.user_id, findings: context.findings, conversation: context.conversation, template: context.step_templates.stap2 };
   const assignment = runCode(agents[1], 'Opdracht opbouwen', toolInput);
-  assert.deepEqual([assignment.mode, assignment.step_id], ['report', 'stap2']);
+  assert.deepEqual([assignment.mode, assignment.step_id, assignment.model], ['report', 'stap2', 'een-model']);
   assert.ok(assignment.user_prompt.includes(`Bevindingen tot nu toe:\n${state.reports['1.1'].text}`));
 
   const agentReply = { output: '### Rolbepaling\n**Oordeel:** regisserend\n\n### Aannames en ontbrekende informatie\n- budget onbekend' };
@@ -118,7 +121,7 @@ test('a request for a report passes through the Code nodes of the orchestrator a
   assert.deepEqual([result.kind, result.saved, result.report], ['report', true, reply.report_text]);
 
   const orchestratorReply = { output: 'Deelstap 2.1 is uitgewerkt. Het budget ontbreekt nog.', intermediateSteps: [{ action: { tool: 'stap2_agent', toolInput: { substep_id: '2.1', assignment: 'uitwerken' } } }] };
-  const answer = runCode(orchestrator, 'Antwoord opbouwen', orchestratorReply, { 'Context samenstellen': context });
+  const answer = runCode(orchestrator, 'Antwoord opbouwen', orchestratorReply, { 'Gegevens voor de agents klaarzetten': context });
   assert.deepEqual([answer.ok, answer.mode, answer.step_id], [true, 'report', 'stap2']);
 
   const finished = runCode(orchestrator, 'Antwoord afronden', { seq: 1 }, { 'Antwoord opbouwen': answer });
@@ -126,7 +129,7 @@ test('a request for a report passes through the Code nodes of the orchestrator a
 });
 
 test('an invalid assignment skips the agent and still gives the orchestrator a result', () => {
-  const assignment = runCode(agents[0], 'Opdracht opbouwen', { substep_id: '3.1', assignment: 'uitwerken', case_id: 'c1', user_id: 'u1', findings: '', conversation: '' });
+  const assignment = runCode(agents[0], 'Opdracht opbouwen', { substep_id: '3.1', assignment: 'uitwerken', case_id: 'c1', user_id: 'u1', findings: '', conversation: '', template: JSON.stringify({ step: STEPS[0] }) });
   assert.equal(assignment.valid, false);
   assert.equal(runCode(agents[0], 'Resultaat voor de orchestrator', assignment, { 'Opdracht opbouwen': assignment }).kind, 'error');
 });

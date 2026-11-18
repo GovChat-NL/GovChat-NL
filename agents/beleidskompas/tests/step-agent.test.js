@@ -3,11 +3,24 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
-const { DISCLAIMER } = require('../shared');
+const { DISCLAIMER, COMMON_RULES, REPORT_PROMPT_TEMPLATE, CONVERSATION_PROMPT_TEMPLATE } = require('../shared');
 const { buildAssignment, processReply, buildResult } = require('../step-agent');
 const { STEPS } = require('../generate-workflow');
 
 const [step1, step2] = STEPS;
+
+/** What the orchestrator passes of the template for one step. */
+function templateFor(step) {
+  return JSON.stringify({
+    model: 'een-model',
+    rules: COMMON_RULES.join('\n'),
+    report_prompt: REPORT_PROMPT_TEMPLATE,
+    conversation_prompt: CONVERSATION_PROMPT_TEMPLATE,
+    report_disclaimer: DISCLAIMER,
+    step,
+  });
+}
+
 const input = {
   substep_id: '1.2',
   assignment: 'uitwerken',
@@ -15,12 +28,13 @@ const input = {
   user_id: 'u1',
   findings: '**Stap 1 · 1.1**\n\n### Probleemdefinitie\n**Probleem:** x',
   conversation: 'Gebruiker: hallo',
+  template: templateFor(step1),
 };
 
 test('the assignment for a report holds only the asked substep, with its answer format, and the earlier reports in full', () => {
-  const a = buildAssignment({ step: step1, input });
+  const a = buildAssignment({ input });
 
-  assert.deepEqual([a.mode, a.valid, a.step_id, a.substep_id, a.substep_title], ['report', true, 'stap1', '1.2', 'Overheidsinterventie']);
+  assert.deepEqual([a.mode, a.valid, a.step_id, a.substep_id, a.substep_title, a.model], ['report', true, 'stap1', '1.2', 'Overheidsinterventie', 'een-model']);
   assert.ok(a.system_prompt.startsWith(step1.role));
   assert.ok(a.system_prompt.includes('Deelstap 1.2: Overheidsinterventie'));
   assert.ok(!a.system_prompt.includes('Deelstap 1.1:'));
@@ -39,7 +53,7 @@ test('the assignment for a report holds only the asked substep, with its answer 
 test('every substep of every step gets a complete assignment', () => {
   for (const step of STEPS) {
     for (const substep of step.substeps) {
-      const a = buildAssignment({ step, input: { ...input, substep_id: substep.id } });
+      const a = buildAssignment({ input: { ...input, substep_id: substep.id, template: templateFor(step) } });
       assert.equal(a.mode, 'report', substep.id);
       assert.ok(a.system_prompt.includes(`Deelstap ${substep.id}: ${substep.title}`), substep.id);
       assert.ok(!/\{\{\w+\}\}/.test(a.system_prompt), substep.id);
@@ -47,24 +61,28 @@ test('every substep of every step gets a complete assignment', () => {
   }
 });
 
-test('a report for a substep of another step is invalid', () => {
-  const a = buildAssignment({ step: step2, input });
+test('a report for a substep of another step, or an assignment without a template, is invalid', () => {
+  const a = buildAssignment({ input: { ...input, template: templateFor(step2) } });
   assert.deepEqual([a.mode, a.valid, a.error], ['invalid', false, 'Stap 2 kent deelstap "1.2" niet. Bekende deelstappen: 2.1.']);
   assert.deepEqual(buildResult({ assignment: a, reply: null, saved: null }), { kind: 'error', error: a.error });
+
+  // Without the template of the admin there is nothing to work with.
+  const none = buildAssignment({ input: { ...input, template: '' } });
+  assert.deepEqual([none.mode, none.valid], ['invalid', false]);
 });
 
 test('any other assignment is a question: about one substep, or about the whole step', () => {
-  const whole = buildAssignment({ step: step1, input: { ...input, substep_id: '', assignment: 'Waarom is dit een provinciaal belang?' } });
+  const whole = buildAssignment({ input: { ...input, substep_id: '', assignment: 'Waarom is dit een provinciaal belang?' } });
   assert.deepEqual([whole.mode, whole.substep_id], ['conversation', '']);
   assert.ok(whole.system_prompt.includes('Deelstap 1.1: Probleemdefinitie') && whole.system_prompt.includes('Deelstap 1.5: Integrale afweging'));
   assert.ok(!whole.system_prompt.includes('### Redenering'), 'a question gets no answer format');
   assert.ok(whole.user_prompt.includes('Bericht van de gebruiker:\nWaarom is dit een provinciaal belang?'));
 
-  const one = buildAssignment({ step: step1, input: { ...input, assignment: 'Waarom beperkt?' } });
+  const one = buildAssignment({ input: { ...input, assignment: 'Waarom beperkt?' } });
   assert.ok(one.system_prompt.includes('Deelstap 1.2:') && !one.system_prompt.includes('Deelstap 1.1:'));
 });
 
-const assignment = buildAssignment({ step: step1, input });
+const assignment = buildAssignment({ input });
 const reply =
   '```markdown\n### Samenvatting casus\nKort.\n\n### Overheidsinterventie\n**Oordeel:** ja\n\n### Redenering\n1. a\n\n### Aannames en ontbrekende informatie\n- budget onbekend\n- looptijd onbekend\n```';
 const agent = { output: reply };
@@ -108,7 +126,7 @@ test('a failing or silent agent stores nothing and gives the orchestrator an err
 });
 
 test('the answer to a question goes back as it is and is not stored', () => {
-  const question = buildAssignment({ step: step1, input: { ...input, assignment: 'Waarom beperkt?' } });
+  const question = buildAssignment({ input: { ...input, assignment: 'Waarom beperkt?' } });
   const processed = processReply({ assignment: question, agent: { output: 'Omdat de provincie maar deels bevoegd is.' } });
   assert.equal(processed.save, false);
   assert.deepEqual(buildResult({ assignment: question, reply: processed, saved: null }), { kind: 'answer', step_id: 'stap1', answer: 'Omdat de provincie maar deels bevoegd is.', tools: [] });

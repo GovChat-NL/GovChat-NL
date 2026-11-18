@@ -13,6 +13,10 @@
  * every function a Code node needs into that text. The code that runs in n8n
  * is then the same code as in the source files, which the tests cover.
  *
+ * The workflows hold no prompts. They read the template the admin published
+ * when a message comes in. The files in prompts/ and steps/ are what the
+ * admin starts with.
+ *
  * Run this script after you change the source, then reload the workflows in
  * n8n with `make reload-workflows`.
  *
@@ -65,10 +69,10 @@ function outputOf(nodeName) {
 
 // --- Code node ---
 
-/** The source text of a function from shared.js, orchestrator.js or
- *  step-agent.js. */
+/** The source text of a function from shared.js, orchestrator.js,
+ *  step-agent.js or template.js. */
 function sourceOf(functionName) {
-  for (const sourceFile of [shared, orchestrator, stepAgent]) {
+  for (const sourceFile of [shared, orchestrator, stepAgent, template]) {
     if (typeof sourceFile[functionName] === 'function') {
       return sourceFile[functionName].toString();
     }
@@ -153,28 +157,23 @@ function ifNode(name, position, condition) {
   });
 }
 
-// --- HTTP Request node for the store ---
+// --- HTTP Request node for the admin: the store and the template ---
 
 // In a setting that starts with "=", n8n fills in what is between {{ and }}
 // and leaves the rest as it is. BELEIDSKOMPAS_STORE_URL has no slash at the end.
-const STORE_CASES_ADDRESS = '={{ $env.BELEIDSKOMPAS_STORE_URL }}/api/beleidskompas/cases';
+const ADMIN_ADDRESS = '={{ $env.BELEIDSKOMPAS_STORE_URL }}/api/beleidskompas';
 const STORE_TOKEN_HEADER = { name: 'Authorization', value: '=Bearer {{ $env.BELEIDSKOMPAS_STORE_TOKEN }}' };
 
-/** An HTTP Request node that calls the Beleidskompas store for one case.
+/** An HTTP Request node that calls the admin.
  *
- *  - `caseId`: an expression for the id of the case
- *  - `casePath`: what comes after /cases/<case id> in the address, if anything
+ *  - `address`: where the call goes
  *  - `query`: values for the query string, for reading
  *  - `body`: the fields to send, each with an expression for its value,
  *    for writing
  *
  *  A failed call does not stop the workflow. The node then returns the error
  *  as its output, and the Code node after it decides what to do. */
-function storeNode(name, position, { method, caseId, casePath, query, body }) {
-  // encodeURIComponent keeps a case id with a "/" or "?" in it from
-  // pointing at another address.
-  const address = `${STORE_CASES_ADDRESS}/{{ encodeURIComponent(${caseId}) }}${casePath || ''}`;
-
+function adminNode(name, position, { method, address, query, body }) {
   const parameters = {
     method,
     url: address,
@@ -206,6 +205,22 @@ function storeNode(name, position, { method, caseId, casePath, query, body }) {
   const node = makeNode(name, 'n8n-nodes-base.httpRequest', 4.2, position, parameters);
   node.onError = 'continueRegularOutput';
   return node;
+}
+
+/** The call that reads the template the admin published. */
+function templateNode(name, position) {
+  return adminNode(name, position, { method: 'GET', address: `${ADMIN_ADDRESS}/live` });
+}
+
+/** A call of the Beleidskompas store for one case.
+ *
+ *  - `caseId`: an expression for the id of the case
+ *  - `casePath`: what comes after /cases/<case id> in the address, if anything */
+function storeNode(name, position, { method, caseId, casePath, query, body }) {
+  // encodeURIComponent keeps a case id with a "/" or "?" in it from
+  // pointing at another address.
+  const address = `${ADMIN_ADDRESS}/cases/{{ encodeURIComponent(${caseId}) }}${casePath || ''}`;
+  return adminNode(name, position, { method, address, query, body });
 }
 
 /** The store call that reads the state of a case. `source` is an
@@ -260,10 +275,10 @@ function llmChainNode(name, position, { prompt, systemPrompt }) {
 }
 
 /** The language model of an agent or a chain. Every model call goes
- *  through LiteLLM. */
-function chatModelNode(name, position) {
+ *  through LiteLLM. `model` is an expression for the name of the model. */
+function chatModelNode(name, position, model) {
   const node = makeNode(name, '@n8n/n8n-nodes-langchain.lmChatOpenAi', 1.3, position, {
-    model: { __rl: true, mode: 'list', value: 'govchat-default' },
+    model: { __rl: true, mode: 'id', value: model },
     options: { baseURL: expression("(String($env.LITELLM_URL || 'http://litellm:4000').replace(/\\/$/, '')) + '/v1'") },
   });
   node.credentials = { openAiApi: { id: '00000000-0000-4000-8000-000000000111', name: 'LiteLLM API' } };
@@ -362,7 +377,7 @@ function makeWorkflow({ id, name, active, nodes, connections }) {
 
 // What the orchestrator passes to the agent of a step. The first two are
 // filled in by the orchestrator's model, the rest by its workflow.
-const STEP_AGENT_INPUTS = ['substep_id', 'assignment', 'case_id', 'user_id', 'findings', 'conversation'];
+const STEP_AGENT_INPUTS = ['substep_id', 'assignment', 'case_id', 'user_id', 'findings', 'conversation', 'template'];
 
 function stepAgentWorkflowId(step) {
   return `govchat-beleidskompas-agent-${step.id}`;
@@ -380,27 +395,20 @@ function buildStepAgentWorkflow(step) {
     triggerNode(at(0, 1), STEP_AGENT_INPUTS),
 
     codeNode('Opdracht opbouwen', at(1, 1), {
-      constants: {
-        REPORT_PROMPT_TEMPLATE: shared.REPORT_PROMPT_TEMPLATE,
-        CONVERSATION_PROMPT_TEMPLATE: shared.CONVERSATION_PROMPT_TEMPLATE,
-        COMMON_RULES: shared.COMMON_RULES,
-        STEP: step,
-      },
-      functions: ['asksForReport', 'buildSystemPrompt', 'buildUserPrompt', 'buildAssignment'],
-      run: 'return [{ json: buildAssignment({ step: STEP, input: $json }) }];',
+      functions: ['asksForReport', 'buildSystemPrompt', 'buildUserPrompt', 'readStepTemplate', 'buildAssignment'],
+      run: 'return [{ json: buildAssignment({ input: $json }) }];',
     }),
 
-    ifNode('Opdracht geldig?', at(2, 1), '$json.valid === true'),
+    ifNode('Opdracht opgebouwd?', at(2, 1), '$json.valid === true'),
 
     agentNode(agentName, at(3, 0), {
       prompt: expression('$json.user_prompt'),
       systemPrompt: expression('$json.system_prompt'),
       maxIterations: 8,
     }),
-    chatModelNode(modelName, at(3, 1)),
+    chatModelNode(modelName, at(3, 1), expression(`${outputOf('Opdracht opbouwen')}.model`)),
 
     codeNode('Antwoord verwerken', at(5, 0), {
-      constants: { DISCLAIMER: shared.DISCLAIMER },
       functions: ['toolCalls', 'nodeError', 'unwrapCodeBlock', 'processReply'],
       run: `return [{ json: processReply({ assignment: ${outputOf('Opdracht opbouwen')}, agent: $json }) }];`,
     }),
@@ -432,8 +440,8 @@ function buildStepAgentWorkflow(step) {
 
   const connections = {};
   connect(connections, TRIGGER_NAME, 'Opdracht opbouwen');
-  connect(connections, 'Opdracht opbouwen', 'Opdracht geldig?');
-  connectIf(connections, 'Opdracht geldig?', { whenTrue: agentName, whenFalse: 'Resultaat voor de orchestrator' });
+  connect(connections, 'Opdracht opbouwen', 'Opdracht opgebouwd?');
+  connectIf(connections, 'Opdracht opgebouwd?', { whenTrue: agentName, whenFalse: 'Resultaat voor de orchestrator' });
   attachToAgent(connections, 'ai_languageModel', modelName, agentName);
   connect(connections, agentName, 'Antwoord verwerken');
   connect(connections, 'Antwoord verwerken', 'Rapport gemaakt?');
@@ -447,26 +455,22 @@ function buildStepAgentWorkflow(step) {
 // Part 3: the workflow of the orchestrator
 // =====================================================================
 
-/** The tool with which the orchestrator calls the agent of one step. */
+/** The tool with which the orchestrator calls the agent of one step. What
+ *  the step is about, the orchestrator reads in its instruction. */
 function stepAgentToolNode(step, position) {
-  const substepNames = [];
-  for (const substep of step.substeps) {
-    substepNames.push(`${substep.id} ${substep.title}`);
-  }
-
   const description =
-    `De agent van stap ${step.nr} (${step.title}), met de deelstappen ${substepNames.join(', ')}. ` +
+    `De agent van stap ${step.nr}. ` +
     'Werkt een deelstap van deze stap uit, of beantwoordt een vraag over deze stap. ' +
     'Bij een uitwerking slaat de agent het rapport zelf op en geeft hij het rapport terug.';
 
-  const context = outputOf('Context samenstellen');
+  const context = outputOf('Gegevens voor de agents klaarzetten');
 
   return workflowToolNode(orchestrator.stepToolName(step), position, {
     description,
     workflowId: stepAgentWorkflowId(step),
     workflowName: stepAgentWorkflowName(step),
     filledByModel: [
-      { name: 'substep_id', description: `De deelstap, bijvoorbeeld ${step.substeps[0].id}. Leeg bij een vraag over de hele stap.`, optional: true },
+      { name: 'substep_id', description: `De deelstap, bijvoorbeeld ${step.nr}.1. Leeg bij een vraag over de hele stap.`, optional: true },
       { name: 'assignment', description: 'Het woord uitwerken, of de vraag van de gebruiker, letterlijk.' },
     ],
     filledByWorkflow: [
@@ -474,6 +478,7 @@ function stepAgentToolNode(step, position) {
       { name: 'user_id', value: `${context}.user_id` },
       { name: 'findings', value: `${context}.findings`, optional: true },
       { name: 'conversation', value: `${context}.conversation`, optional: true },
+      { name: 'template', value: `${context}.step_templates.${step.id}` },
     ],
   });
 }
@@ -484,14 +489,16 @@ function buildOrchestratorWorkflow(steps) {
 
   // What earlier nodes returned, for nodes further on.
   const request = outputOf('Verzoek voorbereiden');
-  const context = outputOf('Context samenstellen');
+  const context = outputOf('Gegevens voor de agents klaarzetten');
   const answer = outputOf('Antwoord opbouwen');
 
-  const substepIds = [];
+  const live = outputOf('Template ophalen');
+
+  // The steps that have an agent. A step of the template without one cannot
+  // be asked.
+  const stepIds = [];
   for (const step of steps) {
-    for (const substep of step.substeps) {
-      substepIds.push(substep.id);
-    }
+    stepIds.push(step.id);
   }
 
   const nodes = [];
@@ -506,9 +513,7 @@ function buildOrchestratorWorkflow(steps) {
       constants: {
         REQUEST_META_LABEL: shared.REQUEST_META_LABEL,
         TITLE_REQUEST_MARKER: shared.TITLE_REQUEST_MARKER,
-        UNKNOWN_STEP_TEXT: orchestrator.UNKNOWN_STEP_TEXT,
         STORE_MISSING_TEXT: orchestrator.STORE_MISSING_TEXT,
-        SUBSTEP_IDS: substepIds,
       },
       functions: ['extractSuppliedToken', 'parsePageMessage', 'isTitleRequest', 'extractConvoUserText', 'incomingMessage', 'prepareRequest'],
       run: [
@@ -521,7 +526,6 @@ function buildOrchestratorWorkflow(steps) {
         '    BELEIDSKOMPAS_STORE_URL: $env.BELEIDSKOMPAS_STORE_URL,',
         '    BELEIDSKOMPAS_STORE_TOKEN: $env.BELEIDSKOMPAS_STORE_TOKEN,',
         '  },',
-        '  substepIds: SUBSTEP_IDS,',
         '  now: Date.now(),',
         '}) }];',
       ].join('\n'),
@@ -529,25 +533,28 @@ function buildOrchestratorWorkflow(steps) {
   );
 
   nodes.push(ifNode('Verzoek geldig?', at(2, 3), '$json.ok === true'));
-  nodes.push(ifNode('Titelverzoek?', at(3, 3), "$json.kind === 'title'"));
+  nodes.push(templateNode('Template ophalen', at(3, 3)));
+  nodes.push(ifNode('Titelverzoek?', at(4, 3), `${request}.kind === 'title'`));
 
   connect(connections, 'Webhook Orchestrator', 'Verzoek voorbereiden');
   connect(connections, 'Verzoek voorbereiden', 'Verzoek geldig?');
-  connectIf(connections, 'Verzoek geldig?', { whenTrue: 'Titelverzoek?', whenFalse: 'Respond Orchestrator' });
+  connectIf(connections, 'Verzoek geldig?', { whenTrue: 'Template ophalen', whenFalse: 'Respond Orchestrator' });
+  connect(connections, 'Template ophalen', 'Titelverzoek?');
   connectIf(connections, 'Titelverzoek?', { whenTrue: 'Titel maken', whenFalse: 'Stand van de casus ophalen' });
 
   // --- LibreChat asks for a title for the conversation ---
 
   nodes.push(
-    llmChainNode('Titel maken', at(4, 0), {
-      prompt: expression('$json.title_source'),
+    llmChainNode('Titel maken', at(5, 0), {
+      prompt: expression(`${request}.title_source`),
       systemPrompt: orchestrator.TITLE_SYSTEM_PROMPT,
     }),
   );
-  nodes.push(chatModelNode('OpenAI Chat Model (Titel)', at(4, 1)));
+  // A title is also made when the template could not be read.
+  nodes.push(chatModelNode('OpenAI Chat Model (Titel)', at(5, 1), expression(`(${live}.settings || {}).default_model || 'govchat-default'`)));
 
   nodes.push(
-    codeNode('Titel opbouwen', at(6, 0), {
+    codeNode('Titel opbouwen', at(7, 0), {
       constants: { TITLE_REQUEST_MARKER: shared.TITLE_REQUEST_MARKER, TITLE_PREFIX: shared.TITLE_PREFIX },
       functions: ['nodeError', 'buildFallbackTitle', 'buildTitle'],
       run: `return [{ json: buildTitle({ request: ${request}, reply: $json }) }];`,
@@ -555,7 +562,7 @@ function buildOrchestratorWorkflow(steps) {
   );
 
   nodes.push(
-    storeNode('Titel opslaan', at(7, 0), {
+    storeNode('Titel opslaan', at(8, 0), {
       method: 'PUT',
       caseId: '$json.case_id',
       casePath: '/title',
@@ -563,7 +570,7 @@ function buildOrchestratorWorkflow(steps) {
     }),
   );
 
-  nodes.push(respondNode('Respond titel', at(8, 0), outputOf('Titel opbouwen')));
+  nodes.push(respondNode('Respond titel', at(9, 0), outputOf('Titel opbouwen')));
 
   attachToAgent(connections, 'ai_languageModel', 'OpenAI Chat Model (Titel)', 'Titel maken');
   connect(connections, 'Titel maken', 'Titel opbouwen');
@@ -572,21 +579,25 @@ function buildOrchestratorWorkflow(steps) {
 
   // --- Before the orchestrator: read and write the store ---
 
-  nodes.push(readStateNode('Stand van de casus ophalen', at(4, 3), request));
+  nodes.push(readStateNode('Stand van de casus ophalen', at(5, 3), request));
 
   nodes.push(
-    codeNode('Context samenstellen', at(5, 3), {
-      constants: { STORE_FAILED_TEXT: orchestrator.STORE_FAILED_TEXT, SUBSTEP_IDS: substepIds },
-      functions: ['nodeError', 'buildContext'],
-      run: `return [{ json: buildContext({ request: ${request}, state: $json, substepIds: SUBSTEP_IDS }) }];`,
+    codeNode('Gegevens voor de agents klaarzetten', at(6, 3), {
+      constants: {
+        STORE_FAILED_TEXT: orchestrator.STORE_FAILED_TEXT,
+        UNKNOWN_STEP_TEXT: orchestrator.UNKNOWN_STEP_TEXT,
+        STEP_IDS: stepIds,
+      },
+      functions: ['nodeError', 'stepFromTemplate', 'stepToolName', 'buildOrchestratorPrompt', 'buildContext'],
+      run: `return [{ json: buildContext({ request: ${request}, state: $json, live: ${live}, stepIds: STEP_IDS }) }];`,
     }),
   );
 
-  nodes.push(ifNode('Opslag bereikbaar?', at(6, 3), '$json.ok === true'));
-  nodes.push(ifNode('Getypt bericht?', at(7, 3), "$json.kind === 'message'"));
+  nodes.push(ifNode('Gegevens klaargezet?', at(7, 3), '$json.ok === true'));
+  nodes.push(ifNode('Getypt bericht?', at(8, 3), "$json.kind === 'message'"));
 
   nodes.push(
-    storeNode('Bericht van de gebruiker opslaan', at(8, 2), {
+    storeNode('Bericht van de gebruiker opslaan', at(9, 2), {
       method: 'POST',
       caseId: '$json.case_id',
       casePath: '/turns',
@@ -594,10 +605,10 @@ function buildOrchestratorWorkflow(steps) {
     }),
   );
 
-  nodes.push(ifNode('Bericht opgeslagen?', at(9, 2), '!$json.error'));
+  nodes.push(ifNode('Bericht opgeslagen?', at(10, 2), '!$json.error'));
 
   nodes.push(
-    codeNode('Opslagfout melden', at(10, 1), {
+    codeNode('Opslagfout melden', at(11, 1), {
       constants: { STORE_FAILED_TEXT: orchestrator.STORE_FAILED_TEXT },
       functions: ['nodeError'],
       run: [
@@ -612,9 +623,9 @@ function buildOrchestratorWorkflow(steps) {
     }),
   );
 
-  connect(connections, 'Stand van de casus ophalen', 'Context samenstellen');
-  connect(connections, 'Context samenstellen', 'Opslag bereikbaar?');
-  connectIf(connections, 'Opslag bereikbaar?', { whenTrue: 'Getypt bericht?', whenFalse: 'Respond Orchestrator' });
+  connect(connections, 'Stand van de casus ophalen', 'Gegevens voor de agents klaarzetten');
+  connect(connections, 'Gegevens voor de agents klaarzetten', 'Gegevens klaargezet?');
+  connectIf(connections, 'Gegevens klaargezet?', { whenTrue: 'Getypt bericht?', whenFalse: 'Respond Orchestrator' });
   connectIf(connections, 'Getypt bericht?', { whenTrue: 'Bericht van de gebruiker opslaan', whenFalse: agentName });
   connect(connections, 'Bericht van de gebruiker opslaan', 'Bericht opgeslagen?');
   connectIf(connections, 'Bericht opgeslagen?', { whenTrue: agentName, whenFalse: 'Opslagfout melden' });
@@ -623,16 +634,16 @@ function buildOrchestratorWorkflow(steps) {
   // --- The orchestrator, with one tool per step ---
 
   nodes.push(
-    agentNode(agentName, at(10, 3), {
+    agentNode(agentName, at(11, 3), {
       prompt: expression(`${context}.prompt`),
-      systemPrompt: orchestrator.buildOrchestratorPrompt(steps),
+      systemPrompt: expression(`${context}.system_prompt`),
       maxIterations: 8,
     }),
   );
-  nodes.push(chatModelNode('OpenAI Chat Model (Orchestrator)', at(10, 4)));
+  nodes.push(chatModelNode('OpenAI Chat Model (Orchestrator)', at(11, 4), expression(`${context}.model`)));
   attachToAgent(connections, 'ai_languageModel', 'OpenAI Chat Model (Orchestrator)', agentName);
 
-  let toolColumn = 11;
+  let toolColumn = 12;
   for (const step of steps) {
     const tool = stepAgentToolNode(step, at(toolColumn, 4));
     nodes.push(tool);

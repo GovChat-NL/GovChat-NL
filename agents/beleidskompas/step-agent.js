@@ -17,10 +17,14 @@
  * orchestrator gets the report to read. Anything else is a question, and
  * its answer goes back as it is.
  *
+ * The workflow holds no texts of its own. The orchestrator passes what the
+ * agent needs from the template the admin published: the step with its
+ * substeps, the rules, the prompt texts, the disclaimer and the model.
+ *
  * generate-workflow.js copies these functions into the Code nodes.
  */
 
-const { REPORT_PROMPT_TEMPLATE, CONVERSATION_PROMPT_TEMPLATE, COMMON_RULES, DISCLAIMER, toolCalls, nodeError } = require('./shared');
+const { toolCalls, nodeError } = require('./shared');
 
 // --- 1. Before the agent: what it is told ---
 
@@ -29,7 +33,7 @@ function asksForReport(assignmentText) {
   return /^uitwerk/i.test(String(assignmentText || '').trim());
 }
 
-/** The system prompt: a template from prompts/ with the step's texts
+/** The system prompt: a prompt text of the template with the step's texts
  *  filled in. `substeps` are the substeps the agent works on. */
 function buildSystemPrompt({ template, step, substeps, rules }) {
   const values = {
@@ -54,24 +58,42 @@ function buildUserPrompt({ input, task }) {
   return parts.join('\n\n');
 }
 
+/** What the orchestrator passed of the template, or null when it is not
+ *  there or cannot be read. It travels as JSON text, because an input of a
+ *  workflow is text. */
+function readStepTemplate(text) {
+  try {
+    const template = JSON.parse(String(text || ''));
+    const complete = template && template.step && Array.isArray(template.step.substeps);
+    return complete ? template : null;
+  } catch (_) {
+    return null;
+  }
+}
+
 /** What the agent is told.
  *
  *  `input` is what the orchestrator's tool call passed:
  *  - substep_id, assignment: filled in by the orchestrator's model
- *  - case_id, user_id, findings, conversation: filled in by the
- *    orchestrator workflow; `findings` holds the earlier reports in full
- *
- *  `texts` may replace the templates and the rules (reportTemplate,
- *  conversationTemplate, rules); without it the files in prompts/ are used.
+ *  - case_id, user_id, findings, conversation, template: filled in by the
+ *    orchestrator workflow; `findings` holds the earlier reports in full,
+ *    `template` what readStepTemplate reads
  *
  *  The result has a `mode`:
  *  - "report": work out the one substep that was named
  *  - "conversation": answer a question, about the named substep or, when
  *    none is named, about the whole step
- *  - "invalid": a report was asked for a substep this step does not have */
-function buildAssignment({ step, input, texts }) {
+ *  - "invalid": the template is missing, or a report was asked for a
+ *    substep this step does not have */
+function buildAssignment({ input }) {
   const given = input || {};
-  const custom = texts || {};
+
+  const template = readStepTemplate(given.template);
+  if (!template) {
+    const error = 'De agent van deze stap kreeg geen template mee.';
+    return { case_id: given.case_id, user_id: given.user_id, mode: 'invalid', valid: false, error };
+  }
+  const step = template.step;
 
   const substepId = String(given.substep_id || '').trim();
   const substep = step.substeps.find((candidate) => candidate.id === substepId) || null;
@@ -86,6 +108,8 @@ function buildAssignment({ step, input, texts }) {
     step_title: step.title,
     substep_id: substep ? substep.id : '',
     substep_title: substep ? substep.title : '',
+    model: template.model,
+    report_disclaimer: String(template.report_disclaimer || ''),
   };
 
   if (forReport && !substep) {
@@ -94,7 +118,11 @@ function buildAssignment({ step, input, texts }) {
     return { ...about, mode: 'invalid', valid: false, error };
   }
 
-  const rules = Array.isArray(custom.rules) ? custom.rules : COMMON_RULES;
+  // One rule per line.
+  const rules = String(template.rules || '')
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean);
   // A question without a substep is about the whole step.
   const substeps = substep ? [substep] : step.substeps;
 
@@ -103,7 +131,7 @@ function buildAssignment({ step, input, texts }) {
       ...about,
       mode: 'report',
       valid: true,
-      system_prompt: buildSystemPrompt({ template: custom.reportTemplate || REPORT_PROMPT_TEMPLATE, step, substeps, rules }),
+      system_prompt: buildSystemPrompt({ template: String(template.report_prompt || ''), step, substeps, rules }),
       user_prompt: buildUserPrompt({ input: given, task: `Opdracht: werk deelstap ${substep.id} (${substep.title}) uit.` }),
     };
   }
@@ -112,7 +140,7 @@ function buildAssignment({ step, input, texts }) {
     ...about,
     mode: 'conversation',
     valid: true,
-    system_prompt: buildSystemPrompt({ template: custom.conversationTemplate || CONVERSATION_PROMPT_TEMPLATE, step, substeps, rules }),
+    system_prompt: buildSystemPrompt({ template: String(template.conversation_prompt || ''), step, substeps, rules }),
     user_prompt: buildUserPrompt({ input: given, task: `Bericht van de gebruiker:\n${String(given.assignment || '').trim()}` }),
   };
 }
@@ -130,16 +158,17 @@ function unwrapCodeBlock(text) {
  *  returned, `agent` the output of the AI Agent node.
  *
  *  For a report the result holds the text as the store keeps it and the
- *  page shows it (`report_text`: the step heading, the reply, the
- *  disclaimer). `save` says whether there is a report to store. */
-function processReply({ assignment, agent, disclaimer }) {
+ *  page shows it (`report_text`: the step heading, the reply, and the
+ *  disclaimer of the template when it has one). `save` says whether there
+ *  is a report to store. */
+function processReply({ assignment, agent }) {
   const text = unwrapCodeBlock(agent && agent.output);
 
   let error = nodeError(agent);
   if (!error && !text) error = `De agent van stap ${assignment.step_nr} gaf geen antwoord.`;
 
   const heading = `**Stap ${assignment.step_nr} · ${assignment.step_title} · ${assignment.substep_id} ${assignment.substep_title}**`;
-  const footer = '---\n' + (disclaimer || DISCLAIMER);
+  const footer = assignment.report_disclaimer ? '---\n' + assignment.report_disclaimer : '';
 
   return {
     mode: assignment.mode,
@@ -147,7 +176,7 @@ function processReply({ assignment, agent, disclaimer }) {
     user_id: assignment.user_id,
     substep_id: assignment.substep_id,
     save: assignment.mode === 'report' && !error,
-    report_text: [heading, text, footer].join('\n\n'),
+    report_text: [heading, text, footer].filter(Boolean).join('\n\n'),
     answer: text,
     tools: toolCalls(agent),
     error,
@@ -193,4 +222,4 @@ function buildResult({ assignment, reply, saved }) {
   };
 }
 
-module.exports = { asksForReport, buildSystemPrompt, buildUserPrompt, buildAssignment, unwrapCodeBlock, processReply, buildResult };
+module.exports = { asksForReport, buildSystemPrompt, buildUserPrompt, readStepTemplate, buildAssignment, unwrapCodeBlock, processReply, buildResult };
