@@ -12,7 +12,7 @@ export function renderGeneral({ store }) {
       "div",
       { class: "form-grid" },
       field("Bewaartermijn casussen (dagen)", bound(settings, "retention_days", { type: "number" })),
-      field("Standaardmodel", bound(settings, "default_model")),
+      field("Standaardmodel", bound(settings, "default_model"), "Moet een chatmodel van LiteLLM zijn (standaard govchat-default)."),
     ),
     h(
       "div",

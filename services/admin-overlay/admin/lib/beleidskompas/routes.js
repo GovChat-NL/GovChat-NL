@@ -31,16 +31,21 @@ function suppliedToken(headers) {
   return String((headers && headers["x-govchat-token"]) || "").trim();
 }
 
-function createBeleidskompasHandlers({ store, internalToken, resolveUser }) {
+function createBeleidskompasHandlers({ store, internalToken, resolveUser, getLive }) {
   const token = String(internalToken || "").trim();
+
+  /** The answer when a request from n8n carries no valid token, or null. */
+  function refuseToken(req) {
+    if (!token) return { status: 503, body: { error: "Server misconfiguratie: BELEIDSKOMPAS_STORE_TOKEN ontbreekt" } };
+    if (suppliedToken(req.headers) !== token) return { status: 401, body: { error: "Unauthorized" } };
+    return null;
+  }
 
   /** The answer when a request from n8n may not go through, or null when
    *  it may. */
   function refuse(req) {
     if (!store) return { status: 503, body: { error: "Beleidskompas store is not configured" } };
-    if (!token) return { status: 503, body: { error: "Server misconfiguratie: BELEIDSKOMPAS_STORE_TOKEN ontbreekt" } };
-    if (suppliedToken(req.headers) !== token) return { status: 401, body: { error: "Unauthorized" } };
-    return null;
+    return refuseToken(req);
   }
 
   // The user comes from the body of a write and from the query of a read.
@@ -80,6 +85,9 @@ function createBeleidskompasHandlers({ store, internalToken, resolveUser }) {
   const p = (req) => req.params || {};
 
   return {
+    // The live template for the orchestrator; it needs no database.
+    live: (req) => Promise.resolve(refuseToken(req) || { status: 200, body: typeof getLive === "function" ? getLive() : {} }),
+
     myCases: (req) => handleMine(req, (userId) => store.listCases({ userId, limit: q(req).limit })),
 
     myCase: (req) =>
@@ -136,12 +144,13 @@ function createBeleidskompasHandlers({ store, internalToken, resolveUser }) {
 /** Ties the handlers to an express app under `/api/beleidskompas`. The
  *  page's endpoints get the whole request, because `resolveUser` reads the
  *  cookies. */
-function mount(app, { store, internalToken, resolveUser }) {
-  const handlers = createBeleidskompasHandlers({ store, internalToken, resolveUser });
+function mount(app, { store, internalToken, resolveUser, getLive }) {
+  const handlers = createBeleidskompasHandlers({ store, internalToken, resolveUser, getLive });
   const route = (handler) => (req, res) =>
     handler({ headers: req.headers, params: req.params, query: req.query, body: req.body, cookies: req.cookies }).then((answer) =>
       res.status(answer.status).json(answer.body),
     );
+  app.get("/api/beleidskompas/live", route(handlers.live));
   app.get("/api/beleidskompas/my/cases", route(handlers.myCases));
   app.get("/api/beleidskompas/my/cases/:id", route(handlers.myCase));
   app.get("/api/beleidskompas/cases", route(handlers.listCases));
