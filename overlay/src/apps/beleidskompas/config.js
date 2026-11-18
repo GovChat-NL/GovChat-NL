@@ -10,7 +10,7 @@ const DEFAULT_SPECIALIST_TEAM =
 // step's explanation: a short description, the longer explanation and the
 // check questions. The description in the published configuration can
 // replace the first two; the prompt of a step is not public and never shows
-// here. The steps themselves come from steps.json.
+// here. The steps themselves come from the published configuration, else steps.json.
 //
 // TODO: revisit these texts: whether they belong with the step list in
 // steps.json (one file for everything the page knows about a step), and

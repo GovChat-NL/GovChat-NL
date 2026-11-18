@@ -468,6 +468,15 @@ const OLD_DEFAULT_SUBSTEPS = {
   stap4: "4.1 Sturing|4.2 Toezicht|4.3 KPI’s",
 };
 
+// The default step prompts from before the seed. A saved step that still has exactly this text
+// gets the seed's role, like an empty field.
+const OLD_DEFAULT_STEP_PROMPTS = {
+  stap1: "Toets publiek en provinciaal belang. Benoem doelgroep, maatschappelijke impact, legitimiteit en conflicterende belangen.",
+  stap2: "Onderbouw de provinciale rolkeuze met impact, uitvoerbaarheid, bestuurlijke haalbaarheid en risico’s.",
+  stap3: "Scoor instrumenten op effectiviteit, juridische robuustheid, financiën en uitvoerbaarheid. Geef voorkeursoptie met alternatieven.",
+  stap4: "Werk governance-advies uit conform SiS 4.0 hoofdstuk 10 en het uitvoeringskader. Neem ook alternatieven mee.",
+};
+
 /** The saved value, or the default when it is empty: a prompt-like field
  *  that is blank means "the seed text", so an older state gets the prompts. */
 function textOrDefault(value, fallback) {
@@ -494,7 +503,7 @@ function normalizeBeleidskompasFlow(input) {
       title: String(step.title || fb.title).trim() || fb.title,
       // An empty string is the admin's choice; defaults only fill fields that are missing.
       description: String(step.description ?? fb.description ?? "").trim(),
-      prompt: textOrDefault(step.prompt, fb.prompt),
+      prompt: textOrDefault(String(step.prompt ?? "").trim() === OLD_DEFAULT_STEP_PROMPTS[fb.id] ? "" : step.prompt, fb.prompt),
       doc_tags: normalizeTags(step.doc_tags || fb.doc_tags),
       // Documents picked in the Flow builder; nothing reads them yet. Missing = not picked yet.
       document_ids: Array.isArray(step.document_ids) ? [...new Set(step.document_ids.map(String))] : undefined,
@@ -513,7 +522,6 @@ function normalizeBeleidskompasFlow(input) {
     };
   });
 
-  const messagesRaw = src.messages && typeof src.messages === "object" ? src.messages : {};
   return {
     title: String(src.title || fallback.title).trim() || fallback.title,
     orchestrator_workflow_id:
@@ -530,7 +538,6 @@ function normalizeBeleidskompasFlow(input) {
     report_prompt: textOrDefault(src.report_prompt, fallback.report_prompt),
     conversation_prompt: textOrDefault(src.conversation_prompt, fallback.conversation_prompt),
     orchestrator_prompt: textOrDefault(src.orchestrator_prompt, fallback.orchestrator_prompt),
-    messages: Object.fromEntries(Object.keys(fallback.messages).map((key) => [key, textOrDefault(messagesRaw[key], fallback.messages[key])])),
     sources: normalizeTags(src.sources || fallback.sources),
     steps,
   };
@@ -2646,6 +2653,7 @@ app.post("/api/beleidskompas/import", requireAuth, (req, res) => {
       ...(incoming.state && typeof incoming.state === "object" ? incoming.state : incoming),
     };
     const saved = writeBeleidskompasState(next);
+    publishBeleidskompasLiveConfig(saved.live, saved.live_version_id);
     const workflow_manifest = syncBeleidskompasWorkflowFiles(saved);
     return res.json({ ok: true, state: saved, workflow_manifest });
   } catch (err) {
@@ -3260,7 +3268,6 @@ if (require.main === module) {
   beleidskompas.start(app, {
     resolveUser: resolveUserFromVerifiedRefreshToken,
     getLive: liveBeleidskompasTemplate,
-    getRetentionDays: () => readBeleidskompasState().settings.retention_days,
   });
   server.listen(PORT, "0.0.0.0", () => {
     console.log(`[govchat-admin] Running on http://0.0.0.0:${PORT}`);

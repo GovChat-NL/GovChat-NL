@@ -391,23 +391,21 @@ test('a new case gets an empty state with only the case text from the page, and 
   });
 });
 
-test('the live template of the admin reaches the step: its substeps, rules, prompts, model and messages', async () => {
+test('the live template of the admin reaches the step: its substeps, rules, prompts and model', async () => {
   await withServer('1', async (baseUrl, requests) => {
     liveTemplate = {
       version_id: 'v9',
-      flow: { ...DEFAULT_TEMPLATE, rules: 'Eigen regel', report_disclaimer: 'Eigen disclaimer', messages: { store_warning: 'Eigen waarschuwing' },
+      flow: { ...DEFAULT_TEMPLATE, rules: 'Eigen regel', report_disclaimer: 'Eigen disclaimer',
         steps: DEFAULT_TEMPLATE.steps.map((s) => (s.id === 'stap1' ? { ...s, prompt: 'Eigen rol', substeps: [{ id: '1.3', title: 'Eigen titel', prompt: 'Eigen instructie', answer_format: '### Eigen' }] } : s)) },
       settings: { default_model: 'eigen-model' },
     };
-    storeFails = /\/reports$/;
     const result = await runOrchestrator({ input: bridgeInput(pageMessage({ substep_id: '1.3', case_text: 'Laadpalen.' })), env: STORE_ENV(baseUrl), fetchImpl: global.fetch });
     const sent = outsideStore(requests)[0].body;
     assert.deepEqual(sent.template, {
-      version_id: 'v9', model: 'eigen-model', rules: 'Eigen regel', report_prompt: DEFAULT_TEMPLATE.report_prompt, conversation_prompt: DEFAULT_TEMPLATE.conversation_prompt, report_disclaimer: 'Eigen disclaimer',
+      model: 'eigen-model', rules: 'Eigen regel', report_prompt: DEFAULT_TEMPLATE.report_prompt, conversation_prompt: DEFAULT_TEMPLATE.conversation_prompt, report_disclaimer: 'Eigen disclaimer',
       step: { id: 'stap1', nr: 1, title: 'Publiek en provinciaal belang', role: 'Eigen rol', substeps: [{ id: '1.3', title: 'Eigen titel', instruction: 'Eigen instructie', format: '### Eigen' }] },
     });
     assert.equal(result.store.template, 'live');
-    assert.ok(result.text.startsWith('Eigen waarschuwing'), 'the warning text comes from the template');
   });
 });
 
@@ -418,7 +416,6 @@ test('without a readable live template the seed stands in and the step still get
     assert.equal(result.ok, true);
     assert.match(result.store.template, /^fallback/);
     const sent = outsideStore(requests)[0].body;
-    assert.equal(sent.template.version_id, null);
     assert.equal(sent.template.step.substeps.length, 5);
     assert.equal(sent.template.rules, DEFAULT_TEMPLATE.rules);
   });

@@ -145,7 +145,6 @@ function buildOrchestratorJsCode() {
     `const STORE_WARNING_TEXT = ${JSON.stringify(orchestrator.STORE_WARNING_TEXT)};`,
     // The seed template stands in when the admin cannot be read.
     `const TEMPLATE_DEFAULTS = ${JSON.stringify(template.DEFAULT_TEMPLATE, null, 2)};`,
-    `const DEFAULT_MESSAGES = ${JSON.stringify(template.DEFAULT_MESSAGES, null, 2)};`,
     `const ORCHESTRATOR_PROMPT_TEMPLATE = ${JSON.stringify(shared.ORCHESTRATOR_PROMPT_TEMPLATE)};`,
     '',
     inlineFunctions([shared], ORCHESTRATOR_SHARED_FUNCTIONS),

@@ -190,14 +190,7 @@ function createStore(query) {
     return rows.map((r) => ({ id: r.id, title: r.title || null, created_at: r.created_at, updated_at: r.updated_at }));
   }
 
-  /** Deletes the cases not touched for `days` days (their texts, reports
-   *  and turns go with them) and returns how many. */
-  async function deleteCasesOlderThan(days) {
-    const { rowCount } = await query("DELETE FROM cases WHERE updated_at < now() - make_interval(days => $1)", [days]);
-    return rowCount;
-  }
-
-  return { ensureCase, setCaseText, addReport, addTurn, setTitle, getState, listCases, deleteCasesOlderThan };
+  return { ensureCase, setCaseText, addReport, addTurn, setTitle, getState, listCases };
 }
 
 module.exports = { StoreError, createStore };

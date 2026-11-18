@@ -1,4 +1,4 @@
-// Flow builder: the four fixed steps, each with its texts, role, substeps, search settings and documents; plus the rules, prompts and messages for all steps.
+// Flow builder: the four fixed steps, each with its texts, role, substeps, search settings and documents; plus the rules and prompts for all steps.
 import * as api from "../api.js";
 import { h, icon, card, field, bound, reveal } from "../dom.js";
 import { flowList } from "../components/flow-list.js";
@@ -50,15 +50,7 @@ export function renderFlow({ store, render, markDirty }) {
     text(flow, "report_disclaimer", 2, "Staat onder elk stapresultaat."),
   );
 
-  const messages = card(
-    "Meldingen",
-    text(flow.messages, "unknown_step", 2, "Getoond als de assistent geen stap kan kiezen."),
-    text(flow.messages, "store_missing", 2, "Getoond als de casusopslag niet is geconfigureerd."),
-    text(flow.messages, "store_failed", 2, "Getoond als de casus niet kan worden opgeslagen."),
-    text(flow.messages, "store_warning", 2, "Getoond boven het antwoord als opslaan tijdelijk mislukt."),
-  );
-
-  return { content: h("div", { class: "stack" }, notice, rules, prompts, messages, list) };
+  return { content: h("div", { class: "stack" }, notice, rules, prompts, list) };
 }
 
 const LABELS = {
@@ -67,10 +59,6 @@ const LABELS = {
   conversation_prompt: "Conversation prompt",
   orchestrator_prompt: "Orchestrator prompt",
   report_disclaimer: "Disclaimer onder stapresultaat",
-  unknown_step: "Stap onbekend",
-  store_missing: "Casusopslag ontbreekt",
-  store_failed: "Opslaan mislukt",
-  store_warning: "Waarschuwing bij opslaan",
 };
 
 function stepEditor(step, { store, markDirty, render }) {

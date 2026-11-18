@@ -83,7 +83,7 @@ export function parseCitationsMetaBlock(text) {
 
 /** Sends a rating for an answer to the admin, which stores it anonymously:
  *  no user or conversation id, only the rating, an optional comment, the
- *  step and substep it is about and the template version that answered. */
+ *  step and substep it is about and the template version the page loaded. */
 export async function sendBeleidskompasFeedback({ rating, comment, stepId, substepId, versionId }) {
   const resp = await fetch("/govchat-api/beleidskompas-feedback", {
     method: "POST",
