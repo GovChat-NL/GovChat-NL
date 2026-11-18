@@ -27,10 +27,13 @@ test("the startup cleanup removes only the old workflow fields from a state", ()
   assert.equal(stripOldWorkflowFields(state), false);
 });
 
-test("a new substep gets an id no other substep in the step has, also after a delete", async () => {
+test("a new substep gets an id the step does not have and did not have in a saved version", async () => {
   const { nextSubstepId } = await import("../views/beleidskompas-admin/api.js");
-  assert.equal(nextSubstepId(1, [{ id: "1.1" }, { id: "1.2" }, { id: "1.4" }, { id: "1.5" }]), "1.6");
-  assert.equal(nextSubstepId(2, []), "2.1");
+  const step = (ids) => ({ id: "stap1", substeps: ids.map((id) => ({ id })) });
+  assert.equal(nextSubstepId(1, step(["1.1", "1.2", "1.4", "1.5"])), "1.6");
+  // 1.3 was the last substep of a saved version and is deleted since.
+  assert.equal(nextSubstepId(1, step(["1.1", "1.2"]), [null, { steps: [step(["1.1", "1.2", "1.3"])] }]), "1.4");
+  assert.equal(nextSubstepId(2, { id: "stap2", substeps: [] }), "2.1");
 });
 
 test("the public config holds only what the Beleidskompas page reads", () => {

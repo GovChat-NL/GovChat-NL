@@ -116,10 +116,12 @@ export const downloadUrl = (id) => `${BASE}/documents/${encodeURIComponent(id)}/
 // MOCK #2: the assistant does not read document_ids yet.
 export const stepDocumentIds = (step) => new Set(step.document_ids || []);
 
-// The id of a new substep: one past the highest number in the step. Counting the
-// substeps would repeat an id after a delete.
-export function nextSubstepId(stepNr, substeps) {
-  const highest = Math.max(0, ...(substeps || []).map((s) => Number(String(s.id).split(".")[1]) || 0));
+// The id of a new substep: one past the highest number the step has or had in
+// `earlierFlows` (the saved versions). An id that comes back after a delete would
+// take over the deleted substep's default prompt and stored reports.
+export function nextSubstepId(stepNr, step, earlierFlows = []) {
+  const steps = [step, ...earlierFlows.map((flow) => flow?.steps?.find((s) => s.id === step.id))];
+  const highest = Math.max(0, ...steps.flatMap((s) => s?.substeps || []).map((s) => Number(String(s.id).split(".")[1]) || 0));
   return `${stepNr}.${highest + 1}`;
 }
 

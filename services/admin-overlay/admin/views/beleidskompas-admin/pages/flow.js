@@ -139,7 +139,8 @@ function stepEditor(step, { store, markDirty, render }) {
       {
         class: "btn btn-small btn-secondary",
         onClick: () => {
-          const id = api.nextSubstepId(store.flow.steps.indexOf(step) + 1, step.substeps);
+          const versions = store.templates.find((t) => t.id === store.templateId)?.versions || [];
+          const id = api.nextSubstepId(store.flow.steps.indexOf(step) + 1, step, [store.state?.live, ...versions.map((v) => v.snapshot)]);
           step.substeps = [...(step.substeps || []), { id, title: "", prompt: "", answer_format: "" }];
           markDirty();
           render();
