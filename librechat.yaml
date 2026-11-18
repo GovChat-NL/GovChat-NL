@@ -22,6 +22,7 @@ endpoints:
           - govchat-orchestrator
         fetch: true
       headers:
+        X-Entra-Access-Token: "{{LIBRECHAT_OPENID_ACCESS_TOKEN}}"
         X-Chat-Id: "{{LIBRECHAT_BODY_CONVERSATIONID}}"
         X-User-Id: "{{LIBRECHAT_USER_ID}}"
         X-User-Email: "{{LIBRECHAT_USER_EMAIL}}"

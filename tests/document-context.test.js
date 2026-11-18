@@ -178,9 +178,16 @@ test("document context reaches mixed-image vision and document failures are pres
     if (url.endsWith("/v1/chat/completions")) {
       assert.match(JSON.stringify(JSON.parse(options.body).messages), /13/);
       assert.doesNotMatch(options.body, /data:application\/pdf;base64/);
-      const classification = JSON.parse(options.body).messages[0].content === intentRule;
-      if (classification) { intentCalls++; assert.doesNotMatch(options.body, /data:image\//); }
-      else { assert.equal(JSON.parse(options.body).messages[0].content, "Synthetic prompt"); visionCalls++; }
+      const body = JSON.parse(options.body);
+      // Use the maintained prompt contract independently of its language.
+      const classification = body.messages[0].content === intentRule;
+      if (classification) {
+        assert.equal(body.temperature, 0);
+        assert.equal(body.messages[0].role, 'system');
+        assert.match(body.messages[0].content, /\bedit\b[\s\S]*\bgenerate\b[\s\S]*\banalyze\b/);
+        intentCalls++; assert.doesNotMatch(options.body, /data:image\//);
+      }
+      else { assert.equal(body.messages[0].content, "Synthetic prompt"); visionCalls++; }
       response = { choices: [{ message: { content: classification ? "analyze" : "13" } }] };
     }
     return { ok: true, status: 200, text: async () => JSON.stringify(response) };

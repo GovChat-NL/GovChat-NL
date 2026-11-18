@@ -1,0 +1,56 @@
+{
+  "id": "govchat-mcp-registry-sync",
+  "name": "GovChat MCP Approved Registry",
+  "active": true,
+  "nodes": [
+    {
+      "id": "RegistryTrigger",
+      "name": "When Called",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "parameters": {
+        "inputSource": "passthrough"
+      },
+      "position": [
+        -300,
+        240
+      ]
+    },
+    {
+      "id": "ApprovedRegistry",
+      "name": "Approved Registry",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "parameters": {
+        "jsCode": "// Operator-reviewed metadata, not autonomous network discovery.\nconst uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;\nconst groups = JSON.parse($env.MCP_HUB_JEMS_REQUIRED_GROUP_IDS || '[]');\nif (!Array.isArray(groups) || groups.some(g => typeof g !== 'string' || !uuid.test(g))) throw new Error('MCP_POLICY_INVALID');\nconst tenant = String($env.ENTRA_TENANT_ID || '').trim().toLowerCase();\nconst server = {\"server_name\": \"jems\", \"endpoint\": \"https://emr-jems-stage.rechenwerk.com/sse\", \"transport\": \"sse\", \"tools\": [{\"name\": \"jems_languages_list\", \"description\": \"\\n<usecase>\\nWHAT: Lists the fallback language and all available language codes supported by JEMS translations.\\nWHEN: Use before jems_project_fetch when you need to select a language or confirm the fallback language.\\nNOT: Does not translate arbitrary text; it only exposes supported language tags.\\n</usecase>\\n\\n<instructions>\\nPARAM RULES:\\n- none; call without parameters.\\nVALUE DISCOVERY:\\n- Not needed; this tool is the source of truth for language codes.\\nWORKFLOW:\\n- Typical flow: jems_languages_list -> pick language -> jems_project_fetch.\\n</instructions>\\n\", \"inputSchema\": {\"type\": \"object\", \"properties\": {}, \"required\": []}, \"annotations\": {\"title\": \"\", \"readOnlyHint\": false, \"destructiveHint\": true, \"idempotentHint\": false, \"openWorldHint\": true}, \"enabled\": true}, {\"name\": \"jems_auth_status\", \"description\": \"\\n<usecase>\\nWHAT: Reports whether a JEMS session is active for the current connection and which user/role is being used.\\nWHEN: Call before other tools if you need to confirm authentication context or debug missing sessions.\\nNOT: Does not perform login/logout; sessions are created automatically via headers or central configuration.\\n</usecase>\\n\\n<instructions>\\nPARAM RULES:\\n- none; context is derived from the forwarded connection headers.\\nVALUE DISCOVERY:\\n- Not needed; the adapter resolves the current session automatically.\\nWORKFLOW:\\n- Typical flow: jems_auth_status -> ensure session exists -> call other JEMS tools.\\n</instructions>\\n\", \"inputSchema\": {\"type\": \"object\", \"properties\": {}, \"required\": []}, \"annotations\": {\"title\": \"\", \"readOnlyHint\": false, \"destructiveHint\": true, \"idempotentHint\": false, \"openWorldHint\": true}, \"enabled\": true}, {\"name\": \"jems_calls_list\", \"description\": \"\\n<usecase>\\nWHAT: Retrieves all JEMS calls (id, name, status, submission window) so you can target the right call.\\nWHEN: Use before jems_project_search to obtain valid call ids or to check whether a call is still draft/published.\\nNOT: Read-only listing; it does not create or modify calls.\\n</usecase>\\n\\n<instructions>\\nPARAM RULES:\\n- status: optional; filter by call status (DRAFT or PUBLISHED). Leave empty to list every call.\\nVALUE DISCOVERY:\\n- Use this tool as the source of truth for call identifiers instead of guessing or hardcoding ids.\\nWORKFLOW:\\n- Typical flow: jems_calls_list -> pick call id -> jems_project_search (calls filter) -> jems_project_fetch.\\n</instructions>\\n\", \"inputSchema\": {\"type\": \"object\", \"properties\": {\"status\": {\"type\": \"string\", \"enum\": [\"DRAFT\", \"PUBLISHED\"]}}, \"required\": [\"status\"]}, \"annotations\": {\"title\": \"\", \"readOnlyHint\": false, \"destructiveHint\": true, \"idempotentHint\": false, \"openWorldHint\": true}, \"enabled\": true}, {\"name\": \"jems_project_fetch\", \"description\": \"\\n            <usecase>\\n            WHAT: Fetches aggregated JEMS project details (identification, translations, work packages) for assessment or reporting.\\n            WHEN: Use after you already know the numeric projectId (e.g. from jems_project_search) and need the full application content.\\n            NOT: Do not use to discover project ids or to list projects; use jems_project_search first.\\n            </usecase>\\n            \\n            <instructions>\\n            PARAM RULES:\\n            - projectId: required; positive integer id of the project (example: 12345).\\n            - version: optional; leave empty for the latest version; format \\\\d+\\\\.\\\\d+ (examples: 1.0, 2.0). Leave empty if the user is not explicitly asking for a specific version\\n            - language: optional; language code such as EN/DE or '*' for all translations; defaults to the fallback language.\\n            VALUE DISCOVERY:\\n            - Use jems_project_search to obtain a valid projectId.\\n            - Use jems_languages_list to list valid language codes and the fallback language.\\n            WORKFLOW:\\n            - Typical flow: jems_project_search -> jems_project_fetch -> downstream evaluation/summarisation.\\n            RESPONSE:\\n            - To make your output usable, always include in answers: project title/name, project acronym, version number, selected language, project status, call.\\n            </instructions>\\n        \", \"inputSchema\": {\"type\": \"object\", \"properties\": {\"projectId\": {\"type\": \"integer\", \"format\": \"int64\"}, \"version\": {\"type\": \"string\"}, \"language\": {\"type\": \"string\"}}, \"required\": [\"projectId\", \"version\", \"language\"]}, \"annotations\": {\"title\": \"\", \"readOnlyHint\": false, \"destructiveHint\": true, \"idempotentHint\": false, \"openWorldHint\": true}, \"enabled\": true}, {\"name\": \"jems_project_search\", \"description\": \"\\n            <usecase>\\n            WHAT: Searches Jems projects by id, acronym, call, objectives, status or submission dates to find candidates to inspect.\\n            WHEN: Use when you need to look up a projectId before fetching details or to offer the user matching projects.\\n            NOT: Do not use to retrieve full project details; call jems_project_fetch once you have the right projectId.\\n            </usecase>\\n            \\n            <instructions>\\n            PARAM RULES:\\n            - id: optional; project id as provided by Jems; trim whitespace.\\n            - acronym: optional; partial or full acronym string; case-insensitive.\\n            - calls: optional; set of positive numeric call ids.\\n            - objectives: optional; set of objective enums (examples: AdvancedTechnologies, ClimateChange).\\n            - statuses: optional; set of status enums (examples: SUBMITTED, APPROVED, DRAFT, CONTRACTED).\\n            - firstSubmissionFrom/firstSubmissionTo: optional; ISO-8601 timestamps; ensure from <= to.\\n            - lastSubmissionFrom/lastSubmissionTo: optional; ISO-8601 timestamps; ensure from <= to.\\n            VALUE DISCOVERY:\\n            - Use jems_calls_list to retrieve valid call ids and their status instead of guessing or hardcoding them.\\n            WORKFLOW:\\n            - Typical flow: (if call unknown) jems_calls_list -> collect filters -> jems_project_search -> select projectId -> jems_project_fetch.\\n            </instructions>\\n        \", \"inputSchema\": {\"type\": \"object\", \"properties\": {\"id\": {\"type\": \"string\"}, \"acronym\": {\"type\": \"string\"}, \"calls\": {\"type\": \"array\", \"items\": {\"type\": \"integer\", \"format\": \"int64\"}}, \"objectives\": {\"type\": \"array\", \"items\": {\"type\": \"string\", \"enum\": [\"ADVANCED_TECHNOLOGIES\", \"CIRCULAR_ECONOMY\", \"CLIMATE_CHANGE\", \"CROSS_BORDER_MOBILITY\", \"CULTURE_AND_TOURISM\", \"DIGITAL_CONNECTIVITY\", \"DIGITISATION\", \"DISADVANTAGED_GROUPS\", \"ENERGY_EFFICIENCY\", \"ENV_DEVELOPMENT\", \"GREEN_INFRASTRUCTURE\", \"GROWTH\", \"HEALTHCARE\", \"ISO12_BORDER_CROSSING\", \"ISO12_DEMOCRACY\", \"ISO12_INTERNATIONAL_PROTECTION\", \"ISO12_MACRO_REGION\", \"ISO12_MOBILITY_MIGRATION\", \"ISO12_MUTUAL_TRUST\", \"ISO12_OTHER_ACTIONS_COOPERATION\", \"ISO12_OTHER_ACTIONS_SECURE_EUROPE\", \"ISO12_PROMOTING_COOPERATION\", \"ISO12_PUBLIC_AUTHORITIES\", \"INDUSTRIAL_TRANSITION\", \"INTEGRATED_ACTIONS_FOR_MIGRANTS\", \"INTER_MODAL_TEN_T\", \"LOCAL_ENV_DEVELOPMENT\", \"PEACE_PLUS_CO_DESIGNED_LOCAL_COMMUNITY\", \"PEACE_PLUS_EMPOWERING_COMMUNITIES\", \"PEACE_PLUS_POSITIVE_RELATIONS\", \"PEACE_PLUS_REIMAGING_COMMUNITIES\", \"PEACE_PLUS_RURAL_REGENERATION\", \"PEACE_PLUS_SHARED_LEARNING\", \"PEACE_PLUS_VICTIMS_AND_SURVIVORS\", \"PEACE_PLUS_YOUTH_MENTAL_HEALTH\", \"PEACE_PLUS_YOUTH_PROGRAMME\", \"QUALITY_IN_EDUCATION\", \"RENEWABLE_ENERGY\", \"SMART_ENERGY\", \"SOCIAL_INFRASTRUCTURE\", \"WATER_MANAGEMENT\", \"ZERO_CARBON_ECONOMY\"]}}, \"statuses\": {\"type\": \"array\", \"items\": {\"type\": \"string\", \"enum\": [\"APPROVED\", \"APPROVED_WITH_CONDITIONS\", \"CLOSED\", \"CONDITIONS_SUBMITTED\", \"CONTRACTED\", \"DRAFT\", \"ELIGIBLE\", \"INELIGIBLE\", \"IN_MODIFICATION\", \"MODIFICATION_PRECONTRACTING\", \"MODIFICATION_PRECONTRACTING_SUBMITTED\", \"MODIFICATION_REJECTED\", \"MODIFICATION_SUBMITTED\", \"NOT_APPROVED\", \"RETURNED_TO_APPLICANT\", \"RETURNED_TO_APPLICANT_FOR_CONDITIONS\", \"STEP1_APPROVED\", \"STEP1_APPROVED_WITH_CONDITIONS\", \"STEP1_DRAFT\", \"STEP1_ELIGIBLE\", \"STEP1_INELIGIBLE\", \"STEP1_NOT_APPROVED\", \"STEP1_SUBMITTED\", \"SUBMITTED\"]}}, \"firstSubmissionFrom\": {\"type\": \"string\"}, \"firstSubmissionTo\": {\"type\": \"string\"}, \"lastSubmissionFrom\": {\"type\": \"string\"}, \"lastSubmissionTo\": {\"type\": \"string\"}}, \"required\": [\"id\", \"acronym\", \"calls\", \"objectives\", \"statuses\", \"firstSubmissionFrom\", \"firstSubmissionTo\", \"lastSubmissionFrom\", \"lastSubmissionTo\"]}, \"annotations\": {\"title\": \"\", \"readOnlyHint\": false, \"destructiveHint\": true, \"idempotentHint\": false, \"openWorldHint\": true}, \"enabled\": true}]};\nserver.tenant_id = tenant;\nserver.required_group_ids = groups.map(g => g.toLowerCase());\nserver.enabled = uuid.test(tenant) && groups.length > 0;\nreturn [{ json: { servers: [server] } }];"
+      },
+      "position": [
+        0,
+        240
+      ]
+    }
+  ],
+  "connections": {
+    "When Called": {
+      "main": [
+        [
+          {
+            "node": "Approved Registry",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "callerPolicy": "workflowsFromSameOwner",
+    "saveDataSuccessExecution": "none",
+    "saveDataErrorExecution": "none",
+    "saveManualExecutions": false,
+    "saveExecutionProgress": false
+  },
+  "pinData": {},
+  "tags": []
+}

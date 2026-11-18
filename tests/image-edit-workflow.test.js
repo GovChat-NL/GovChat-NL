@@ -107,9 +107,14 @@ async function detect(intent, messages, options = {}) {
       else if (url.includes('/api/config/orchestrator')) value = {};
       else {
         const body = JSON.parse(opts.body);
-        // Use the builder's prompt contract, not an obsolete language-specific fragment.
+        // Use the maintained prompt contract independently of its language.
         const classification = body.messages[0].content === intentRule;
-        if (classification) { assert.equal(opts.body.includes('data:image/'),false); value = {choices:[{message:{content:intent}}]}; }
+        if (classification) {
+          assert.equal(body.temperature,0);
+          assert.equal(body.messages[0].role,'system');
+          assert.match(body.messages[0].content,/\bedit\b[\s\S]*\bgenerate\b[\s\S]*\banalyze\b/);
+          assert.equal(opts.body.includes('data:image/'),false); value = {choices:[{message:{content:intent}}]};
+        }
         else { assert.equal(body.messages[0].content,'Runtime organization prompt'); value = {choices:[{message:{content:'synthetic vision answer'}}]}; }
       }
       return {ok:true,status:200,text:async()=>JSON.stringify(value)};

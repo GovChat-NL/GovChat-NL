@@ -514,6 +514,8 @@ services:
       - "5678"
       - "5679"
     environment:
+      ENTRA_TENANT_ID: ${ENTRA_TENANT_ID:-}
+      MCP_HUB_JEMS_REQUIRED_GROUP_IDS: ${MCP_HUB_JEMS_REQUIRED_GROUP_IDS:-[]}
       DB_TYPE: postgresdb
       DB_POSTGRESDB_HOST: n8n-postgres
       DB_POSTGRESDB_PORT: "5432"
@@ -650,6 +652,8 @@ services:
       n8n:
         condition: service_healthy
     environment:
+      ENTRA_TENANT_ID: ${ENTRA_TENANT_ID:-}
+      MCP_HUB_JEMS_REQUIRED_GROUP_IDS: ${MCP_HUB_JEMS_REQUIRED_GROUP_IDS:-[]}
       N8N_RUNNERS_TASK_BROKER_URI: http://n8n:5679
       N8N_RUNNERS_AUTH_TOKEN: ${N8N_RUNNERS_AUTH_TOKEN}
       N8N_WEBHOOK_TOKEN: ${N8N_WEBHOOK_TOKEN}
@@ -705,6 +709,10 @@ services:
       n8n-runners:
         condition: service_started
     environment:
+      N8N_WEBHOOK_TOKEN: ${N8N_WEBHOOK_TOKEN}
+      JEMS_MCP_API_KEY: ${JEMS_MCP_API_KEY:-}
+      JEMS_MCP_USERNAME: ${JEMS_MCP_USERNAME:-}
+      JEMS_MCP_PASSWORD: ${JEMS_MCP_PASSWORD:-}
       DB_TYPE: postgresdb
       DB_POSTGRESDB_HOST: n8n-postgres
       DB_POSTGRESDB_PORT: "5432"
@@ -739,7 +747,7 @@ services:
   n8n-openai-bridge:
     # Build the clean GovChat-NL main-branch checkout kept beside this repository.
     # It emits the sideband used by the LibreChat and n8n runtime overlays.
-    image: govchat-nl/n8n-openai-bridge:main
+    image: ${N8N_OPENAI_BRIDGE_IMAGE:-govchat-nl/n8n-openai-bridge:main}
     build:
       context: ${N8N_OPENAI_BRIDGE_BUILD_CONTEXT:-../n8n-openai-bridge-main}
       dockerfile: docker/Dockerfile.build
@@ -751,6 +759,13 @@ services:
     expose:
       - "3333"
     environment:
+      ENTRA_JWT_ENABLED: ${ENTRA_JWT_ENABLED:-false}
+      ENTRA_TENANT_ID: ${ENTRA_TENANT_ID:-}
+      ENTRA_EXPECTED_AUDIENCE: ${ENTRA_EXPECTED_AUDIENCE:-}
+      ENTRA_EXPECTED_ISSUER: ${ENTRA_EXPECTED_ISSUER:-}
+      ENTRA_REQUIRED_SCOPE: ${ENTRA_REQUIRED_SCOPE:-}
+      ENTRA_ALLOWED_CLIENT_ID: ${ENTRA_ALLOWED_CLIENT_ID:-}
+      ENTRA_ACCESS_TOKEN_HEADER: X-Entra-Access-Token
       PORT: "3333"
       BEARER_TOKEN: ${N8N_OPENAI_BRIDGE_BEARER_TOKEN}
       N8N_WEBHOOK_BEARER_TOKEN: ${N8N_WEBHOOK_TOKEN}

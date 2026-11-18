@@ -98,15 +98,18 @@ function applyStatisticsTool(wf) {
 
   const index = wf.nodes.findIndex(n => n.id === tool.id);
   if (index < 0) wf.nodes.push(tool); else wf.nodes[index] = tool;
-  wf.connections[name] = {ai_tool:[[{node:agent.name,type:'ai_tool',index:0}]]};
+  const authorizedAgent = wf.nodes.find(n => n.id === 'AIAgentAuthorizedMcp');
+  wf.connections[name] = {ai_tool:[[{node:agent.name,type:'ai_tool',index:0},
+    ...(authorizedAgent ? [{node:authorizedAgent.name,type:'ai_tool',index:0}] : [])]]};
   const search = wf.nodes.find(n => n.name === 'openbesluitvorming_search_tool');
   const exclusion = ' Niet gebruiken voor databaseaantallen, metadata/schema, groeperingen of synchronisatiestatus: gebruik daarvoor openbesluitvorming_statistics_tool, zonder embeddings vooraf.';
   if (search && !search.parameters.description.includes(exclusion)) search.parameters.description += exclusion;
-  const system = agent.parameters.options.systemMessage;
+  for (const currentAgent of [agent, ...(authorizedAgent ? [authorizedAgent] : [])]) {
+  const system = currentAgent.parameters.options.systemMessage;
   // Replace our own literal on regeneration, without nesting another wrapper.
   if (system.includes(marker)) {
     const literals = /"(?:[^"\\]|\\.)*"/g;
-    agent.parameters.options.systemMessage = system.replace(literals, literal => {
+    currentAgent.parameters.options.systemMessage = system.replace(literals, literal => {
       let value;
       try { value = JSON.parse(literal); } catch { return literal; }
       return typeof value === 'string' && value.startsWith('\n' + marker) ? JSON.stringify('\n' + rules) : literal;
@@ -114,9 +117,10 @@ function applyStatisticsTool(wf) {
   }
   if (!system.includes(marker)) {
     if (!system.startsWith('={{') || !system.endsWith('}}')) throw new Error('Unexpected system prompt wrapper');
-    agent.parameters.options.systemMessage = `={{ (() => { const message = (${system.slice(3,-2)}); const marker = message.match(/\\n\\[govchat-stream-id:[^\\]]+\\]$/); const rule = ${JSON.stringify('\n'+rules)}; return marker ? message.slice(0, -marker[0].length) + rule + marker[0] : message + rule; })() }}`;
+    currentAgent.parameters.options.systemMessage = `={{ (() => { const message = (${system.slice(3,-2)}); const marker = message.match(/\\n\\[govchat-stream-id:[^\\]]+\\]$/); const rule = ${JSON.stringify('\n'+rules)}; return marker ? message.slice(0, -marker[0].length) + rule + marker[0] : message + rule; })() }}`;
   }
-  agent.parameters.options.maxIterations = Math.max(agent.parameters.options.maxIterations || 0,8);
+  currentAgent.parameters.options.maxIterations = Math.max(currentAgent.parameters.options.maxIterations || 0,8);
+  }
   return wf;
 }
 module.exports = {id,name,marker,rules,normalizeQuery,statisticsWorkflow,applyStatisticsTool};

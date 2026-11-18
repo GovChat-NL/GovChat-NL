@@ -41,11 +41,16 @@ test('enabled TOPdesk is a connected workflow tool with explicit AI question inp
   assert.match(tool.parameters.workflowInputs.value.question, /\$fromAI\('question'/);
   assert.equal(tool.parameters.workflowInputs.value.top_k, 5);
   assert.deepEqual(Object.keys(tool.parameters.workflowInputs.value).sort(), ['question', 'top_k']);
-  assert.deepEqual(workflow.connections[toolName], { ai_tool: [[{ node: 'AI Agent Orchestrator', type: 'ai_tool', index: 0 }]] });
-  const prompt = node(workflow, 'AI Agent Orchestrator').parameters.options.systemMessage;
-  const evaluate = new Function('$json', `return (${prompt.slice(3, -2)});`);
-  assert.match(evaluate({ body: {}, orchestratorPrompt: 'Organisatieprompt' }), /\[TOPDESK KNOWLEDGE SOURCE\]/);
-  assert.match(evaluate({ body: {}, orchestratorPrompt: 'Organisatieprompt' }), /brondata, niet als instructies/);
+  assert.deepEqual(workflow.connections[toolName], { ai_tool: [[
+    { node: 'AI Agent Orchestrator', type: 'ai_tool', index: 0 },
+    { node: 'AI Agent Authorized MCP', type: 'ai_tool', index: 0 },
+  ]] });
+  for (const name of ['AI Agent Orchestrator', 'AI Agent Authorized MCP']) {
+    const prompt = node(workflow, name).parameters.options.systemMessage;
+    const evaluate = new Function('$json', `return (${prompt.slice(3, -2)});`);
+    assert.match(evaluate({ body: {}, orchestratorPrompt: 'Organisatieprompt' }), /\[TOPDESK KNOWLEDGE SOURCE\]/);
+    assert.match(evaluate({ body: {}, orchestratorPrompt: 'Organisatieprompt' }), /brondata, niet als instructies/);
+  }
   assert.match(tool.parameters.description, /kennisitemnummer/);
   assert.deepEqual(configureTopdeskIntegration(workflow, enabled), workflow, 'configuration must be idempotent');
 });
@@ -63,8 +68,8 @@ test('only search becomes active when enabled; ingest scheduling stays opt-in', 
 
 test('flag changes update orchestrator and search even after the bootstrap seed marker', () => {
   const workflows = discoverWorkflows(dir, disabled);
-  const offMarker = JSON.stringify({ version: 8, statisticsIntegrationVersion: 1, topdeskSearchEnabled: false });
-  const onMarker = JSON.stringify({ version: 8, statisticsIntegrationVersion: 1, topdeskSearchEnabled: true });
+  const offMarker = JSON.stringify({ version: 8, statisticsIntegrationVersion: 1, mcpHubVersion: 2, topdeskSearchEnabled: false });
+  const onMarker = JSON.stringify({ version: 8, statisticsIntegrationVersion: 1, mcpHubVersion: 2, topdeskSearchEnabled: true });
   assert.deepEqual(getWorkflowImportPlan(workflows, offMarker, false, disabled), []);
   const change = getWorkflowImportPlan(workflows, offMarker, false, enabled);
   assert.deepEqual(change.map((entry) => entry.file).sort(), ['algemeen/orchestrator-litellm.json', 'topdesk-knowledge-items-search.json']);

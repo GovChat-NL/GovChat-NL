@@ -80,7 +80,9 @@ function applyUtilityTools(workflow) {
   for (const node of nodes) {
     const index = workflow.nodes.findIndex((existing) => existing.id === node.id);
     if (index === -1) workflow.nodes.push(node); else workflow.nodes[index] = node;
-    workflow.connections[node.name] = { ai_tool: [[{ node: agent.name, type: "ai_tool", index: 0 }]] };
+    const authorizedAgent = workflow.nodes.find(candidate => candidate.id === "AIAgentAuthorizedMcp");
+    workflow.connections[node.name] = { ai_tool: [[{ node: agent.name, type: "ai_tool", index: 0 },
+      ...(authorizedAgent ? [{ node: authorizedAgent.name, type: "ai_tool", index: 0 }] : [])]] };
   }
   const options = agent.parameters.options ||= {};
   const system = String(options.systemMessage || "");
