@@ -197,8 +197,8 @@ function buildContext({ request, state, substepIds }) {
 /** The title LibreChat asked for, from what the model replied. Never fails:
  *  without a usable reply the title is made from the first words of the
  *  case, since a broken title must never break the conversation. */
-function buildTitle({ request, agent }) {
-  const raw = nodeError(agent) ? '' : String((agent && agent.output) || '');
+function buildTitle({ request, reply }) {
+  const raw = nodeError(reply) ? '' : String((reply && reply.text) || '');
   const wrapperChars = new Set(['"', "'", '#', '*', '_']);
   let start = 0;
   let end = raw.length;

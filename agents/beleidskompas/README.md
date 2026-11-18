@@ -29,7 +29,7 @@ Elk bericht voor Beleidskompas komt binnen bij de orchestrator. Dat geldt voor d
 5. Bij een uitwerking slaat de agent van de stap het rapport zelf op. Wat de pagina toont, is dus wat de agent van de stap schreef. De orchestrator krijgt het rapport te lezen.
 6. De orchestrator schrijft het bericht voor de chat. Na een uitwerking zegt hij wat er nog ontbreekt.
 
-Een titelverzoek van LibreChat gaat niet naar de orchestrator. Een aparte AI Agent node maakt de titel.
+Een titelverzoek van LibreChat gaat niet naar de orchestrator. Een Basic LLM Chain node maakt de titel met één aanroep van het model.
 
 Welke casus en welke gebruiker het is, geeft de workflow door aan een tool. Het model vult alleen de deelstap en de opdracht in.
 

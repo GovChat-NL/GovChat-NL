@@ -231,7 +231,23 @@ function agentNode(name, position, { prompt, systemPrompt, maxIterations }) {
   return node;
 }
 
-/** The language model of an agent. Every model call goes through LiteLLM. */
+/** A Basic LLM Chain node: one call of the model, without tools. `prompt`
+ *  is what the model is asked, `systemPrompt` its instruction.
+ *
+ *  A failing model does not stop the workflow. The node then returns the
+ *  error as its output. */
+function llmChainNode(name, position, { prompt, systemPrompt }) {
+  const node = makeNode(name, '@n8n/n8n-nodes-langchain.chainLlm', 1.9, position, {
+    promptType: 'define',
+    text: prompt,
+    messages: { messageValues: [{ type: 'SystemMessagePromptTemplate', message: systemPrompt }] },
+  });
+  node.onError = 'continueRegularOutput';
+  return node;
+}
+
+/** The language model of an agent or a chain. Every model call goes
+ *  through LiteLLM. */
 function chatModelNode(name, position) {
   const node = makeNode(name, '@n8n/n8n-nodes-langchain.lmChatOpenAi', 1.3, position, {
     model: { __rl: true, mode: 'list', value: 'govchat-default' },
@@ -315,7 +331,8 @@ function connectIf(connections, ifNodeName, { whenTrue, whenFalse }) {
   connect(connections, ifNodeName, whenFalse, 1);
 }
 
-/** Hangs a language model or a tool under an agent. */
+/** Hangs a language model or a tool under an agent, or a language model
+ *  under a chain. */
 function attachToAgent(connections, kind, nodeName, agentName) {
   connections[nodeName] = { [kind]: [[{ node: agentName, type: kind, index: 0 }]] };
 }
@@ -504,15 +521,14 @@ function buildOrchestratorWorkflow(steps) {
   connect(connections, 'Webhook Orchestrator', 'Verzoek voorbereiden');
   connect(connections, 'Verzoek voorbereiden', 'Verzoek geldig?');
   connectIf(connections, 'Verzoek geldig?', { whenTrue: 'Titelverzoek?', whenFalse: 'Respond Orchestrator' });
-  connectIf(connections, 'Titelverzoek?', { whenTrue: 'AI Agent Titel', whenFalse: 'Stand van de casus ophalen' });
+  connectIf(connections, 'Titelverzoek?', { whenTrue: 'Titel maken', whenFalse: 'Stand van de casus ophalen' });
 
   // --- LibreChat asks for a title for the conversation ---
 
   nodes.push(
-    agentNode('AI Agent Titel', at(4, 0), {
+    llmChainNode('Titel maken', at(4, 0), {
       prompt: expression('$json.title_source'),
       systemPrompt: orchestrator.TITLE_SYSTEM_PROMPT,
-      maxIterations: 1,
     }),
   );
   nodes.push(chatModelNode('OpenAI Chat Model (Titel)', at(4, 1)));
@@ -521,7 +537,7 @@ function buildOrchestratorWorkflow(steps) {
     codeNode('Titel opbouwen', at(6, 0), {
       constants: { TITLE_REQUEST_MARKER: shared.TITLE_REQUEST_MARKER, TITLE_PREFIX: shared.TITLE_PREFIX },
       functions: ['nodeError', 'buildFallbackTitle', 'buildTitle'],
-      run: `return [{ json: buildTitle({ request: ${request}, agent: $json }) }];`,
+      run: `return [{ json: buildTitle({ request: ${request}, reply: $json }) }];`,
     }),
   );
 
@@ -536,8 +552,8 @@ function buildOrchestratorWorkflow(steps) {
 
   nodes.push(respondNode('Respond titel', at(8, 0), outputOf('Titel opbouwen')));
 
-  attachToAgent(connections, 'ai_languageModel', 'OpenAI Chat Model (Titel)', 'AI Agent Titel');
-  connect(connections, 'AI Agent Titel', 'Titel opbouwen');
+  attachToAgent(connections, 'ai_languageModel', 'OpenAI Chat Model (Titel)', 'Titel maken');
+  connect(connections, 'Titel maken', 'Titel opbouwen');
   connect(connections, 'Titel opbouwen', 'Titel opslaan');
   connect(connections, 'Titel opslaan', 'Respond titel');
 

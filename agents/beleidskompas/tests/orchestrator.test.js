@@ -143,14 +143,14 @@ test('the system prompt of the orchestrator lists the agent of every step with i
 
 test('the title is what the model replied, without wrapping characters, with the prefix', () => {
   const request = { kind: 'title', case_id: 'c1', user_id: 'u1', title_source: 'Een gemeente wil een zwembad subsidiëren met provinciaal geld.' };
-  const title = buildTitle({ request, agent: { output: ' "**Subsidie zwembad**" \n' } });
+  const title = buildTitle({ request, reply: { text: ' "**Subsidie zwembad**" \n' } });
   assert.deepEqual([title.ok, title.mode, title.text, title.answer, title.case_id], [true, 'title', 'Beleidskompas - Subsidie zwembad', 'Beleidskompas - Subsidie zwembad', 'c1']);
 });
 
 test('without a usable reply the title is made from the first words of the case', () => {
   const request = { kind: 'title', case_id: 'c1', user_id: 'u1', title_source: 'Een gemeente wil een zwembad subsidiëren met provinciaal geld en vraagt advies.' };
-  assert.equal(buildTitle({ request, agent: { error: { message: 'timeout' } } }).text, 'Beleidskompas - Een gemeente wil een zwembad subsidiëren met provinciaal…');
-  assert.equal(buildTitle({ request: { ...request, title_source: '' }, agent: { output: '' } }).text, 'Beleidskompas - Beleidskompas casus');
+  assert.equal(buildTitle({ request, reply: { error: { message: 'timeout' } } }).text, 'Beleidskompas - Een gemeente wil een zwembad subsidiëren met provinciaal…');
+  assert.equal(buildTitle({ request: { ...request, title_source: '' }, reply: { text: '' } }).text, 'Beleidskompas - Beleidskompas casus');
 });
 
 // --- buildAnswer ---

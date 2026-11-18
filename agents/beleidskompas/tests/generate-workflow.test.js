@@ -78,9 +78,9 @@ test('a tool passes exactly the inputs the called workflow declares, and the mod
   }
 });
 
-test('every agent has a model, and a failing agent or store call does not stop its workflow', () => {
+test('every agent and chain has a model, and a failing model or store call does not stop its workflow', () => {
   for (const w of workflows) {
-    for (const agent of w.nodes.filter((n) => n.type.endsWith('.agent'))) {
+    for (const agent of w.nodes.filter((n) => /\.(agent|chainLlm)$/.test(n.type))) {
       const models = Object.entries(w.connections).filter(([, kinds]) => kinds.ai_languageModel && kinds.ai_languageModel[0][0].node === agent.name);
       assert.equal(models.length, 1, `${w.name}: ${agent.name} has one model`);
       assert.equal(agent.onError, 'continueRegularOutput');
@@ -134,7 +134,7 @@ test('an invalid assignment skips the agent and still gives the orchestrator a r
 test('a title request, and the message when the turn of the user cannot be stored', () => {
   const request = runCode(orchestrator, 'Verzoek voorbereiden', webhook({ currentMessage: `${TITLE_REQUEST_MARKER} Geef een titel.\n\nUser: Een casus over dorpshuizen.\nAI: ...` }), {}, env);
   assert.equal(request.kind, 'title');
-  assert.equal(runCode(orchestrator, 'Titel opbouwen', { output: 'Dorpshuizen verduurzamen' }, { 'Verzoek voorbereiden': request }).text, 'Beleidskompas - Dorpshuizen verduurzamen');
+  assert.equal(runCode(orchestrator, 'Titel opbouwen', { text: 'Dorpshuizen verduurzamen' }, { 'Verzoek voorbereiden': request }).text, 'Beleidskompas - Dorpshuizen verduurzamen');
   assert.equal(runCode(orchestrator, 'Titel opbouwen', { error: { message: 'x' } }, { 'Verzoek voorbereiden': request }).text, 'Beleidskompas - Een casus over dorpshuizen.');
 
   const failed = runCode(orchestrator, 'Opslagfout melden', { error: { message: 'HTTP 500' } });
