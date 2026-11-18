@@ -66,6 +66,8 @@ test('regenerating the moved orchestrator does not create duplicate utility expo
       'orchestrator-document-workflow.js', 'n8n-document-context.js',
       'orchestrator-image-workflow.js', 'orchestrator-prompt-workflow.js',
       'orchestrator-image-edit-workflow.js', 'openbesluitvorming-statistics-workflow.js',
+      'openbesluitvorming-tool-inputs.js', 'openbesluitvorming-search-performance.js',
+      'openbesluitvorming-filter-description.js',
       'workflow-function-source.js']) {
       fs.copyFileSync(path.resolve(__dirname, '../../scripts', file), path.join(scripts, file));
     }

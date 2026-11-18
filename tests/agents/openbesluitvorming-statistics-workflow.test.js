@@ -45,12 +45,17 @@ test('published subworkflow is trigger-only with fixed internal URI and HTTP hea
   assert.deepEqual(JSON.parse(fs.readFileSync(path.join(root,'agents/n8n/workflows/openbesluitvorming/govchat-openbesluitvorming-statistics.json')))[0],w);
 });
 test('agent schema, prompt wrapper, stream marker and other integrations survive idempotent injection', () => {
-  const w = workflow(); const before = JSON.stringify(w);
-  b.applyStatisticsTool(w); b.applyStatisticsTool(w);
+  const { applyFilterDescriptions } = require('../../scripts/openbesluitvorming-filter-description');
+  const w = workflow();
+  const apply = () => { b.applyStatisticsTool(w); applyFilterDescriptions(w); };
+  apply(); const before = JSON.stringify(w);
+  apply(); apply();
   assert.equal(JSON.stringify(w),before);
   const tool = w.nodes.find(n=>n.name===b.name);
   assert.equal(tool.parameters.workflowInputs.schema[0].type,'string');
-  assert.match(tool.parameters.workflowInputs.value.query,/\$fromAI/);
+  assert.match(tool.parameters.workflowInputs.value.operation,/\$fromAI/);
+  assert.match(tool.parameters.workflowInputs.value.date_start,/\$fromAI/);
+  assert.equal(tool.parameters.workflowInputs.value.query,undefined);
   const expression = w.nodes.find(n=>n.id==='AIAgentOrchestrator').parameters.options.systemMessage;
   const streamId = '12345678-1234-4123-8123-123456789012';
   const rendered = vm.runInNewContext(expression.slice(3,-2),{$json:{orchestratorPrompt:'Organization policy stays intact',body:{streamId,userName:'Test'}}});

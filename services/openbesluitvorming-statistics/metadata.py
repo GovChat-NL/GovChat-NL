@@ -5,6 +5,8 @@ import math
 import os
 import re
 import time
+import copy
+import threading
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -17,7 +19,8 @@ PATH = re.compile(r"[A-Za-z_][A-Za-z0-9_-]*(?:\[(?:[0-9]+)?\])*(?:\.[A-Za-z_][A-
 PART = re.compile(r"([A-Za-z_][A-Za-z0-9_-]*)|\[([0-9]*)\]")
 BLOCKED = {"fulltext", "contentpreview", "markdowntext", "vector", "vectors",
            "embedding", "embeddings", "binary", "base64", "password", "secret",
-           "token", "apikey", "authorization", "credentials", "accesstoken"}
+           "token", "apikey", "authorization", "credentials", "accesstoken",
+           "text", "content", "chunks", "textchunks", "ocrtext", "extractedtext", "markdown", "derivedcontent"}
 DATE_PATHS = ("date", "entity_detail.sortDate", "source_payload.date",
               "source_payload.last_discussed_at", "source_payload.date_modified",
               "last_discussed_at", "date_modified")
@@ -274,13 +277,16 @@ class Config:
     max_groups: int = 100000
     max_fields: int = 20000
     max_group_bytes: int = 32 * 1024 * 1024
+    canonical_date_field: str = ""
+    canonical_type_field: str = ""
 
     @classmethod
     def environment(cls):
         defaults = cls()
         strings = {"url": "OBV_QDRANT_URL", "collection": "OBV_STATS_COLLECTION",
                    "run_id": "OBV_STATS_RUN_ID", "source": "OBV_STATS_SOURCE_KEY",
-                   "api_key": "OBV_QDRANT_API_KEY"}
+                   "api_key": "OBV_QDRANT_API_KEY", "canonical_date_field": "OBV_CANONICAL_DATE_FIELD",
+                   "canonical_type_field": "OBV_CANONICAL_TYPE_FIELD"}
         options = {k: os.environ.get(v, getattr(defaults, k)) for k, v in strings.items()}
         for key in ("page_size", "max_page_size", "target_page_bytes", "max_pages", "max_documents", "max_seconds", "http_timeout", "max_groups", "max_fields", "max_group_bytes"):
             options[key] = type(getattr(defaults, key))(os.environ.get("OBV_STATS_" + key.upper(), getattr(defaults, key)))
@@ -292,6 +298,10 @@ class Config:
             raise ValueError("invalid_server_scope")
         if any(getattr(config, k) <= 0 for k in ("page_size", "max_page_size", "target_page_bytes", "max_pages", "max_documents", "max_seconds", "http_timeout", "max_groups", "max_fields", "max_group_bytes")) or not config.page_size <= config.max_page_size <= 1000 or config.target_page_bytes > 8 * 1024 * 1024:
             raise ValueError("invalid_server_budget")
+        if config.canonical_date_field not in ("", "date"):
+            raise ValueError("invalid_optimization_config")
+        if config.canonical_type_field not in ("", "document_type", "classification"):
+            raise ValueError("invalid_canonical_type_field")
         return config
 
 
@@ -309,7 +319,8 @@ class Qdrant:
         headers = {"Content-Type": "application/json"}
         if self.config.api_key:
             headers["api-key"] = self.config.api_key
-        url = self.config.url.rstrip("/") + "/collections/" + self.config.collection + "/points/" + operation
+        route = "/facet" if operation == "facet" else "/points/" + operation
+        url = self.config.url.rstrip("/") + "/collections/" + self.config.collection + route
         request = urllib.request.Request(url, json.dumps(body).encode(), headers, method="POST")
         try:
             with self.opener.open(request, timeout=timeout) as response:
@@ -330,7 +341,8 @@ def payload_exclusions():
     roots = ("", "source_payload.", "source_record.payload.", "entity_detail.", "reference_detail.")
     names = ("full_text", "content_preview", "markdownText", "derived_content.markdownText",
              "vector", "vectors", "embedding", "embeddings", "binary", "base64",
-             "password", "secret", "token", "api_key", "authorization", "credentials")
+             "password", "secret", "token", "api_key", "authorization", "credentials",
+             "text", "content", "chunks", "text_chunks", "ocr_text", "extracted_text", "markdown", "markdown_text", "derived_content")
     return [root + name for root in roots for name in names]
 
 
@@ -351,7 +363,7 @@ def query_payload_selector(operation, needed):
     return {"include": sorted(selected)}
 
 
-def native_filters(filters):
+def native_filters(filters, canonical_date_field="", canonical_type_field=""):
     """Only Qdrant keyword/bool match conditions with equivalent semantics.
 
     Null, exists/missing, aliases, dates and indexed-array paths deliberately use
@@ -360,6 +372,15 @@ def native_filters(filters):
     conditions = []
     for item in filters:
         path = item["field"]
+        if canonical_type_field and path == "document_type" and item["operator"] in ("eq", "in"):
+            vals = [item["value"]] if item["operator"] == "eq" else item["values"]
+            if not all(isinstance(value, str) for value in vals):
+                return None
+            conditions.append({"key": canonical_type_field, "match": {"value": vals[0]} if item["operator"] == "eq" else {"any": vals}})
+            continue
+        if canonical_date_field == "date" and path == "date" and item["operator"] == "range":
+            conditions.append({"key": "date", "range": {key: date_value(value).isoformat() for key, value in item.items() if key in ("gt", "gte", "lt", "lte")}})
+            continue
         if path in ("date", "year", "document_type") or "[" in path:
             return None
         if item["operator"] not in ("eq", "in"):
@@ -377,12 +398,95 @@ def native_filters(filters):
 
 
 class Statistics:
-    def __init__(self, config, client=None, status_reader=None):
+    def __init__(self, config, client=None, status_reader=None, revision_reader=None):
         self.config = config
         self.client = client or Qdrant(config)
         self.status_reader = status_reader
+        self.revision_reader = revision_reader or status_reader
+        self._cache = {}
+        self._cache_lock = threading.Lock()
+        self._precompute_revision = None
+
+    def precompute(self, stop):
+        """Prepare common metadata views once per settled ingest revision."""
+        queries = [{"operation": "group", "field": "date", "interval": "year", "limit": 1000},
+                   {"operation": "group", "field": "date", "interval": "month", "limit": 1000},
+                   {"operation": "group", "field": "document_type", "limit": 1000}]
+        while not stop.is_set():
+            state = self.revision_reader() if self.revision_reader else {}
+            revision = state.get("dataset_revision") if state.get("ingest_in_progress") is False else None
+            if revision and revision != self._precompute_revision:
+                for query in queries:
+                    if stop.is_set():
+                        return
+                    current = self.revision_reader()
+                    if current.get("dataset_revision") != revision or current.get("ingest_in_progress") is not False:
+                        break
+                    try:
+                        self.query(query)
+                    except QueryError:
+                        pass
+                # Do not repeatedly rescan a problematic field for the same
+                # revision. An explicit request can retry it; a new import
+                # schedules a new preparation automatically.
+                self._precompute_revision = revision
+            # Poll only the cheap ingest checkpoint, never the corpus. This is
+            # change detection, not an expiry time for the computed values.
+            stop.wait(15)
 
     def query(self, arguments):
+        query = validate_query(arguments)
+        state = self.revision_reader() if self.revision_reader and query["operation"] != "status" else {}
+        revision = state.get("dataset_revision") if state.get("available") and state.get("ingest_in_progress") is False else None
+        catalog_file = os.environ.get("OBV_STATS_CATALOG_FILE")
+        if catalog_file and query["operation"] != "status" and not query["filters"]:
+            from catalog import prepared_query
+            prepared = prepared_query(catalog_file, self.config, query, revision)
+            if prepared is not None:
+                if query["operation"] == "overview":
+                    prepared["status"] = self.status_reader() if self.status_reader else {"available": False}
+                return prepared
+            if os.environ.get("OBV_STATS_REQUIRE_CATALOG", "false").lower() == "true":
+                raise QueryError("metadata_catalog_not_ready", 409, True)
+        key = (revision, json.dumps({k:v for k,v in query.items() if k not in ("limit", "offset")}, sort_keys=True, separators=(",", ":")))
+        if revision and query["operation"] in ("fields", "group", "overview"):
+            with self._cache_lock:
+                entry = self._cache.get(key)
+            if entry is not None:
+                result = copy.deepcopy(entry)
+                result.update(cached=True, dataset_revision=revision, ingest_in_progress=False)
+                list_key = "groups" if query["operation"] == "group" else "fields"
+                values_ = result.get(list_key, [])
+                offset, limit = query["offset"], query["limit"]
+                result[list_key] = values_[offset:offset + limit]
+                result.update(limit=limit, offset=offset)
+                result[list_key + "_paginated"] = len(values_) > offset + limit or offset > 0
+                result["cached_scanned_documents"] = result.get("scanned_documents", 0)
+                result["scanned_documents"] = 0
+                return result
+        result = self._query(query)
+        result["dataset_revision"] = revision
+        result["ingest_in_progress"] = state.get("ingest_in_progress")
+        if state.get("ingest_in_progress") is True:
+            result.setdefault("coverage", {})["dataset_changing"] = True
+            if result.get("evidence", {}).get("method") != "native_exact_count":
+                result["exact"] = False
+                result["consistency_notice"] = "Import actief: dit overzicht is geen gegarandeerd stabiele datasetversie."
+        if revision and query["operation"] in ("fields", "group", "overview") and result.get("exact") and not result.get("truncated"):
+            after = self.revision_reader()
+            if after.get("dataset_revision") != revision or after.get("ingest_in_progress") is not False:
+                result["exact"] = False
+                result["consistency_notice"] = "Dataset gewijzigd tijdens de berekening; dit resultaat is niet aan een stabiele importversie gekoppeld."
+            complete = query["offset"] == 0 and not result.get("groups_paginated", False) and not result.get("fields_paginated", False)
+            if complete and after.get("dataset_revision") == revision and after.get("ingest_in_progress") is False and len(json.dumps(result)) <= 1024 * 1024:
+                with self._cache_lock:
+                    self._cache = {k: v for k, v in self._cache.items() if k[0] == revision}
+                    if len(self._cache) >= 16:
+                        self._cache.pop(next(iter(self._cache)))
+                    self._cache[key] = copy.deepcopy(result)
+        return result
+
+    def _query(self, arguments):
         query = validate_query(arguments)
         start, as_of = time.monotonic(), clock()
         config = self.config
@@ -412,7 +516,34 @@ class Statistics:
             return value
 
         before = count()
-        compiled = native_filters(query["filters"])
+        compiled = native_filters(query["filters"], config.canonical_date_field, config.canonical_type_field)
+        if query["operation"] == "group" and query["field"] == "document_type" and query["interval"] is None and config.canonical_type_field and compiled is not None:
+            native_scope = {"must": scope["must"] + compiled}
+            matched = request("count", {"filter": native_scope, "exact": True}).get("count")
+            facet = request("facet", {"key": config.canonical_type_field, "filter": native_scope, "limit": 1000, "exact": True})
+            hits = facet.get("hits")
+            if not isinstance(hits, list) or len(hits) >= 1000:
+                raise QueryError("document_type_facet_budget_exceeded", 422, True)
+            if any(not isinstance(hit, dict) or not isinstance(hit.get("value"), str) or type(hit.get("count")) is not int or hit["count"] < 0 for hit in hits):
+                raise QueryError("invalid_document_type_facet", 502)
+            with_value = request("count", {"filter": {**native_scope, "must_not": [{"is_empty": {"key": config.canonical_type_field}}]}, "exact": True}).get("count")
+            if type(matched) is not int or type(with_value) is not int or not 0 <= with_value <= matched <= before or before != count():
+                raise QueryError("scope_changed_during_facet", 409, True)
+            groups = [{"value": hit["value"], "value_type": "string", "count": hit["count"]} for hit in hits]
+            groups.sort(key=lambda item: (-item["count"], item["value"]))
+            memberships = sum(item["count"] for item in groups)
+            base.update(total_documents=before, matched_documents=matched, scanned_documents=0, skipped_documents=0,
+                        field="document_type", source_field=config.canonical_type_field, interval=None,
+                        groups=groups[query["offset"]:query["offset"] + query["limit"]], total_groups=len(groups),
+                        groups_paginated=query["offset"] > 0 or len(groups) > query["offset"] + query["limit"],
+                        limit=query["limit"], offset=query["offset"], missing_documents=matched-with_value,
+                        invalid_documents=0, null_documents=0, documents_with_value=with_value,
+                        overlap_documents=None, group_memberships=memberships,
+                        semantics="Unieke bestaande classificatie/typewaarden; meerdere labels per document kunnen overlappen.",
+                        coverage={"basis": "indexed Qdrant documents in configured scope only", "source_complete": None},
+                        evidence={"method": "native_exact_facet", "native_point_count_before": before, "native_point_count_after": before,
+                                  "consistency": "count-checked facet; same-count concurrent edits cannot be detected"})
+            return base
         if query["operation"] == "count" and compiled is not None:
             matched = before
             if compiled:

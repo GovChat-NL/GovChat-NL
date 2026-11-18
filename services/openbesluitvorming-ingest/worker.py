@@ -21,6 +21,12 @@ import urllib.request
 import uuid
 from pathlib import Path
 
+# Shared metadata materializer in a source checkout; both modules live in /app
+# in the ingest image. The service is not contacted from document workers.
+_metadata_library = Path(__file__).resolve().parent.parent / 'openbesluitvorming-statistics'
+if _metadata_library.is_dir():
+    sys.path.insert(0, str(_metadata_library))
+
 SOURCE = 'provincie_limburg'
 DIMENSIONS = 3072
 API = 'https://openbesluitvorming.nl/api'
@@ -319,6 +325,7 @@ class Worker:
         self.context_dirty = {}
         self.metrics = {}
         self.local = threading.local()
+        self.catalog = None
 
     def timed(self, stage, function, *args, **kwargs):
         start = time.perf_counter()
@@ -367,11 +374,16 @@ class Worker:
         self.http.json(url, 'PUT', {'vectors': {'size': DIMENSIONS, 'distance': 'Cosine', 'on_disk': True},
                                     'hnsw_config': {'on_disk': True}, 'on_disk_payload': True})
         for field, schema in [('source_id', 'keyword'), ('source_key', 'keyword'), ('entity_type', 'keyword'), ('ingest_run_id', 'keyword'),
-                              ('title', 'text'), ('content_preview', 'text'), ('date', 'datetime')]:
+                              ('title', 'text'), ('content_preview', 'text'), ('date', 'datetime'),
+                              ('classification', 'keyword'), ('document_type', 'keyword')]:
             self.http.json(url + '/index?wait=true', 'PUT', {'field_name': field, 'field_schema': schema})
         with self.db:
             self.db.execute('INSERT INTO runs(id,collection,source,created_at,updated_at,model) VALUES(?,?,?,?,?,?)',
                             (run_id, collection, SOURCE, now(), now(), os.getenv('OBV_EMBEDDING_MODEL', 'govchat-embedding')))
+        from catalog import Catalog, scope_key
+        if self.catalog is None:
+            self.catalog = Catalog(self.state / 'metadata-catalog.sqlite')
+        self.catalog.initialize(scope_key(collection, run_id, SOURCE))
         return self.status(run_id)
 
     def validate_collection(self, run):
@@ -744,25 +756,39 @@ class Worker:
                                                                  'vector': vector, 'payload': payload}]})
         if ack.get('status') != 'ok' or ack.get('result', {}).get('status') != 'completed':
             raise IngestError('qdrant_upsert_not_completed', 'qdrant')
+        # Transfer only safe metadata to the coordinator, never extracted text.
+        from catalog import safe_payload
+        self.local.catalog_payload = safe_payload(payload)
         return 'indexed'
 
     def task(self, run, job):
         self.local.timings = {}
+        self.local.catalog_payload = None
         start = time.perf_counter()
         try:
-            return self.process(run, job), None, self.local.timings, time.perf_counter() - start
+            outcome = self.process(run, job)
+            return outcome, None, self.local.timings, time.perf_counter() - start, self.local.catalog_payload
         except Exception as error:
             e = error if isinstance(error, IngestError) else IngestError('unexpected_' + type(error).__name__, 'worker')
             return None, e, self.local.timings, time.perf_counter() - start
         finally:
             del self.local.timings
+            del self.local.catalog_payload
 
     def persist_task(self, run_id, job, future):
-        outcome, error, timings, elapsed = future.result()
+        result = future.result()
+        outcome, error, timings, elapsed = result[:4]
+        payload = result[4] if len(result) > 4 else None
         with self.db:
             if error is None:
                 self.db.execute('UPDATE documents SET status=?,has_vector=?,error=NULL,evidence=NULL,updated_at=? WHERE run_id=? AND entity_id=?',
-                                (outcome, int(outcome == 'indexed'), now(), run_id, job['entity_id']))
+                                 (outcome, int(outcome == 'indexed'), now(), run_id, job['entity_id']))
+                from catalog import Catalog, scope_key
+                if self.catalog is None:
+                    self.catalog = Catalog(self.state / 'metadata-catalog.sqlite')
+                run = self.run_info(run_id)
+                scope = scope_key(run['collection'], run_id, run['source'])
+                self.catalog.update(scope, job['entity_id'], payload if outcome == 'indexed' else None)
             else:
                 attempts = job['attempts'] + 1
                 outcome = 'dead_letter' if attempts >= int(os.getenv('OBV_JOB_MAX_ATTEMPTS', '3')) else 'retry'
@@ -788,6 +814,10 @@ class Worker:
         self.validate_collection(run)
         # Previous process died after claiming work: the kernel lock proves it is
         # no longer running; deterministic Qdrant IDs make replay idempotent.
+        from catalog import Catalog, scope_key
+        if self.catalog is None:
+            self.catalog = Catalog(self.state / 'metadata-catalog.sqlite')
+        self.catalog.invalidate(scope_key(run['collection'], run_id, run['source']))
         with self.db:
             self.db.execute("UPDATE documents SET status='pending' WHERE run_id=? AND status='processing'", (run_id,))
         processed, fetched, submitted, peak = 0, 0, 0, 0
@@ -979,6 +1009,7 @@ def main():
         guard = contextlib.nullcontext() if args.command in ('status', 'failures', 'verify') else lock(Path(args.state_dir))
         with guard:
             w = Worker(args.state_dir)
+            completed = False
             try:
                 if args.command == 'fresh':
                     result = w.fresh(args.run_id, args.collection)
@@ -994,8 +1025,21 @@ def main():
                     result = w.verify(args.run_id, args.sample_size, args.query)
                 else:
                     result = w.status(args.run_id)
+                completed = True
                 print(json.dumps(result, ensure_ascii=False, indent=2))
             finally:
+                if w.catalog is not None:
+                    from catalog import scope_key
+                    # Publish after the coordinator checkpoint transaction.
+                    if completed:
+                        for row in w.db.execute('SELECT * FROM runs'):
+                            run = dict(row)
+                            expected = w.db.execute('SELECT COUNT(*) FROM documents WHERE run_id=? AND has_vector=1', (run['id'],)).fetchone()[0]
+                            uncertain = w.db.execute("SELECT COUNT(*) FROM documents WHERE run_id=? AND has_vector=1 AND status NOT IN ('indexed','deleted') AND (error IS NULL OR COALESCE(json_extract(error,'$.stage'),'worker') IN ('qdrant','upsert','worker','catalog'))", (run['id'],)).fetchone()[0]
+                            revision = hashlib.sha256(json.dumps(run, sort_keys=True).encode()).hexdigest()
+                            if not uncertain:
+                                w.catalog.publish(scope_key(run['collection'], run['id'], run['source']), revision, expected)
+                    w.catalog.close()
                 w.db.close()
     except IngestError as error:
         print(json.dumps({'error': error.code, 'stage': error.stage}), file=sys.stderr)
