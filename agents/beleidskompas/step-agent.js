@@ -53,7 +53,6 @@ function buildUserPrompt({ input, task }) {
   if (input.findings) parts.push(`Bevindingen tot nu toe:\n${input.findings}`);
   if (input.conversation) parts.push(`Laatste beurten van het gesprek:\n${input.conversation}`);
   parts.push(task);
-  parts.push('Beleidsbronnen: geen beschikbaar. Vermeld dit alleen onder "Aannames en ontbrekende informatie".');
 
   return parts.join('\n\n');
 }

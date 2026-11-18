@@ -46,7 +46,7 @@ test('the assignment for a report holds only the asked substep, with its answer 
   assert.equal(
     a.user_prompt,
     'Bevindingen tot nu toe:\n**Stap 1 · 1.1**\n\n### Probleemdefinitie\n**Probleem:** x\n\nLaatste beurten van het gesprek:\nGebruiker: hallo\n\n' +
-      'Opdracht: werk deelstap 1.2 (Overheidsinterventie) uit.\n\nBeleidsbronnen: geen beschikbaar. Vermeld dit alleen onder "Aannames en ontbrekende informatie".',
+      'Opdracht: werk deelstap 1.2 (Overheidsinterventie) uit.',
   );
 });
 
