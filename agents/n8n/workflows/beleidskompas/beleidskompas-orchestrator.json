@@ -162,7 +162,7 @@
       {
         "parameters": {
           "method": "PUT",
-          "url": "={{ String($env.BELEIDSKOMPAS_STORE_URL || '').replace(/\\/$/, '') + '/api/beleidskompas/cases/' + encodeURIComponent($json.case_id) + '/title' }}",
+          "url": "={{ $env.BELEIDSKOMPAS_STORE_URL }}/api/beleidskompas/cases/{{ encodeURIComponent($json.case_id) }}/title",
           "sendHeaders": true,
           "headerParameters": {
             "parameters": [
@@ -172,7 +172,7 @@
               },
               {
                 "name": "Authorization",
-                "value": "={{ 'Bearer ' + String($env.BELEIDSKOMPAS_STORE_TOKEN || '') }}"
+                "value": "=Bearer {{ $env.BELEIDSKOMPAS_STORE_TOKEN }}"
               }
             ]
           },
@@ -181,7 +181,7 @@
           },
           "sendBody": true,
           "specifyBody": "json",
-          "jsonBody": "={{ JSON.stringify({ user_id: $json.user_id, title: $json.answer }) }}"
+          "jsonBody": "={{ JSON.stringify({\n  user_id: $json.user_id,\n  title: $json.answer,\n}) }}"
         },
         "id": "Titelopslaan",
         "name": "Titel opslaan",
@@ -211,13 +211,13 @@
       {
         "parameters": {
           "method": "GET",
-          "url": "={{ String($env.BELEIDSKOMPAS_STORE_URL || '').replace(/\\/$/, '') + '/api/beleidskompas/cases/' + encodeURIComponent($('Verzoek voorbereiden').first().json.case_id) + '' }}",
+          "url": "={{ $env.BELEIDSKOMPAS_STORE_URL }}/api/beleidskompas/cases/{{ encodeURIComponent($('Verzoek voorbereiden').first().json.case_id) }}",
           "sendHeaders": true,
           "headerParameters": {
             "parameters": [
               {
                 "name": "Authorization",
-                "value": "={{ 'Bearer ' + String($env.BELEIDSKOMPAS_STORE_TOKEN || '') }}"
+                "value": "=Bearer {{ $env.BELEIDSKOMPAS_STORE_TOKEN }}"
               }
             ]
           },
@@ -326,7 +326,7 @@
       {
         "parameters": {
           "method": "POST",
-          "url": "={{ String($env.BELEIDSKOMPAS_STORE_URL || '').replace(/\\/$/, '') + '/api/beleidskompas/cases/' + encodeURIComponent($json.case_id) + '/turns' }}",
+          "url": "={{ $env.BELEIDSKOMPAS_STORE_URL }}/api/beleidskompas/cases/{{ encodeURIComponent($json.case_id) }}/turns",
           "sendHeaders": true,
           "headerParameters": {
             "parameters": [
@@ -336,7 +336,7 @@
               },
               {
                 "name": "Authorization",
-                "value": "={{ 'Bearer ' + String($env.BELEIDSKOMPAS_STORE_TOKEN || '') }}"
+                "value": "=Bearer {{ $env.BELEIDSKOMPAS_STORE_TOKEN }}"
               }
             ]
           },
@@ -345,7 +345,7 @@
           },
           "sendBody": true,
           "specifyBody": "json",
-          "jsonBody": "={{ JSON.stringify({ user_id: $json.user_id, role: 'user', asked_from: $json.substep_id || null, text: $json.message }) }}"
+          "jsonBody": "={{ JSON.stringify({\n  user_id: $json.user_id,\n  role: 'user',\n  asked_from: $json.substep_id || null,\n  text: $json.message,\n}) }}"
         },
         "id": "Berichtvandegebruikeropslaan",
         "name": "Bericht van de gebruiker opslaan",
@@ -856,7 +856,7 @@
       {
         "parameters": {
           "method": "POST",
-          "url": "={{ String($env.BELEIDSKOMPAS_STORE_URL || '').replace(/\\/$/, '') + '/api/beleidskompas/cases/' + encodeURIComponent($json.case_id) + '/turns' }}",
+          "url": "={{ $env.BELEIDSKOMPAS_STORE_URL }}/api/beleidskompas/cases/{{ encodeURIComponent($json.case_id) }}/turns",
           "sendHeaders": true,
           "headerParameters": {
             "parameters": [
@@ -866,7 +866,7 @@
               },
               {
                 "name": "Authorization",
-                "value": "={{ 'Bearer ' + String($env.BELEIDSKOMPAS_STORE_TOKEN || '') }}"
+                "value": "=Bearer {{ $env.BELEIDSKOMPAS_STORE_TOKEN }}"
               }
             ]
           },
@@ -875,7 +875,7 @@
           },
           "sendBody": true,
           "specifyBody": "json",
-          "jsonBody": "={{ JSON.stringify({ user_id: $json.user_id, role: 'assistant', step_id: $json.step_id, asked_from: $json.asked_from, text: $json.text }) }}"
+          "jsonBody": "={{ JSON.stringify({\n  user_id: $json.user_id,\n  role: 'assistant',\n  step_id: $json.step_id,\n  asked_from: $json.asked_from,\n  text: $json.text,\n}) }}"
         },
         "id": "Antwoordopslaan",
         "name": "Antwoord opslaan",

@@ -151,24 +151,29 @@ function ifNode(name, position, condition) {
 
 // --- HTTP Request node for the store ---
 
-const STORE_ADDRESS = "String($env.BELEIDSKOMPAS_STORE_URL || '').replace(/\\/$/, '')";
-const STORE_TOKEN_HEADER = { name: 'Authorization', value: expression("'Bearer ' + String($env.BELEIDSKOMPAS_STORE_TOKEN || '')") };
+// In a setting that starts with "=", n8n fills in what is between {{ and }}
+// and leaves the rest as it is. BELEIDSKOMPAS_STORE_URL has no slash at the end.
+const STORE_CASES_ADDRESS = '={{ $env.BELEIDSKOMPAS_STORE_URL }}/api/beleidskompas/cases';
+const STORE_TOKEN_HEADER = { name: 'Authorization', value: '=Bearer {{ $env.BELEIDSKOMPAS_STORE_TOKEN }}' };
 
 /** An HTTP Request node that calls the Beleidskompas store for one case.
  *
  *  - `caseId`: an expression for the id of the case
  *  - `casePath`: what comes after /cases/<case id> in the address, if anything
  *  - `query`: values for the query string, for reading
- *  - `body`: an expression for the JSON to send, for writing
+ *  - `body`: the fields to send, each with an expression for its value,
+ *    for writing
  *
  *  A failed call does not stop the workflow. The node then returns the error
  *  as its output, and the Code node after it decides what to do. */
 function storeNode(name, position, { method, caseId, casePath, query, body }) {
-  const address = `${STORE_ADDRESS} + '/api/beleidskompas/cases/' + encodeURIComponent(${caseId}) + '${casePath || ''}'`;
+  // encodeURIComponent keeps a case id with a "/" or "?" in it from
+  // pointing at another address.
+  const address = `${STORE_CASES_ADDRESS}/{{ encodeURIComponent(${caseId}) }}${casePath || ''}`;
 
   const parameters = {
     method,
-    url: expression(address),
+    url: address,
     sendHeaders: true,
     headerParameters: { parameters: [STORE_TOKEN_HEADER] },
     options: { timeout: 10000 },
@@ -187,7 +192,11 @@ function storeNode(name, position, { method, caseId, casePath, query, body }) {
     parameters.headerParameters.parameters.unshift({ name: 'Content-Type', value: 'application/json' });
     parameters.sendBody = true;
     parameters.specifyBody = 'json';
-    parameters.jsonBody = expression(`JSON.stringify(${body})`);
+    const fields = [];
+    for (const [fieldName, value] of Object.entries(body)) {
+      fields.push(`  ${fieldName}: ${value},`);
+    }
+    parameters.jsonBody = expression(`JSON.stringify({\n${fields.join('\n')}\n})`);
   }
 
   const node = makeNode(name, 'n8n-nodes-base.httpRequest', 4.2, position, parameters);
@@ -398,7 +407,7 @@ function buildStepAgentWorkflow(step) {
       method: 'POST',
       caseId: '$json.case_id',
       casePath: '/reports',
-      body: '{ user_id: $json.user_id, substep_id: $json.substep_id, text: $json.report_text, citations: [] }',
+      body: { user_id: '$json.user_id', substep_id: '$json.substep_id', text: '$json.report_text', citations: '[]' },
     }),
 
     codeNode('Resultaat voor de orchestrator', at(8, 1), {
@@ -546,7 +555,7 @@ function buildOrchestratorWorkflow(steps) {
       method: 'PUT',
       caseId: '$json.case_id',
       casePath: '/title',
-      body: '{ user_id: $json.user_id, title: $json.answer }',
+      body: { user_id: '$json.user_id', title: '$json.answer' },
     }),
   );
 
@@ -577,7 +586,7 @@ function buildOrchestratorWorkflow(steps) {
       method: 'POST',
       caseId: '$json.case_id',
       casePath: '/turns',
-      body: "{ user_id: $json.user_id, role: 'user', asked_from: $json.substep_id || null, text: $json.message }",
+      body: { user_id: '$json.user_id', role: "'user'", asked_from: '$json.substep_id || null', text: '$json.message' },
     }),
   );
 
@@ -644,7 +653,7 @@ function buildOrchestratorWorkflow(steps) {
       method: 'POST',
       caseId: '$json.case_id',
       casePath: '/turns',
-      body: "{ user_id: $json.user_id, role: 'assistant', step_id: $json.step_id, asked_from: $json.asked_from, text: $json.text }",
+      body: { user_id: '$json.user_id', role: "'assistant'", step_id: '$json.step_id', asked_from: '$json.asked_from', text: '$json.text' },
     }),
   );
 

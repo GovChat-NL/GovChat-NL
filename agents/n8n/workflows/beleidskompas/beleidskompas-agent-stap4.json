@@ -185,7 +185,7 @@
       {
         "parameters": {
           "method": "POST",
-          "url": "={{ String($env.BELEIDSKOMPAS_STORE_URL || '').replace(/\\/$/, '') + '/api/beleidskompas/cases/' + encodeURIComponent($json.case_id) + '/reports' }}",
+          "url": "={{ $env.BELEIDSKOMPAS_STORE_URL }}/api/beleidskompas/cases/{{ encodeURIComponent($json.case_id) }}/reports",
           "sendHeaders": true,
           "headerParameters": {
             "parameters": [
@@ -195,7 +195,7 @@
               },
               {
                 "name": "Authorization",
-                "value": "={{ 'Bearer ' + String($env.BELEIDSKOMPAS_STORE_TOKEN || '') }}"
+                "value": "=Bearer {{ $env.BELEIDSKOMPAS_STORE_TOKEN }}"
               }
             ]
           },
@@ -204,7 +204,7 @@
           },
           "sendBody": true,
           "specifyBody": "json",
-          "jsonBody": "={{ JSON.stringify({ user_id: $json.user_id, substep_id: $json.substep_id, text: $json.report_text, citations: [] }) }}"
+          "jsonBody": "={{ JSON.stringify({\n  user_id: $json.user_id,\n  substep_id: $json.substep_id,\n  text: $json.report_text,\n  citations: [],\n}) }}"
         },
         "id": "Rapportopslaan",
         "name": "Rapport opslaan",
