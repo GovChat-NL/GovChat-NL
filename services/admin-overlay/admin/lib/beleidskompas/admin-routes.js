@@ -33,6 +33,14 @@ function mount(app, { requireAuth, getStore, normalizeFlow, defaultFlow, publish
     const live = await store.deployVersion(req.params.templateId, req.params.versionId, publishLive);
     res.json({ ok: true, live });
   });
+  route("delete", "/api/beleidskompas/templates/:templateId/versions/:versionId", async (store, req, res) => {
+    await store.deleteVersion(req.params.templateId, req.params.versionId);
+    res.json({ ok: true, removed: req.params.versionId });
+  });
+  route("delete", "/api/beleidskompas/templates/:templateId", async (store, req, res) => {
+    await store.deleteTemplate(req.params.templateId);
+    res.json({ ok: true, removed: req.params.templateId });
+  });
   route("post", "/api/beleidskompas/settings", async (store, req, res) => {
     const input = req.body || {};
     const settings = {};

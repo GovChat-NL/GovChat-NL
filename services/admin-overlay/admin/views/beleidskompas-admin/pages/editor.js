@@ -88,6 +88,28 @@ export function renderEditor({ store, render, markDirty, selectTemplate, saveAsN
                     },
                     "Herstellen als nieuwe versie",
                   ),
+              v.id !== tpl.live_version_id && tpl.versions.length > 1
+                ? h(
+                    "button",
+                    {
+                      class: "btn btn-small btn-danger",
+                      onClick: async () => {
+                        const label = versionLabel(tpl, v.id);
+                        if (!confirm(`${label} van ${tpl.name} definitief verwijderen? Niet-opgeslagen wijzigingen gaan verloren.`)) return;
+                        try {
+                          await api.deleteVersion(tpl.id, v.id);
+                          await reload();
+                          toast(`${label} verwijderd`, "success");
+                          render();
+                        } catch (err) {
+                          toast(`Verwijderen mislukt: ${err.message}`, "error");
+                        }
+                      },
+                    },
+                    icon("trash", 14),
+                    "Verwijderen",
+                  )
+                : null,
             ),
           ),
         ),
@@ -125,6 +147,36 @@ export function renderEditor({ store, render, markDirty, selectTemplate, saveAsN
     ),
   );
 
+  const isLive = Boolean(tpl.live_version_id);
+  const deleteCard = card(
+    "Template verwijderen",
+    h("p", { class: "muted" }, isLive ? "Dit template staat live. Zet eerst een ander template live via Deploy." : "Verwijdert het template met al zijn versies, voor alle beheerders. Documenten blijven in de bibliotheek."),
+    h(
+      "div",
+      { class: "card-actions" },
+      h(
+        "button",
+        {
+          class: "btn btn-danger",
+          disabled: isLive,
+          onClick: async () => {
+            if (!confirm(`Template “${tpl.name}” met ${tpl.versions.length} versie(s) definitief verwijderen?`)) return;
+            try {
+              await api.deleteTemplate(tpl.id);
+              await reload();
+              toast(`Template “${tpl.name}” verwijderd`, "success");
+              render();
+            } catch (err) {
+              toast(`Verwijderen mislukt: ${err.message}`, "error");
+            }
+          },
+        },
+        icon("trash", 14),
+        "Template verwijderen",
+      ),
+    ),
+  );
+
   versionsCard.id = "versions"; // scrolled into view after a restore
-  return { subtitle: [picker, dirtyFlag()], content: h("div", { class: "stack" }, settingsCard, versionsCard, transferCard) };
+  return { subtitle: [picker, dirtyFlag()], content: h("div", { class: "stack" }, settingsCard, versionsCard, transferCard, deleteCard) };
 }

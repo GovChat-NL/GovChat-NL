@@ -105,6 +105,36 @@ function createTemplateStore(pool, defaultSettings = {}) {
     });
   }
 
+  // The live row references its template and version, so the database refuses to delete those.
+  async function deleting(run) {
+    try {
+      return await transaction(run);
+    } catch (err) {
+      if (err.code === "23503") throw new StoreError(409, "The live version cannot be deleted; deploy another version first");
+      throw err;
+    }
+  }
+
+  async function deleteVersion(templateId, versionId) {
+    return deleting(async (db) => {
+      await requireTemplate(db, templateId, true);
+      const { rows } = await db.query("SELECT id FROM template_versions WHERE template_id = $1", [templateId]);
+      if (!rows.some((v) => String(v.id) === id(versionId))) throw new StoreError(404, "Version not found for this template");
+      if (rows.length === 1) throw new StoreError(409, "The only version of a template cannot be deleted; delete the template instead");
+      await db.query("DELETE FROM version_documents WHERE version_id = $1", [versionId]);
+      await db.query("DELETE FROM template_versions WHERE id = $1", [versionId]);
+    });
+  }
+
+  async function deleteTemplate(templateId) {
+    return deleting(async (db) => {
+      await requireTemplate(db, templateId, true);
+      await db.query("DELETE FROM version_documents WHERE version_id IN (SELECT id FROM template_versions WHERE template_id = $1)", [templateId]);
+      await db.query("DELETE FROM template_versions WHERE template_id = $1", [templateId]);
+      await db.query("DELETE FROM templates WHERE id = $1", [templateId]);
+    });
+  }
+
   async function saveSettings(settings) {
     const { rows } = await pool.query("INSERT INTO settings (data) VALUES ($1::jsonb) ON CONFLICT (key) DO UPDATE SET data = settings.data || EXCLUDED.data RETURNING data", [JSON.stringify(settings)]);
     return { ...defaultSettings, ...rows[0].data };
@@ -176,7 +206,7 @@ function createTemplateStore(pool, defaultSettings = {}) {
     return (await getState()).templates.find((t) => t.id === templateId);
   }
 
-  return { getState, createTemplate, saveVersion, deployVersion, saveSettings, listDocuments,
+  return { getState, createTemplate, saveVersion, deployVersion, deleteVersion, deleteTemplate, saveSettings, listDocuments,
     uploadDocument: (doc) => insertDocument(pool, doc), updateDocument, getDocument, deleteDocument, exportTemplate, importTemplate };
 }
 

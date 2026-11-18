@@ -34,6 +34,10 @@ export const saveVersion = (templateId, flow, note) =>
 export const deployVersion = (tpl, versionId) =>
   request("POST", `${BASE}/templates/${tpl.id}/versions/${versionId}/deploy`);
 
+// The server refuses the live version, a template's only version and the template that is live.
+export const deleteVersion = (templateId, versionId) => request("DELETE", `${BASE}/templates/${templateId}/versions/${versionId}`);
+export const deleteTemplate = (templateId) => request("DELETE", `${BASE}/templates/${templateId}`);
+
 export const exportUrl = (templateId) => `${BASE}/templates/${templateId}/export`;
 export const importState = (json) => request("POST", `${BASE}/import`, json);
 export const listTemplates = (state) => state.templates;

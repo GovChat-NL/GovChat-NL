@@ -125,6 +125,23 @@ test("admin template API persists UI actions in PostgreSQL", { skip: !enabled &&
     assert.equal((await api.getState()).state.templates.find((tpl) => tpl.id === second.id).live_version_id, second.versions[0].id);
   });
 
+  await t.test("delete removes a version or a whole template, but never what is live", async () => {
+    // second v1 is live; first has v1..v4, none live.
+    await assert.rejects(api.deleteVersion(second.id, second.versions[0].id), /only version/);
+    await assert.rejects(api.deleteTemplate(second.id), /live version cannot be deleted/);
+    await assert.rejects(api.deleteVersion(second.id, saved.id), /not found for this template/);
+    await api.deleteVersion(first.id, saved.id);
+    const versions = (await api.getState()).state.templates.find((tpl) => tpl.id === first.id).versions;
+    assert.deepEqual(versions.map((v) => v.version), [4, 3, 1]);
+    const extra = (await api.saveVersion(second.id, defaultFlow(), "Extra")).version;
+    await assert.rejects(api.deleteVersion(second.id, second.versions[0].id), /live version cannot be deleted/);
+    await api.deleteVersion(second.id, extra.id);
+    await api.deleteTemplate(first.id);
+    assert.deepEqual((await api.getState()).state.templates.map((tpl) => tpl.id), [second.id]);
+    assert.equal((await pool.query("SELECT count(*)::int AS n FROM template_versions WHERE template_id = $1", [first.id])).rows[0].n, 0);
+    assert.equal((await api.listDocuments()).length, 1, "documents stay in the library");
+  });
+
   await t.test("export/import creates a persistent copy with documents; settings survive reload", async () => {
     const exported = await (await global.fetch(api.exportUrl(second.id))).json();
     assert.equal(exported.documents.length, 1);
