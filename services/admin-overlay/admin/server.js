@@ -338,8 +338,17 @@ function initDefaults() {
 
   const beleidskompasState = readBeleidskompasState();
   publishBeleidskompasLiveConfig(beleidskompasState.live, beleidskompasState.live_version_id);
-  // Left behind by the removed workflow generator; it held document text.
-  fs.rmSync(path.join(DATA_DIR, "beleidskompas-workflows"), { recursive: true, force: true });
+  // One-time cleanup after the removed workflow generator: it left a folder with
+  // document text, and the webhook token and workflow fields in the state file.
+  const workflowsDir = path.join(DATA_DIR, "beleidskompas-workflows");
+  if (fs.existsSync(workflowsDir)) {
+    fs.rmSync(workflowsDir, { recursive: true, force: true });
+    console.log(`[init] Removed ${workflowsDir}`);
+  }
+  if (fs.readFileSync(beleidskompasStatePath, "utf-8") !== JSON.stringify(beleidskompasState, null, 2)) {
+    writeBeleidskompasState(beleidskompasState);
+    console.log(`[init] Cleaned ${BELEIDSKOMPAS_STATE_FILE}`);
+  }
 }
 
 function readJSON(filename) {
