@@ -522,6 +522,7 @@ function normalizeBeleidskompasFlow(input) {
     };
   });
 
+  const messagesRaw = src.messages && typeof src.messages === "object" ? src.messages : {};
   return {
     title: String(src.title || fallback.title).trim() || fallback.title,
     orchestrator_workflow_id:
@@ -538,6 +539,7 @@ function normalizeBeleidskompasFlow(input) {
     report_prompt: textOrDefault(src.report_prompt, fallback.report_prompt),
     conversation_prompt: textOrDefault(src.conversation_prompt, fallback.conversation_prompt),
     orchestrator_prompt: textOrDefault(src.orchestrator_prompt, fallback.orchestrator_prompt),
+    messages: Object.fromEntries(Object.keys(fallback.messages).map((key) => [key, textOrDefault(messagesRaw[key], fallback.messages[key])])),
     sources: normalizeTags(src.sources || fallback.sources),
     steps,
   };

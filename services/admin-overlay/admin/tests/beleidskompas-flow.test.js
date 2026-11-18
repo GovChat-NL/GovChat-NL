@@ -36,16 +36,18 @@ test("the public config holds only what the Beleidskompas page reads", () => {
 
 test("an empty prompt-like field means the seed text; the four steps are fixed", () => {
   const seed = normalizeBeleidskompasFlow({});
-  assert.ok(seed.rules.includes("\n") && seed.report_prompt.includes("{{substeps}}"));
+  assert.ok(seed.rules.includes("\n") && seed.report_prompt.includes("{{substeps}}") && seed.messages.store_failed);
   assert.ok(seed.steps[0].substeps[0].answer_format.startsWith("###"));
   const flow = normalizeBeleidskompasFlow({
     rules: " ",
+    messages: { store_failed: "Eigen tekst" },
     steps: [
       { id: "stapX", title: "Vreemd" },
       { id: "stap1", prompt: "", substeps: [{ id: "1.1", prompt: "eigen", answer_format: "" }, { id: "1.9", title: "Nieuw" }] },
     ],
   });
   assert.equal(flow.rules, seed.rules);
+  assert.deepEqual(flow.messages, { ...seed.messages, store_failed: "Eigen tekst" });
   assert.deepEqual(flow.steps.map((s) => s.id), ["stap1", "stap2", "stap3", "stap4"]);
   assert.equal(flow.steps[0].prompt, seed.steps[0].prompt);
   assert.equal(flow.steps[0].substeps[0].prompt, "eigen");

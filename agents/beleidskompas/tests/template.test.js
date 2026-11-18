@@ -3,8 +3,9 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
-const { DEFAULT_TEMPLATE, stepFromTemplate } = require('../template');
+const { DEFAULT_TEMPLATE, DEFAULT_MESSAGES, stepFromTemplate } = require('../template');
 const { readSubstepPrompt, COMMON_RULES } = require('../shared');
+const orchestrator = require('../orchestrator');
 const steps = [require('../steps/step1').STEP, require('../steps/step2').STEP, require('../steps/step3').STEP, require('../steps/step4').STEP];
 
 test('DEFAULT_TEMPLATE holds the four steps with the prompt file texts as prompt and answer_format', () => {
@@ -19,4 +20,14 @@ test('DEFAULT_TEMPLATE holds the four steps with the prompt file texts as prompt
 test('stepFromTemplate maps a template step back to the STEP shape', () => {
   for (const step of steps) assert.deepEqual(stepFromTemplate(DEFAULT_TEMPLATE, step.id), step);
   assert.equal(stepFromTemplate(DEFAULT_TEMPLATE, 'stap9'), null);
+});
+
+test('the default messages equal the orchestrator constants', () => {
+  assert.deepEqual(DEFAULT_MESSAGES, {
+    unknown_step: orchestrator.UNKNOWN_STEP_TEXT,
+    store_missing: orchestrator.STORE_MISSING_TEXT,
+    store_failed: orchestrator.STORE_FAILED_TEXT,
+    store_warning: orchestrator.STORE_WARNING_TEXT,
+  });
+  assert.equal(DEFAULT_TEMPLATE.messages, DEFAULT_MESSAGES);
 });
