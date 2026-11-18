@@ -14,12 +14,14 @@ export function setupCases(store) {
 
   /** Puts the reports as the store has them on the screen. Called after every answer, so the cards show what is stored
    *  and not what the page thinks happened. The chat is left alone: it
-   *  already shows the conversation. */
+   *  already shows the conversation. Returns the conversation as the store
+   *  has it, where every answer names the step that gave it. */
   async function refreshState(conversationId) {
-    const { results } = readCaseState(await fetchCaseState(conversationId));
+    const { results, messages } = readCaseState(await fetchCaseState(conversationId));
     // The user may have opened another case while the answer was under way.
-    if (state.conversationId !== conversationId) return;
+    if (state.conversationId !== conversationId) return [];
     store.replaceResults(results);
+    return messages;
   }
 
   /** Opens a case from the store - shared by the "resume on reopen" path

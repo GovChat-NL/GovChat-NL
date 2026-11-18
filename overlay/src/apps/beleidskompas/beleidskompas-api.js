@@ -30,57 +30,6 @@ function extractMessageText(message) {
   return String(message.text || "").trim();
 }
 
-const CITATIONS_META_MARKER = "BELEIDSKOMPAS-META";
-
-const CITATIONS_META_LABEL = "beleidskompas-meta";
-
-/** n8n-openai-bridge only forwards plain text to LibreChat, so the citations
- *  and the retrieval trace travel along as a trailing markdown link
- *  definition (appendCitationsMetaBlock in agents/beleidskompas/shared.js),
- *  which no markdown view shows. This splits it back out; safe to call on
- *  text that never had one. */
-export function parseCitationsMetaBlock(text) {
-  const raw = String(text || "");
-  const empty = { displayText: raw.trim(), citations: [], retrieval_trace: null, agent: null, asked_from: null };
-
-  // `agent` is the id of the step that answered, `asked_from` the substep
-  // the user was in when asking; both are null for older messages.
-  const shape = (parsed, displayText) => ({
-    displayText,
-    citations: Array.isArray(parsed.citations) ? parsed.citations : [],
-    retrieval_trace: parsed.retrieval_trace || null,
-    agent: parsed.agent ? String(parsed.agent) : null,
-    asked_from: parsed.asked_from ? String(parsed.asked_from) : null,
-  });
-
-  const defMarker = `[${CITATIONS_META_LABEL}]: data:application/json;base64,`;
-  const defIdx = raw.lastIndexOf(defMarker);
-  if (defIdx !== -1) {
-    const encoded = raw.slice(defIdx + defMarker.length).split("\n")[0].trim();
-    try {
-      const bytes = Uint8Array.from(atob(encoded), (c) => c.charCodeAt(0));
-      return shape(JSON.parse(new TextDecoder().decode(bytes)), raw.slice(0, defIdx).trim());
-    } catch (_) {
-      return empty;
-    }
-  }
-
-  // Older messages carry the block as an HTML comment instead.
-  const marker = `<!--${CITATIONS_META_MARKER}:`;
-  const startIdx = raw.lastIndexOf(marker);
-  if (startIdx === -1) return empty;
-
-  const endIdx = raw.indexOf("-->", startIdx);
-  if (endIdx === -1) return empty;
-
-  try {
-    const parsed = JSON.parse(raw.slice(startIdx + marker.length, endIdx));
-    return shape(parsed, (raw.slice(0, startIdx) + raw.slice(endIdx + 3)).trim());
-  } catch (_) {
-    return empty;
-  }
-}
-
 /** Sends a rating for an answer to the admin, which stores it anonymously:
  *  no user or conversation id, only the rating, an optional comment, the
  *  step and substep it is about and the template version the page loaded. */
@@ -97,10 +46,8 @@ const REQUEST_META_LABEL = "beleidskompas-request";
 
 /** The only channel to the orchestrator is the chat message, so what the
  *  orchestrator needs to know about a request travels behind the visible
- *  text of the message, in a markdown link definition with base64 JSON
- *  (the way the citations travel behind an answer, see
- *  parseCitationsMetaBlock): the substep and the message the user
- *  typed. A markdown view does not show the definition, and what
+ *  text of the message, in a markdown link definition with base64 JSON:
+ *  the substep and the message the user typed. A markdown view does not show the definition, and what
  *  the user typed sits inside the JSON, so it can never be mistaken for
  *  one of those fields. The visible text is what the chat of LibreChat
  *  shows for this message. The reports and the conversation so
@@ -121,8 +68,7 @@ function base64Utf8(text) {
 }
 
 /** Sends one message to the Beleidskompas custom endpoint and waits for
- *  the full reply via SSE. Returns { conversationId, messageId, text,
- *  citations, retrieval_trace, agent }. */
+ *  the full reply via SSE. Returns { conversationId, messageId, text }. */
 export async function sendBeleidskompasChatMessage({ text, conversationId, parentMessageId }) {
   const messageId = newClientMessageId();
   const startResp = await librechatFetch("/api/agents/chat/" + BELEIDSKOMPAS_ENDPOINT, {
@@ -212,14 +158,10 @@ export async function sendBeleidskompasChatMessage({ text, conversationId, paren
   }
 
   const responseMessage = finalPayload.responseMessage || {};
-  const { displayText, citations, retrieval_trace, agent } = parseCitationsMetaBlock(extractMessageText(responseMessage));
   return {
     conversationId: finalPayload?.conversation?.conversationId || streamId,
     messageId: responseMessage.messageId || null,
-    text: displayText,
-    citations,
-    retrieval_trace,
-    agent,
+    text: extractMessageText(responseMessage),
   };
 }
 

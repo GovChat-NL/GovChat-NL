@@ -8,7 +8,7 @@
 import { escapeHTML } from "../../../shared/html.js";
 import { requireElement } from "../../../shared/dom.js";
 import { composePrompt, sendBeleidskompasChatMessage, sendBeleidskompasFeedback } from "../beleidskompas-api.js";
-import { formatRichText, formatTime, normalizeCitations } from "../format.js";
+import { formatRichText, formatTime } from "../format.js";
 import { citationButtonHTML, openCitationFromClick } from "../popups.js";
 
 /** A rating per answer, sent anonymously (no user or case id) to the
@@ -66,7 +66,8 @@ function messageHTML(m, idx, stepLabel) {
 }
 
 /** `refreshState(conversationId)` (from cases.js) puts the reports as the
- *  store has them on the screen; the chat calls it after every answer.
+ *  store has them on the screen and returns the conversation as the store
+ *  has it; the chat calls it after every answer.
  *  `versionId` is the template version the page runs on; it goes along
  *  with feedback. */
 export function setupChat(store, { refreshState, versionId }) {
@@ -168,24 +169,22 @@ export function setupChat(store, { refreshState, versionId }) {
       // A new conversation id already refreshes the list of cases; for the
       // same id the list is refreshed here, for its new date.
       if (state.conversationId === conversationIdBefore) store.changed("conversation");
-      if (pendingMessage) {
-        store.updateMessage(pendingMessage, {
-          pending: false,
-          text: String(result.text || "").trim(),
-          citations: normalizeCitations(result.citations),
-          retrieval_trace: result.retrieval_trace || null,
-          agent: result.agent || null,
-        });
-      }
+      const answer = String(result.text || "").trim();
+      if (pendingMessage) store.updateMessage(pendingMessage, { pending: false, text: answer });
       // When the store cannot be read, only the cards are behind, so that
       // is a message of its own and not an error in place of the answer.
+      let stored = [];
       try {
-        await refreshState(state.conversationId);
+        stored = await refreshState(state.conversationId);
       } catch (err) {
         store.addMessage("assistant", `Kon de stand van de casus niet ophalen (${String(err?.message || err)}). Open de casus opnieuw om de kaarten bij te werken.`);
       }
-      const answer = String(result.text || "").trim();
-      if (!pendingMessage && stillOpen() && answer) store.addMessage("assistant", answer);
+      // Only text comes back with the answer. Which step gave it, the store
+      // knows.
+      const turn = stored.findLast((m) => m.role === "assistant" && m.text === answer);
+      const agent = turn ? turn.agent : null;
+      if (pendingMessage) store.updateMessage(pendingMessage, { agent });
+      else if (stillOpen() && answer) store.addMessage("assistant", answer, { agent });
     } catch (err) {
       if (!stillOpen()) return;
       const failure = `Beleidskompas niet bereikbaar of fout: ${String(err?.message || err)}. Probeer het opnieuw of open een nieuwe chat.`;
