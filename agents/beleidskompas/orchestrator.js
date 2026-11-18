@@ -33,7 +33,7 @@ const {
   parsePageMessage,
   isTitleRequest,
   buildFallbackTitle,
-  extractConvoCaseText,
+  extractConvoUserText,
   toolCalls,
   nodeError,
 } = require('./shared');
@@ -114,10 +114,10 @@ function prepareRequest({ body, headers, env, substepIds, now }) {
   // in systemPrompt and sometimes in the message itself.
   const text = incomingMessage(b);
   if (isTitleRequest(text) || isTitleRequest(String(b.systemPrompt || ''))) {
-    // The title is made from the case itself, not from the block the page
-    // put behind it.
-    const conversation = extractConvoCaseText(text.replaceAll(TITLE_REQUEST_MARKER, ''));
-    const title_source = parsePageMessage(conversation).caseText || conversation;
+    // The title is made from what the user wrote, not from the block the
+    // page put behind it.
+    const conversation = parsePageMessage(extractConvoUserText(text.replaceAll(TITLE_REQUEST_MARKER, '')));
+    const title_source = conversation.message || conversation.shown;
     return { kind: 'title', ok: true, case_id, user_id, title_source: title_source.slice(0, 2000), started_at };
   }
 
@@ -137,14 +137,12 @@ function prepareRequest({ body, headers, env, substepIds, now }) {
     user_id,
     substep_id,
     message: parts.message,
-    case_text: parts.caseText,
     started_at,
   };
 }
 
 /** What the agents get to read, from the state of the case in the store:
- *  the case text, the reports so far, the last turns of the conversation
- *  and the request.
+ *  the reports so far, the last turns of the conversation and the request.
  *
  *  The orchestrator reads `prompt`, with every report in it. The agent of a
  *  step gets the reports as `findings`. For a typed message that is every
@@ -152,15 +150,13 @@ function prepareRequest({ body, headers, env, substepIds, now }) {
  *  including the substep asked for, because a report builds on what came
  *  before. `substepIds` gives the order of the substeps.
  *
- *  `request` is what prepareRequest returned, `state` what the store
- *  answered, and `caseTextError` the error of writing the case text, if it
- *  was written and failed. Without the store there is no answer: the result
- *  is then `ok: false` with a message for the chat. */
-function buildContext({ request, state, caseTextError, substepIds }) {
+ *  `request` is what prepareRequest returned and `state` what the store
+ *  answered. Without the store there is no answer: the result is then
+ *  `ok: false` with a message for the chat. */
+function buildContext({ request, state, substepIds }) {
   const stateError = nodeError(state) || (state && state.reports !== null && typeof state.reports === 'object' ? null : 'No state in the answer of the store');
-  if (caseTextError || stateError) {
-    const error = [caseTextError && `case_text: ${caseTextError}`, stateError && `state: ${stateError}`].filter(Boolean).join('; ');
-    return { ...request, ok: false, step_id: null, error, text: STORE_FAILED_TEXT, answer: STORE_FAILED_TEXT };
+  if (stateError) {
+    return { ...request, ok: false, step_id: null, error: `state: ${stateError}`, text: STORE_FAILED_TEXT, answer: STORE_FAILED_TEXT };
   }
 
   const reports = state.reports;
@@ -177,14 +173,12 @@ function buildContext({ request, state, caseTextError, substepIds }) {
   const allReports = reportTexts(ids);
   const turns = Array.isArray(state.turns) ? state.turns : [];
   const conversation = turns.map((t) => `${t.role === 'user' ? 'Gebruiker' : 'Beleidskompas'}: ${String(t.text || '').trim()}`).join('\n');
-  const case_text = request.case_text || String((state.case_text && state.case_text.text) || '').trim();
   const asked =
     request.kind === 'message'
       ? `Bericht van de gebruiker (de gebruiker zit in deelstap ${request.substep_id || 'onbekend'}):\n${request.message}`
       : `Verzoek: werk deelstap ${request.substep_id} uit.`;
 
   const prompt = [
-    case_text ? `Casus:\n${case_text}` : 'Casus: (nog geen casus bekend)',
     allReports ? `Bevindingen tot nu toe:\n${allReports}` : 'Bevindingen tot nu toe: (nog geen deelstap uitgewerkt)',
     conversation && `Laatste beurten van het gesprek:\n${conversation}`,
     asked,
@@ -194,7 +188,6 @@ function buildContext({ request, state, caseTextError, substepIds }) {
 
   return {
     ...request,
-    case_text,
     findings,
     conversation,
     prompt,

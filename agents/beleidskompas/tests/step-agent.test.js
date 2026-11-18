@@ -13,7 +13,6 @@ const input = {
   assignment: 'uitwerken',
   case_id: 'c1',
   user_id: 'u1',
-  case_text: 'Een casus.',
   findings: '**Stap 1 · 1.1**\n\n### Probleemdefinitie\n**Probleem:** x',
   conversation: 'Gebruiker: hallo',
 };
@@ -32,7 +31,7 @@ test('the assignment for a report holds only the asked substep, with its answer 
 
   assert.equal(
     a.user_prompt,
-    'Casus:\nEen casus.\n\nBevindingen tot nu toe:\n**Stap 1 · 1.1**\n\n### Probleemdefinitie\n**Probleem:** x\n\nLaatste beurten van het gesprek:\nGebruiker: hallo\n\n' +
+    'Bevindingen tot nu toe:\n**Stap 1 · 1.1**\n\n### Probleemdefinitie\n**Probleem:** x\n\nLaatste beurten van het gesprek:\nGebruiker: hallo\n\n' +
       'Opdracht: werk deelstap 1.2 (Overheidsinterventie) uit.\n\nBeleidsbronnen: geen beschikbaar. Vermeld dit alleen onder "Aannames en ontbrekende informatie".',
   );
 });

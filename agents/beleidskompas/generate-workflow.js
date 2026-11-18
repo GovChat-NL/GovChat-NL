@@ -332,7 +332,7 @@ function makeWorkflow({ id, name, active, nodes, connections }) {
 
 // What the orchestrator passes to the agent of a step. The first two are
 // filled in by the orchestrator's model, the rest by its workflow.
-const STEP_AGENT_INPUTS = ['substep_id', 'assignment', 'case_id', 'user_id', 'case_text', 'findings', 'conversation'];
+const STEP_AGENT_INPUTS = ['substep_id', 'assignment', 'case_id', 'user_id', 'findings', 'conversation'];
 
 function stepAgentWorkflowId(step) {
   return `govchat-beleidskompas-agent-${step.id}`;
@@ -442,7 +442,6 @@ function stepAgentToolNode(step, position) {
     filledByWorkflow: [
       { name: 'case_id', value: `${context}.case_id` },
       { name: 'user_id', value: `${context}.user_id` },
-      { name: 'case_text', value: `${context}.case_text`, optional: true },
       { name: 'findings', value: `${context}.findings`, optional: true },
       { name: 'conversation', value: `${context}.conversation`, optional: true },
     ],
@@ -481,7 +480,7 @@ function buildOrchestratorWorkflow(steps) {
         STORE_MISSING_TEXT: orchestrator.STORE_MISSING_TEXT,
         SUBSTEP_IDS: substepIds,
       },
-      functions: ['extractSuppliedToken', 'parsePageMessage', 'isTitleRequest', 'extractConvoCaseText', 'incomingMessage', 'prepareRequest'],
+      functions: ['extractSuppliedToken', 'parsePageMessage', 'isTitleRequest', 'extractConvoUserText', 'incomingMessage', 'prepareRequest'],
       run: [
         'return [{ json: prepareRequest({',
         '  body: $json.body,',
@@ -505,7 +504,7 @@ function buildOrchestratorWorkflow(steps) {
   connect(connections, 'Webhook Orchestrator', 'Verzoek voorbereiden');
   connect(connections, 'Verzoek voorbereiden', 'Verzoek geldig?');
   connectIf(connections, 'Verzoek geldig?', { whenTrue: 'Titelverzoek?', whenFalse: 'Respond Orchestrator' });
-  connectIf(connections, 'Titelverzoek?', { whenTrue: 'AI Agent Titel', whenFalse: 'Casustekst meegestuurd?' });
+  connectIf(connections, 'Titelverzoek?', { whenTrue: 'AI Agent Titel', whenFalse: 'Stand van de casus ophalen' });
 
   // --- LibreChat asks for a title for the conversation ---
 
@@ -544,42 +543,21 @@ function buildOrchestratorWorkflow(steps) {
 
   // --- Before the orchestrator: read and write the store ---
 
-  nodes.push(ifNode('Casustekst meegestuurd?', at(4, 3), "$json.case_text !== ''"));
+  nodes.push(readStateNode('Stand van de casus ophalen', at(4, 3), request));
 
   nodes.push(
-    storeNode('Casustekst opslaan', at(5, 2), {
-      method: 'PUT',
-      caseId: '$json.case_id',
-      casePath: '/text',
-      body: '{ user_id: $json.user_id, text: $json.case_text }',
-    }),
-  );
-
-  nodes.push(readStateNode('Stand van de casus ophalen', at(6, 3), request));
-
-  nodes.push(
-    codeNode('Context samenstellen', at(7, 3), {
+    codeNode('Context samenstellen', at(5, 3), {
       constants: { STORE_FAILED_TEXT: orchestrator.STORE_FAILED_TEXT, SUBSTEP_IDS: substepIds },
       functions: ['nodeError', 'buildContext'],
-      run: [
-        `const request = ${request};`,
-        '',
-        '// The case text was only written when the request carried one.',
-        'let caseTextError = null;',
-        'if (request.case_text) {',
-        `  caseTextError = nodeError(${outputOf('Casustekst opslaan')});`,
-        '}',
-        '',
-        'return [{ json: buildContext({ request, state: $json, caseTextError, substepIds: SUBSTEP_IDS }) }];',
-      ].join('\n'),
+      run: `return [{ json: buildContext({ request: ${request}, state: $json, substepIds: SUBSTEP_IDS }) }];`,
     }),
   );
 
-  nodes.push(ifNode('Opslag bereikbaar?', at(8, 3), '$json.ok === true'));
-  nodes.push(ifNode('Getypt bericht?', at(9, 3), "$json.kind === 'message'"));
+  nodes.push(ifNode('Opslag bereikbaar?', at(6, 3), '$json.ok === true'));
+  nodes.push(ifNode('Getypt bericht?', at(7, 3), "$json.kind === 'message'"));
 
   nodes.push(
-    storeNode('Bericht van de gebruiker opslaan', at(10, 2), {
+    storeNode('Bericht van de gebruiker opslaan', at(8, 2), {
       method: 'POST',
       caseId: '$json.case_id',
       casePath: '/turns',
@@ -587,10 +565,10 @@ function buildOrchestratorWorkflow(steps) {
     }),
   );
 
-  nodes.push(ifNode('Bericht opgeslagen?', at(11, 2), '!$json.error'));
+  nodes.push(ifNode('Bericht opgeslagen?', at(9, 2), '!$json.error'));
 
   nodes.push(
-    codeNode('Opslagfout melden', at(12, 1), {
+    codeNode('Opslagfout melden', at(10, 1), {
       constants: { STORE_FAILED_TEXT: orchestrator.STORE_FAILED_TEXT },
       functions: ['nodeError'],
       run: [
@@ -605,8 +583,6 @@ function buildOrchestratorWorkflow(steps) {
     }),
   );
 
-  connectIf(connections, 'Casustekst meegestuurd?', { whenTrue: 'Casustekst opslaan', whenFalse: 'Stand van de casus ophalen' });
-  connect(connections, 'Casustekst opslaan', 'Stand van de casus ophalen');
   connect(connections, 'Stand van de casus ophalen', 'Context samenstellen');
   connect(connections, 'Context samenstellen', 'Opslag bereikbaar?');
   connectIf(connections, 'Opslag bereikbaar?', { whenTrue: 'Getypt bericht?', whenFalse: 'Respond Orchestrator' });
@@ -618,16 +594,16 @@ function buildOrchestratorWorkflow(steps) {
   // --- The orchestrator, with one tool per step ---
 
   nodes.push(
-    agentNode(agentName, at(12, 3), {
+    agentNode(agentName, at(10, 3), {
       prompt: expression(`${context}.prompt`),
       systemPrompt: orchestrator.buildOrchestratorPrompt(steps),
       maxIterations: 8,
     }),
   );
-  nodes.push(chatModelNode('OpenAI Chat Model (Orchestrator)', at(12, 4)));
+  nodes.push(chatModelNode('OpenAI Chat Model (Orchestrator)', at(10, 4)));
   attachToAgent(connections, 'ai_languageModel', 'OpenAI Chat Model (Orchestrator)', agentName);
 
-  let toolColumn = 13;
+  let toolColumn = 11;
   for (const step of steps) {
     const tool = stepAgentToolNode(step, at(toolColumn, 4));
     nodes.push(tool);

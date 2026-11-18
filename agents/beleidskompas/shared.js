@@ -77,8 +77,7 @@ function extractSuppliedToken(headers) {
 // know about a request behind the visible text of the message, in a
 // markdown link definition with base64 JSON (composePrompt in
 // overlay/src/apps/beleidskompas/beleidskompas-api.js writes it):
-// the substep, the case as the user described it and the message the user
-// typed just now. A markdown view does not show the definition, and what
+// the substep and the message the user typed just now. A markdown view does not show the definition, and what
 // the user typed sits inside the JSON, so it can never be mistaken for one
 // of those fields. A message that was typed means a conversation turn.
 // Without a message, the request is for the report of the substep.
@@ -86,11 +85,12 @@ const REQUEST_META_LABEL = 'beleidskompas-request';
 
 /** Takes a message apart. `fromPage` says whether the message carries the
  *  block of the page; without it the message was typed in LibreChat's own
- *  chat and all of it is the message. A substep id also names its step:
+ *  chat and all of it is the message. `shown` is the visible text, without
+ *  the block. A substep id also names its step:
  *  1.3 is a substep of stap1. A part that is missing is ''. */
 function parsePageMessage(text) {
   const raw = String(text || '');
-  const parts = { fromPage: false, stepId: '', substepId: '', caseText: '', message: raw.trim() };
+  const parts = { fromPage: false, stepId: '', substepId: '', message: raw.trim(), shown: raw.trim() };
   const marker = `[${REQUEST_META_LABEL}]: data:application/json;base64,`;
   const idx = raw.lastIndexOf(marker);
   if (idx === -1) return parts;
@@ -104,9 +104,9 @@ function parsePageMessage(text) {
   }
   const substepMatch = /^(\d+)\.\d+/.exec(String(request.substep_id || '').trim());
   parts.fromPage = true;
+  parts.shown = raw.slice(0, idx).trim();
   parts.substepId = substepMatch ? substepMatch[0] : '';
   parts.stepId = substepMatch ? `stap${substepMatch[1]}` : '';
-  parts.caseText = String(request.case_text || '').trim();
   parts.message = String(request.message || '').trim();
   return parts;
 }
@@ -144,11 +144,11 @@ function buildFallbackTitle(text) {
 /** librechat.yaml's titlePrompt renders as our instruction followed by the
  *  real conversation via the "User: ...\nAI: ..." transcript format (the
  *  `{convo}` placeholder, filled in by @librechat/agents before this ever
- *  reaches us). Extracting just the user's case text keeps the title (and
+ *  reaches us). Extracting just what the user wrote keeps the title (and
  *  its deterministic fallback) focused on the actual case instead of the
  *  instruction sentence that precedes it. Falls back to the input unchanged
  *  when that format isn't present (e.g. direct webhook/test calls). */
-function extractConvoCaseText(text) {
+function extractConvoUserText(text) {
   const s = String(text || '');
   const userIdx = s.indexOf('User:');
   if (userIdx === -1) return s.trim();
@@ -186,7 +186,7 @@ module.exports = {
   parsePageMessage,
   isTitleRequest,
   buildFallbackTitle,
-  extractConvoCaseText,
+  extractConvoUserText,
   readPrompt,
   readSubstepPrompt,
   REPORT_PROMPT_TEMPLATE,

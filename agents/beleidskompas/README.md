@@ -22,10 +22,10 @@ Pas de workflows niet met de hand aan, ook niet in n8n. Het script overschrijft 
 
 Elk bericht voor Beleidskompas komt binnen bij de orchestrator. Dat geldt voor de Beleidskompas-pagina en voor de gewone chat van LibreChat.
 
-1. De workflow controleert het token en haalt het bericht uit elkaar. De pagina zet achter de zichtbare tekst een onzichtbaar blok met de deelstap, de casus en wat de gebruiker typte. Zonder getypte tekst is het een verzoek om een uitwerking.
-2. De workflow haalt de stand van de casus uit de opslag. De orchestrator krijgt daarvan de casus, de rapporten tot nu toe en de laatste honderd beurten van het gesprek.
+1. De workflow controleert het token en haalt het bericht uit elkaar. De pagina zet achter de zichtbare tekst een onzichtbaar blok met de deelstap en wat de gebruiker typte. Zonder getypte tekst is het een verzoek om een uitwerking.
+2. De workflow haalt de stand van de casus uit de opslag. De orchestrator krijgt daarvan de rapporten tot nu toe en de laatste honderd beurten van het gesprek. Wat de gebruiker over de casus heeft verteld, staat in dat gesprek.
 3. De orchestrator kiest de stap en roept de agent van die stap aan. Gaat een vraag over meer stappen, dan roept hij er meer aan. Zijn instructie staat in `prompts/orchestrator-prompt.md`.
-4. De agent van de stap doet het werk. Hij krijgt de casus, het gesprek en de eerdere rapporten volledig mee. Bij een uitwerking zijn dat de rapporten tot en met de gevraagde deelstap, bij een vraag alle rapporten.
+4. De agent van de stap doet het werk. Hij krijgt het gesprek en de eerdere rapporten volledig mee. Bij een uitwerking zijn dat de rapporten tot en met de gevraagde deelstap, bij een vraag alle rapporten.
 5. Bij een uitwerking slaat de agent van de stap het rapport zelf op. Wat de pagina toont, is dus wat de agent van de stap schreef. De orchestrator krijgt het rapport te lezen.
 6. De orchestrator schrijft het bericht voor de chat. Na een uitwerking zegt hij wat er nog ontbreekt.
 

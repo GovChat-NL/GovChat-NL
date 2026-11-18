@@ -46,7 +46,6 @@ function buildSystemPrompt({ template, step, substeps, rules }) {
 function buildUserPrompt({ input, task }) {
   const parts = [];
 
-  parts.push(input.case_text ? `Casus:\n${input.case_text}` : 'Casus: (nog geen casus bekend)');
   if (input.findings) parts.push(`Bevindingen tot nu toe:\n${input.findings}`);
   if (input.conversation) parts.push(`Laatste beurten van het gesprek:\n${input.conversation}`);
   parts.push(task);
@@ -59,7 +58,7 @@ function buildUserPrompt({ input, task }) {
  *
  *  `input` is what the orchestrator's tool call passed:
  *  - substep_id, assignment: filled in by the orchestrator's model
- *  - case_id, user_id, case_text, findings, conversation: filled in by the
+ *  - case_id, user_id, findings, conversation: filled in by the
  *    orchestrator workflow; `findings` holds the earlier reports in full
  *
  *  `texts` may replace the templates and the rules (reportTemplate,

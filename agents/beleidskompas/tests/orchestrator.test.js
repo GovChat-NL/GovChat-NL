@@ -35,7 +35,6 @@ const report11 = '**Stap 1 · Publiek en provinciaal belang · 1.1 Probleemdefin
 const report12 = '**Stap 1 · Publiek en provinciaal belang · 1.2 Overheidsinterventie**\n\n### Overheidsinterventie\n**Oordeel:** beperkt\n\n---\nDisclaimer';
 const state = {
   id: 'c1',
-  case_text: { version: 1, text: 'Casus uit de opslag.' },
   reports: { '1.1': { version: 2, text: report11 }, '1.2': { version: 1, text: report12 } },
   turns: [
     { role: 'user', text: 'hallo' },
@@ -50,23 +49,23 @@ test('a wrong token is refused without a text, so the caller learns nothing', ()
   assert.deepEqual([refused.kind, refused.ok, refused.text], ['refused', false, '']);
 });
 
-test('a request for a report: the block of the page names the substep and carries the case', () => {
-  const request = prepare({ currentMessage: pageMessage({ substep_id: '3.2', case_text: 'Een casus.', message: '' }) });
-  assert.deepEqual(request, { kind: 'report', ok: true, case_id: 'c1', user_id: 'u1', substep_id: '3.2', message: '', case_text: 'Een casus.', started_at: 1000 });
+test('a request for a report: the block of the page names the substep', () => {
+  const request = prepare({ currentMessage: pageMessage({ substep_id: '3.2', message: '' }) });
+  assert.deepEqual(request, { kind: 'report', ok: true, case_id: 'c1', user_id: 'u1', substep_id: '3.2', message: '', started_at: 1000 });
 });
 
 test('a typed message from the page keeps the substep the user is in', () => {
-  const request = prepare({ chatInput: pageMessage({ substep_id: '1.2', case_text: 'Een casus.', message: 'Waarom beperkt?' }) });
+  const request = prepare({ chatInput: pageMessage({ substep_id: '1.2', message: 'Waarom beperkt?' }) });
   assert.deepEqual([request.kind, request.substep_id, request.message], ['message', '1.2', 'Waarom beperkt?']);
 });
 
-test('a message typed in the chat of LibreChat has no substep and no case text', () => {
+test('a message typed in the chat of LibreChat has no substep', () => {
   const request = prepare({ currentMessage: 'Wat is de rol van de provincie?' });
-  assert.deepEqual([request.kind, request.substep_id, request.case_text, request.message], ['message', '', '', 'Wat is de rol van de provincie?']);
+  assert.deepEqual([request.kind, request.substep_id, request.message], ['message', '', 'Wat is de rol van de provincie?']);
 });
 
 test('a request for a report of a substep that does not exist is refused with a message for the chat', () => {
-  const refused = prepare({ currentMessage: pageMessage({ substep_id: '9.9', case_text: 'Een casus.', message: '' }) });
+  const refused = prepare({ currentMessage: pageMessage({ substep_id: '9.9', message: '' }) });
   assert.deepEqual([refused.kind, refused.text, refused.answer], ['refused', UNKNOWN_STEP_TEXT, UNKNOWN_STEP_TEXT]);
 });
 
@@ -78,7 +77,7 @@ test('without a store, or without the conversation and the user from the bridge,
 });
 
 test('a title request is recognised in the message and in the system prompt, and works without a store', () => {
-  const convo = `${TITLE_REQUEST_MARKER} Geef een titel.\n\nUser: ${pageMessage({ substep_id: '1.1', case_text: 'Een gemeente wil een zwembad subsidiëren.', message: '' })}\nAI: ### Samenvatting casus ...`;
+  const convo = `${TITLE_REQUEST_MARKER} Geef een titel.\n\nUser: ${pageMessage({ substep_id: '1.1', message: 'Een gemeente wil een zwembad subsidiëren.' })}\nAI: Dat hangt af van ...`;
   const inMessage = prepare({ currentMessage: convo });
   assert.deepEqual([inMessage.kind, inMessage.title_source, inMessage.case_id], ['title', 'Een gemeente wil een zwembad subsidiëren.', 'c1']);
 
@@ -88,17 +87,16 @@ test('a title request is recognised in the message and in the system prompt, and
 
 // --- buildContext ---
 
-test('the context holds the case, every report in full, the conversation and the request', () => {
-  const request = prepare({ currentMessage: pageMessage({ substep_id: '1.3', case_text: 'Een casus.', message: '' }) });
-  const context = buildContext({ request, state, caseTextError: null, substepIds });
+test('the context holds every report in full, the conversation and the request', () => {
+  const request = prepare({ currentMessage: pageMessage({ substep_id: '1.3', message: '' }) });
+  const context = buildContext({ request, state, substepIds });
 
   assert.equal(context.ok, true);
-  assert.equal(context.case_text, 'Een casus.');
   assert.equal(context.conversation, 'Gebruiker: hallo\nBeleidskompas: dag');
   assert.equal(context.findings, `${report11}\n\n${report12}`);
   assert.equal(
     context.prompt,
-    `Casus:\nEen casus.\n\nBevindingen tot nu toe:\n${report11}\n\n${report12}\n\nLaatste beurten van het gesprek:\nGebruiker: hallo\nBeleidskompas: dag\n\nVerzoek: werk deelstap 1.3 uit.`,
+    `Bevindingen tot nu toe:\n${report11}\n\n${report12}\n\nLaatste beurten van het gesprek:\nGebruiker: hallo\nBeleidskompas: dag\n\nVerzoek: werk deelstap 1.3 uit.`,
   );
   assert.deepEqual(context.versions_before, { '1.1': 2, '1.2': 1 });
 });
@@ -106,34 +104,31 @@ test('the context holds the case, every report in full, the conversation and the
 test('the agent of a step gets the reports up to and including the substep of a report, and all of them for a question', () => {
   const later = { ...state, reports: { '2.1': { version: 1, text: 'Rapport 2.1' }, ...state.reports } };
 
-  const report = buildContext({ request: prepare({ currentMessage: pageMessage({ substep_id: '1.2', case_text: 'Een casus.', message: '' }) }), state: later, caseTextError: null, substepIds });
+  const report = buildContext({ request: prepare({ currentMessage: pageMessage({ substep_id: '1.2', message: '' }) }), state: later, substepIds });
   assert.equal(report.findings, `${report11}\n\n${report12}`);
   assert.ok(report.prompt.includes('Rapport 2.1'), 'the orchestrator reads every report');
 
-  const question = buildContext({ request: prepare({ currentMessage: pageMessage({ substep_id: '1.2', case_text: 'Een casus.', message: 'Waarom?' }) }), state: later, caseTextError: null, substepIds });
+  const question = buildContext({ request: prepare({ currentMessage: pageMessage({ substep_id: '1.2', message: 'Waarom?' }) }), state: later, substepIds });
   assert.equal(question.findings, `${report11}\n\n${report12}\n\nRapport 2.1`);
 });
 
-test('a typed message says where the user is, and the case comes from the store when the request has none', () => {
+test('a typed message says where the user is', () => {
   const request = prepare({ currentMessage: 'Waarom beperkt?' });
-  const context = buildContext({ request, state, caseTextError: null, substepIds });
-  assert.equal(context.case_text, 'Casus uit de opslag.');
+  const context = buildContext({ request, state, substepIds });
   assert.ok(context.prompt.endsWith('Bericht van de gebruiker (de gebruiker zit in deelstap onbekend):\nWaarom beperkt?'));
 });
 
 test('a new case has no reports and no conversation yet', () => {
-  const request = prepare({ currentMessage: pageMessage({ substep_id: '1.1', case_text: 'Nieuw.', message: '' }) });
-  const context = buildContext({ request, state: { id: 'c1', case_text: null, reports: {}, turns: [] }, caseTextError: null, substepIds });
-  assert.equal(context.prompt, 'Casus:\nNieuw.\n\nBevindingen tot nu toe: (nog geen deelstap uitgewerkt)\n\nVerzoek: werk deelstap 1.1 uit.');
+  const request = prepare({ currentMessage: pageMessage({ substep_id: '1.1', message: '' }) });
+  const context = buildContext({ request, state: { id: 'c1', reports: {}, turns: [] }, substepIds });
+  assert.equal(context.prompt, 'Bevindingen tot nu toe: (nog geen deelstap uitgewerkt)\n\nVerzoek: werk deelstap 1.1 uit.');
   assert.equal(context.findings, '');
 });
 
 test('when the store fails, there is no answer but a message for the chat', () => {
   const request = prepare({ currentMessage: 'Vraag' });
-  const unreadable = buildContext({ request, state: { error: { message: 'ECONNREFUSED' } }, caseTextError: null, substepIds });
+  const unreadable = buildContext({ request, state: { error: { message: 'ECONNREFUSED' } }, substepIds });
   assert.deepEqual([unreadable.ok, unreadable.text, unreadable.error], [false, STORE_FAILED_TEXT, 'state: ECONNREFUSED']);
-  const unwritable = buildContext({ request, state, caseTextError: 'HTTP 500' });
-  assert.deepEqual([unwritable.ok, unwritable.error], [false, 'case_text: HTTP 500']);
 });
 
 // --- The orchestrator's prompt ---
@@ -161,7 +156,7 @@ test('without a usable reply the title is made from the first words of the case'
 
 // --- buildAnswer ---
 
-const context = buildContext({ request: prepare({ currentMessage: pageMessage({ substep_id: '1.2', case_text: 'Een casus.', message: '' }) }), state, caseTextError: null, substepIds });
+const context = buildContext({ request: prepare({ currentMessage: pageMessage({ substep_id: '1.2', message: '' }) }), state, substepIds });
 
 test('the answer after a report: the message of the orchestrator, the step it called and the new report', () => {
   const agent = { output: ' Deelstap 1.2 is uitgewerkt. Het budget ontbreekt nog. ', intermediateSteps: [{ action: { tool: 'stap1_agent', toolInput: { substep_id: '1.2', assignment: 'uitwerken' } } }] };
@@ -184,7 +179,7 @@ test('the answer after a report: the message of the orchestrator, the step it ca
 });
 
 test('the answer to a question that involved two steps names the first one', () => {
-  const messageContext = buildContext({ request: prepare({ currentMessage: 'Past de rol bij het probleem?' }), state, caseTextError: null, substepIds });
+  const messageContext = buildContext({ request: prepare({ currentMessage: 'Past de rol bij het probleem?' }), state, substepIds });
   const agent = { output: 'Ja.', intermediateSteps: [{ action: { tool: 'stap2_agent', toolInput: {} } }, { action: { tool: 'stap1_agent', toolInput: {} } }] };
   const answer = buildAnswer({ context: messageContext, agent, state, now: 2000 });
   assert.deepEqual([answer.mode, answer.step_id, answer.asked_from, answer.reports.length, answer.tools.length], ['conversation', 'stap2', null, 0, 2]);

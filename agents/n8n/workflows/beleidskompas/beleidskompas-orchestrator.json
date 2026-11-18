@@ -24,7 +24,7 @@
       },
       {
         "parameters": {
-          "jsCode": "const REQUEST_META_LABEL = \"beleidskompas-request\";\nconst TITLE_REQUEST_MARKER = \"__BELEIDSKOMPAS_TITLE_REQUEST__\";\nconst UNKNOWN_STEP_TEXT = \"Beleidskompas kon niet bepalen voor welke stap dit bericht is en heeft het daarom niet beantwoord. Stel je vraag opnieuw vanaf de Beleidskompas-pagina, met een stap gekozen.\";\nconst STORE_MISSING_TEXT = \"Beleidskompas kan zijn opslag niet gebruiken en heeft dit bericht daarom niet beantwoord. Meld dit bij de beheerder.\";\nconst SUBSTEP_IDS = [\"1.1\",\"1.2\",\"1.3\",\"1.4\",\"1.5\",\"2.1\",\"3.1\",\"3.2\",\"3.3\",\"3.4\",\"4.1\",\"4.2\",\"4.3\"];\n\nfunction extractSuppliedToken(headers) {\n  const h = headers && typeof headers === 'object' ? headers : {};\n  const direct = String(h['x-govchat-token'] || h['X-Govchat-Token'] || '').trim();\n  if (direct) return direct;\n  // The n8n-openai-bridge (LibreChat's real custom-endpoint pipeline) sends the\n  // shared webhook secret as a standard Authorization bearer token instead of\n  // the x-govchat-token header used by direct/manual webhook calls.\n  const authHeader = String(h['authorization'] || h['Authorization'] || '').trim();\n  if (/^Bearer\\s/i.test(authHeader)) {\n    return authHeader.slice(authHeader.indexOf(' ') + 1).trim();\n  }\n  return '';\n}\n\nfunction parsePageMessage(text) {\n  const raw = String(text || '');\n  const parts = { fromPage: false, stepId: '', substepId: '', caseText: '', message: raw.trim() };\n  const marker = `[${REQUEST_META_LABEL}]: data:application/json;base64,`;\n  const idx = raw.lastIndexOf(marker);\n  if (idx === -1) return parts;\n\n  let request;\n  try {\n    const encoded = raw.slice(idx + marker.length).split('\\n')[0].trim();\n    request = JSON.parse(Buffer.from(encoded, 'base64').toString('utf8'));\n  } catch (_) {\n    return parts;\n  }\n  const substepMatch = /^(\\d+)\\.\\d+/.exec(String(request.substep_id || '').trim());\n  parts.fromPage = true;\n  parts.substepId = substepMatch ? substepMatch[0] : '';\n  parts.stepId = substepMatch ? `stap${substepMatch[1]}` : '';\n  parts.caseText = String(request.case_text || '').trim();\n  parts.message = String(request.message || '').trim();\n  return parts;\n}\n\nfunction isTitleRequest(text) {\n  return String(text || '').includes(TITLE_REQUEST_MARKER);\n}\n\nfunction extractConvoCaseText(text) {\n  const s = String(text || '');\n  const userIdx = s.indexOf('User:');\n  if (userIdx === -1) return s.trim();\n  const afterUser = s.slice(userIdx + 'User:'.length);\n  const aiIdx = afterUser.indexOf('\\nAI:');\n  return (aiIdx === -1 ? afterUser : afterUser.slice(0, aiIdx)).trim();\n}\n\nfunction incomingMessage(body) {\n  const b = body && typeof body === 'object' ? body : {};\n  return String(b.currentMessage || b.chatInput || b.question || '');\n}\n\nfunction prepareRequest({ body, headers, env, substepIds, now }) {\n  const b = body && typeof body === 'object' ? body : {};\n  const started_at = now;\n  const refuse = (error, text) => ({ kind: 'refused', ok: false, step_id: null, error, text, answer: text, started_at });\n\n  // A wrong token gives a normal answer with ok: false, not a thrown error:\n  // n8n can turn a thrown error into an empty response, and then the caller\n  // sees nothing at all.\n  const expectedToken = String((env && (env.BELEIDSKOMPAS_N8N_WEBHOOK_TOKEN || env.N8N_WEBHOOK_TOKEN)) || '').trim();\n  if (expectedToken && extractSuppliedToken(headers) !== expectedToken) return refuse('Unauthorized webhook token', '');\n\n  const case_id = String(b.sessionId || '').trim();\n  const user_id = String(b.userId || '').trim();\n\n  // LibreChat asks for a conversation title through this same endpoint. That\n  // request carries TITLE_REQUEST_MARKER (set in librechat.yaml), sometimes\n  // in systemPrompt and sometimes in the message itself.\n  const text = incomingMessage(b);\n  if (isTitleRequest(text) || isTitleRequest(String(b.systemPrompt || ''))) {\n    // The title is made from the case itself, not from the block the page\n    // put behind it.\n    const conversation = extractConvoCaseText(text.replaceAll(TITLE_REQUEST_MARKER, ''));\n    const title_source = parsePageMessage(conversation).caseText || conversation;\n    return { kind: 'title', ok: true, case_id, user_id, title_source: title_source.slice(0, 2000), started_at };\n  }\n\n  const storeConfigured = Boolean(String((env && env.BELEIDSKOMPAS_STORE_URL) || '').trim() && String((env && env.BELEIDSKOMPAS_STORE_TOKEN) || '').trim());\n  if (!storeConfigured) return refuse('Store not configured', STORE_MISSING_TEXT);\n  if (!case_id || !user_id) return refuse('No conversation or user from the bridge', STORE_MISSING_TEXT);\n\n  const parts = parsePageMessage(text);\n  const known = Array.isArray(substepIds) ? substepIds : [];\n  const substep_id = known.includes(parts.substepId) ? parts.substepId : '';\n  if (!parts.message && !substep_id) return refuse('No substep recognised in the request', UNKNOWN_STEP_TEXT);\n\n  return {\n    kind: parts.message ? 'message' : 'report',\n    ok: true,\n    case_id,\n    user_id,\n    substep_id,\n    message: parts.message,\n    case_text: parts.caseText,\n    started_at,\n  };\n}\n\nreturn [{ json: prepareRequest({\n  body: $json.body,\n  headers: $json.headers,\n  env: {\n    N8N_WEBHOOK_TOKEN: $env.N8N_WEBHOOK_TOKEN,\n    BELEIDSKOMPAS_N8N_WEBHOOK_TOKEN: $env.BELEIDSKOMPAS_N8N_WEBHOOK_TOKEN,\n    BELEIDSKOMPAS_STORE_URL: $env.BELEIDSKOMPAS_STORE_URL,\n    BELEIDSKOMPAS_STORE_TOKEN: $env.BELEIDSKOMPAS_STORE_TOKEN,\n  },\n  substepIds: SUBSTEP_IDS,\n  now: Date.now(),\n}) }];"
+          "jsCode": "const REQUEST_META_LABEL = \"beleidskompas-request\";\nconst TITLE_REQUEST_MARKER = \"__BELEIDSKOMPAS_TITLE_REQUEST__\";\nconst UNKNOWN_STEP_TEXT = \"Beleidskompas kon niet bepalen voor welke stap dit bericht is en heeft het daarom niet beantwoord. Stel je vraag opnieuw vanaf de Beleidskompas-pagina, met een stap gekozen.\";\nconst STORE_MISSING_TEXT = \"Beleidskompas kan zijn opslag niet gebruiken en heeft dit bericht daarom niet beantwoord. Meld dit bij de beheerder.\";\nconst SUBSTEP_IDS = [\"1.1\",\"1.2\",\"1.3\",\"1.4\",\"1.5\",\"2.1\",\"3.1\",\"3.2\",\"3.3\",\"3.4\",\"4.1\",\"4.2\",\"4.3\"];\n\nfunction extractSuppliedToken(headers) {\n  const h = headers && typeof headers === 'object' ? headers : {};\n  const direct = String(h['x-govchat-token'] || h['X-Govchat-Token'] || '').trim();\n  if (direct) return direct;\n  // The n8n-openai-bridge (LibreChat's real custom-endpoint pipeline) sends the\n  // shared webhook secret as a standard Authorization bearer token instead of\n  // the x-govchat-token header used by direct/manual webhook calls.\n  const authHeader = String(h['authorization'] || h['Authorization'] || '').trim();\n  if (/^Bearer\\s/i.test(authHeader)) {\n    return authHeader.slice(authHeader.indexOf(' ') + 1).trim();\n  }\n  return '';\n}\n\nfunction parsePageMessage(text) {\n  const raw = String(text || '');\n  const parts = { fromPage: false, stepId: '', substepId: '', message: raw.trim(), shown: raw.trim() };\n  const marker = `[${REQUEST_META_LABEL}]: data:application/json;base64,`;\n  const idx = raw.lastIndexOf(marker);\n  if (idx === -1) return parts;\n\n  let request;\n  try {\n    const encoded = raw.slice(idx + marker.length).split('\\n')[0].trim();\n    request = JSON.parse(Buffer.from(encoded, 'base64').toString('utf8'));\n  } catch (_) {\n    return parts;\n  }\n  const substepMatch = /^(\\d+)\\.\\d+/.exec(String(request.substep_id || '').trim());\n  parts.fromPage = true;\n  parts.shown = raw.slice(0, idx).trim();\n  parts.substepId = substepMatch ? substepMatch[0] : '';\n  parts.stepId = substepMatch ? `stap${substepMatch[1]}` : '';\n  parts.message = String(request.message || '').trim();\n  return parts;\n}\n\nfunction isTitleRequest(text) {\n  return String(text || '').includes(TITLE_REQUEST_MARKER);\n}\n\nfunction extractConvoUserText(text) {\n  const s = String(text || '');\n  const userIdx = s.indexOf('User:');\n  if (userIdx === -1) return s.trim();\n  const afterUser = s.slice(userIdx + 'User:'.length);\n  const aiIdx = afterUser.indexOf('\\nAI:');\n  return (aiIdx === -1 ? afterUser : afterUser.slice(0, aiIdx)).trim();\n}\n\nfunction incomingMessage(body) {\n  const b = body && typeof body === 'object' ? body : {};\n  return String(b.currentMessage || b.chatInput || b.question || '');\n}\n\nfunction prepareRequest({ body, headers, env, substepIds, now }) {\n  const b = body && typeof body === 'object' ? body : {};\n  const started_at = now;\n  const refuse = (error, text) => ({ kind: 'refused', ok: false, step_id: null, error, text, answer: text, started_at });\n\n  // A wrong token gives a normal answer with ok: false, not a thrown error:\n  // n8n can turn a thrown error into an empty response, and then the caller\n  // sees nothing at all.\n  const expectedToken = String((env && (env.BELEIDSKOMPAS_N8N_WEBHOOK_TOKEN || env.N8N_WEBHOOK_TOKEN)) || '').trim();\n  if (expectedToken && extractSuppliedToken(headers) !== expectedToken) return refuse('Unauthorized webhook token', '');\n\n  const case_id = String(b.sessionId || '').trim();\n  const user_id = String(b.userId || '').trim();\n\n  // LibreChat asks for a conversation title through this same endpoint. That\n  // request carries TITLE_REQUEST_MARKER (set in librechat.yaml), sometimes\n  // in systemPrompt and sometimes in the message itself.\n  const text = incomingMessage(b);\n  if (isTitleRequest(text) || isTitleRequest(String(b.systemPrompt || ''))) {\n    // The title is made from what the user wrote, not from the block the\n    // page put behind it.\n    const conversation = parsePageMessage(extractConvoUserText(text.replaceAll(TITLE_REQUEST_MARKER, '')));\n    const title_source = conversation.message || conversation.shown;\n    return { kind: 'title', ok: true, case_id, user_id, title_source: title_source.slice(0, 2000), started_at };\n  }\n\n  const storeConfigured = Boolean(String((env && env.BELEIDSKOMPAS_STORE_URL) || '').trim() && String((env && env.BELEIDSKOMPAS_STORE_TOKEN) || '').trim());\n  if (!storeConfigured) return refuse('Store not configured', STORE_MISSING_TEXT);\n  if (!case_id || !user_id) return refuse('No conversation or user from the bridge', STORE_MISSING_TEXT);\n\n  const parts = parsePageMessage(text);\n  const known = Array.isArray(substepIds) ? substepIds : [];\n  const substep_id = known.includes(parts.substepId) ? parts.substepId : '';\n  if (!parts.message && !substep_id) return refuse('No substep recognised in the request', UNKNOWN_STEP_TEXT);\n\n  return {\n    kind: parts.message ? 'message' : 'report',\n    ok: true,\n    case_id,\n    user_id,\n    substep_id,\n    message: parts.message,\n    started_at,\n  };\n}\n\nreturn [{ json: prepareRequest({\n  body: $json.body,\n  headers: $json.headers,\n  env: {\n    N8N_WEBHOOK_TOKEN: $env.N8N_WEBHOOK_TOKEN,\n    BELEIDSKOMPAS_N8N_WEBHOOK_TOKEN: $env.BELEIDSKOMPAS_N8N_WEBHOOK_TOKEN,\n    BELEIDSKOMPAS_STORE_URL: $env.BELEIDSKOMPAS_STORE_URL,\n    BELEIDSKOMPAS_STORE_TOKEN: $env.BELEIDSKOMPAS_STORE_TOKEN,\n  },\n  substepIds: SUBSTEP_IDS,\n  now: Date.now(),\n}) }];"
         },
         "id": "Verzoekvoorbereiden",
         "name": "Verzoek voorbereiden",
@@ -209,71 +209,6 @@
       },
       {
         "parameters": {
-          "conditions": {
-            "options": {
-              "caseSensitive": true,
-              "leftValue": "",
-              "typeValidation": "strict",
-              "version": 2
-            },
-            "conditions": [
-              {
-                "leftValue": "={{ $json.case_text !== '' }}",
-                "rightValue": true,
-                "operator": {
-                  "type": "boolean",
-                  "operation": "equals"
-                }
-              }
-            ],
-            "combinator": "and"
-          }
-        },
-        "id": "Casustekstmeegestuurd",
-        "name": "Casustekst meegestuurd?",
-        "type": "n8n-nodes-base.if",
-        "typeVersion": 2.2,
-        "position": [
-          880,
-          540
-        ]
-      },
-      {
-        "parameters": {
-          "method": "PUT",
-          "url": "={{ String($env.BELEIDSKOMPAS_STORE_URL || '').replace(/\\/$/, '') + '/api/beleidskompas/cases/' + encodeURIComponent($json.case_id) + '/text' }}",
-          "sendHeaders": true,
-          "headerParameters": {
-            "parameters": [
-              {
-                "name": "Content-Type",
-                "value": "application/json"
-              },
-              {
-                "name": "Authorization",
-                "value": "={{ 'Bearer ' + String($env.BELEIDSKOMPAS_STORE_TOKEN || '') }}"
-              }
-            ]
-          },
-          "options": {
-            "timeout": 10000
-          },
-          "sendBody": true,
-          "specifyBody": "json",
-          "jsonBody": "={{ JSON.stringify({ user_id: $json.user_id, text: $json.case_text }) }}"
-        },
-        "id": "Casustekstopslaan",
-        "name": "Casustekst opslaan",
-        "type": "n8n-nodes-base.httpRequest",
-        "typeVersion": 4.2,
-        "position": [
-          1100,
-          360
-        ],
-        "onError": "continueRegularOutput"
-      },
-      {
-        "parameters": {
           "method": "GET",
           "url": "={{ String($env.BELEIDSKOMPAS_STORE_URL || '').replace(/\\/$/, '') + '/api/beleidskompas/cases/' + encodeURIComponent($('Verzoek voorbereiden').first().json.case_id) + '' }}",
           "sendHeaders": true,
@@ -307,21 +242,21 @@
         "type": "n8n-nodes-base.httpRequest",
         "typeVersion": 4.2,
         "position": [
-          1320,
+          880,
           540
         ],
         "onError": "continueRegularOutput"
       },
       {
         "parameters": {
-          "jsCode": "const STORE_FAILED_TEXT = \"De opslag van Beleidskompas gaf een fout. Dit bericht is daarom niet beantwoord; probeer het later opnieuw.\";\nconst SUBSTEP_IDS = [\"1.1\",\"1.2\",\"1.3\",\"1.4\",\"1.5\",\"2.1\",\"3.1\",\"3.2\",\"3.3\",\"3.4\",\"4.1\",\"4.2\",\"4.3\"];\n\nfunction nodeError(output) {\n  const error = output && output.error;\n  if (!error) return null;\n  return String((typeof error === 'object' && error.message) || error);\n}\n\nfunction buildContext({ request, state, caseTextError, substepIds }) {\n  const stateError = nodeError(state) || (state && state.reports !== null && typeof state.reports === 'object' ? null : 'No state in the answer of the store');\n  if (caseTextError || stateError) {\n    const error = [caseTextError && `case_text: ${caseTextError}`, stateError && `state: ${stateError}`].filter(Boolean).join('; ');\n    return { ...request, ok: false, step_id: null, error, text: STORE_FAILED_TEXT, answer: STORE_FAILED_TEXT };\n  }\n\n  const reports = state.reports;\n  const order = Array.isArray(substepIds) ? substepIds : [];\n  const ids = Object.keys(reports).sort((a, b) => order.indexOf(a) - order.indexOf(b));\n  const reportTexts = (reportIds) =>\n    reportIds\n      .map((id) => String(reports[id].text || '').trim())\n      .filter(Boolean)\n      .join('\\n\\n');\n\n  const upTo = request.kind === 'report' ? order.indexOf(request.substep_id) : -1;\n  const findings = reportTexts(ids.filter((id) => upTo === -1 || order.indexOf(id) <= upTo));\n  const allReports = reportTexts(ids);\n  const turns = Array.isArray(state.turns) ? state.turns : [];\n  const conversation = turns.map((t) => `${t.role === 'user' ? 'Gebruiker' : 'Beleidskompas'}: ${String(t.text || '').trim()}`).join('\\n');\n  const case_text = request.case_text || String((state.case_text && state.case_text.text) || '').trim();\n  const asked =\n    request.kind === 'message'\n      ? `Bericht van de gebruiker (de gebruiker zit in deelstap ${request.substep_id || 'onbekend'}):\\n${request.message}`\n      : `Verzoek: werk deelstap ${request.substep_id} uit.`;\n\n  const prompt = [\n    case_text ? `Casus:\\n${case_text}` : 'Casus: (nog geen casus bekend)',\n    allReports ? `Bevindingen tot nu toe:\\n${allReports}` : 'Bevindingen tot nu toe: (nog geen deelstap uitgewerkt)',\n    conversation && `Laatste beurten van het gesprek:\\n${conversation}`,\n    asked,\n  ]\n    .filter(Boolean)\n    .join('\\n\\n');\n\n  return {\n    ...request,\n    case_text,\n    findings,\n    conversation,\n    prompt,\n    versions_before: Object.fromEntries(ids.map((id) => [id, reports[id].version])),\n  };\n}\n\nconst request = $('Verzoek voorbereiden').first().json;\n\n// The case text was only written when the request carried one.\nlet caseTextError = null;\nif (request.case_text) {\n  caseTextError = nodeError($('Casustekst opslaan').first().json);\n}\n\nreturn [{ json: buildContext({ request, state: $json, caseTextError, substepIds: SUBSTEP_IDS }) }];"
+          "jsCode": "const STORE_FAILED_TEXT = \"De opslag van Beleidskompas gaf een fout. Dit bericht is daarom niet beantwoord; probeer het later opnieuw.\";\nconst SUBSTEP_IDS = [\"1.1\",\"1.2\",\"1.3\",\"1.4\",\"1.5\",\"2.1\",\"3.1\",\"3.2\",\"3.3\",\"3.4\",\"4.1\",\"4.2\",\"4.3\"];\n\nfunction nodeError(output) {\n  const error = output && output.error;\n  if (!error) return null;\n  return String((typeof error === 'object' && error.message) || error);\n}\n\nfunction buildContext({ request, state, substepIds }) {\n  const stateError = nodeError(state) || (state && state.reports !== null && typeof state.reports === 'object' ? null : 'No state in the answer of the store');\n  if (stateError) {\n    return { ...request, ok: false, step_id: null, error: `state: ${stateError}`, text: STORE_FAILED_TEXT, answer: STORE_FAILED_TEXT };\n  }\n\n  const reports = state.reports;\n  const order = Array.isArray(substepIds) ? substepIds : [];\n  const ids = Object.keys(reports).sort((a, b) => order.indexOf(a) - order.indexOf(b));\n  const reportTexts = (reportIds) =>\n    reportIds\n      .map((id) => String(reports[id].text || '').trim())\n      .filter(Boolean)\n      .join('\\n\\n');\n\n  const upTo = request.kind === 'report' ? order.indexOf(request.substep_id) : -1;\n  const findings = reportTexts(ids.filter((id) => upTo === -1 || order.indexOf(id) <= upTo));\n  const allReports = reportTexts(ids);\n  const turns = Array.isArray(state.turns) ? state.turns : [];\n  const conversation = turns.map((t) => `${t.role === 'user' ? 'Gebruiker' : 'Beleidskompas'}: ${String(t.text || '').trim()}`).join('\\n');\n  const asked =\n    request.kind === 'message'\n      ? `Bericht van de gebruiker (de gebruiker zit in deelstap ${request.substep_id || 'onbekend'}):\\n${request.message}`\n      : `Verzoek: werk deelstap ${request.substep_id} uit.`;\n\n  const prompt = [\n    allReports ? `Bevindingen tot nu toe:\\n${allReports}` : 'Bevindingen tot nu toe: (nog geen deelstap uitgewerkt)',\n    conversation && `Laatste beurten van het gesprek:\\n${conversation}`,\n    asked,\n  ]\n    .filter(Boolean)\n    .join('\\n\\n');\n\n  return {\n    ...request,\n    findings,\n    conversation,\n    prompt,\n    versions_before: Object.fromEntries(ids.map((id) => [id, reports[id].version])),\n  };\n}\n\nreturn [{ json: buildContext({ request: $('Verzoek voorbereiden').first().json, state: $json, substepIds: SUBSTEP_IDS }) }];"
         },
         "id": "Contextsamenstellen",
         "name": "Context samenstellen",
         "type": "n8n-nodes-base.code",
         "typeVersion": 2,
         "position": [
-          1540,
+          1100,
           540
         ]
       },
@@ -352,7 +287,7 @@
         "type": "n8n-nodes-base.if",
         "typeVersion": 2.2,
         "position": [
-          1760,
+          1320,
           540
         ]
       },
@@ -383,7 +318,7 @@
         "type": "n8n-nodes-base.if",
         "typeVersion": 2.2,
         "position": [
-          1980,
+          1540,
           540
         ]
       },
@@ -416,7 +351,7 @@
         "type": "n8n-nodes-base.httpRequest",
         "typeVersion": 4.2,
         "position": [
-          2200,
+          1760,
           360
         ],
         "onError": "continueRegularOutput"
@@ -448,7 +383,7 @@
         "type": "n8n-nodes-base.if",
         "typeVersion": 2.2,
         "position": [
-          2420,
+          1980,
           360
         ]
       },
@@ -461,7 +396,7 @@
         "type": "n8n-nodes-base.code",
         "typeVersion": 2,
         "position": [
-          2640,
+          2200,
           180
         ]
       },
@@ -471,7 +406,7 @@
           "text": "={{ $('Context samenstellen').first().json.prompt }}",
           "hasOutputParser": false,
           "options": {
-            "systemMessage": "Je bent de orchestrator van Beleidskompas, een hulpmiddel waarmee beleidsmedewerkers van de provincie een casus in stappen doordenken. Je werkt een stap nooit zelf uit: daarvoor roep je met een tool de agent van die stap aan. Er is per stap een agent:\n- stap1_agent: stap 1, Publiek en provinciaal belang (1.1 Probleemdefinitie, 1.2 Overheidsinterventie, 1.3 Stakeholderanalyse, 1.4 Provinciaal doel, 1.5 Integrale afweging)\n- stap2_agent: stap 2, Rolbepaling provincie (2.1 Rolbepaling)\n- stap3_agent: stap 3, Instrumentkeuze (3.1 Sturingsbepaling, 3.2 Instrumentarium, 3.3 Afwegingskader, 3.4 Gevolgenanalyse)\n- stap4_agent: stap 4, Governance-inrichting (4.1 Good governance-principes, 4.2 Organisatorische governance, 4.3 Governance-richtlijnen)\n\nRegels:\n- Staat er \"Verzoek: werk deelstap X uit\", roep dan altijd de agent aan van de stap waar X bij hoort (deelstap 3.2 hoort bij stap 3), met substep_id X en als opdracht het woord \"uitwerken\". Sla dit alleen over als er geen casus bekend is; zeg dan wat je nodig hebt.\n- Stelt de gebruiker een vraag, roep dan de agent aan van de stap waar de vraag over gaat, met de vraag letterlijk als opdracht en als substep_id de deelstap waar de vraag over gaat (leeg als de vraag over de hele stap gaat). Is niet duidelijk over welke stap de vraag gaat, neem dan de stap waarin de gebruiker zit.\n- Gaat een vraag over meer dan één stap, roep dan de agent van elke betrokken stap aan en leg zelf kort het verband tussen hun antwoorden.\n- Na een uitwerking krijg je het rapport van de stap-agent terug. Het is dan al opgeslagen en wordt los van jou getoond. Herhaal het rapport niet. Lees het, en schrijf een kort bericht van hooguit vijf zinnen: dat de deelstap is uitgewerkt, en wat er nog ontbreekt of welke vragen de gebruiker kan beantwoorden om het rapport te verbeteren.\n- Na een vraag aan één stap geef je het antwoord van de stap-agent ongewijzigd door.\n- Verzin zelf niets over de inhoud van de casus.",
+            "systemMessage": "Je bent de orchestrator van Beleidskompas, een hulpmiddel waarmee beleidsmedewerkers van de provincie een casus in stappen doordenken. Je werkt een stap nooit zelf uit: daarvoor roep je met een tool de agent van die stap aan. Er is per stap een agent:\n- stap1_agent: stap 1, Publiek en provinciaal belang (1.1 Probleemdefinitie, 1.2 Overheidsinterventie, 1.3 Stakeholderanalyse, 1.4 Provinciaal doel, 1.5 Integrale afweging)\n- stap2_agent: stap 2, Rolbepaling provincie (2.1 Rolbepaling)\n- stap3_agent: stap 3, Instrumentkeuze (3.1 Sturingsbepaling, 3.2 Instrumentarium, 3.3 Afwegingskader, 3.4 Gevolgenanalyse)\n- stap4_agent: stap 4, Governance-inrichting (4.1 Good governance-principes, 4.2 Organisatorische governance, 4.3 Governance-richtlijnen)\n\nRegels:\n- Staat er \"Verzoek: werk deelstap X uit\", roep dan altijd de agent aan van de stap waar X bij hoort (deelstap 3.2 hoort bij stap 3), met substep_id X en als opdracht het woord \"uitwerken\". Sla dit alleen over als de gebruiker nog niets over de casus heeft verteld. Zeg dan wat je nodig hebt.\n- Stelt de gebruiker een vraag, roep dan de agent aan van de stap waar de vraag over gaat, met de vraag letterlijk als opdracht en als substep_id de deelstap waar de vraag over gaat (leeg als de vraag over de hele stap gaat). Is niet duidelijk over welke stap de vraag gaat, neem dan de stap waarin de gebruiker zit.\n- Gaat een vraag over meer dan één stap, roep dan de agent van elke betrokken stap aan en leg zelf kort het verband tussen hun antwoorden.\n- Na een uitwerking krijg je het rapport van de stap-agent terug. Het is dan al opgeslagen en wordt los van jou getoond. Herhaal het rapport niet. Lees het, en schrijf een kort bericht van hooguit vijf zinnen: dat de deelstap is uitgewerkt, en wat er nog ontbreekt of welke vragen de gebruiker kan beantwoorden om het rapport te verbeteren.\n- Na een vraag aan één stap geef je het antwoord van de stap-agent ongewijzigd door.\n- Verzin zelf niets over de inhoud van de casus.",
             "enableStreaming": false,
             "maxIterations": 8,
             "returnIntermediateSteps": true
@@ -482,7 +417,7 @@
         "type": "@n8n/n8n-nodes-langchain.agent",
         "typeVersion": 3.1,
         "position": [
-          2640,
+          2200,
           540
         ],
         "onError": "continueRegularOutput"
@@ -503,7 +438,7 @@
         "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
         "typeVersion": 1.3,
         "position": [
-          2640,
+          2200,
           720
         ],
         "credentials": {
@@ -530,7 +465,6 @@
               "assignment": "={{ $fromAI('assignment', 'Het woord uitwerken, of de vraag van de gebruiker, letterlijk.', 'string') }}",
               "case_id": "={{ $('Context samenstellen').first().json.case_id }}",
               "user_id": "={{ $('Context samenstellen').first().json.user_id }}",
-              "case_text": "={{ $('Context samenstellen').first().json.case_text }}",
               "findings": "={{ $('Context samenstellen').first().json.findings }}",
               "conversation": "={{ $('Context samenstellen').first().json.conversation }}"
             },
@@ -567,15 +501,6 @@
                 "id": "user_id",
                 "displayName": "user_id",
                 "required": true,
-                "defaultMatch": false,
-                "display": true,
-                "canBeUsedToMatch": true,
-                "type": "string"
-              },
-              {
-                "id": "case_text",
-                "displayName": "case_text",
-                "required": false,
                 "defaultMatch": false,
                 "display": true,
                 "canBeUsedToMatch": true,
@@ -609,7 +534,7 @@
         "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
         "typeVersion": 2.2,
         "position": [
-          2860,
+          2420,
           720
         ]
       },
@@ -630,7 +555,6 @@
               "assignment": "={{ $fromAI('assignment', 'Het woord uitwerken, of de vraag van de gebruiker, letterlijk.', 'string') }}",
               "case_id": "={{ $('Context samenstellen').first().json.case_id }}",
               "user_id": "={{ $('Context samenstellen').first().json.user_id }}",
-              "case_text": "={{ $('Context samenstellen').first().json.case_text }}",
               "findings": "={{ $('Context samenstellen').first().json.findings }}",
               "conversation": "={{ $('Context samenstellen').first().json.conversation }}"
             },
@@ -667,15 +591,6 @@
                 "id": "user_id",
                 "displayName": "user_id",
                 "required": true,
-                "defaultMatch": false,
-                "display": true,
-                "canBeUsedToMatch": true,
-                "type": "string"
-              },
-              {
-                "id": "case_text",
-                "displayName": "case_text",
-                "required": false,
                 "defaultMatch": false,
                 "display": true,
                 "canBeUsedToMatch": true,
@@ -709,7 +624,7 @@
         "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
         "typeVersion": 2.2,
         "position": [
-          3080,
+          2640,
           720
         ]
       },
@@ -730,7 +645,6 @@
               "assignment": "={{ $fromAI('assignment', 'Het woord uitwerken, of de vraag van de gebruiker, letterlijk.', 'string') }}",
               "case_id": "={{ $('Context samenstellen').first().json.case_id }}",
               "user_id": "={{ $('Context samenstellen').first().json.user_id }}",
-              "case_text": "={{ $('Context samenstellen').first().json.case_text }}",
               "findings": "={{ $('Context samenstellen').first().json.findings }}",
               "conversation": "={{ $('Context samenstellen').first().json.conversation }}"
             },
@@ -767,15 +681,6 @@
                 "id": "user_id",
                 "displayName": "user_id",
                 "required": true,
-                "defaultMatch": false,
-                "display": true,
-                "canBeUsedToMatch": true,
-                "type": "string"
-              },
-              {
-                "id": "case_text",
-                "displayName": "case_text",
-                "required": false,
                 "defaultMatch": false,
                 "display": true,
                 "canBeUsedToMatch": true,
@@ -809,7 +714,7 @@
         "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
         "typeVersion": 2.2,
         "position": [
-          3300,
+          2860,
           720
         ]
       },
@@ -830,7 +735,6 @@
               "assignment": "={{ $fromAI('assignment', 'Het woord uitwerken, of de vraag van de gebruiker, letterlijk.', 'string') }}",
               "case_id": "={{ $('Context samenstellen').first().json.case_id }}",
               "user_id": "={{ $('Context samenstellen').first().json.user_id }}",
-              "case_text": "={{ $('Context samenstellen').first().json.case_text }}",
               "findings": "={{ $('Context samenstellen').first().json.findings }}",
               "conversation": "={{ $('Context samenstellen').first().json.conversation }}"
             },
@@ -873,15 +777,6 @@
                 "type": "string"
               },
               {
-                "id": "case_text",
-                "displayName": "case_text",
-                "required": false,
-                "defaultMatch": false,
-                "display": true,
-                "canBeUsedToMatch": true,
-                "type": "string"
-              },
-              {
                 "id": "findings",
                 "displayName": "findings",
                 "required": false,
@@ -909,7 +804,7 @@
         "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
         "typeVersion": 2.2,
         "position": [
-          3520,
+          3080,
           720
         ]
       },
@@ -948,7 +843,7 @@
         "type": "n8n-nodes-base.httpRequest",
         "typeVersion": 4.2,
         "position": [
-          3740,
+          3300,
           540
         ],
         "onError": "continueRegularOutput"
@@ -962,7 +857,7 @@
         "type": "n8n-nodes-base.code",
         "typeVersion": 2,
         "position": [
-          3960,
+          3520,
           540
         ]
       },
@@ -993,7 +888,7 @@
         "type": "n8n-nodes-base.if",
         "typeVersion": 2.2,
         "position": [
-          4180,
+          3740,
           540
         ]
       },
@@ -1026,7 +921,7 @@
         "type": "n8n-nodes-base.httpRequest",
         "typeVersion": 4.2,
         "position": [
-          4400,
+          3960,
           360
         ],
         "onError": "continueRegularOutput"
@@ -1040,7 +935,7 @@
         "type": "n8n-nodes-base.code",
         "typeVersion": 2,
         "position": [
-          4620,
+          4180,
           360
         ]
       },
@@ -1055,7 +950,7 @@
         "type": "n8n-nodes-base.respondToWebhook",
         "typeVersion": 1,
         "position": [
-          4840,
+          4400,
           540
         ]
       }
@@ -1112,7 +1007,7 @@
           ],
           [
             {
-              "node": "Casustekst meegestuurd?",
+              "node": "Stand van de casus ophalen",
               "type": "main",
               "index": 0
             }
@@ -1157,35 +1052,6 @@
           [
             {
               "node": "Respond titel",
-              "type": "main",
-              "index": 0
-            }
-          ]
-        ]
-      },
-      "Casustekst meegestuurd?": {
-        "main": [
-          [
-            {
-              "node": "Casustekst opslaan",
-              "type": "main",
-              "index": 0
-            }
-          ],
-          [
-            {
-              "node": "Stand van de casus ophalen",
-              "type": "main",
-              "index": 0
-            }
-          ]
-        ]
-      },
-      "Casustekst opslaan": {
-        "main": [
-          [
-            {
-              "node": "Stand van de casus ophalen",
               "type": "main",
               "index": 0
             }

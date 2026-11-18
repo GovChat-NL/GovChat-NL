@@ -94,19 +94,19 @@ test('every agent has a model, and a failing agent or store call does not stop i
 const env = { N8N_WEBHOOK_TOKEN: 'geheim', BELEIDSKOMPAS_STORE_URL: 'http://store', BELEIDSKOMPAS_STORE_TOKEN: 'store-token' };
 const pageMessage = (request) => `Zichtbaar\n\n[${REQUEST_META_LABEL}]: data:application/json;base64,${Buffer.from(JSON.stringify(request), 'utf8').toString('base64')}`;
 const webhook = (body) => ({ headers: { authorization: 'Bearer geheim' }, body: { sessionId: 'c1', userId: 'u1', ...body } });
-const state = { id: 'c1', case_text: { text: 'Een casus.' }, reports: { '1.1': { version: 1, text: '### Probleemdefinitie\n**Probleem:** x\n\n---\nDisclaimer' } }, turns: [] };
+const state = { id: 'c1', reports: { '1.1': { version: 1, text: '### Probleemdefinitie\n**Probleem:** x\n\n---\nDisclaimer' } }, turns: [] };
 
 test('a request for a report passes through the Code nodes of the orchestrator and a step agent', () => {
-  const request = runCode(orchestrator, 'Verzoek voorbereiden', webhook({ currentMessage: pageMessage({ substep_id: '2.1', case_text: 'Een casus.', message: '' }) }), {}, env);
+  const request = runCode(orchestrator, 'Verzoek voorbereiden', webhook({ currentMessage: pageMessage({ substep_id: '2.1', message: '' }) }), {}, env);
   assert.deepEqual([request.kind, request.substep_id], ['report', '2.1']);
 
-  const context = runCode(orchestrator, 'Context samenstellen', state, { 'Verzoek voorbereiden': request, 'Casustekst opslaan': { version: 1, unchanged: true } });
+  const context = runCode(orchestrator, 'Context samenstellen', state, { 'Verzoek voorbereiden': request });
   assert.equal(context.ok, true);
   assert.ok(context.prompt.endsWith('Verzoek: werk deelstap 2.1 uit.'));
   assert.equal(context.findings, state.reports['1.1'].text);
 
   // What the orchestrator's tool call hands the agent of step 2.
-  const toolInput = { substep_id: '2.1', assignment: 'uitwerken', case_id: context.case_id, user_id: context.user_id, case_text: context.case_text, findings: context.findings, conversation: context.conversation };
+  const toolInput = { substep_id: '2.1', assignment: 'uitwerken', case_id: context.case_id, user_id: context.user_id, findings: context.findings, conversation: context.conversation };
   const assignment = runCode(agents[1], 'Opdracht opbouwen', toolInput);
   assert.deepEqual([assignment.mode, assignment.step_id], ['report', 'stap2']);
   assert.ok(assignment.user_prompt.includes(`Bevindingen tot nu toe:\n${state.reports['1.1'].text}`));
@@ -127,15 +127,9 @@ test('a request for a report passes through the Code nodes of the orchestrator a
 });
 
 test('an invalid assignment skips the agent and still gives the orchestrator a result', () => {
-  const assignment = runCode(agents[0], 'Opdracht opbouwen', { substep_id: '3.1', assignment: 'uitwerken', case_id: 'c1', user_id: 'u1', case_text: '', findings: '', conversation: '' });
+  const assignment = runCode(agents[0], 'Opdracht opbouwen', { substep_id: '3.1', assignment: 'uitwerken', case_id: 'c1', user_id: 'u1', findings: '', conversation: '' });
   assert.equal(assignment.valid, false);
   assert.equal(runCode(agents[0], 'Resultaat voor de orchestrator', assignment, { 'Opdracht opbouwen': assignment }).kind, 'error');
-});
-
-test('a message without a case text does not read the node that stores the case text', () => {
-  const request = runCode(orchestrator, 'Verzoek voorbereiden', webhook({ currentMessage: 'Wat is de rol van de provincie?' }), {}, env);
-  const context = runCode(orchestrator, 'Context samenstellen', state, { 'Verzoek voorbereiden': request });
-  assert.deepEqual([context.ok, context.kind, context.case_text], [true, 'message', 'Een casus.']);
 });
 
 test('a title request, and the message when the turn of the user cannot be stored', () => {
