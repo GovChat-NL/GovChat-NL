@@ -116,6 +116,13 @@ export const downloadUrl = (id) => `${BASE}/documents/${encodeURIComponent(id)}/
 // MOCK #2: the assistant does not read document_ids yet.
 export const stepDocumentIds = (step) => new Set(step.document_ids || []);
 
+// The id of a new substep: one past the highest number in the step. Counting the
+// substeps would repeat an id after a delete.
+export function nextSubstepId(stepNr, substeps) {
+  const highest = Math.max(0, ...(substeps || []).map((s) => Number(String(s.id).split(".")[1]) || 0));
+  return `${stepNr}.${highest + 1}`;
+}
+
 // ── Feedback ───────────────────────────────────────────────────────
 
 // WIRED: GET /api/beleidskompas-feedback → anonymous items { id, rating, comment, step_id, substep_id, version_id, created_at }.

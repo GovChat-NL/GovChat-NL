@@ -139,10 +139,8 @@ function stepEditor(step, { store, markDirty, render }) {
       {
         class: "btn btn-small btn-secondary",
         onClick: () => {
-          const idx = store.flow.steps.indexOf(step) + 1;
-          // One past the highest number: counting would repeat an id after a delete.
-          const next = Math.max(0, ...(step.substeps || []).map((s) => Number(String(s.id).split(".")[1]) || 0)) + 1;
-          step.substeps = [...(step.substeps || []), { id: `${idx}.${next}`, title: "", prompt: "", answer_format: "" }];
+          const id = api.nextSubstepId(store.flow.steps.indexOf(step) + 1, step.substeps);
+          step.substeps = [...(step.substeps || []), { id, title: "", prompt: "", answer_format: "" }];
           markDirty();
           render();
           const row = document.querySelector(".flow-step.is-open .substep:last-of-type");
