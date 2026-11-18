@@ -5,11 +5,7 @@ const assert = require('node:assert/strict');
 
 const { REQUEST_META_LABEL, TITLE_REQUEST_MARKER } = require('../shared');
 const {
-  UNKNOWN_STEP_TEXT,
-  STORE_MISSING_TEXT,
-  STORE_FAILED_TEXT,
-  STORE_WARNING_TEXT,
-  NO_ANSWER_TEXT,
+  MESSAGES,
   buildOrchestratorPrompt,
   prepareRequest,
   buildContext,
@@ -69,9 +65,9 @@ test('a message typed in the chat of LibreChat has no substep', () => {
 
 test('without a store, or without the conversation and the user from the bridge, the request is refused', () => {
   const noStore = prepare({ currentMessage: 'Vraag' }, { env: { N8N_WEBHOOK_TOKEN: 'geheim' } });
-  assert.deepEqual([noStore.kind, noStore.text], ['refused', STORE_MISSING_TEXT]);
+  assert.deepEqual([noStore.kind, noStore.text], ['refused', MESSAGES.store_missing]);
   const noUser = prepareRequest({ body: { sessionId: 'c1', currentMessage: 'Vraag' }, headers, env, now: 1 });
-  assert.deepEqual([noUser.kind, noUser.text], ['refused', STORE_MISSING_TEXT]);
+  assert.deepEqual([noUser.kind, noUser.text], ['refused', MESSAGES.store_missing]);
 });
 
 test('a title request is recognised in the message and in the system prompt, and works without a store', () => {
@@ -125,15 +121,15 @@ test('a new case has no reports and no conversation yet', () => {
 test('when the store or the template cannot be read, there is no answer but a message for the chat', () => {
   const request = prepare({ currentMessage: 'Vraag' });
   const unreadable = buildContext({ request, state: { error: { message: 'ECONNREFUSED' } }, live, stepIds });
-  assert.deepEqual([unreadable.ok, unreadable.text, unreadable.error], [false, STORE_FAILED_TEXT, 'state: ECONNREFUSED']);
+  assert.deepEqual([unreadable.ok, unreadable.text, unreadable.error], [false, MESSAGES.store_failed, 'state: ECONNREFUSED']);
   const noTemplate = buildContext({ request, state, live: { error: { message: 'HTTP 503' } }, stepIds });
-  assert.deepEqual([noTemplate.ok, noTemplate.text, noTemplate.error], [false, STORE_FAILED_TEXT, 'template: HTTP 503']);
+  assert.deepEqual([noTemplate.ok, noTemplate.text, noTemplate.error], [false, MESSAGES.store_failed, 'template: HTTP 503']);
 });
 
 test('a request for a report of a substep that does not exist is refused with a message for the chat', () => {
   const request = prepare({ currentMessage: pageMessage({ substep_id: '9.9', message: '' }) });
   const refused = buildContext({ request, state, live, stepIds });
-  assert.deepEqual([refused.ok, refused.text, refused.answer], [false, UNKNOWN_STEP_TEXT, UNKNOWN_STEP_TEXT]);
+  assert.deepEqual([refused.ok, refused.text, refused.answer], [false, MESSAGES.unknown_step, MESSAGES.unknown_step]);
 });
 
 test('the context holds what the agents need from the template', () => {
@@ -203,14 +199,14 @@ test('the answer to a question that involved two steps names the first one', () 
 
 test('a failing or silent orchestrator gives a message for the chat, not an empty answer', () => {
   const failed = buildAnswer({ context, agent: { error: { message: 'LiteLLM 500' } }, now: 2000 });
-  assert.deepEqual([failed.ok, failed.text, failed.answer, failed.error], [false, NO_ANSWER_TEXT, NO_ANSWER_TEXT, 'LiteLLM 500']);
+  assert.deepEqual([failed.ok, failed.text, failed.answer, failed.error], [false, MESSAGES.no_answer, MESSAGES.no_answer, 'LiteLLM 500']);
   const silent = buildAnswer({ context, agent: { output: '  ' }, now: 2000 });
-  assert.deepEqual([silent.ok, silent.text], [false, NO_ANSWER_TEXT]);
+  assert.deepEqual([silent.ok, silent.text], [false, MESSAGES.no_answer]);
 });
 
 test('when storing the turn of the orchestrator failed, the answer goes back with a warning in front', () => {
   const answer = { ok: true, text: 'Antwoord.', answer: 'Antwoord.' };
   assert.equal(finishAnswer({ answer, saveError: null }), answer);
   const warned = finishAnswer({ answer, saveError: 'HTTP 500' });
-  assert.deepEqual([warned.ok, warned.text, warned.answer, warned.store_error], [true, `${STORE_WARNING_TEXT}\n\nAntwoord.`, `${STORE_WARNING_TEXT}\n\nAntwoord.`, 'assistant_turn: HTTP 500']);
+  assert.deepEqual([warned.ok, warned.text, warned.answer, warned.store_error], [true, `${MESSAGES.store_warning}\n\nAntwoord.`, `${MESSAGES.store_warning}\n\nAntwoord.`, 'assistant_turn: HTTP 500']);
 });

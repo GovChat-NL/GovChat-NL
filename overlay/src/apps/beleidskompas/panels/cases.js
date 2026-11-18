@@ -35,7 +35,7 @@ export function setupCases(store) {
     store.leaveCase();
     store.setConversationId(conversationId);
     store.setLastMessageId(lastMessageId);
-    store.replaceMessages([{ role: "assistant", text: "Casus geopend. Stel een vraag of werk een deelstap uit." }, ...messages]);
+    store.replaceMessages([{ role: "assistant", text: "Casus geopend. Stel een vraag of werk een deelstap uit.", notice: true }, ...messages]);
     if (lastReportSubstepId) store.setActiveSubstep(store.substeps.findIndex((s) => s.id === lastReportSubstepId));
     store.replaceResults(results);
   }

@@ -38,24 +38,35 @@ const {
 } = require('./shared');
 const { stepFromTemplate } = require('./template');
 
-// Shown in the chat when the page asks for a report without naming a
-// substep that exists.
-const UNKNOWN_STEP_TEXT =
-  'Beleidskompas kon niet bepalen voor welke stap dit bericht is en heeft het daarom niet beantwoord. ' +
-  'Stel je vraag opnieuw vanaf de Beleidskompas-pagina, met een stap gekozen.';
+// What the user reads in the chat when a message cannot be answered.
+//
+// Without the store or the template there is no answer. The store is where
+// the agents get the earlier reports and the conversation from, and where
+// a report is kept. Without it an agent would answer as if the case were
+// new and the answer would be lost, while the user sees a normal answer.
+// The template, which the same service keeps, holds the prompts.
+const MESSAGES = {
+  // The page asked for a report of a substep that does not exist.
+  unknown_step:
+    'Beleidskompas kon niet bepalen voor welke stap dit bericht is en heeft het daarom niet beantwoord. ' +
+    'Stel je vraag opnieuw vanaf de Beleidskompas-pagina, met een stap gekozen.',
+  // The store is not set up, or the request names no conversation or user.
+  store_missing: 'Beleidskompas kan zijn opslag niet gebruiken en heeft dit bericht daarom niet beantwoord. Meld dit bij de beheerder.',
+  // The store or the template could not be read, or the message of the user
+  // could not be stored.
+  store_failed: 'De opslag van Beleidskompas gaf een fout. Dit bericht is daarom niet beantwoord; probeer het later opnieuw.',
+  // Goes in front of an answer that could not be stored.
+  store_warning: 'Let op: de opslag van Beleidskompas gaf een fout. Dit antwoord is mogelijk niet bewaard.',
+  // The orchestrator failed or said nothing.
+  no_answer: 'Beleidskompas kon dit bericht niet beantwoorden. Probeer het later opnieuw.',
+};
 
-// Shown in the chat when the store cannot be used. The store is where the
-// agents get the case, the earlier reports and the conversation from, and
-// where a report is kept. Without it an agent would answer as if the case
-// were new and the answer would be lost, while the user sees a normal
-// answer. So the user is told instead. The same goes for the template,
-// which the same service keeps: without it there are no prompts.
-const STORE_MISSING_TEXT =
-  'Beleidskompas kan zijn opslag niet gebruiken en heeft dit bericht daarom niet beantwoord. Meld dit bij de beheerder.';
-const STORE_FAILED_TEXT = 'De opslag van Beleidskompas gaf een fout. Dit bericht is daarom niet beantwoord; probeer het later opnieuw.';
-const STORE_WARNING_TEXT = 'Let op: de opslag van Beleidskompas gaf een fout. Dit antwoord is mogelijk niet bewaard.';
-
-const NO_ANSWER_TEXT = 'Beleidskompas kon dit bericht niet beantwoorden. Probeer het later opnieuw.';
+/** The result when a message is not answered: `text` is what the chat
+ *  shows, `error` says what went wrong for whoever reads the execution.
+ *  `base` is what the result carries along. */
+function failure(base, error, text) {
+  return { step_id: null, ...base, ok: false, error, text, answer: text };
+}
 
 const TITLE_SYSTEM_PROMPT =
   'Je genereert uitsluitend een korte titel (maximaal 6 woorden) voor een gesprek, in het Nederlands. ' +
@@ -103,7 +114,7 @@ function buildOrchestratorPrompt(steps, promptText) {
 function prepareRequest({ body, headers, env, now }) {
   const b = body && typeof body === 'object' ? body : {};
   const started_at = now;
-  const refuse = (error, text) => ({ kind: 'refused', ok: false, step_id: null, error, text, answer: text, started_at });
+  const refuse = (error, text) => failure({ kind: 'refused', started_at }, error, text);
 
   // A wrong token gives a normal answer with ok: false, not a thrown error:
   // n8n can turn a thrown error into an empty response, and then the caller
@@ -127,8 +138,8 @@ function prepareRequest({ body, headers, env, now }) {
   }
 
   const storeConfigured = Boolean(String((env && env.BELEIDSKOMPAS_STORE_URL) || '').trim() && String((env && env.BELEIDSKOMPAS_STORE_TOKEN) || '').trim());
-  if (!storeConfigured) return refuse('Store not configured', STORE_MISSING_TEXT);
-  if (!case_id || !user_id) return refuse('No conversation or user from the bridge', STORE_MISSING_TEXT);
+  if (!storeConfigured) return refuse('Store not configured', MESSAGES.store_missing);
+  if (!case_id || !user_id) return refuse('No conversation or user from the bridge', MESSAGES.store_missing);
 
   const parts = parsePageMessage(text);
   return {
@@ -162,19 +173,17 @@ function prepareRequest({ body, headers, env, now }) {
  *  template there is no answer: the result is then `ok: false` with a
  *  message for the chat. */
 function buildContext({ request, state, live, stepIds }) {
-  const refuse = (error, text) => ({ ...request, ok: false, step_id: null, error, text, answer: text });
-
   const flow = live && live.flow;
   const templateError = nodeError(live) || (flow && Array.isArray(flow.steps) ? null : 'No template in the answer of the admin');
-  if (templateError) return refuse(`template: ${templateError}`, STORE_FAILED_TEXT);
+  if (templateError) return failure(request, `template: ${templateError}`, MESSAGES.store_failed);
 
   const stateError = nodeError(state) || (state && state.reports !== null && typeof state.reports === 'object' ? null : 'No state in the answer of the store');
-  if (stateError) return refuse(`state: ${stateError}`, STORE_FAILED_TEXT);
+  if (stateError) return failure(request, `state: ${stateError}`, MESSAGES.store_failed);
 
   const steps = flow.steps.filter((step) => step && Array.isArray(step.substeps) && stepIds.includes(step.id));
   const order = steps.flatMap((step) => step.substeps.map((substep) => substep.id));
   const substep_id = order.includes(request.substep_id) ? request.substep_id : '';
-  if (request.kind === 'report' && !substep_id) return refuse('No substep recognised in the request', UNKNOWN_STEP_TEXT);
+  if (request.kind === 'report' && !substep_id) return failure(request, 'No substep recognised in the request', MESSAGES.unknown_step);
 
   const model = String((live.settings && live.settings.default_model) || '').trim() || 'govchat-default';
   const step_templates = {};
@@ -227,6 +236,12 @@ function buildContext({ request, state, live, stepIds }) {
   };
 }
 
+/** The result when the message the user typed could not be stored. `saved`
+ *  is what the store answered. */
+function userTurnFailure({ saved }) {
+  return failure({}, `user_turn: ${nodeError(saved)}`, MESSAGES.store_failed);
+}
+
 /** The title LibreChat asked for, from what the model replied. Never fails:
  *  without a usable reply the title is made from the first words of the
  *  case, since a broken title must never break the conversation. */
@@ -263,7 +278,7 @@ function buildAnswer({ context, agent, now }) {
     tools,
     duration_ms: now - context.started_at,
   };
-  if (!text) return { ...base, ok: false, error: error || 'The orchestrator returned no text', text: NO_ANSWER_TEXT, answer: NO_ANSWER_TEXT };
+  if (!text) return failure(base, error || 'The orchestrator returned no text', MESSAGES.no_answer);
   return { ...base, ok: true, text, answer: text };
 }
 
@@ -271,16 +286,13 @@ function buildAnswer({ context, agent, now }) {
  *  written to the store: with a warning in front when that failed. */
 function finishAnswer({ answer, saveError }) {
   if (!saveError) return answer;
-  const text = `${STORE_WARNING_TEXT}\n\n${answer.text}`;
+  const text = `${MESSAGES.store_warning}\n\n${answer.text}`;
   return { ...answer, text, answer: text, store_error: `assistant_turn: ${saveError}` };
 }
 
 module.exports = {
-  UNKNOWN_STEP_TEXT,
-  STORE_MISSING_TEXT,
-  STORE_FAILED_TEXT,
-  STORE_WARNING_TEXT,
-  NO_ANSWER_TEXT,
+  MESSAGES,
+  failure,
   TITLE_SYSTEM_PROMPT,
   MAX_TURNS,
   incomingMessage,
@@ -288,6 +300,7 @@ module.exports = {
   buildOrchestratorPrompt,
   prepareRequest,
   buildContext,
+  userTurnFailure,
   buildTitle,
   buildAnswer,
   finishAnswer,

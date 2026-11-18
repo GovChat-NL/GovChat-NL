@@ -31,6 +31,12 @@ function feedbackHTML(message, index) {
     </div>`;
 }
 
+/** What an error says, without the full stop it may end with, so it fits
+ *  inside a sentence. */
+function reasonOf(err) {
+  return String(err?.message || err).replace(/\.+$/, "");
+}
+
 const CHART_ICON =
   '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/></svg>';
 
@@ -58,7 +64,7 @@ function messageHTML(m, idx, stepLabel) {
           ${Array.isArray(m.citations) && m.citations.length
             ? `<div class="gc-bk-citations">${m.citations.map(citationButtonHTML).join("")}</div>`
             : ""}
-          ${!isUser && !m.pending && m.text ? feedbackHTML(m, idx) : ""}
+          ${!isUser && !m.pending && !m.notice && m.text ? feedbackHTML(m, idx) : ""}
         </div>
         <div class="gc-bk-msg-time">${escapeHTML(formatTime(m.ts))}</div>
       </div>
@@ -177,7 +183,7 @@ export function setupChat(store, { refreshState, versionId }) {
       try {
         stored = await refreshState(state.conversationId);
       } catch (err) {
-        store.addMessage("assistant", `Kon de stand van de casus niet ophalen (${String(err?.message || err)}). Open de casus opnieuw om de kaarten bij te werken.`);
+        store.addMessage("assistant", `De kaarten zijn niet bijgewerkt: ${reasonOf(err)}. Open de casus opnieuw om ze bij te werken.`, { notice: true });
       }
       // Only text comes back with the answer. Which step gave it, the store
       // knows.
@@ -187,9 +193,9 @@ export function setupChat(store, { refreshState, versionId }) {
       else if (stillOpen() && answer) store.addMessage("assistant", answer, { agent });
     } catch (err) {
       if (!stillOpen()) return;
-      const failure = `Beleidskompas niet bereikbaar of fout: ${String(err?.message || err)}. Probeer het opnieuw of open een nieuwe chat.`;
-      if (pendingMessage) store.updateMessage(pendingMessage, { pending: false, text: failure });
-      else store.addMessage("assistant", failure);
+      const failure = `Beleidskompas niet bereikbaar of fout: ${reasonOf(err)}. Probeer het opnieuw of open een nieuwe chat.`;
+      if (pendingMessage) store.updateMessage(pendingMessage, { pending: false, text: failure, notice: true });
+      else store.addMessage("assistant", failure, { notice: true });
     } finally {
       if (stillOpen()) {
         store.setAsking("");

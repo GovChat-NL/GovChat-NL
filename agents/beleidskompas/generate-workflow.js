@@ -513,9 +513,9 @@ function buildOrchestratorWorkflow(steps) {
       constants: {
         REQUEST_META_LABEL: shared.REQUEST_META_LABEL,
         TITLE_REQUEST_MARKER: shared.TITLE_REQUEST_MARKER,
-        STORE_MISSING_TEXT: orchestrator.STORE_MISSING_TEXT,
+        MESSAGES: orchestrator.MESSAGES,
       },
-      functions: ['extractSuppliedToken', 'parsePageMessage', 'isTitleRequest', 'extractConvoUserText', 'incomingMessage', 'prepareRequest'],
+      functions: ['extractSuppliedToken', 'parsePageMessage', 'isTitleRequest', 'extractConvoUserText', 'incomingMessage', 'failure', 'prepareRequest'],
       run: [
         'return [{ json: prepareRequest({',
         '  body: $json.body,',
@@ -584,11 +584,10 @@ function buildOrchestratorWorkflow(steps) {
   nodes.push(
     codeNode('Gegevens voor de agents klaarzetten', at(6, 3), {
       constants: {
-        STORE_FAILED_TEXT: orchestrator.STORE_FAILED_TEXT,
-        UNKNOWN_STEP_TEXT: orchestrator.UNKNOWN_STEP_TEXT,
+        MESSAGES: orchestrator.MESSAGES,
         STEP_IDS: stepIds,
       },
-      functions: ['nodeError', 'stepFromTemplate', 'stepToolName', 'buildOrchestratorPrompt', 'buildContext'],
+      functions: ['nodeError', 'failure', 'stepFromTemplate', 'stepToolName', 'buildOrchestratorPrompt', 'buildContext'],
       run: `return [{ json: buildContext({ request: ${request}, state: $json, live: ${live}, stepIds: STEP_IDS }) }];`,
     }),
   );
@@ -609,17 +608,9 @@ function buildOrchestratorWorkflow(steps) {
 
   nodes.push(
     codeNode('Opslagfout melden', at(11, 1), {
-      constants: { STORE_FAILED_TEXT: orchestrator.STORE_FAILED_TEXT },
-      functions: ['nodeError'],
-      run: [
-        'return [{ json: {',
-        '  ok: false,',
-        '  step_id: null,',
-        '  error: `user_turn: ${nodeError($json)}`,',
-        '  text: STORE_FAILED_TEXT,',
-        '  answer: STORE_FAILED_TEXT,',
-        '} }];',
-      ].join('\n'),
+      constants: { MESSAGES: orchestrator.MESSAGES },
+      functions: ['nodeError', 'failure', 'userTurnFailure'],
+      run: 'return [{ json: userTurnFailure({ saved: $json }) }];',
     }),
   );
 
@@ -655,8 +646,8 @@ function buildOrchestratorWorkflow(steps) {
 
   nodes.push(
     codeNode('Antwoord opbouwen', at(toolColumn, 3), {
-      constants: { NO_ANSWER_TEXT: orchestrator.NO_ANSWER_TEXT },
-      functions: ['toolCalls', 'nodeError', 'buildAnswer'],
+      constants: { MESSAGES: orchestrator.MESSAGES },
+      functions: ['toolCalls', 'nodeError', 'failure', 'buildAnswer'],
       run: `return [{ json: buildAnswer({ context: ${context}, agent: $json, now: Date.now() }) }];`,
     }),
   );
@@ -674,7 +665,7 @@ function buildOrchestratorWorkflow(steps) {
 
   nodes.push(
     codeNode('Antwoord afronden', at(toolColumn + 3, 2), {
-      constants: { STORE_WARNING_TEXT: orchestrator.STORE_WARNING_TEXT },
+      constants: { MESSAGES: orchestrator.MESSAGES },
       functions: ['nodeError', 'finishAnswer'],
       run: `return [{ json: finishAnswer({ answer: ${answer}, saveError: nodeError($json) }) }];`,
     }),
