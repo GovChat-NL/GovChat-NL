@@ -84,7 +84,7 @@ function openBeleidskompas(config, help) {
   });
 
   const { resumeConversation, refreshState } = setupCases(store);
-  const { requestReport } = setupChat(store, { refreshState });
+  const { requestReport } = setupChat(store, { refreshState, versionId: config.versionId });
   setupStepper(store);
   setupStepCard(store, { specialistTeam: config.specialistTeam, requestReport });
   const { setView } = setupOverview(store);

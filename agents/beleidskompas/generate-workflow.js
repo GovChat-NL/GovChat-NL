@@ -5,7 +5,8 @@
  * Writes the Beleidskompas workflows for n8n from the source in this folder.
  *
  * It writes one workflow for the orchestrator, one workflow per step for
- * the agent of that step, and the list of steps for the Beleidskompas page.
+ * the agent of that step, the list of steps for the Beleidskompas page and
+ * the template the admin starts with.
  *
  * n8n cannot read the source files. It only reads workflow files, in which
  * the code of a Code node is plain text. So this script copies the source of
@@ -23,11 +24,14 @@ const path = require('node:path');
 const shared = require('./shared');
 const orchestrator = require('./orchestrator');
 const stepAgent = require('./step-agent');
+const template = require('./template');
 
 const STEPS = [require('./steps/step1').STEP, require('./steps/step2').STEP, require('./steps/step3').STEP, require('./steps/step4').STEP];
 
 const WORKFLOWS_DIR = path.join(__dirname, '..', 'n8n', 'workflows', 'beleidskompas');
 const PAGE_STEPS_FILE = path.join(__dirname, '..', '..', 'overlay', 'src', 'apps', 'beleidskompas', 'steps.json');
+// The template the admin starts with. The admin image carries it under lib/.
+const ADMIN_DEFAULTS_FILE = path.join(__dirname, '..', '..', 'services', 'admin-overlay', 'admin', 'lib', 'beleidskompas', 'default-template.json');
 
 // =====================================================================
 // Part 1: the building blocks of a workflow
@@ -711,6 +715,7 @@ function buildAll(steps = STEPS) {
   }
 
   files.push({ path: PAGE_STEPS_FILE, data: pageSteps(steps) });
+  files.push({ path: ADMIN_DEFAULTS_FILE, data: template.DEFAULT_TEMPLATE });
 
   return files;
 }

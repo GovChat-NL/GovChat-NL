@@ -41,7 +41,7 @@ check: ## Validate the compose file, the workflow exports and the scripts (no ru
 	node --check n8n/bootstrap.js
 	node --check services/admin-overlay/admin/server.js
 
-test-beleidskompas: ## Run the Beleidskompas unit tests: the workflows, the page and the store (no Docker needed)
+test-beleidskompas: ## Run the Beleidskompas unit tests: the workflows, the page and the store (no Docker needed; run npm ci in services/admin-overlay/admin once)
 	cd agents/beleidskompas && node --test
 	cd overlay/src/apps/beleidskompas && node --test
 	cd services/admin-overlay/admin && node --test
