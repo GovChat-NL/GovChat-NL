@@ -562,7 +562,7 @@ function defaultBeleidskompasState() {
     ],
     documents: [],
     settings: {
-      retention_days: 365,
+      retention_days: 30,
       enforce_source_citation: true,
       require_human_validation: true,
       default_model: "govchat-default",
@@ -2668,7 +2668,7 @@ app.post("/api/beleidskompas/settings", requireAuth, (req, res) => {
     const nextSettings = {
       ...state.settings,
       ...incoming,
-      retention_days: Math.max(1, Number.parseInt(String(incoming.retention_days ?? state.settings?.retention_days ?? 365), 10) || 365),
+      retention_days: Math.max(1, Number.parseInt(String(incoming.retention_days ?? state.settings?.retention_days ?? 30), 10) || 30),
       enforce_source_citation: Boolean(
         Object.prototype.hasOwnProperty.call(incoming, "enforce_source_citation")
           ? incoming.enforce_source_citation
@@ -3268,6 +3268,7 @@ if (require.main === module) {
   beleidskompas.start(app, {
     resolveUser: resolveUserFromVerifiedRefreshToken,
     getLive: liveBeleidskompasTemplate,
+    getRetentionDays: () => readBeleidskompasState().settings.retention_days,
   });
   server.listen(PORT, "0.0.0.0", () => {
     console.log(`[govchat-admin] Running on http://0.0.0.0:${PORT}`);
