@@ -613,20 +613,18 @@ function buildOrchestratorWorkflow(steps) {
 
   // --- After the orchestrator: the answer ---
 
-  nodes.push(readStateNode('Stand na afloop ophalen', at(toolColumn, 3), context));
-
   nodes.push(
-    codeNode('Antwoord opbouwen', at(toolColumn + 1, 3), {
+    codeNode('Antwoord opbouwen', at(toolColumn, 3), {
       constants: { NO_ANSWER_TEXT: orchestrator.NO_ANSWER_TEXT },
       functions: ['toolCalls', 'nodeError', 'buildAnswer'],
-      run: `return [{ json: buildAnswer({ context: ${context}, agent: ${outputOf(agentName)}, state: $json, now: Date.now() }) }];`,
+      run: `return [{ json: buildAnswer({ context: ${context}, agent: $json, now: Date.now() }) }];`,
     }),
   );
 
-  nodes.push(ifNode('Antwoord gelukt?', at(toolColumn + 2, 3), '$json.ok === true'));
+  nodes.push(ifNode('Antwoord gelukt?', at(toolColumn + 1, 3), '$json.ok === true'));
 
   nodes.push(
-    storeNode('Antwoord opslaan', at(toolColumn + 3, 2), {
+    storeNode('Antwoord opslaan', at(toolColumn + 2, 2), {
       method: 'POST',
       caseId: '$json.case_id',
       casePath: '/turns',
@@ -635,17 +633,16 @@ function buildOrchestratorWorkflow(steps) {
   );
 
   nodes.push(
-    codeNode('Antwoord afronden', at(toolColumn + 4, 2), {
+    codeNode('Antwoord afronden', at(toolColumn + 3, 2), {
       constants: { STORE_WARNING_TEXT: orchestrator.STORE_WARNING_TEXT },
       functions: ['nodeError', 'finishAnswer'],
       run: `return [{ json: finishAnswer({ answer: ${answer}, saveError: nodeError($json) }) }];`,
     }),
   );
 
-  nodes.push(respondNode('Respond Orchestrator', at(toolColumn + 5, 3), '$json'));
+  nodes.push(respondNode('Respond Orchestrator', at(toolColumn + 4, 3), '$json'));
 
-  connect(connections, agentName, 'Stand na afloop ophalen');
-  connect(connections, 'Stand na afloop ophalen', 'Antwoord opbouwen');
+  connect(connections, agentName, 'Antwoord opbouwen');
   connect(connections, 'Antwoord opbouwen', 'Antwoord gelukt?');
   connectIf(connections, 'Antwoord gelukt?', { whenTrue: 'Antwoord opslaan', whenFalse: 'Respond Orchestrator' });
   connect(connections, 'Antwoord opslaan', 'Antwoord afronden');

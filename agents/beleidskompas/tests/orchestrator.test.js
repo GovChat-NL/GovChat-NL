@@ -98,7 +98,6 @@ test('the context holds every report in full, the conversation and the request',
     context.prompt,
     `Bevindingen tot nu toe:\n${report11}\n\n${report12}\n\nLaatste beurten van het gesprek:\nGebruiker: hallo\nBeleidskompas: dag\n\nVerzoek: werk deelstap 1.3 uit.`,
   );
-  assert.deepEqual(context.versions_before, { '1.1': 2, '1.2': 1 });
 });
 
 test('the agent of a step gets the reports up to and including the substep of a report, and all of them for a question', () => {
@@ -158,10 +157,9 @@ test('without a usable reply the title is made from the first words of the case'
 
 const context = buildContext({ request: prepare({ currentMessage: pageMessage({ substep_id: '1.2', message: '' }) }), state, substepIds });
 
-test('the answer after a report: the message of the orchestrator, the step it called and the new report', () => {
+test('the answer after a report: the message of the orchestrator and the step it called', () => {
   const agent = { output: ' Deelstap 1.2 is uitgewerkt. Het budget ontbreekt nog. ', intermediateSteps: [{ action: { tool: 'stap1_agent', toolInput: { substep_id: '1.2', assignment: 'uitwerken' } } }] };
-  const after = { ...state, reports: { ...state.reports, '1.2': { version: 2, text: 'nieuw' } } };
-  const answer = buildAnswer({ context, agent, state: after, now: 18500 });
+  const answer = buildAnswer({ context, agent, now: 18500 });
 
   assert.deepEqual(answer, {
     case_id: 'c1',
@@ -169,7 +167,6 @@ test('the answer after a report: the message of the orchestrator, the step it ca
     mode: 'report',
     step_id: 'stap1',
     asked_from: '1.2',
-    reports: [{ substep_id: '1.2', version: 2 }],
     tools: [{ tool: 'stap1_agent', input: { substep_id: '1.2', assignment: 'uitwerken' } }],
     duration_ms: 17500,
     ok: true,
@@ -181,15 +178,15 @@ test('the answer after a report: the message of the orchestrator, the step it ca
 test('the answer to a question that involved two steps names the first one', () => {
   const messageContext = buildContext({ request: prepare({ currentMessage: 'Past de rol bij het probleem?' }), state, substepIds });
   const agent = { output: 'Ja.', intermediateSteps: [{ action: { tool: 'stap2_agent', toolInput: {} } }, { action: { tool: 'stap1_agent', toolInput: {} } }] };
-  const answer = buildAnswer({ context: messageContext, agent, state, now: 2000 });
-  assert.deepEqual([answer.mode, answer.step_id, answer.asked_from, answer.reports.length, answer.tools.length], ['conversation', 'stap2', null, 0, 2]);
+  const answer = buildAnswer({ context: messageContext, agent, now: 2000 });
+  assert.deepEqual([answer.mode, answer.step_id, answer.asked_from, answer.tools.length], ['conversation', 'stap2', null, 2]);
 });
 
 test('a failing or silent orchestrator gives a message for the chat, not an empty answer', () => {
-  const failed = buildAnswer({ context, agent: { error: { message: 'LiteLLM 500' } }, state, now: 2000 });
+  const failed = buildAnswer({ context, agent: { error: { message: 'LiteLLM 500' } }, now: 2000 });
   assert.deepEqual([failed.ok, failed.text, failed.answer, failed.error], [false, NO_ANSWER_TEXT, NO_ANSWER_TEXT, 'LiteLLM 500']);
-  const silent = buildAnswer({ context, agent: { output: '  ' }, state: { error: 'x' }, now: 2000 });
-  assert.deepEqual([silent.ok, silent.text, silent.reports], [false, NO_ANSWER_TEXT, []]);
+  const silent = buildAnswer({ context, agent: { output: '  ' }, now: 2000 });
+  assert.deepEqual([silent.ok, silent.text], [false, NO_ANSWER_TEXT]);
 });
 
 test('when storing the turn of the orchestrator failed, the answer goes back with a warning in front', () => {

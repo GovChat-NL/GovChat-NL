@@ -117,10 +117,9 @@ test('a request for a report passes through the Code nodes of the orchestrator a
   const result = runCode(agents[1], 'Resultaat voor de orchestrator', { version: 1 }, { 'Opdracht opbouwen': assignment, 'Antwoord verwerken': reply });
   assert.deepEqual([result.kind, result.saved, result.report], ['report', true, reply.report_text]);
 
-  const after = { ...state, reports: { ...state.reports, '2.1': { version: 1, text: reply.report_text } } };
   const orchestratorReply = { output: 'Deelstap 2.1 is uitgewerkt. Het budget ontbreekt nog.', intermediateSteps: [{ action: { tool: 'stap2_agent', toolInput: { substep_id: '2.1', assignment: 'uitwerken' } } }] };
-  const answer = runCode(orchestrator, 'Antwoord opbouwen', after, { 'Context samenstellen': context, 'AI Agent Orchestrator': orchestratorReply });
-  assert.deepEqual([answer.ok, answer.mode, answer.step_id, answer.reports], [true, 'report', 'stap2', [{ substep_id: '2.1', version: 1 }]]);
+  const answer = runCode(orchestrator, 'Antwoord opbouwen', orchestratorReply, { 'Context samenstellen': context });
+  assert.deepEqual([answer.ok, answer.mode, answer.step_id], [true, 'report', 'stap2']);
 
   const finished = runCode(orchestrator, 'Antwoord afronden', { seq: 1 }, { 'Antwoord opbouwen': answer });
   assert.deepEqual(finished, answer);

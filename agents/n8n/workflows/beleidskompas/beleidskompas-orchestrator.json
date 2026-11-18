@@ -249,7 +249,7 @@
       },
       {
         "parameters": {
-          "jsCode": "const STORE_FAILED_TEXT = \"De opslag van Beleidskompas gaf een fout. Dit bericht is daarom niet beantwoord; probeer het later opnieuw.\";\nconst SUBSTEP_IDS = [\"1.1\",\"1.2\",\"1.3\",\"1.4\",\"1.5\",\"2.1\",\"3.1\",\"3.2\",\"3.3\",\"3.4\",\"4.1\",\"4.2\",\"4.3\"];\n\nfunction nodeError(output) {\n  const error = output && output.error;\n  if (!error) return null;\n  return String((typeof error === 'object' && error.message) || error);\n}\n\nfunction buildContext({ request, state, substepIds }) {\n  const stateError = nodeError(state) || (state && state.reports !== null && typeof state.reports === 'object' ? null : 'No state in the answer of the store');\n  if (stateError) {\n    return { ...request, ok: false, step_id: null, error: `state: ${stateError}`, text: STORE_FAILED_TEXT, answer: STORE_FAILED_TEXT };\n  }\n\n  const reports = state.reports;\n  const order = Array.isArray(substepIds) ? substepIds : [];\n  const ids = Object.keys(reports).sort((a, b) => order.indexOf(a) - order.indexOf(b));\n  const reportTexts = (reportIds) =>\n    reportIds\n      .map((id) => String(reports[id].text || '').trim())\n      .filter(Boolean)\n      .join('\\n\\n');\n\n  const upTo = request.kind === 'report' ? order.indexOf(request.substep_id) : -1;\n  const findings = reportTexts(ids.filter((id) => upTo === -1 || order.indexOf(id) <= upTo));\n  const allReports = reportTexts(ids);\n  const turns = Array.isArray(state.turns) ? state.turns : [];\n  const conversation = turns.map((t) => `${t.role === 'user' ? 'Gebruiker' : 'Beleidskompas'}: ${String(t.text || '').trim()}`).join('\\n');\n  const asked =\n    request.kind === 'message'\n      ? `Bericht van de gebruiker (de gebruiker zit in deelstap ${request.substep_id || 'onbekend'}):\\n${request.message}`\n      : `Verzoek: werk deelstap ${request.substep_id} uit.`;\n\n  const prompt = [\n    allReports ? `Bevindingen tot nu toe:\\n${allReports}` : 'Bevindingen tot nu toe: (nog geen deelstap uitgewerkt)',\n    conversation && `Laatste beurten van het gesprek:\\n${conversation}`,\n    asked,\n  ]\n    .filter(Boolean)\n    .join('\\n\\n');\n\n  return {\n    ...request,\n    findings,\n    conversation,\n    prompt,\n    versions_before: Object.fromEntries(ids.map((id) => [id, reports[id].version])),\n  };\n}\n\nreturn [{ json: buildContext({ request: $('Verzoek voorbereiden').first().json, state: $json, substepIds: SUBSTEP_IDS }) }];"
+          "jsCode": "const STORE_FAILED_TEXT = \"De opslag van Beleidskompas gaf een fout. Dit bericht is daarom niet beantwoord; probeer het later opnieuw.\";\nconst SUBSTEP_IDS = [\"1.1\",\"1.2\",\"1.3\",\"1.4\",\"1.5\",\"2.1\",\"3.1\",\"3.2\",\"3.3\",\"3.4\",\"4.1\",\"4.2\",\"4.3\"];\n\nfunction nodeError(output) {\n  const error = output && output.error;\n  if (!error) return null;\n  return String((typeof error === 'object' && error.message) || error);\n}\n\nfunction buildContext({ request, state, substepIds }) {\n  const stateError = nodeError(state) || (state && state.reports !== null && typeof state.reports === 'object' ? null : 'No state in the answer of the store');\n  if (stateError) {\n    return { ...request, ok: false, step_id: null, error: `state: ${stateError}`, text: STORE_FAILED_TEXT, answer: STORE_FAILED_TEXT };\n  }\n\n  const reports = state.reports;\n  const order = Array.isArray(substepIds) ? substepIds : [];\n  const ids = Object.keys(reports).sort((a, b) => order.indexOf(a) - order.indexOf(b));\n  const reportTexts = (reportIds) =>\n    reportIds\n      .map((id) => String(reports[id].text || '').trim())\n      .filter(Boolean)\n      .join('\\n\\n');\n\n  const upTo = request.kind === 'report' ? order.indexOf(request.substep_id) : -1;\n  const findings = reportTexts(ids.filter((id) => upTo === -1 || order.indexOf(id) <= upTo));\n  const allReports = reportTexts(ids);\n  const turns = Array.isArray(state.turns) ? state.turns : [];\n  const conversation = turns.map((t) => `${t.role === 'user' ? 'Gebruiker' : 'Beleidskompas'}: ${String(t.text || '').trim()}`).join('\\n');\n  const asked =\n    request.kind === 'message'\n      ? `Bericht van de gebruiker (de gebruiker zit in deelstap ${request.substep_id || 'onbekend'}):\\n${request.message}`\n      : `Verzoek: werk deelstap ${request.substep_id} uit.`;\n\n  const prompt = [\n    allReports ? `Bevindingen tot nu toe:\\n${allReports}` : 'Bevindingen tot nu toe: (nog geen deelstap uitgewerkt)',\n    conversation && `Laatste beurten van het gesprek:\\n${conversation}`,\n    asked,\n  ]\n    .filter(Boolean)\n    .join('\\n\\n');\n\n  return {\n    ...request,\n    findings,\n    conversation,\n    prompt,\n  };\n}\n\nreturn [{ json: buildContext({ request: $('Verzoek voorbereiden').first().json, state: $json, substepIds: SUBSTEP_IDS }) }];"
         },
         "id": "Contextsamenstellen",
         "name": "Context samenstellen",
@@ -810,54 +810,14 @@
       },
       {
         "parameters": {
-          "method": "GET",
-          "url": "={{ String($env.BELEIDSKOMPAS_STORE_URL || '').replace(/\\/$/, '') + '/api/beleidskompas/cases/' + encodeURIComponent($('Context samenstellen').first().json.case_id) + '' }}",
-          "sendHeaders": true,
-          "headerParameters": {
-            "parameters": [
-              {
-                "name": "Authorization",
-                "value": "={{ 'Bearer ' + String($env.BELEIDSKOMPAS_STORE_TOKEN || '') }}"
-              }
-            ]
-          },
-          "options": {
-            "timeout": 10000
-          },
-          "sendQuery": true,
-          "queryParameters": {
-            "parameters": [
-              {
-                "name": "user_id",
-                "value": "={{ $('Context samenstellen').first().json.user_id }}"
-              },
-              {
-                "name": "max_turns",
-                "value": "100"
-              }
-            ]
-          }
-        },
-        "id": "Standnaafloopophalen",
-        "name": "Stand na afloop ophalen",
-        "type": "n8n-nodes-base.httpRequest",
-        "typeVersion": 4.2,
-        "position": [
-          3300,
-          540
-        ],
-        "onError": "continueRegularOutput"
-      },
-      {
-        "parameters": {
-          "jsCode": "const NO_ANSWER_TEXT = \"Beleidskompas kon dit bericht niet beantwoorden. Probeer het later opnieuw.\";\n\nfunction toolCalls(agentOutput) {\n  const steps = agentOutput && Array.isArray(agentOutput.intermediateSteps) ? agentOutput.intermediateSteps : [];\n  return steps.map((step) => ({\n    tool: (step && step.action && step.action.tool) || null,\n    input: step && step.action ? step.action.toolInput : null,\n  }));\n}\n\nfunction nodeError(output) {\n  const error = output && output.error;\n  if (!error) return null;\n  return String((typeof error === 'object' && error.message) || error);\n}\n\nfunction buildAnswer({ context, agent, state, now }) {\n  const tools = toolCalls(agent);\n  const error = nodeError(agent);\n  const text = error ? '' : String((agent && agent.output) || '').trim();\n  const called = tools.map((t) => /^stap(\\d+)_agent$/.exec(String(t.tool || ''))).find(Boolean);\n\n  const reports = !nodeError(state) && state && state.reports && typeof state.reports === 'object' ? state.reports : {};\n  const before = context.versions_before || {};\n  const fresh = Object.keys(reports)\n    .sort()\n    .filter((id) => reports[id].version !== before[id]);\n\n  const base = {\n    case_id: context.case_id,\n    user_id: context.user_id,\n    mode: context.kind === 'report' ? 'report' : 'conversation',\n    step_id: called ? `stap${called[1]}` : null,\n    asked_from: context.substep_id || null,\n    reports: fresh.map((id) => ({ substep_id: id, version: reports[id].version })),\n    tools,\n    duration_ms: now - context.started_at,\n  };\n  if (!text) return { ...base, ok: false, error: error || 'The orchestrator returned no text', text: NO_ANSWER_TEXT, answer: NO_ANSWER_TEXT };\n  return { ...base, ok: true, text, answer: text };\n}\n\nreturn [{ json: buildAnswer({ context: $('Context samenstellen').first().json, agent: $('AI Agent Orchestrator').first().json, state: $json, now: Date.now() }) }];"
+          "jsCode": "const NO_ANSWER_TEXT = \"Beleidskompas kon dit bericht niet beantwoorden. Probeer het later opnieuw.\";\n\nfunction toolCalls(agentOutput) {\n  const steps = agentOutput && Array.isArray(agentOutput.intermediateSteps) ? agentOutput.intermediateSteps : [];\n  return steps.map((step) => ({\n    tool: (step && step.action && step.action.tool) || null,\n    input: step && step.action ? step.action.toolInput : null,\n  }));\n}\n\nfunction nodeError(output) {\n  const error = output && output.error;\n  if (!error) return null;\n  return String((typeof error === 'object' && error.message) || error);\n}\n\nfunction buildAnswer({ context, agent, now }) {\n  const tools = toolCalls(agent);\n  const error = nodeError(agent);\n  const text = error ? '' : String((agent && agent.output) || '').trim();\n  const called = tools.map((t) => /^stap(\\d+)_agent$/.exec(String(t.tool || ''))).find(Boolean);\n\n  const base = {\n    case_id: context.case_id,\n    user_id: context.user_id,\n    mode: context.kind === 'report' ? 'report' : 'conversation',\n    step_id: called ? `stap${called[1]}` : null,\n    asked_from: context.substep_id || null,\n    tools,\n    duration_ms: now - context.started_at,\n  };\n  if (!text) return { ...base, ok: false, error: error || 'The orchestrator returned no text', text: NO_ANSWER_TEXT, answer: NO_ANSWER_TEXT };\n  return { ...base, ok: true, text, answer: text };\n}\n\nreturn [{ json: buildAnswer({ context: $('Context samenstellen').first().json, agent: $json, now: Date.now() }) }];"
         },
         "id": "Antwoordopbouwen",
         "name": "Antwoord opbouwen",
         "type": "n8n-nodes-base.code",
         "typeVersion": 2,
         "position": [
-          3520,
+          3300,
           540
         ]
       },
@@ -888,7 +848,7 @@
         "type": "n8n-nodes-base.if",
         "typeVersion": 2.2,
         "position": [
-          3740,
+          3520,
           540
         ]
       },
@@ -921,7 +881,7 @@
         "type": "n8n-nodes-base.httpRequest",
         "typeVersion": 4.2,
         "position": [
-          3960,
+          3740,
           360
         ],
         "onError": "continueRegularOutput"
@@ -935,7 +895,7 @@
         "type": "n8n-nodes-base.code",
         "typeVersion": 2,
         "position": [
-          4180,
+          3960,
           360
         ]
       },
@@ -950,7 +910,7 @@
         "type": "n8n-nodes-base.respondToWebhook",
         "typeVersion": 1,
         "position": [
-          4400,
+          4180,
           540
         ]
       }
@@ -1212,17 +1172,6 @@
         ]
       },
       "AI Agent Orchestrator": {
-        "main": [
-          [
-            {
-              "node": "Stand na afloop ophalen",
-              "type": "main",
-              "index": 0
-            }
-          ]
-        ]
-      },
-      "Stand na afloop ophalen": {
         "main": [
           [
             {

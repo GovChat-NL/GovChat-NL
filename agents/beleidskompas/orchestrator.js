@@ -191,7 +191,6 @@ function buildContext({ request, state, substepIds }) {
     findings,
     conversation,
     prompt,
-    versions_before: Object.fromEntries(ids.map((id) => [id, reports[id].version])),
   };
 }
 
@@ -213,22 +212,14 @@ function buildTitle({ request, agent }) {
 
 /** The answer to a request, from what the orchestrator agent returned.
  *  `text` is its message for the chat. `step_id` is the step whose agent it
- *  called first, `tools` every tool it called, and `reports` the substeps
- *  that got a new report (their version in `state`, read after the agent
- *  ran, differs from the one before). `context` is what buildContext
- *  returned. When the agent failed or said nothing, the result is `ok:
- *  false` with a message for the chat. */
-function buildAnswer({ context, agent, state, now }) {
+ *  called first and `tools` every tool it called. `context` is what
+ *  buildContext returned. When the agent failed or said nothing, the result
+ *  is `ok: false` with a message for the chat. */
+function buildAnswer({ context, agent, now }) {
   const tools = toolCalls(agent);
   const error = nodeError(agent);
   const text = error ? '' : String((agent && agent.output) || '').trim();
   const called = tools.map((t) => /^stap(\d+)_agent$/.exec(String(t.tool || ''))).find(Boolean);
-
-  const reports = !nodeError(state) && state && state.reports && typeof state.reports === 'object' ? state.reports : {};
-  const before = context.versions_before || {};
-  const fresh = Object.keys(reports)
-    .sort()
-    .filter((id) => reports[id].version !== before[id]);
 
   const base = {
     case_id: context.case_id,
@@ -236,7 +227,6 @@ function buildAnswer({ context, agent, state, now }) {
     mode: context.kind === 'report' ? 'report' : 'conversation',
     step_id: called ? `stap${called[1]}` : null,
     asked_from: context.substep_id || null,
-    reports: fresh.map((id) => ({ substep_id: id, version: reports[id].version })),
     tools,
     duration_ms: now - context.started_at,
   };
