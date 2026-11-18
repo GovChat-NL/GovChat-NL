@@ -53,8 +53,6 @@ export function createStore(steps) {
   const substeps = steps.flatMap((step) => step.substeps.map((substep) => ({ ...substep, step })));
 
   const state = {
-    // The case as the user described it; sent with every request.
-    caseText: "",
     activeSubstep: 0,
     // The id of the substep a request to Beleidskompas is under way for, or
     // "" when none is; no second request starts until it is answered.
@@ -137,17 +135,10 @@ export function createStore(steps) {
     return state.askingReport && state.asking === substepId;
   }
 
-  function setCaseText(caseText) {
-    state.caseText = String(caseText || "").trim();
-    changed("steps");
-  }
-
-  /** Whether the case has begun. On the page the first thing the user
-   *  types is the case. A case begun in the LibreChat chat has no case
-   *  text, only messages, and may have reports; it has begun too, so what
-   *  the user types next is a message and not the case. */
+  /** Whether the case has begun: the user has written something, or there
+   *  is a report. */
   function caseStarted() {
-    return Boolean(state.caseText) || state.messages.some((m) => m.role === "user") || substeps.some((s) => substepDone(s.id));
+    return state.messages.some((m) => m.role === "user") || substeps.some((s) => substepDone(s.id));
   }
 
   /** Whether the conversation about a substep went on after its report, so
@@ -210,7 +201,6 @@ export function createStore(steps) {
   function startNewSession() {
     forgetRequest();
     state.lastMessageId = null;
-    state.caseText = "";
     state.results = emptyResults(substeps);
     state.activeSubstep = 0;
     state.messages = [createMessage("assistant", "Nieuwe sessie gestart. Beschrijf je casus en we lopen de stappen samen door.")];
@@ -234,7 +224,6 @@ export function createStore(steps) {
     replaceResults,
     setAsking,
     reportUnderWay,
-    setCaseText,
     caseStarted,
     talkedSinceReport,
     addMessage,

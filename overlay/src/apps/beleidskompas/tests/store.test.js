@@ -88,14 +88,9 @@ test("a substep counts as done once it has a non-empty report, a step once all i
   assert.equal("9.9" in store.state.results, false);
 });
 
-test("a case has begun once there is a case text, a message from the user or a report", () => {
+test("a case has begun once there is a message from the user or a report", () => {
   assert.equal(createStore(STEPS).caseStarted(), false);
 
-  const withCase = createStore(STEPS);
-  withCase.setCaseText("De casus.");
-  assert.equal(withCase.caseStarted(), true);
-
-  // A case begun in the LibreChat chat has no case text, only messages.
   const fromChat = createStore(STEPS);
   fromChat.replaceMessages([{ role: "user", text: "Hoezo?" }, { role: "assistant", text: "Daarom." }]);
   assert.equal(fromChat.caseStarted(), true);

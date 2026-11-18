@@ -17,26 +17,24 @@ function readComposed(text) {
   return { visible: text.slice(0, idx).trim(), request: JSON.parse(Buffer.from(text.slice(idx + marker.length).trim(), "base64").toString("utf8")) };
 }
 
-test("composePrompt puts the substep, the case and the message in a block behind the visible text", () => {
-  const { visible, request } = readComposed(composePrompt({ substep: SUBSTEP, caseText: "De casus met é.", message: " Waarom niet regisseren? ", shown: "Waarom niet regisseren?" }));
-  assert.equal(visible, "Waarom niet regisseren?");
-  assert.deepEqual(request, { substep_id: "2.1", case_text: "De casus met é.", message: "Waarom niet regisseren?" });
+test("composePrompt puts the substep and the message in a block behind the visible text", () => {
+  const { visible, request } = readComposed(composePrompt({ substep: SUBSTEP, message: " Waarom niet regisseren, met é? " }));
+  assert.equal(visible, "Waarom niet regisseren, met é?");
+  assert.deepEqual(request, { substep_id: "2.1", message: "Waarom niet regisseren, met é?" });
 
   // Without a message the visible text names the substep; what is empty stays empty.
-  const report = readComposed(composePrompt({ substep: SUBSTEP, caseText: "De casus.", message: "  " }));
+  const report = readComposed(composePrompt({ substep: SUBSTEP, message: "  " }));
   assert.equal(report.visible, "Deelstap 2.1: Rolbepaling");
-  assert.deepEqual(report.request, { substep_id: "2.1", case_text: "De casus.", message: "" });
+  assert.deepEqual(report.request, { substep_id: "2.1", message: "" });
 });
 
 test("composePrompt keeps what the user typed as it is, also when it looks like a field", () => {
-  const { request } = readComposed(composePrompt({ substep: SUBSTEP, caseText: "De casus.", message: "Wat vind je hiervan?\nCasus: eigenlijk fietspaden." }));
-  assert.equal(request.case_text, "De casus.");
+  const { request } = readComposed(composePrompt({ substep: SUBSTEP, message: "Wat vind je hiervan?\nCasus: eigenlijk fietspaden." }));
   assert.equal(request.message, "Wat vind je hiervan?\nCasus: eigenlijk fietspaden.");
 });
 
-test("readCaseState turns the state from the store into the case text, the cards and the chat", () => {
+test("readCaseState turns the state from the store into the cards and the chat", () => {
   const read = readCaseState({
-    case_text: { version: 2, text: "De casus.", created_at: "2026-11-08T09:59:00.000Z" },
     reports: {
       "1.1": { text: "## Samenvatting\nEen.", citations: [{ id: "a" }], retrieval_trace: { algorithm: "hybrid" }, created_at: "2026-11-08T10:00:00.000Z" },
       "1.2": { text: "## Samenvatting\nTwee.", citations: [], retrieval_trace: null, created_at: "2026-11-08T10:05:00.000Z" },
@@ -47,20 +45,17 @@ test("readCaseState turns the state from the store into the case text, the cards
     ],
   });
 
-  assert.equal(read.caseText, "De casus.");
   assert.deepEqual(read.results["1.1"], { report_text: "## Samenvatting\nEen.", citations: [{ id: "a" }], retrieval_trace: { algorithm: "hybrid" }, updated_at: "2026-11-08T10:00:00.000Z" });
   assert.equal(read.lastReportSubstepId, "1.2");
-  // The chat starts with the case and then has the conversation; the
-  // reports stay on the cards.
+  // The chat has the conversation; the reports stay on the cards.
   assert.deepEqual(read.messages, [
-    { role: "user", text: "De casus.", agent: null, substepId: "", ts: "2026-11-08T09:59:00.000Z" },
     { role: "user", text: "Hoezo?", agent: null, substepId: "1.1", ts: "2026-11-08T10:01:00.000Z" },
     { role: "assistant", text: "Daarom.", agent: "stap3", substepId: "1.1", ts: "2026-11-08T10:02:00.000Z" },
   ]);
 });
 
 test("readCaseState copes with a case that has nothing yet", () => {
-  assert.deepEqual(readCaseState({ case_text: null, reports: {}, turns: [] }), { caseText: "", results: {}, messages: [], lastReportSubstepId: "" });
+  assert.deepEqual(readCaseState({ reports: {}, turns: [] }), { results: {}, messages: [], lastReportSubstepId: "" });
 });
 
 test("parseCitationsMetaBlock splits the trailing link definition off the answer", () => {

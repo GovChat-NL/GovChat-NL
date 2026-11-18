@@ -65,9 +65,8 @@ function messageHTML(m, idx, stepLabel) {
     </div>`;
 }
 
-/** `refreshState(conversationId)` (from cases.js) puts the case text and
- *  the reports as the store has them on the screen; the chat calls it
- *  after every answer. */
+/** `refreshState(conversationId)` (from cases.js) puts the reports as the
+ *  store has them on the screen; the chat calls it after every answer. */
 export function setupChat(store, { refreshState }) {
   const { state } = store;
   const chatLogEl = requireElement("gc-bk-chat-log");
@@ -107,9 +106,9 @@ export function setupChat(store, { refreshState }) {
     return result;
   }
 
-  /** The text field is for the case at the start, and for the conversation
-   *  about the substep shown after that. It waits while a request is under
-   *  way. */
+  /** The text field invites the user to describe the case at the start,
+   *  and to talk about the substep shown after that. It waits while a
+   *  request is under way. */
   function renderComposer() {
     chatInputEl.placeholder = store.caseStarted()
       ? `Stel een vraag of reageer op deelstap ${store.activeSubstep().id}`
@@ -127,21 +126,16 @@ export function setupChat(store, { refreshState }) {
    *  the card of its substep, even if the user has gone to another substep
    *  in the meantime.
    *
-   *  `caseDescription` is only passed with the first message, which is the
-   *  case. That message asks for a report too, but the user typed it, so
-   *  the case does show in the chat. While a request is under way, a new
-   *  one is not sent.
+   *  While a request is under way, a new one is not sent.
    *
    *  The user may start a new session or open another case while the
    *  request is under way. Its answer then belongs to a case that is no
    *  longer on the screen, so it is dropped here; the store keeps it with
    *  its own case. */
-  async function ask(substep, message, caseDescription) {
+  async function ask(substep, message) {
     if (state.asking) return;
-    const shown = caseDescription || message || `Deelstap ${substep.id}: ${substep.title}`;
-    const text = composePrompt({ substep, caseText: state.caseText, message, shown });
+    const text = composePrompt({ substep, message });
     if (message) store.addMessage("user", message, { substepId: substep.id });
-    else if (caseDescription) store.addMessage("user", caseDescription);
     // Without text, the answer bubble shows typing dots until the answer
     // arrives.
     const pendingMessage = message ? store.addMessage("assistant", "", { pending: true, substepId: substep.id }) : null;
@@ -194,23 +188,13 @@ export function setupChat(store, { refreshState }) {
     }
   }
 
-  /** What the user types first is the case. The case is stored, and
-   *  Beleidskompas writes the report of the active substep. Everything typed
-   *  after that is a message about the active substep. */
+  /** What the user types is a message, sent from the active substep. */
   function sendUserMessage() {
     const text = chatInputEl.value.trim();
     if (!text || state.asking) return;
     chatInputEl.value = "";
     autoGrowInput();
-    if (store.caseStarted()) {
-      // A message about the active substep.
-      ask(store.activeSubstep(), text);
-    } else {
-      // The first text is the case. Sending it asks for the report of the
-      // active substep. The user's bubble shows the case.
-      store.setCaseText(text);
-      ask(store.activeSubstep(), "", text);
-    }
+    ask(store.activeSubstep(), text);
   }
 
   /** The field grows with its text, up to the CSS max-height. */
