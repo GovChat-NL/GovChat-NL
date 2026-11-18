@@ -710,22 +710,22 @@ function pageSteps(steps) {
 }
 
 /** Every file this script writes, with what goes in it. */
-function buildAll(steps = STEPS) {
+function buildAll() {
   const files = [];
 
   files.push({
     path: path.join(WORKFLOWS_DIR, 'beleidskompas-orchestrator.json'),
-    data: buildOrchestratorWorkflow(steps),
+    data: buildOrchestratorWorkflow(STEPS),
   });
 
-  for (const step of steps) {
+  for (const step of STEPS) {
     files.push({
       path: path.join(WORKFLOWS_DIR, `beleidskompas-agent-${step.id}.json`),
       data: buildStepAgentWorkflow(step),
     });
   }
 
-  files.push({ path: PAGE_STEPS_FILE, data: pageSteps(steps) });
+  files.push({ path: PAGE_STEPS_FILE, data: pageSteps(STEPS) });
   files.push({ path: ADMIN_DEFAULTS_FILE, data: template.DEFAULT_TEMPLATE });
 
   return files;
@@ -738,7 +738,7 @@ function main() {
   }
 }
 
-module.exports = { STEPS, STEP_AGENT_INPUTS, buildOrchestratorWorkflow, buildStepAgentWorkflow, pageSteps, buildAll };
+module.exports = { STEPS, STEP_AGENT_INPUTS, buildOrchestratorWorkflow, buildStepAgentWorkflow, buildAll };
 
 if (require.main === module) {
   main();

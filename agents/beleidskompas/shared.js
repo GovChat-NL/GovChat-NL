@@ -1,11 +1,14 @@
 'use strict';
 
 /**
- * What the Beleidskompas workflows share: the prompt texts, reading the
- * caller's token, taking the message of the page apart, LibreChat's
- * conversation-title request and reading which tools an agent called.
- * orchestrator.js and step-agent.js build on these; generate-workflow.js
- * copies the functions a workflow needs into its Code nodes.
+ * What the Beleidskompas workflows share: reading the caller's token,
+ * taking the message of the page apart, LibreChat's conversation-title
+ * request and reading which tools an agent called. orchestrator.js and
+ * step-agent.js build on these; generate-workflow.js copies the functions
+ * a workflow needs into its Code nodes.
+ *
+ * It also reads the files in prompts/, for the template the admin starts
+ * with (see template.js).
  */
 
 const fs = require('node:fs');
@@ -13,11 +16,11 @@ const path = require('node:path');
 
 // --- The prompt texts ---
 //
-// The texts the model gets live as files in prompts/: the template of the
-// system prompt, the rules that apply to every step, and per step the role
-// of the model and one instruction per substep. They are read here, in
-// Node; generate-workflow.js pastes them as text into the workflows, so n8n
-// never reads a file.
+// The texts the admin starts with live as files in prompts/: the prompt
+// texts, the rules that apply to every step, and per step the role of the
+// model and one instruction per substep. They are read here, in Node, and
+// template.js puts them in the template for the admin. The workflows do
+// not read them: they ask the admin for the template it published.
 
 const PROMPTS_DIR = path.join(__dirname, 'prompts');
 
