@@ -34,7 +34,7 @@ const { createStoreClient } = require('./store-client');
 // The admin's live template is what the steps get at request time; without
 // it (no store, admin down) the template generated from the prompt files
 // stands in, so the chat keeps working with the seed texts.
-const { DEFAULT_TEMPLATE: TEMPLATE_DEFAULTS, stepFromTemplate } = require('./template');
+const { DEFAULT_TEMPLATE: TEMPLATE_DEFAULTS, DEFAULT_MESSAGES, stepFromTemplate } = require('./template');
 
 // Which step id belongs to which webhook path in n8n. The paths are the
 // addresses of the four step workflows.
@@ -308,6 +308,7 @@ async function runOrchestrator(ctx) {
     model: String(settings.default_model || (env && env.BELEIDSKOMPAS_MODEL) || 'govchat-default'),
   };
   stored.template = liveOk ? 'live' : `fallback (${liveAnswer.error || 'no template in the answer'})`;
+  const msg = Object.assign({}, DEFAULT_MESSAGES, template.messages || {});
   const summaries = template.steps.map(stepSummary);
   // Only the steps that have a workflow can be asked.
   const routes = {};
@@ -333,11 +334,11 @@ async function runOrchestrator(ctx) {
   // chat: it is a question, and there is no page to say where the user is.
   if (!activeStepId && !parts.fromPage) activeStepId = DEFAULT_STEP_ID;
   if (!activeStepId) {
-    return { ok: false, step_id: null, error: 'No step recognised in the request', text: UNKNOWN_STEP_TEXT, answer: UNKNOWN_STEP_TEXT };
+    return { ok: false, step_id: null, error: 'No step recognised in the request', text: msg.unknown_step, answer: msg.unknown_step };
   }
   if (!stored.enabled) {
     const error = store.enabled ? 'No conversation or user from the bridge' : 'Store not configured';
-    return { ok: false, step_id: null, error, text: STORE_MISSING_TEXT, answer: STORE_MISSING_TEXT, store: stored };
+    return { ok: false, step_id: null, error, text: msg.store_missing, answer: msg.store_missing, store: stored };
   }
 
   // A report is always written by the step of the substep the page named.
@@ -364,7 +365,7 @@ async function runOrchestrator(ctx) {
   // An error so far means the step would answer without the state of the
   // case, or the user's message would not be kept. Then better no answer.
   if (stored.errors.length) {
-    return { ok: false, step_id: null, error: stored.errors.join('; '), text: STORE_FAILED_TEXT, answer: STORE_FAILED_TEXT, store: stored };
+    return { ok: false, step_id: null, error: stored.errors.join('; '), text: msg.store_failed, answer: msg.store_failed, store: stored };
   }
 
   const result = await forwardToStep({
@@ -404,7 +405,7 @@ async function runOrchestrator(ctx) {
   // `text` carries the meta block behind the answer, so the warning goes
   // in front, in both.
   const warned = result.ok && stored.errors.length
-    ? Object.assign({}, result, { answer: `${STORE_WARNING_TEXT}\n\n${result.answer}`, text: `${STORE_WARNING_TEXT}\n\n${result.text}` })
+    ? Object.assign({}, result, { answer: `${msg.store_warning}\n\n${result.answer}`, text: `${msg.store_warning}\n\n${result.text}` })
     : result;
   return Object.assign({}, warned, { store: stored });
 }

@@ -50,7 +50,10 @@ export const versionOptions = (tpl) =>
 
 // The editor always works on the newest saved version, live or not.
 function flowOf(tpl) {
-  return tpl ? structuredClone(newestVersion(tpl)?.snapshot || store.state.live) : null;
+  if (!tpl) return null;
+  const flow = structuredClone(newestVersion(tpl)?.snapshot || store.state.live);
+  flow.messages = flow.messages || {}; // older snapshots lack it; the Flow builder binds its fields
+  return flow;
 }
 
 async function loadDocuments() {
