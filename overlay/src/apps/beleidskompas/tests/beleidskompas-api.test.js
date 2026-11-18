@@ -7,8 +7,7 @@ import assert from "node:assert/strict";
 
 import { composePrompt, parseCitationsMetaBlock, readCaseState, sendBeleidskompasFeedback } from "../beleidskompas-api.js";
 
-// The id stays as it is; the label is the position the page shows. They differ on purpose.
-const SUBSTEP = { id: "2.9", label: "2.1", title: "Rolbepaling" };
+const SUBSTEP = { id: "2.1", title: "Rolbepaling" };
 
 /** Takes a composed message apart the way the orchestrator does
  *  (parsePageMessage in agents/beleidskompas/shared.js). */
@@ -21,12 +20,12 @@ function readComposed(text) {
 test("composePrompt puts the substep, the case and the message in a block behind the visible text", () => {
   const { visible, request } = readComposed(composePrompt({ substep: SUBSTEP, caseText: "De casus met é.", message: " Waarom niet regisseren? ", shown: "Waarom niet regisseren?" }));
   assert.equal(visible, "Waarom niet regisseren?");
-  assert.deepEqual(request, { substep_id: SUBSTEP.id, case_text: "De casus met é.", message: "Waarom niet regisseren?" });
+  assert.deepEqual(request, { substep_id: "2.1", case_text: "De casus met é.", message: "Waarom niet regisseren?" });
 
   // Without a message the visible text names the substep; what is empty stays empty.
   const report = readComposed(composePrompt({ substep: SUBSTEP, caseText: "De casus.", message: "  " }));
   assert.equal(report.visible, "Deelstap 2.1: Rolbepaling");
-  assert.deepEqual(report.request, { substep_id: SUBSTEP.id, case_text: "De casus.", message: "" });
+  assert.deepEqual(report.request, { substep_id: "2.1", case_text: "De casus.", message: "" });
 });
 
 test("composePrompt keeps what the user typed as it is, also when it looks like a field", () => {

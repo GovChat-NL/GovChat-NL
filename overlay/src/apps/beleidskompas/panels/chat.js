@@ -148,7 +148,7 @@ export function setupChat(store, { refreshState, versionId }) {
    *  its own case. */
   async function ask(substep, message, caseDescription) {
     if (state.asking) return;
-    const shown = caseDescription || message || `Deelstap ${substep.label}: ${substep.title}`;
+    const shown = caseDescription || message || `Deelstap ${substep.id}: ${substep.title}`;
     const text = composePrompt({ substep, caseText: state.caseText, message, shown });
     if (message) store.addMessage("user", message, { substepId: substep.id });
     else if (caseDescription) store.addMessage("user", caseDescription);
