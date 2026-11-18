@@ -7,6 +7,7 @@ const path = require("node:path");
 const os = require("node:os");
 const { normalizeDocumentContext: normalize } = require("../scripts/n8n-document-context");
 const { applyDocumentContext } = require("../scripts/orchestrator-document-workflow");
+const { intentRule } = require("../scripts/orchestrator-image-edit-workflow");
 const { createTextPdf } = require("./fixtures/document-pdf");
 const dataUrl = (bytes = createTextPdf(), mime = "application/pdf") => `data:${mime};base64,${bytes.toString("base64")}`;
 const filePart = (data = dataUrl(), filename = "arbitrary-name.pdf") => ({ type: "file", file: { filename, file_data: data } });
@@ -177,9 +178,9 @@ test("document context reaches mixed-image vision and document failures are pres
     if (url.endsWith("/v1/chat/completions")) {
       assert.match(JSON.stringify(JSON.parse(options.body).messages), /13/);
       assert.doesNotMatch(options.body, /data:application\/pdf;base64/);
-      const classification = JSON.parse(options.body).messages[0].content.includes('Classify the latest');
+      const classification = JSON.parse(options.body).messages[0].content === intentRule;
       if (classification) { intentCalls++; assert.doesNotMatch(options.body, /data:image\//); }
-      else visionCalls++;
+      else { assert.equal(JSON.parse(options.body).messages[0].content, "Synthetic prompt"); visionCalls++; }
       response = { choices: [{ message: { content: classification ? "analyze" : "13" } }] };
     }
     return { ok: true, status: 200, text: async () => JSON.stringify(response) };

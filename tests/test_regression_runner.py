@@ -19,6 +19,42 @@ class RunnerTests(unittest.TestCase):
         self.assertIn("tests/native-chat-footer.test.js", args)
         self.assertIn("--test-concurrency=2", args)
 
+    def test_bridge_suite_is_partitioned_without_losing_or_duplicating_tests(self):
+        all_tests = runner.node_tests(ROOT, runner.SOURCE_TEST_PATTERNS)[3:]
+        bridge_tests = runner.node_tests(ROOT, runner.BRIDGE_TEST_PATTERNS)[3:]
+        librechat_tests = runner.node_tests(ROOT, runner.SOURCE_TEST_PATTERNS, exclude=bridge_tests)[3:]
+        self.assertEqual(bridge_tests, ["tests/n8n-bridge-tool-events.test.js"])
+        self.assertFalse(set(librechat_tests) & set(bridge_tests))
+        self.assertEqual(sorted(librechat_tests + bridge_tests), all_tests)
+
+    def test_bridge_build_uses_fixed_public_revision_and_locked_dependencies(self):
+        self.assertRegex(runner.BRIDGE_REVISION, r"^[0-9a-f]{40}$")
+        self.assertEqual(runner.BRIDGE_CONTEXT,
+                         "https://github.com/GovChat-NL/n8n-openai-bridge.git#" + runner.BRIDGE_REVISION)
+        self.assertIn("COPY package.json package-lock.json ./", runner.BRIDGE_DOCKERFILE)
+        self.assertIn("npm ci --omit=dev", runner.BRIDGE_DOCKERFILE)
+        self.assertIn("COPY src/ ./src/", runner.BRIDGE_DOCKERFILE)
+        self.assertIn("USER node", runner.BRIDGE_DOCKERFILE)
+        self.assertNotIn(".env", runner.BRIDGE_DOCKERFILE)
+        self.assertNotIn("COPY . ", runner.BRIDGE_DOCKERFILE)
+
+    def test_public_snapshot_contains_tracked_statistics_builder_dependencies(self):
+        names = ("scripts/openbesluitvorming-statistics-workflow.js",
+                 "scripts/openbesluitvorming-tool-inputs.js",
+                 "scripts/openbesluitvorming-search-performance.js",
+                 "scripts/openbesluitvorming-filter-description.js",
+                 "scripts/workflow-function-source.js")
+        # The suite itself runs in an intentionally empty git repository. Supply
+        # tracked metadata explicitly, as in the other snapshot unit tests.
+        tracked = ("\0".join(("docker-compose.yml", *names)) + "\0").encode()
+        with tempfile.TemporaryDirectory() as directory, patch.object(runner, "run"), patch.object(runner.subprocess, "check_output", return_value=tracked):
+            destination = Path(directory)
+            runner.snapshot(destination)
+            for name in names:
+                with self.subTest(name=name):
+                    self.assertEqual((destination / name).read_bytes(), (ROOT / name).read_bytes())
+                    self.assertNotIn(name, runner.NEW_FILES, "Helpers must come from tracked public source")
+
     def test_environment_drops_secrets_and_integration_settings(self):
         with patch.dict(os.environ, {"OPENID_CLIENT_SECRET": "sentinel", "NODE_OPTIONS": "bad",
                          "NODE_PATH": "/private", "GOVCHAT_DOCKER_TESTS": "1", "COMPOSE_FILE": ".env",
@@ -115,10 +151,27 @@ class RunnerTests(unittest.TestCase):
         commands = [call.args[0] for call in run.call_args_list]
         self.assertTrue(any(command[-1] == "tests/orchestrator/run-document-smoke.js" for command in commands))
         builds = [command for command in commands if command[:2] == ["docker", "build"]]
-        self.assertEqual(len(builds), 1)
+        self.assertEqual(len(builds), 2)
         admin_image = builds[0][3]
+        bridge_image = builds[1][3]
         self.assertTrue(admin_image.startswith("govchat-regression-admin:"))
-        self.assertEqual(cleanup.call_args.args[0], ["docker", "image", "rm", admin_image])
+        self.assertTrue(bridge_image.startswith("govchat-regression-bridge:"))
+        self.assertEqual(builds[1], ["docker", "build", "--tag", bridge_image, "--file", "-", runner.BRIDGE_CONTEXT])
+        bridge_build = next(call for call in run.call_args_list if call.args[0] == builds[1])
+        self.assertEqual(bridge_build.kwargs["input_text"], runner.BRIDGE_DOCKERFILE)
+        self.assertEqual(cleanup.call_args.args[0], ["docker", "image", "rm", admin_image, bridge_image])
+        bridge_runs = [command for command in commands if command[:2] == ["docker", "run"] and bridge_image in command]
+        self.assertEqual(len(bridge_runs), 2, "Bridge preflight and tests must both run")
+        self.assertIn("/app/src/n8nClient.js", bridge_runs[0][-1])
+        self.assertIn("patchSource", bridge_runs[0][-1])
+        self.assertEqual(bridge_runs[1][-1], "tests/n8n-bridge-tool-events.test.js")
+        for command in bridge_runs:
+            self.assertEqual(command[command.index("--network") + 1], "none")
+            self.assertIn(f"type=bind,source={ROOT},target=/repo,readonly", command)
+            self.assertNotIn("--env-file", command)
+        for command in commands:
+            if command[:2] == ["docker", "run"] and "tests/n8n-bridge-tool-events.test.js" in command:
+                self.assertIn(bridge_image, command)
         python_call = run.call_args_list[-1]
         self.assertEqual(python_call.args[2]["GOVCHAT_DOCKER_TESTS"], "1")
         for command in commands:
@@ -126,13 +179,25 @@ class RunnerTests(unittest.TestCase):
             self.assertNotIn(".env", command)
 
     def test_build_failure_still_cleans_only_unique_test_image(self):
-        def fail_build(args, *unused):
-            if args[:2] == ["docker", "build"]:
+        for prefix in ("govchat-regression-admin:", "govchat-regression-bridge:"):
+            with self.subTest(prefix=prefix):
+                def fail_build(args, *unused, **kwargs):
+                    if args[:2] == ["docker", "build"] and args[3].startswith(prefix):
+                        raise runner.subprocess.CalledProcessError(1, args)
+                with patch.object(runner, "run", side_effect=fail_build), patch.object(runner.subprocess, "run") as cleanup, self.assertRaises(runner.subprocess.CalledProcessError):
+                    runner.execute_suite(ROOT)
+                self.assertEqual(cleanup.call_args.args[0][:3], ["docker", "image", "rm"])
+                self.assertTrue(cleanup.call_args.args[0][3].startswith("govchat-regression-admin:"))
+                self.assertTrue(cleanup.call_args.args[0][4].startswith("govchat-regression-bridge:"))
+
+    def test_bridge_test_failure_is_fatal_and_cleans_test_images(self):
+        def fail_test(args, *unused, **kwargs):
+            if args[:2] == ["docker", "run"] and args[-1] == "tests/n8n-bridge-tool-events.test.js":
                 raise runner.subprocess.CalledProcessError(1, args)
-        with patch.object(runner, "run", side_effect=fail_build), patch.object(runner.subprocess, "run") as cleanup, self.assertRaises(runner.subprocess.CalledProcessError):
+        with patch.object(runner, "run", side_effect=fail_test), patch.object(runner.subprocess, "run") as cleanup, self.assertRaises(runner.subprocess.CalledProcessError):
             runner.execute_suite(ROOT)
         self.assertEqual(cleanup.call_args.args[0][:3], ["docker", "image", "rm"])
-        self.assertTrue(cleanup.call_args.args[0][3].startswith("govchat-regression-admin:"))
+        self.assertEqual(len(cleanup.call_args.args[0]), 5)
 
 
 if __name__ == "__main__":
