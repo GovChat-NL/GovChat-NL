@@ -338,39 +338,6 @@ function initDefaults() {
 
   const beleidskompasState = readBeleidskompasState();
   publishBeleidskompasLiveConfig(beleidskompasState.live, beleidskompasState.live_version_id);
-  // One-time cleanup after the removed workflow generator: it left a folder with
-  // document text, and the webhook token and workflow fields in the state file.
-  const workflowsDir = path.join(DATA_DIR, "beleidskompas-workflows");
-  if (fs.existsSync(workflowsDir)) {
-    fs.rmSync(workflowsDir, { recursive: true, force: true });
-    console.log(`[init] Removed ${workflowsDir}`);
-  }
-  // The file is written back as it was read, minus those fields: a file that does not
-  // parse, and fields this version does not know, are left alone.
-  const rawState = readPrivateJSON(BELEIDSKOMPAS_STATE_FILE);
-  if (rawState && stripOldWorkflowFields(rawState)) {
-    writePrivateJSON(BELEIDSKOMPAS_STATE_FILE, rawState);
-    console.log(`[init] Removed the old webhook token and workflow fields from ${BELEIDSKOMPAS_STATE_FILE}`);
-  }
-}
-
-/** Removes what the removed workflow generator stored in a state; true when it found any. */
-function stripOldWorkflowFields(state) {
-  const old = ["webhook_token", "orchestrator_workflow_id", "orchestrator_webhook_path", "workflow_id", "webhook_path"];
-  const versions = Array.isArray(state.versions) ? state.versions : [];
-  let found = false;
-  for (const flow of [state.draft, state.flow, state.live, ...versions.map((v) => v?.snapshot)]) {
-    if (!flow || typeof flow !== "object") continue;
-    for (const item of [flow, ...(Array.isArray(flow.steps) ? flow.steps : [])]) {
-      for (const key of old) {
-        if (item && typeof item === "object" && key in item) {
-          delete item[key];
-          found = true;
-        }
-      }
-    }
-  }
-  return found;
 }
 
 function readJSON(filename) {
@@ -2945,7 +2912,7 @@ server.on("upgrade", (req, socket, head) => {
 });
 
 // The tests require this file for its functions; only a direct start runs the service.
-module.exports = { app, normalizeBeleidskompasFlow, publicBeleidskompasConfig, stripOldWorkflowFields };
+module.exports = { app, normalizeBeleidskompasFlow, publicBeleidskompasConfig };
 
 if (require.main === module) {
   setInterval(cleanupImageJobs, 10 * 60 * 1000);

@@ -14,18 +14,9 @@ for (const name of ["DATA_DIR", "PUBLISH_DIR"]) {
 }
 process.env.ADMIN_PASSWORD = "test-password";
 process.env.BELEIDSKOMPAS_STORE_TOKEN = "secret-token";
-const { app, normalizeBeleidskompasFlow, publicBeleidskompasConfig, stripOldWorkflowFields } = require("../server.js");
+const { app, normalizeBeleidskompasFlow, publicBeleidskompasConfig } = require("../server.js");
 const publicFile = path.join(process.env.PUBLISH_DIR, "beleidskompas-config.json");
 test.after(() => fs.rmSync(dir, { recursive: true, force: true }));
-
-test("the startup cleanup removes only the old workflow fields from a state", () => {
-  const flow = () => ({ webhook_token: "t", orchestrator_workflow_id: "o", messages: { x: "y" }, steps: [{ id: "ov1", workflow_id: "w", webhook_path: "p" }] });
-  const state = { draft: flow(), live: flow(), versions: [{ id: "v1", snapshot: flow() }], documents: [{ id: "d1" }] };
-  assert.equal(stripOldWorkflowFields(state), true);
-  const kept = { messages: { x: "y" }, steps: [{ id: "ov1" }] };
-  assert.deepEqual(state, { draft: kept, live: kept, versions: [{ id: "v1", snapshot: kept }], documents: [{ id: "d1" }] });
-  assert.equal(stripOldWorkflowFields(state), false);
-});
 
 test("a new substep gets an id the step does not have and did not have in a saved version", async () => {
   const { nextSubstepId } = await import("../views/beleidskompas-admin/api.js");
