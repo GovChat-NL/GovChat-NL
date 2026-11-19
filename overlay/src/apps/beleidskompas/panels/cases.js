@@ -12,16 +12,16 @@ export function setupCases(store) {
   const recentCasesListEl = requireElement("gc-bk-recent-cases-list");
   const convoTitleEl = requireElement("gc-bk-convo-title");
 
-  /** Puts the case text and the reports as the store has them on the
-   *  screen. Called after every answer, so the cards show what is stored
+  /** Puts the reports as the store has them on the screen. Called after every answer, so the cards show what is stored
    *  and not what the page thinks happened. The chat is left alone: it
-   *  already shows the conversation. */
+   *  already shows the conversation. Returns the conversation as the store
+   *  has it, where every answer names the step that gave it. */
   async function refreshState(conversationId) {
-    const { caseText, results } = readCaseState(await fetchCaseState(conversationId));
+    const { results, messages } = readCaseState(await fetchCaseState(conversationId));
     // The user may have opened another case while the answer was under way.
-    if (state.conversationId !== conversationId) return;
-    store.setCaseText(caseText);
+    if (state.conversationId !== conversationId) return [];
     store.replaceResults(results);
+    return messages;
   }
 
   /** Opens a case from the store - shared by the "resume on reopen" path
@@ -31,12 +31,11 @@ export function setupCases(store) {
    *  it was left. */
   async function resumeConversation(conversationId) {
     const [caseState, lastMessageId] = await Promise.all([fetchCaseState(conversationId), fetchLastMessageId(conversationId)]);
-    const { caseText, results, messages, lastReportSubstepId } = readCaseState(caseState);
+    const { results, messages, lastReportSubstepId } = readCaseState(caseState);
     store.leaveCase();
     store.setConversationId(conversationId);
     store.setLastMessageId(lastMessageId);
-    store.replaceMessages([{ role: "assistant", text: "Casus geopend. Stel een vraag of werk een deelstap uit." }, ...messages]);
-    store.setCaseText(caseText);
+    store.replaceMessages([{ role: "assistant", text: "Casus geopend. Stel een vraag of werk een deelstap uit.", notice: true }, ...messages]);
     if (lastReportSubstepId) store.setActiveSubstep(store.substeps.findIndex((s) => s.id === lastReportSubstepId));
     store.replaceResults(results);
   }

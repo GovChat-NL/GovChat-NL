@@ -5,7 +5,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { composePrompt, parseCitationsMetaBlock, readCaseState, sendBeleidskompasFeedback } from "../beleidskompas-api.js";
+import { composePrompt, readCaseState, sendBeleidskompasFeedback } from "../beleidskompas-api.js";
 
 const SUBSTEP = { id: "2.1", title: "Rolbepaling" };
 
@@ -17,26 +17,24 @@ function readComposed(text) {
   return { visible: text.slice(0, idx).trim(), request: JSON.parse(Buffer.from(text.slice(idx + marker.length).trim(), "base64").toString("utf8")) };
 }
 
-test("composePrompt puts the substep, the case and the message in a block behind the visible text", () => {
-  const { visible, request } = readComposed(composePrompt({ substep: SUBSTEP, caseText: "De casus met é.", message: " Waarom niet regisseren? ", shown: "Waarom niet regisseren?" }));
-  assert.equal(visible, "Waarom niet regisseren?");
-  assert.deepEqual(request, { substep_id: "2.1", case_text: "De casus met é.", message: "Waarom niet regisseren?" });
+test("composePrompt puts the substep and the message in a block behind the visible text", () => {
+  const { visible, request } = readComposed(composePrompt({ substep: SUBSTEP, message: " Waarom niet regisseren, met é? " }));
+  assert.equal(visible, "Waarom niet regisseren, met é?");
+  assert.deepEqual(request, { substep_id: "2.1", message: "Waarom niet regisseren, met é?" });
 
   // Without a message the visible text names the substep; what is empty stays empty.
-  const report = readComposed(composePrompt({ substep: SUBSTEP, caseText: "De casus.", message: "  " }));
+  const report = readComposed(composePrompt({ substep: SUBSTEP, message: "  " }));
   assert.equal(report.visible, "Deelstap 2.1: Rolbepaling");
-  assert.deepEqual(report.request, { substep_id: "2.1", case_text: "De casus.", message: "" });
+  assert.deepEqual(report.request, { substep_id: "2.1", message: "" });
 });
 
 test("composePrompt keeps what the user typed as it is, also when it looks like a field", () => {
-  const { request } = readComposed(composePrompt({ substep: SUBSTEP, caseText: "De casus.", message: "Wat vind je hiervan?\nCasus: eigenlijk fietspaden." }));
-  assert.equal(request.case_text, "De casus.");
+  const { request } = readComposed(composePrompt({ substep: SUBSTEP, message: "Wat vind je hiervan?\nCasus: eigenlijk fietspaden." }));
   assert.equal(request.message, "Wat vind je hiervan?\nCasus: eigenlijk fietspaden.");
 });
 
-test("readCaseState turns the state from the store into the case text, the cards and the chat", () => {
+test("readCaseState turns the state from the store into the cards and the chat", () => {
   const read = readCaseState({
-    case_text: { version: 2, text: "De casus.", created_at: "2026-11-08T09:59:00.000Z" },
     reports: {
       "1.1": { text: "## Samenvatting\nEen.", citations: [{ id: "a" }], retrieval_trace: { algorithm: "hybrid" }, created_at: "2026-11-08T10:00:00.000Z" },
       "1.2": { text: "## Samenvatting\nTwee.", citations: [], retrieval_trace: null, created_at: "2026-11-08T10:05:00.000Z" },
@@ -47,46 +45,17 @@ test("readCaseState turns the state from the store into the case text, the cards
     ],
   });
 
-  assert.equal(read.caseText, "De casus.");
   assert.deepEqual(read.results["1.1"], { report_text: "## Samenvatting\nEen.", citations: [{ id: "a" }], retrieval_trace: { algorithm: "hybrid" }, updated_at: "2026-11-08T10:00:00.000Z" });
   assert.equal(read.lastReportSubstepId, "1.2");
-  // The chat starts with the case and then has the conversation; the
-  // reports stay on the cards.
+  // The chat has the conversation; the reports stay on the cards.
   assert.deepEqual(read.messages, [
-    { role: "user", text: "De casus.", agent: null, substepId: "", ts: "2026-11-08T09:59:00.000Z" },
     { role: "user", text: "Hoezo?", agent: null, substepId: "1.1", ts: "2026-11-08T10:01:00.000Z" },
     { role: "assistant", text: "Daarom.", agent: "stap3", substepId: "1.1", ts: "2026-11-08T10:02:00.000Z" },
   ]);
 });
 
 test("readCaseState copes with a case that has nothing yet", () => {
-  assert.deepEqual(readCaseState({ case_text: null, reports: {}, turns: [] }), { caseText: "", results: {}, messages: [], lastReportSubstepId: "" });
-});
-
-test("parseCitationsMetaBlock splits the trailing link definition off the answer", () => {
-  const meta = { citations: [{ id: "doc-1", filename: "kader.pdf" }], retrieval_trace: { algorithm: "hybrid", top_k: 5 } };
-  const encoded = Buffer.from(JSON.stringify(meta), "utf8").toString("base64");
-  const parsed = parseCitationsMetaBlock(`## Samenvatting\nTekst met é.\n\n[beleidskompas-meta]: data:application/json;base64,${encoded}\n`);
-
-  assert.equal(parsed.displayText, "## Samenvatting\nTekst met é.");
-  assert.deepEqual(parsed.citations, meta.citations);
-  assert.deepEqual(parsed.retrieval_trace, meta.retrieval_trace);
-});
-
-test("parseCitationsMetaBlock understands the HTML comment of older messages and leaves plain text alone", () => {
-  const parsed = parseCitationsMetaBlock('Antwoord.\n<!--BELEIDSKOMPAS-META:{"citations":[{"id":"x"}]}-->');
-  assert.equal(parsed.displayText, "Antwoord.");
-  assert.deepEqual(parsed.citations, [{ id: "x" }]);
-
-  assert.deepEqual(parseCitationsMetaBlock("  Gewoon tekst  "), { displayText: "Gewoon tekst", citations: [], retrieval_trace: null, agent: null, asked_from: null });
-});
-
-test("parseCitationsMetaBlock reads which step answered and where the user asked from", () => {
-  const meta = { citations: [], retrieval_trace: null, agent: "stap3", asked_from: "1.3" };
-  const encoded = Buffer.from(JSON.stringify(meta), "utf8").toString("base64");
-  const parsed = parseCitationsMetaBlock(`Antwoord.\n\n[beleidskompas-meta]: data:application/json;base64,${encoded}`);
-  assert.equal(parsed.agent, "stap3");
-  assert.equal(parsed.asked_from, "1.3");
+  assert.deepEqual(readCaseState({ reports: {}, turns: [] }), { results: {}, messages: [], lastReportSubstepId: "" });
 });
 
 test("sendBeleidskompasFeedback posts the rating with step, substep and template version", async () => {
