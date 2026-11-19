@@ -27,6 +27,14 @@ test("a new substep gets an id the step does not have and did not have in a save
   assert.equal(nextSubstepId(2, { id: "stap2", substeps: [] }), "2.1");
 });
 
+test("moved substeps are saved and published in their new order, with their own ids and prompts", () => {
+  const seed = normalizeBeleidskompasFlow({});
+  const [a, b, c, ...rest] = seed.steps[0].substeps;
+  const flow = normalizeBeleidskompasFlow({ ...seed, steps: [{ ...seed.steps[0], substeps: [c, b, a, ...rest] }, ...seed.steps.slice(1)] });
+  assert.deepEqual(flow.steps[0].substeps.map((s) => [s.id, s.prompt]), [c, b, a, ...rest].map((s) => [s.id, s.prompt]));
+  assert.deepEqual(publicBeleidskompasConfig(flow, "v1").steps[0].substeps.map((s) => s.id), ["1.3", "1.2", "1.1", "1.4", "1.5"]);
+});
+
 test("the public config holds only what the Beleidskompas page reads", () => {
   const flow = normalizeBeleidskompasFlow({
     rules: "r",
