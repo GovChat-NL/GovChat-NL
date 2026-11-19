@@ -18,13 +18,11 @@ const { app, normalizeBeleidskompasFlow, publicBeleidskompasConfig } = require("
 const publicFile = path.join(process.env.PUBLISH_DIR, "beleidskompas-config.json");
 test.after(() => fs.rmSync(dir, { recursive: true, force: true }));
 
-test("a new substep gets an id the step does not have and did not have in a saved version", async () => {
-  const { nextSubstepId } = await import("../views/beleidskompas-admin/api.js");
-  const step = (ids) => ({ id: "stap1", substeps: ids.map((id) => ({ id })) });
-  assert.equal(nextSubstepId(1, step(["1.1", "1.2", "1.4", "1.5"])), "1.6");
-  // 1.3 was the last substep of a saved version and is deleted since.
-  assert.equal(nextSubstepId(1, step(["1.1", "1.2"]), [null, { steps: [step(["1.1", "1.2", "1.3"])] }]), "1.4");
-  assert.equal(nextSubstepId(2, { id: "stap2", substeps: [] }), "2.1");
+test("a new substep gets a random code, not a number that says where it is", async () => {
+  const { newSubstepId } = await import("../views/beleidskompas-admin/pages/flow.js");
+  const first = newSubstepId();
+  assert.match(first, /^sub_[a-z0-9]{8}$/);
+  assert.notEqual(newSubstepId(), first);
 });
 
 test("moved substeps are saved and published in their new order, with their own ids and prompts", () => {

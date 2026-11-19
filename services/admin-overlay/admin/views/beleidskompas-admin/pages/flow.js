@@ -14,6 +14,21 @@ const SEARCH_METHODS = [
 // The step's <li> in the rendered list (index in store.flow.steps).
 const stepEl = (idx) => document.querySelectorAll(".flow-list > .flow-step")[idx];
 
+// A substep is looked up by its id, and its position in the step can change. So a new
+// substep gets a random code that says nothing about its position, like sub_k3x9q2m7.
+export function newSubstepId() {
+  return `sub_${randomCode()}`;
+}
+
+// Not crypto.randomUUID: that only works over HTTPS or on localhost.
+function randomCode() {
+  const characters = "abcdefghijklmnopqrstuvwxyz0123456789";
+  const randomNumbers = crypto.getRandomValues(new Uint8Array(8));
+  let code = "";
+  for (const number of randomNumbers) code += characters[number % characters.length];
+  return code;
+}
+
 export function renderFlow({ store, render, markDirty }) {
   const steps = store.flow.steps;
   const flow = store.flow;
@@ -139,9 +154,7 @@ function stepEditor(step, { store, markDirty, render }) {
       {
         class: "btn btn-small btn-secondary",
         onClick: () => {
-          const versions = store.templates.find((t) => t.id === store.templateId)?.versions || [];
-          const id = api.nextSubstepId(store.flow.steps.indexOf(step) + 1, step, [store.state?.live, ...versions.map((v) => v.snapshot)]);
-          step.substeps = [...(step.substeps || []), { id, title: "", prompt: "", answer_format: "" }];
+          step.substeps = [...(step.substeps || []), { id: newSubstepId(), title: "", prompt: "", answer_format: "" }];
           markDirty();
           render();
           const row = document.querySelector(".flow-step.is-open .substep:last-of-type");
