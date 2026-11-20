@@ -36,6 +36,14 @@ test("without a store or a token the endpoints answer 503, not 401", async () =>
   assert.equal((await noToken.listCases(withToken({}))).status, 503);
 });
 
+test("the live template needs the token but no store", async () => {
+  const getLive = () => ({ version_id: "v1", flow: { title: "T" }, settings: { default_model: "m" } });
+  const handlers = createBeleidskompasHandlers({ store: null, internalToken: TOKEN, getLive });
+  assert.equal((await handlers.live({ headers: {} })).status, 401);
+  assert.deepEqual(await handlers.live(withToken({})), { status: 200, body: getLive() });
+  assert.equal((await createBeleidskompasHandlers({ store: null, internalToken: "", getLive }).live(withToken({}))).status, 503);
+});
+
 test("getCase passes the case, the user from the query and the turn limit to the store, and answers an empty state for an unknown case", async () => {
   const store = fakeStore({ getState: (args) => (args.caseId === "conv-1" ? { id: "conv-1", reports: {} } : null) });
   const handlers = createBeleidskompasHandlers({ store, internalToken: TOKEN });
