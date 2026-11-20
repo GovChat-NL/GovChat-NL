@@ -6,23 +6,25 @@ const assert = require('node:assert/strict');
 const { DISCLAIMER, COMMON_RULES, REPORT_PROMPT_TEMPLATE, CONVERSATION_PROMPT_TEMPLATE } = require('../shared');
 const { buildAssignment, processReply, buildResult } = require('../step-agent');
 const { STEPS } = require('../generate-workflow');
+const { DEFAULT_TEMPLATE, stepFromTemplate } = require('../template');
 
 const [step1, step2] = STEPS;
 
-/** What the orchestrator passes of the template for one step. */
-function templateFor(step) {
+/** What the orchestrator passes of the template for one step: the step as
+ *  stepFromTemplate gives it, with a label per substep. */
+function templateFor(step, template = DEFAULT_TEMPLATE) {
   return JSON.stringify({
     model: 'een-model',
     rules: COMMON_RULES.join('\n'),
     report_prompt: REPORT_PROMPT_TEMPLATE,
     conversation_prompt: CONVERSATION_PROMPT_TEMPLATE,
     report_disclaimer: DISCLAIMER,
-    step,
+    step: stepFromTemplate(template, step.id),
   });
 }
 
 const input = {
-  substep_id: '1.2',
+  substep_label: '1.2',
   assignment: 'uitwerken',
   case_id: 'c1',
   user_id: 'u1',
@@ -53,9 +55,11 @@ test('the assignment for a report holds only the asked substep, with its answer 
 test('every substep of every step gets a complete assignment', () => {
   for (const step of STEPS) {
     for (const substep of step.substeps) {
-      const a = buildAssignment({ input: { ...input, substep_id: substep.id, template: templateFor(step) } });
-      assert.equal(a.mode, 'report', substep.id);
-      assert.ok(a.system_prompt.includes(`Deelstap ${substep.id}: ${substep.title}`), substep.id);
+      const label = `${step.nr}.${step.substeps.indexOf(substep) + 1}`;
+      const a = buildAssignment({ input: { ...input, substep_label: label, template: templateFor(step) } });
+      assert.equal(a.mode, 'report', label);
+      assert.equal(a.substep_id, substep.id, label);
+      assert.ok(a.system_prompt.includes(`Deelstap ${label}: ${substep.title}`), label);
       assert.ok(!/\{\{\w+\}\}/.test(a.system_prompt), substep.id);
     }
   }
@@ -72,7 +76,7 @@ test('a report for a substep of another step, or an assignment without a templat
 });
 
 test('any other assignment is a question: about one substep, or about the whole step', () => {
-  const whole = buildAssignment({ input: { ...input, substep_id: '', assignment: 'Waarom is dit een provinciaal belang?' } });
+  const whole = buildAssignment({ input: { ...input, substep_label: '', assignment: 'Waarom is dit een provinciaal belang?' } });
   assert.deepEqual([whole.mode, whole.substep_id], ['conversation', '']);
   assert.ok(whole.system_prompt.includes('Deelstap 1.1: Probleemdefinitie') && whole.system_prompt.includes('Deelstap 1.5: Integrale afweging'));
   assert.ok(!whole.system_prompt.includes('### Redenering'), 'a question gets no answer format');
@@ -80,6 +84,21 @@ test('any other assignment is a question: about one substep, or about the whole 
 
   const one = buildAssignment({ input: { ...input, assignment: 'Waarom beperkt?' } });
   assert.ok(one.system_prompt.includes('Deelstap 1.2:') && !one.system_prompt.includes('Deelstap 1.1:'));
+});
+
+test('the model names a moved substep by its new label, and the report is stored under its id', () => {
+  // Overheidsinterventie (id 1.2) is moved to the top of step 1.
+  const [first, second, ...rest] = DEFAULT_TEMPLATE.steps[0].substeps;
+  const moved = { ...DEFAULT_TEMPLATE, steps: [{ ...DEFAULT_TEMPLATE.steps[0], substeps: [second, first, ...rest] }, ...DEFAULT_TEMPLATE.steps.slice(1)] };
+  const a = buildAssignment({ input: { ...input, substep_label: '1.1', template: templateFor(step1, moved) } });
+
+  assert.deepEqual([a.mode, a.substep_id, a.substep_label, a.substep_title], ['report', '1.2', '1.1', 'Overheidsinterventie']);
+  assert.ok(a.system_prompt.includes('Deelstap 1.1: Overheidsinterventie'));
+  assert.ok(a.user_prompt.endsWith('Opdracht: werk deelstap 1.1 (Overheidsinterventie) uit.'));
+
+  const processed = processReply({ assignment: a, agent: { output: '### Overheidsinterventie\n**Oordeel:** ja' } });
+  assert.equal(processed.substep_id, '1.2');
+  assert.ok(processed.report_text.startsWith('**Stap 1 · Publiek en provinciaal belang · 1.1 Overheidsinterventie**'));
 });
 
 const assignment = buildAssignment({ input });
@@ -103,7 +122,7 @@ test('the orchestrator gets the report as it was stored', () => {
   assert.deepEqual(result, {
     kind: 'report',
     step_id: 'stap1',
-    substep_id: '1.2',
+    substep_label: '1.2',
     saved: true,
     version: 3,
     error: null,

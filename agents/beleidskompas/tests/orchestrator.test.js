@@ -14,7 +14,7 @@ const {
   finishAnswer,
 } = require('../orchestrator');
 const { STEPS } = require('../generate-workflow');
-const { DEFAULT_TEMPLATE } = require('../template');
+const { DEFAULT_TEMPLATE, stepFromTemplate } = require('../template');
 
 const env = { N8N_WEBHOOK_TOKEN: 'geheim', BELEIDSKOMPAS_STORE_URL: 'http://store', BELEIDSKOMPAS_STORE_TOKEN: 'store-token' };
 const headers = { authorization: 'Bearer geheim' };
@@ -142,13 +142,31 @@ test('the context holds what the agents need from the template', () => {
   assert.deepEqual(Object.keys(context.step_templates), ['stap1', 'stap2']);
   assert.ok(!context.system_prompt.includes('stap3_agent'));
   const forStep2 = JSON.parse(context.step_templates.stap2);
-  assert.deepEqual([forStep2.model, forStep2.rules, forStep2.step], ['een-model', 'Een eigen regel.', STEPS[1]]);
+  assert.deepEqual([forStep2.model, forStep2.rules, forStep2.step], ['een-model', 'Een eigen regel.', stepFromTemplate(DEFAULT_TEMPLATE, 'stap2')]);
+});
+
+test('the models read the number of a substep in the list, while the page sends its id', () => {
+  // Overheidsinterventie (id 1.2) is moved to the top, and a substep with a code is added.
+  const [first, second, ...rest] = DEFAULT_TEMPLATE.steps[0].substeps;
+  const added = { ...first, id: 'sub_k3x9q2m7', title: 'Nieuw' };
+  const flow = { ...DEFAULT_TEMPLATE, steps: [{ ...DEFAULT_TEMPLATE.steps[0], substeps: [second, first, ...rest, added] }, ...DEFAULT_TEMPLATE.steps.slice(1)] };
+  const moved = { ...live, flow };
+
+  const report = buildContext({ request: prepare({ currentMessage: pageMessage({ substep_id: '1.2', message: '' }) }), state, live: moved, stepIds });
+  assert.equal(report.substep_id, '1.2');
+  assert.ok(report.prompt.endsWith('Verzoek: werk deelstap 1.1 uit.'));
+  assert.ok(report.system_prompt.includes('(1.1 Overheidsinterventie, 1.2 Probleemdefinitie, '));
+
+  const question = buildContext({ request: prepare({ currentMessage: pageMessage({ substep_id: 'sub_k3x9q2m7', message: 'Klopt dit?' }) }), state, live: moved, stepIds });
+  assert.equal(question.substep_id, 'sub_k3x9q2m7');
+  assert.ok(question.prompt.endsWith('Bericht van de gebruiker (de gebruiker zit in deelstap 1.6):\nKlopt dit?'));
 });
 
 // --- The orchestrator's prompt ---
 
 test('the system prompt of the orchestrator lists the agent of every step with its substeps', () => {
-  const prompt = buildOrchestratorPrompt(DEFAULT_TEMPLATE.steps, DEFAULT_TEMPLATE.orchestrator_prompt);
+  const steps = DEFAULT_TEMPLATE.steps.map((step) => stepFromTemplate(DEFAULT_TEMPLATE, step.id));
+  const prompt = buildOrchestratorPrompt(steps, DEFAULT_TEMPLATE.orchestrator_prompt);
   assert.ok(!prompt.includes('{{'));
   assert.ok(prompt.includes('- stap1_agent: stap 1, Publiek en provinciaal belang (1.1 Probleemdefinitie, '));
   for (const step of STEPS) assert.ok(prompt.includes(`- stap${step.nr}_agent: stap ${step.nr}, ${step.title} (`));
@@ -173,7 +191,7 @@ test('without a usable reply the title is made from the first words of the case'
 const context = buildContext({ request: prepare({ currentMessage: pageMessage({ substep_id: '1.2', message: '' }) }), state, live, stepIds });
 
 test('the answer after a report: the message of the orchestrator and the step it called', () => {
-  const agent = { output: ' Deelstap 1.2 is uitgewerkt. Het budget ontbreekt nog. ', intermediateSteps: [{ action: { tool: 'stap1_agent', toolInput: { substep_id: '1.2', assignment: 'uitwerken' } } }] };
+  const agent = { output: ' Deelstap 1.2 is uitgewerkt. Het budget ontbreekt nog. ', intermediateSteps: [{ action: { tool: 'stap1_agent', toolInput: { substep_label: '1.2', assignment: 'uitwerken' } } }] };
   const answer = buildAnswer({ context, agent, now: 18500 });
 
   assert.deepEqual(answer, {
@@ -182,7 +200,7 @@ test('the answer after a report: the message of the orchestrator and the step it
     mode: 'report',
     step_id: 'stap1',
     asked_from: '1.2',
-    tools: [{ tool: 'stap1_agent', input: { substep_id: '1.2', assignment: 'uitwerken' } }],
+    tools: [{ tool: 'stap1_agent', input: { substep_label: '1.2', assignment: 'uitwerken' } }],
     duration_ms: 17500,
     ok: true,
     text: 'Deelstap 1.2 is uitgewerkt. Het budget ontbreekt nog.',

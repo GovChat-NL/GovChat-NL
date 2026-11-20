@@ -86,13 +86,17 @@ function stepFromTemplate(template, stepId) {
   const index = steps.findIndex((step) => step && step.id === stepId);
   if (index === -1) return null;
   const step = steps[index];
+  const nr = Number(step.nr) || index + 1;
   return {
     id: step.id,
-    nr: Number(step.nr) || index + 1,
+    nr,
     title: String(step.title || ''),
     role: String(step.prompt || ''),
-    substeps: (Array.isArray(step.substeps) ? step.substeps : []).map((substep) => ({
+    // The label is the number a person sees: the step number and the place in the step.
+    // The id stays the same when a substep moves, so the stored reports keep their substep.
+    substeps: (Array.isArray(step.substeps) ? step.substeps : []).map((substep, position) => ({
       id: substep.id,
+      label: `${nr}.${position + 1}`,
       title: String(substep.title || ''),
       instruction: String(substep.prompt || ''),
       format: String(substep.answer_format || ''),

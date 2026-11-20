@@ -75,7 +75,7 @@ test('a tool passes exactly the inputs the called workflow declares, and the mod
     assert.deepEqual(Object.keys(inputs.value), STEP_AGENT_INPUTS);
     assert.deepEqual(inputs.schema.map((s) => s.id), STEP_AGENT_INPUTS);
     const filledByModel = Object.entries(inputs.value).filter(([, value]) => value.includes('$fromAI')).map(([name]) => name);
-    assert.deepEqual(filledByModel, ['substep_id', 'assignment']);
+    assert.deepEqual(filledByModel, ['substep_label', 'assignment']);
   }
 });
 
@@ -109,7 +109,7 @@ test('a request for a report passes through the Code nodes of the orchestrator a
   assert.equal(context.findings, state.reports['1.1'].text);
 
   // What the orchestrator's tool call hands the agent of step 2.
-  const toolInput = { substep_id: '2.1', assignment: 'uitwerken', case_id: context.case_id, user_id: context.user_id, findings: context.findings, conversation: context.conversation, template: context.step_templates.stap2 };
+  const toolInput = { substep_label: '2.1', assignment: 'uitwerken', case_id: context.case_id, user_id: context.user_id, findings: context.findings, conversation: context.conversation, template: context.step_templates.stap2 };
   const assignment = runCode(agents[1], 'Opdracht opbouwen', toolInput);
   assert.deepEqual([assignment.mode, assignment.step_id, assignment.model], ['report', 'stap2', 'een-model']);
   assert.ok(assignment.user_prompt.includes(`Bevindingen tot nu toe:\n${state.reports['1.1'].text}`));
@@ -120,7 +120,7 @@ test('a request for a report passes through the Code nodes of the orchestrator a
   const result = runCode(agents[1], 'Resultaat voor de orchestrator', { version: 1 }, { 'Opdracht opbouwen': assignment, 'Antwoord verwerken': reply });
   assert.deepEqual([result.kind, result.saved, result.report], ['report', true, reply.report_text]);
 
-  const orchestratorReply = { output: 'Deelstap 2.1 is uitgewerkt. Het budget ontbreekt nog.', intermediateSteps: [{ action: { tool: 'stap2_agent', toolInput: { substep_id: '2.1', assignment: 'uitwerken' } } }] };
+  const orchestratorReply = { output: 'Deelstap 2.1 is uitgewerkt. Het budget ontbreekt nog.', intermediateSteps: [{ action: { tool: 'stap2_agent', toolInput: { substep_label: '2.1', assignment: 'uitwerken' } } }] };
   const answer = runCode(orchestrator, 'Antwoord opbouwen', orchestratorReply, { 'Gegevens voor de agents klaarzetten': context });
   assert.deepEqual([answer.ok, answer.mode, answer.step_id], [true, 'report', 'stap2']);
 
@@ -129,7 +129,7 @@ test('a request for a report passes through the Code nodes of the orchestrator a
 });
 
 test('an invalid assignment skips the agent and still gives the orchestrator a result', () => {
-  const assignment = runCode(agents[0], 'Opdracht opbouwen', { substep_id: '3.1', assignment: 'uitwerken', case_id: 'c1', user_id: 'u1', findings: '', conversation: '', template: JSON.stringify({ step: STEPS[0] }) });
+  const assignment = runCode(agents[0], 'Opdracht opbouwen', { substep_label: '3.1', assignment: 'uitwerken', case_id: 'c1', user_id: 'u1', findings: '', conversation: '', template: JSON.stringify({ step: STEPS[0] }) });
   assert.equal(assignment.valid, false);
   assert.equal(runCode(agents[0], 'Resultaat voor de orchestrator', assignment, { 'Opdracht opbouwen': assignment }).kind, 'error');
 });
