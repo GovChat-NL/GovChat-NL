@@ -1,5 +1,5 @@
 -- Beleidskompas sample data for local development.
--- "Omgevingsvisie (voorbeeld)" with two versions (v2 is live) and three documents.
+-- "Omgevingsvisie (voorbeeld)" with two versions and three documents.
 --
 -- To wipe the templates and load back to this data again: make replenish-beleidskompas-db
 --
@@ -9,8 +9,8 @@
 -- Prerequisite: run db/migrations/0001-init.sql first.
 --
 -- Safe to run more than once: it does nothing if the template already exists.
--- Not for production: it makes the example template the live one when no
--- template is live yet, and it never touches an existing live row.
+-- The example is not made live: the admin service puts the SiS 4.0 template
+-- live when it starts and nothing is live yet.
 
 DO $seed$
 DECLARE
@@ -103,10 +103,5 @@ BEGIN
   -- v1 only knew the first document, v2 has all three.
   INSERT INTO version_documents (version_id, document_id) VALUES (v1_id, doc_ids[1]);
   INSERT INTO version_documents (version_id, document_id) SELECT v2_id, unnest(doc_ids);
-
-  UPDATE templates SET live_version_id = v2_id WHERE id = v_template_id;
-
-  INSERT INTO live (template_id, version_id) VALUES (v_template_id, v2_id)
-  ON CONFLICT (key) DO NOTHING;
 END
 $seed$;

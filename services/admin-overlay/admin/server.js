@@ -611,6 +611,13 @@ async function publishStoredBeleidskompasLive() {
   if (state.live) await publishTemplateLive(state.live, undefined, state.templates.find((t) => t.live_version_id).live_version_id);
 }
 
+// At startup: when nothing is live yet, the default template goes live as "SiS 4.0".
+async function ensureLiveBeleidskompasTemplate() {
+  if ((await templateStore.getState()).live) return publishStoredBeleidskompasLive();
+  const template = await templateStore.createTemplate("SiS 4.0", normalizeBeleidskompasFlow(defaultBeleidskompasFlow()));
+  await templateStore.deployVersion(template.id, template.versions[0].id, publishTemplateLive);
+}
+
 async function publishTemplateLive(flow, documents, versionId) {
   documents = documents || await templateStore.listDocuments();
   const manifest = syncBeleidskompasWorkflowFiles({ live: flow, draft: flow, documents });
@@ -942,7 +949,7 @@ async function liveBeleidskompasTemplate() {
   if (!templateStore) throw new StoreError(503, "Beleidskompas database is not available");
   const state = await templateStore.getState();
   const versionId = state.templates.find((t) => t.live_version_id)?.live_version_id || "";
-  return { version_id: versionId, flow: state.live, settings: { default_model: state.settings.default_model } };
+  return { version_id: versionId, flow: state.live && normalizeBeleidskompasFlow(state.live), settings: { default_model: state.settings.default_model } };
 }
 
 function publishFile(filename, data) {
@@ -3083,7 +3090,7 @@ if (require.main === module) {
     getLive: liveBeleidskompasTemplate,
     onReady(pool) {
       templateStore = createTemplateStore(pool, defaultBeleidskompasState().settings);
-      publishStoredBeleidskompasLive().catch((err) => console.error("[govchat-admin] Could not publish deployed template:", err));
+      ensureLiveBeleidskompasTemplate().catch((err) => console.error("[govchat-admin] Could not publish deployed template:", err));
     },
   });
   server.listen(PORT, "0.0.0.0", () => {
