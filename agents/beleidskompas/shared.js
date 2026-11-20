@@ -1,12 +1,14 @@
 'use strict';
 
 /**
- * What every Beleidskompas workflow shares: reading the caller's token,
- * sending HTTP requests and calling the language model through LiteLLM,
- * scoring the source passages, the citations block that travels with a
- * chat message, and LibreChat's conversation-title request. The step
- * definitions in steps/ and orchestrator.js build on these; generate-workflow.js
- * copies the functions a workflow needs into its Code node.
+ * What the Beleidskompas workflows share: reading the caller's token,
+ * taking the message of the page apart, LibreChat's conversation-title
+ * request and reading which tools an agent called. orchestrator.js and
+ * step-agent.js build on these; generate-workflow.js copies the functions
+ * a workflow needs into its Code nodes.
+ *
+ * It also reads the files in prompts/, for the template the admin starts
+ * with (see template.js).
  */
 
 const fs = require('node:fs');
@@ -14,11 +16,11 @@ const path = require('node:path');
 
 // --- The prompt texts ---
 //
-// The texts the model gets live as files in prompts/: the template of the
-// system prompt, the rules that apply to every step, and per step the role
-// of the model and one instruction per substep. They are read here, in
-// Node; generate-workflow.js pastes them as text into the workflows, so n8n
-// never reads a file.
+// The texts the admin starts with live as files in prompts/: the prompt
+// texts, the rules that apply to every step, and per step the role of the
+// model and one instruction per substep. They are read here, in Node, and
+// template.js puts them in the template for the admin. The workflows do
+// not read them: they ask the admin for the template it published.
 
 const PROMPTS_DIR = path.join(__dirname, 'prompts');
 
@@ -42,9 +44,8 @@ function readSubstepPrompt(relativePath) {
 
 const REPORT_PROMPT_TEMPLATE = readPrompt('report-prompt.md');
 const CONVERSATION_PROMPT_TEMPLATE = readPrompt('conversation-prompt.md');
-// The prompt the orchestrator uses to pick the step a message is about
-// (prompts/orchestrator-prompt.md): {{steps}} is the list of steps,
-// {{active_nr}} the number of the step the user is in.
+// The system prompt of the orchestrator agent (prompts/orchestrator-prompt.md):
+// {{steps}} is the list of step agents it can call.
 const ORCHESTRATOR_PROMPT_TEMPLATE = readPrompt('orchestrator-prompt.md');
 
 // One rule per line in rules.md.
@@ -78,22 +79,21 @@ function extractSuppliedToken(headers) {
 // The page can only send text, so it puts what the orchestrator needs to
 // know about a request behind the visible text of the message, in a
 // markdown link definition with base64 JSON (composePrompt in
-// overlay/src/apps/beleidskompas/beleidskompas-api.js writes it, the way
-// appendCitationsMetaBlock below puts the citations behind an answer):
-// the substep, the case as the user described it and the message the user
-// typed just now. A markdown view does not show the definition, and what
+// overlay/src/apps/beleidskompas/beleidskompas-api.js writes it):
+// the substep and the message the user typed just now. A markdown view does not show the definition, and what
 // the user typed sits inside the JSON, so it can never be mistaken for one
 // of those fields. A message that was typed means a conversation turn.
-// Without a message, the step writes the report of the substep.
+// Without a message, the request is for the report of the substep.
 const REQUEST_META_LABEL = 'beleidskompas-request';
 
 /** Takes a message apart. `fromPage` says whether the message carries the
  *  block of the page; without it the message was typed in LibreChat's own
- *  chat and all of it is the message. A substep id also names its step:
+ *  chat and all of it is the message. `shown` is the visible text, without
+ *  the block. A substep id also names its step:
  *  1.3 is a substep of stap1. A part that is missing is ''. */
 function parsePageMessage(text) {
   const raw = String(text || '');
-  const parts = { fromPage: false, stepId: '', substepId: '', caseText: '', message: raw.trim() };
+  const parts = { fromPage: false, stepId: '', substepId: '', message: raw.trim(), shown: raw.trim() };
   const marker = `[${REQUEST_META_LABEL}]: data:application/json;base64,`;
   const idx = raw.lastIndexOf(marker);
   if (idx === -1) return parts;
@@ -107,260 +107,11 @@ function parsePageMessage(text) {
   }
   const substepMatch = /^(\d+)\.\d+/.exec(String(request.substep_id || '').trim());
   parts.fromPage = true;
+  parts.shown = raw.slice(0, idx).trim();
   parts.substepId = substepMatch ? substepMatch[0] : '';
   parts.stepId = substepMatch ? `stap${substepMatch[1]}` : '';
-  parts.caseText = String(request.case_text || '').trim();
   parts.message = String(request.message || '').trim();
   return parts;
-}
-
-// --- Scoring the source passages ---
-
-function tokenizePolicyText(value) {
-  return String(value || '')
-    .toLowerCase()
-    .normalize('NFKD')
-    .replace(/[̀-ͯ]/g, '')
-    .replace(/[^a-z0-9\s]/g, ' ')
-    .split(/\s+/)
-    .map((w) => w.trim())
-    .filter((w) => w.length > 2);
-}
-
-function selectSources(passages, queryBlob, ragSettings) {
-  const rag = Object.assign({ algorithm: 'hybrid', top_k: 3, min_score: 0.08 }, ragSettings || {});
-  const queryWords = [...new Set(tokenizePolicyText(queryBlob))];
-
-  const scored = (Array.isArray(passages) ? passages : [])
-    .map((doc) => {
-      const text = String(doc.text || '').trim();
-      if (!text) return null;
-      const words = tokenizePolicyText(text);
-      if (!words.length) return null;
-
-      const wordSet = new Set(words);
-      const overlap = queryWords.filter((w) => wordSet.has(w)).length;
-      const overlapRatio = queryWords.length ? overlap / queryWords.length : 0;
-      const density = overlap / Math.max(24, words.length);
-      const lowerText = text.toLowerCase();
-      const needleHits = queryWords.reduce((acc, w) => (lowerText.includes(w) ? acc + 1 : acc), 0);
-      const needleScore = queryWords.length ? needleHits / queryWords.length : 0;
-      const haystackScore = overlapRatio * 0.7 + density * 0.3;
-
-      let score = needleScore * 0.55 + haystackScore * 0.45;
-      if (rag.algorithm === 'needle') score = needleScore;
-      if (rag.algorithm === 'haystack') score = haystackScore;
-
-      return {
-        id: doc.id,
-        filename: doc.filename,
-        tags: Array.isArray(doc.tags) ? doc.tags : [],
-        score,
-        preview: text.slice(0, 420),
-      };
-    })
-    .filter(Boolean)
-    .filter((d) => d.score >= Number(rag.min_score || 0))
-    .sort((a, b) => b.score - a.score)
-    .slice(0, Math.max(1, Number(rag.top_k || 3)))
-    .map((d, i) => ({ rank: i + 1, ...d, score: Number(d.score.toFixed(4)) }));
-
-  return {
-    citations: scored,
-    retrieval_trace: {
-      algorithm: rag.algorithm,
-      top_k: rag.top_k,
-      min_score: rag.min_score,
-      matched_docs: scored.length,
-    },
-  };
-}
-
-// --- Citations side-channel for the LibreChat chat pipeline ---
-//
-// n8n-openai-bridge only forwards the plain response TEXT to LibreChat
-// (content/text/output/message), not our richer citations/retrieval_trace
-// JSON - so when Beleidskompas runs as a real LibreChat custom endpoint,
-// that data would otherwise be lost. Instead of standing up a side-channel
-// store, it's appended to the message text as a trailing HTML comment:
-// invisible in any markdown renderer, and parsed back out client-side
-// (beleidskompas-api.js in the overlay has a matching parser) for the
-// citation-preview UI. The `answer` and `citations` fields
-// returned by runStep stay clean (used as-is by direct webhook callers
-// and the orchestrator JSON response).
-
-const CITATIONS_META_MARKER = 'BELEIDSKOMPAS-META';
-const CITATIONS_META_LABEL = 'beleidskompas-meta';
-
-/** Hangt de citaten als markdown-linkdefinitie achter het bericht.
- *
- *  Een HTML-commentaar leek de voor de hand liggende plek, maar LibreChat
- *  toont die gewoon als tekst (de markdown-renderer escapet ruwe HTML), dus
- *  stond er een blok JSON onder elk antwoord. Een linkdefinitie wordt door
- *  iedere CommonMark-renderer opgeslokt en levert geen uitvoer op, en de
- *  payload staat base64 zodat aanhalingstekens en accenten de regel niet
- *  kunnen breken.
- *
- *  `meta` holds what else the page needs to know about the answer: `agent`,
- *  the id of the step that answered, and `asked_from`, the substep the
- *  user was in when asking (null when the page did not say). */
-function appendCitationsMetaBlock(text, citations, retrieval_trace, meta) {
-  const payload = JSON.stringify({ citations: citations || [], retrieval_trace: retrieval_trace || null, ...(meta || {}) });
-  const encoded = Buffer.from(payload, 'utf8').toString('base64');
-  return `${text}\n\n[${CITATIONS_META_LABEL}]: data:application/json;base64,${encoded}`;
-}
-
-/** Client-side counterpart of appendCitationsMetaBlock: splits a message's
- *  displayed text from its embedded citations/retrieval_trace, if present.
- *  Safe to call on text that never had a meta block (returns it unchanged). */
-function parseCitationsMetaBlock(text) {
-  const raw = String(text || '');
-  const empty = { displayText: raw.trim(), citations: [], retrieval_trace: null, agent: null, asked_from: null };
-
-  const defMarker = `[${CITATIONS_META_LABEL}]: data:application/json;base64,`;
-  const defIdx = raw.lastIndexOf(defMarker);
-  if (defIdx !== -1) {
-    const encoded = raw.slice(defIdx + defMarker.length).split('\n')[0].trim();
-    const displayText = raw.slice(0, defIdx).trim();
-    try {
-      const parsed = JSON.parse(Buffer.from(encoded, 'base64').toString('utf8'));
-      return {
-        displayText,
-        citations: Array.isArray(parsed.citations) ? parsed.citations : [],
-        retrieval_trace: parsed.retrieval_trace || null,
-        agent: parsed.agent ? String(parsed.agent) : null,
-        asked_from: parsed.asked_from ? String(parsed.asked_from) : null,
-      };
-    } catch (_) {
-      // Onleesbare payload: liever de tekst tonen dan het bericht verliezen.
-      return empty;
-    }
-  }
-
-  // Berichten van voor de overstap naar een linkdefinitie dragen de citaten
-  // nog als HTML-commentaar; die blijven leesbaar.
-  const marker = `<!--${CITATIONS_META_MARKER}:`;
-  const startIdx = raw.lastIndexOf(marker);
-  if (startIdx === -1) return empty;
-
-  const endIdx = raw.indexOf('-->', startIdx);
-  if (endIdx === -1) return empty;
-
-  const jsonText = raw.slice(startIdx + marker.length, endIdx);
-  const displayText = (raw.slice(0, startIdx) + raw.slice(endIdx + 3)).trim();
-  try {
-    const parsed = JSON.parse(jsonText);
-    return {
-      displayText,
-      citations: Array.isArray(parsed.citations) ? parsed.citations : [],
-      retrieval_trace: parsed.retrieval_trace || null,
-      agent: null,
-      asked_from: null,
-    };
-  } catch (_) {
-    // Zelfde afweging als hierboven: liever de tekst tonen dan het bericht
-    // verliezen op een kapot meta-blok.
-    return empty;
-  }
-}
-
-// --- LiteLLM HTTP call (mirrors GovChat Orchestrator's requestRaw pattern) ---
-
-function requestRaw(url, opts, hasFetch, fetchImpl, httpModule, httpsModule, urlModule) {
-  if (hasFetch) {
-    return fetchImpl(url, opts).then(async (res) => ({
-      ok: res.ok,
-      status: Number(res.status || 0),
-      text: await res.text(),
-    }));
-  }
-
-  return new Promise((resolve, reject) => {
-    try {
-      const target = new urlModule.URL(String(url));
-      const lib = target.protocol === 'https:' ? httpsModule : httpModule;
-      const method = String((opts && opts.method) || 'GET').toUpperCase();
-      const headers = (opts && opts.headers) || {};
-      const body = typeof (opts && opts.body) === 'string' ? opts.body : '';
-
-      const req = lib.request(
-        {
-          protocol: target.protocol,
-          hostname: target.hostname,
-          port: target.port || (target.protocol === 'https:' ? 443 : 80),
-          path: target.pathname + target.search,
-          method,
-          headers: { ...headers, ...(body ? { 'content-length': Buffer.byteLength(body, 'utf8') } : {}) },
-        },
-        (res) => {
-          const chunks = [];
-          res.on('data', (d) => chunks.push(Buffer.from(d)));
-          res.on('end', () => {
-            const text = Buffer.concat(chunks).toString('utf8');
-            const status = Number(res.statusCode || 0);
-            resolve({ ok: status >= 200 && status < 300, status, text });
-          });
-        },
-      );
-      req.on('error', reject);
-      if (body) req.write(body);
-      req.end();
-    } catch (e) {
-      reject(e);
-    }
-  });
-}
-
-async function callLiteLLM({ baseUrl, apiKey, model, systemPrompt, userPrompt, timeoutMs, fetchImpl, httpModule, httpsModule, urlModule }) {
-  const hasFetch = typeof fetchImpl === 'function';
-  const url = String(baseUrl || '').replace(/\/$/, '') + '/v1/chat/completions';
-  const body = JSON.stringify({
-    model,
-    messages: [
-      { role: 'system', content: systemPrompt },
-      { role: 'user', content: userPrompt },
-    ],
-    // No `temperature` override: some model families (e.g. reasoning-tier
-    // models) reject any value other than the default (1) and error with a
-    // 400. Deterministic-ish behavior is enforced via the system prompt
-    // instead ("Redeneer stap voor stap", "geen aannames").
-  });
-
-  const controller = hasFetch && typeof AbortController === 'function' ? new AbortController() : null;
-  const timer = controller && timeoutMs ? setTimeout(() => controller.abort(), timeoutMs) : null;
-
-  try {
-    const res = await requestRaw(
-      url,
-      {
-        method: 'POST',
-        headers: { 'content-type': 'application/json', authorization: 'Bearer ' + apiKey },
-        body,
-        signal: controller ? controller.signal : undefined,
-      },
-      hasFetch,
-      fetchImpl,
-      httpModule,
-      httpsModule,
-      urlModule,
-    );
-    if (!res.ok) {
-      const err = new Error('LiteLLM HTTP ' + res.status);
-      err.status = res.status;
-      err.body = res.text;
-      throw err;
-    }
-    let payload = {};
-    try {
-      payload = JSON.parse(res.text || '{}');
-    } catch (_) {
-      payload = {};
-    }
-    const content = payload && payload.choices && payload.choices[0] && payload.choices[0].message && payload.choices[0].message.content;
-    return String(content || '').trim();
-  } finally {
-    if (timer) clearTimeout(timer);
-  }
 }
 
 // --- LibreChat conversation-title requests ---
@@ -369,9 +120,8 @@ async function callLiteLLM({ baseUrl, apiKey, model, systemPrompt, userPrompt, t
 // to the SAME custom endpoint/model with an instruction to summarize the
 // conversation in a few words (see librechat.yaml's `titlePrompt`, which
 // embeds TITLE_REQUEST_MARKER so it's reliably recognizable here). Without
-// this, Beleidskompas ran its normal 5-section analysis on that instruction
-// too (verified live), producing an absurd, oversized "title" instead of a
-// short one.
+// this, the instruction would be treated as a message about a case, and the
+// answer to it would become the "title".
 
 const TITLE_REQUEST_MARKER = '__BELEIDSKOMPAS_TITLE_REQUEST__';
 const TITLE_PREFIX = 'Beleidskompas - ';
@@ -397,11 +147,11 @@ function buildFallbackTitle(text) {
 /** librechat.yaml's titlePrompt renders as our instruction followed by the
  *  real conversation via the "User: ...\nAI: ..." transcript format (the
  *  `{convo}` placeholder, filled in by @librechat/agents before this ever
- *  reaches us). Extracting just the user's case text keeps the title (and
+ *  reaches us). Extracting just what the user wrote keeps the title (and
  *  its deterministic fallback) focused on the actual case instead of the
  *  instruction sentence that precedes it. Falls back to the input unchanged
  *  when that format isn't present (e.g. direct webhook/test calls). */
-function extractConvoCaseText(text) {
+function extractConvoUserText(text) {
   const s = String(text || '');
   const userIdx = s.indexOf('User:');
   if (userIdx === -1) return s.trim();
@@ -410,300 +160,42 @@ function extractConvoCaseText(text) {
   return (aiIdx === -1 ? afterUser : afterUser.slice(0, aiIdx)).trim();
 }
 
-/** Handles a title-generation request: returns a short title instead of
- *  running the full step-1 analysis. Never throws - falls back to a
- *  deterministic title on any LLM error, since a broken title must never
- *  break the actual conversation. */
-async function buildTitleResponse({ titleSource, env, model, fetchImpl, httpModule, httpsModule, urlModule }) {
-  const source = extractConvoCaseText(String(titleSource || '').replaceAll(TITLE_REQUEST_MARKER, ''));
-  const litellmUrl = String((env && env.LITELLM_URL) || '').trim();
-  const litellmApiKey = String((env && (env.LITELLM_API_KEY || env.OPENAI_API_KEY)) || '').trim();
+// --- What an agent did ---
 
-  let title = '';
-  if (litellmUrl && litellmApiKey && source) {
-    try {
-      const raw = await callLiteLLM({
-        baseUrl: litellmUrl,
-        apiKey: litellmApiKey,
-        model: model || (env && env.BELEIDSKOMPAS_MODEL) || 'govchat-default',
-        systemPrompt:
-          'Je genereert uitsluitend een korte titel (maximaal 6 woorden) voor een gesprek, in het Nederlands. ' +
-          'Geen opmaak, geen aanhalingstekens, geen toelichting: alleen de titel zelf.',
-        userPrompt: source.slice(0, 2000),
-        timeoutMs: 20000,
-        fetchImpl,
-        httpModule,
-        httpsModule,
-        urlModule,
-      });
-      const wrapperChars = new Set(['"', "'", '#', '*', '_']);
-      let start = 0;
-      let end = raw.length;
-      while (start < end && (wrapperChars.has(raw[start]) || /\s/.test(raw[start]))) start += 1;
-      while (end > start && (wrapperChars.has(raw[end - 1]) || /\s/.test(raw[end - 1]))) end -= 1;
-      title = raw.slice(start, end);
-    } catch (_) {
-      // A failed title must never break the conversation: fall through to
-      // the deterministic title below.
-      title = '';
-    }
-  }
-  if (!title) title = buildFallbackTitle(source);
-  // Prefixed so Beleidskompas conversations are visually grouped in
-  // LibreChat's conversation-list sidebar, alongside other endpoints/agents.
-  title = TITLE_PREFIX + title;
-
-  return { ok: true, step_id: null, mode: 'title', answer: title, text: title };
+/** The tools an AI Agent node called, in order, from the intermediate steps
+ *  the node returns: the name of each tool and what the model passed it. */
+function toolCalls(agentOutput) {
+  const steps = agentOutput && Array.isArray(agentOutput.intermediateSteps) ? agentOutput.intermediateSteps : [];
+  return steps.map((step) => ({
+    tool: (step && step.action && step.action.tool) || null,
+    input: step && step.action ? step.action.toolInput : null,
+  }));
 }
 
-// --- A step as a list of substeps ---
-//
-// A step definition (see steps/) is data: its id, number and title, the
-// sentence that tells the model its role, and its substeps. A substep has
-// an instruction for the model and an answer format, both from its file in
-// prompts/. The answer format is markdown: a "### " heading per part of the
-// page, and a heading whose first line is "**Oordeel:**" becomes a badge.
-
-/** Fills a prompt template with what a step provides: its role, its
- *  substeps with their instructions, the rules (the baked ones unless the
- *  template brought its own), and the answer formats of the substeps. */
-function fillTemplate(template, step, rules) {
-  const values = {
-    role: step.role,
-    substeps: step.substeps.map((substep) => `Deelstap ${substep.id}: ${substep.title}\n${substep.instruction}`).join('\n\n'),
-    rules: (Array.isArray(rules) ? rules : COMMON_RULES).map((rule) => '- ' + rule).join('\n'),
-    substep_format: step.substeps.map((substep) => substep.format).join('\n\n'),
-  };
-  return template.replace(/\{\{(\w+)\}\}/g, (match, key) => (key in values ? values[key] : match));
-}
-
-/** The system prompt for writing the report of a step: the live template's
- *  text when there is one, else prompts/report-prompt.md. `texts` may give
- *  `template` and `rules`. */
-function buildReportPrompt(step, texts) {
-  const t = texts || {};
-  return fillTemplate(t.template || REPORT_PROMPT_TEMPLATE, step, t.rules);
-}
-
-/** The system prompt for answering a message about a step's report
- *  (prompts/conversation-prompt.md unless the live template says otherwise). */
-function buildConversationPrompt(step, texts) {
-  const t = texts || {};
-  return fillTemplate(t.template || CONVERSATION_PROMPT_TEMPLATE, step, t.rules);
-}
-
-// The answer text is markdown: a heading per section. It is not only what
-// the Beleidskompas page shows; LibreChat stores it as the chat message, so
-// it has to read well on its own, sources included.
-
-function section(title, body) {
-  return `### ${title}\n${body}`;
-}
-
-function sourcesText(citations) {
-  if (!citations.length) return '- geen bronnen boven de relevantiedrempel';
-  return citations
-    .map((c, idx) => {
-      const score = Number(c && c.score);
-      const relevance = Number.isFinite(score) && score > 0 ? ` - relevantie ${score.toFixed(3)}` : '';
-      return `${idx + 1}. **${String((c && c.filename) || 'Onbekende bron')}**${relevance}`;
-    })
-    .join('\n');
-}
-
-/** The step as it is asked: all its substeps, or only the one named by
- *  `substepId` (then `substep` is that one, for the heading of the answer).
- *  Null when the step has no such substep. */
-function askedStep(step, substepId) {
-  if (!substepId) return step;
-  const substep = step.substeps.find((s) => s.id === substepId);
-  return substep ? { ...step, substeps: [substep], substep } : null;
-}
-
-/** The report as the page shows it: the step heading, the model's reply,
- *  the sources and the disclaimer. A reply wrapped in a code block is
- *  unwrapped, and an empty reply reads as "onbekend". */
-function composeReport(step, reply, citations, disclaimer) {
-  const text = String(reply || '').trim().replace(/^```(?:markdown|md)?\s*\n([\s\S]*?)\n```$/i, '$1').trim();
-  const substep = step.substep ? ` · ${step.substep.id} ${step.substep.title}` : '';
-  return [
-    `**Stap ${step.nr} · ${step.title}${substep}**`,
-    text || 'onbekend',
-    section('Bronnen', sourcesText(Array.isArray(citations) ? citations : [])),
-    `---\n${disclaimer || DISCLAIMER}`,
-  ].join('\n\n');
-}
-
-// --- Running a step ---
-
-/** What the model gets as the user's message: the case, the findings so
- *  far, the conversation about this substep and the message typed just now
- *  (each only when there is one), and the source passages found. */
-function buildUserPrompt({ caseText, findings, conversation, message, citations }) {
-  const found = Array.isArray(citations) ? citations : [];
-  const sources = found.length
-    ? ['Geraadpleegde beleidsbronnen:', ...found.map((c) => `[bron ${c.rank}] ${c.filename}: "${c.preview}"`)].join('\n')
-    : 'Geen beleidsbronnen boven de relevantiedrempel gevonden voor deze casus.';
-  return [
-    caseText && `Casus:\n${caseText}`,
-    findings && `Bevindingen tot nu toe:\n${findings}`,
-    conversation && `Gesprek over deze casus tot nu toe:\n${conversation}`,
-    message && `Bericht van de gebruiker:\n${message}`,
-    sources,
-  ]
-    .filter(Boolean)
-    .join('\n\n');
-}
-
-/** What the Code node of every step workflow runs.
- *
- *  `step` is the step's definition (see steps/): its id, number, title,
- *  role sentence and substeps. `ctx.input` is the request as the orchestrator
- *  sends it (`$json`: body with case_text, findings, conversation, message
- *  and, when one substep is asked for, substep_id, plus headers), `ctx.env`
- *  the settings from `$env`, `ctx.passages` the source passages to search,
- *  and the rest the means to send HTTP. In order: check the token, read the
- *  fields, find the relevant passages, ask the model, and then either
- *  return its answer to the message as it is, or compose the report. */
-async function runStep(step, ctx) {
-  const { input, env, passages, fetchImpl, httpModule, httpsModule, urlModule } = ctx;
-  const raw = input || {};
-  const body = raw.body || {};
-  const headers = raw.headers || {};
-
-  // A wrong token gives a normal answer with ok: false, not a thrown error:
-  // n8n can turn a thrown error into an empty response, and then the caller
-  // sees nothing at all.
-  const suppliedToken = extractSuppliedToken(headers);
-  const expectedToken = String((env && (env.BELEIDSKOMPAS_N8N_WEBHOOK_TOKEN || env.N8N_WEBHOOK_TOKEN)) || '').trim();
-  if (expectedToken && suppliedToken !== expectedToken) {
-    return { ok: false, step_id: step.id, error: 'Unauthorized webhook token', text: '' };
-  }
-
-  const caseText = String(body.case_text || '').trim();
-  const findings = String(body.findings || '').trim();
-  const conversation = String(body.conversation || '').trim();
-  const message = String(body.message || '').trim();
-  const substepId = String(body.substep_id || '').trim();
-  // The substep the user was in when asking. The orchestrator passes it on;
-  // it can belong to another step when the orchestrator sent the message
-  // here because it is about this step.
-  const askedFrom = String(body.asked_from || '').trim() || null;
-  // The live template from the admin, as the orchestrator passes it on: the
-  // step's own definition, the rules and the prompt texts. Without it (an
-  // older orchestrator, a direct call) the baked definition is used.
-  const t = body.template && typeof body.template === 'object' ? body.template : {};
-  const definition = t.step && t.step.id === step.id && Array.isArray(t.step.substeps) ? t.step : step;
-  const rules = t.rules ? String(t.rules).split('\n').map((line) => line.trim()).filter(Boolean) : null;
-  const asked = askedStep(definition, substepId);
-  if (!asked) {
-    const text = `Beleidskompas kent deelstap ${substepId} niet in stap ${step.nr}.`;
-    return { ok: false, step_id: step.id, substep_id: substepId, error: 'Unknown substep', text, answer: text };
-  }
-
-  const queryBlob = [message, caseText, findings].filter(Boolean).join(' ');
-  const ragSettings = { algorithm: 'needle', top_k: 3, min_score: 0.12 };
-  const { citations, retrieval_trace } = selectSources(passages, queryBlob, ragSettings);
-
-  // No model, or a failing one, is answered with a message for the chat,
-  // never with a placeholder that could pass for an assessment.
-  const litellmUrl = String((env && env.LITELLM_URL) || '').trim();
-  const litellmApiKey = String((env && (env.LITELLM_API_KEY || env.OPENAI_API_KEY)) || '').trim();
-  if (!litellmUrl || !litellmApiKey) {
-    const text = 'Beleidskompas kan deze stap niet uitvoeren: er is geen taalmodel geconfigureerd (LITELLM_URL en LITELLM_API_KEY of OPENAI_API_KEY).';
-    return { ok: false, step_id: step.id, error: 'No language model configured', text, answer: text };
-  }
-
-  // A typed message is a conversation turn about the report. Without a
-  // message, the step writes the report.
-  const conversing = Boolean(message);
-
-  let rawAnswer;
-  try {
-    rawAnswer = await callLiteLLM({
-      baseUrl: litellmUrl,
-      apiKey: litellmApiKey,
-      model: t.model || (env && env.BELEIDSKOMPAS_MODEL) || 'govchat-default',
-      systemPrompt: conversing
-        ? buildConversationPrompt(asked, { template: t.conversation_prompt, rules })
-        : buildReportPrompt(asked, { template: t.report_prompt, rules }),
-      userPrompt: buildUserPrompt({ caseText, findings, conversation, message, citations }),
-      timeoutMs: 60000,
-      fetchImpl,
-      httpModule,
-      httpsModule,
-      urlModule,
-    });
-  } catch (err) {
-    const text = `Beleidskompas kon het taalmodel niet bereiken (${String((err && err.message) || err)}). Probeer het later opnieuw.`;
-    return { ok: false, step_id: step.id, error: 'Language model call failed', text, answer: text };
-  }
-
-  if (conversing) {
-    const answer = String(rawAnswer || '').trim() || 'Beleidskompas kreeg geen antwoord van het taalmodel. Probeer het opnieuw.';
-    return {
-      ok: true,
-      step_id: step.id,
-      substep_id: substepId || null,
-      asked_from: askedFrom,
-      mode: 'conversation',
-      answer,
-      text: appendCitationsMetaBlock(answer, citations, retrieval_trace, { agent: step.id, asked_from: askedFrom }),
-      citations,
-      retrieval_trace,
-    };
-  }
-
-  const answer = composeReport(asked, rawAnswer, citations, t.report_disclaimer);
-
-  return {
-    ok: true,
-    step_id: step.id,
-    substep_id: substepId || null,
-    asked_from: askedFrom,
-    mode: 'report',
-    answer,
-    // What the chat pipeline delivers: the bridge reads `text`, not
-    // `answer`, so the citations and the retrieval trace travel along in the
-    // invisible block appended here (see appendCitationsMetaBlock).
-    text: appendCitationsMetaBlock(answer, citations, retrieval_trace, { agent: step.id, asked_from: askedFrom }),
-    citations,
-    retrieval_trace,
-  };
+/** The error an AI Agent node (or an HTTP Request node) returned instead of
+ *  failing the workflow, as text, or null when there was none. */
+function nodeError(output) {
+  const error = output && output.error;
+  if (!error) return null;
+  return String((typeof error === 'object' && error.message) || error);
 }
 
 module.exports = {
   DISCLAIMER,
-  CITATIONS_META_MARKER,
-  CITATIONS_META_LABEL,
   TITLE_REQUEST_MARKER,
   TITLE_PREFIX,
   REQUEST_META_LABEL,
   extractSuppliedToken,
   parsePageMessage,
-  tokenizePolicyText,
-  selectSources,
-  appendCitationsMetaBlock,
-  parseCitationsMetaBlock,
-  requestRaw,
-  callLiteLLM,
   isTitleRequest,
   buildFallbackTitle,
-  extractConvoCaseText,
-  buildTitleResponse,
+  extractConvoUserText,
   readPrompt,
   readSubstepPrompt,
   REPORT_PROMPT_TEMPLATE,
   CONVERSATION_PROMPT_TEMPLATE,
   ORCHESTRATOR_PROMPT_TEMPLATE,
   COMMON_RULES,
-  fillTemplate,
-  buildReportPrompt,
-  buildConversationPrompt,
-  section,
-  sourcesText,
-  askedStep,
-  composeReport,
-  buildUserPrompt,
-  runStep,
+  toolCalls,
+  nodeError,
 };

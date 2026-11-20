@@ -4,65 +4,76 @@
  * The Beleidskompas orchestrator (the "orchestrator" workflow in n8n).
  *
  * Every chat message for the Beleidskompas endpoint arrives here first,
- * through the n8n-openai-bridge. The orchestrator does not answer anything
- * about a case itself: it checks the caller's token, takes the message apart
- * into the parts the page composed it from (step or substep, case, findings
- * so far, conversation, message) and sends those as fields to a step's
- * workflow, whose answer it returns unchanged. A request for a report goes
- * to the step of the substep the page named. A typed message goes to the
- * step the message is about: the orchestrator asks the model to pick one
- * (see chooseStep), and keeps the page's step when the model does not pick
- * another. A message typed in LibreChat's own chat has no labels at all;
- * that is a question too, with step 1 as the step to keep. A message with
- * labels that names no known step is refused with a message for the chat.
- * The one request it does answer itself is LibreChat's request for a
- * conversation title, which belongs to no step.
+ * through the n8n-openai-bridge. The orchestrator is an AI Agent node. It
+ * does not work out a step itself: every step has its own agent (see
+ * step-agent.js), which the orchestrator calls as a tool. It decides which
+ * step a request or a question is about, and writes the message the user
+ * reads in the chat.
  *
- * The orchestrator is also the one that writes to the Beleidskompas store
- * (see store-client.js): the case text, the turns of the conversation, a
- * report and the title. It sees everything that is needed for that: the
- * conversation and the user from the bridge, what the page sent and what
- * the step answered. The steps know nothing of the store.
+ * Around the agent, Code nodes do what must always happen in a fixed order.
+ * Before it: check the caller's token, take the message of the page apart,
+ * and put together what the agent gets to read from the template the admin
+ * published and the state of the case in the Beleidskompas store. After it: put the answer together. The
+ * functions for those Code nodes are in this file. Reading from and writing
+ * to the store is done by HTTP Request nodes in the workflow.
+ *
+ * The one request the agent never sees is LibreChat's request for a
+ * conversation title, which is about no step.
  *
  * generate-workflow.js copies these functions, with the ones they use from
- * shared.js, into the Code node of beleidskompas-orchestrator.json, so the
+ * shared.js, into the Code nodes of beleidskompas-orchestrator.json, so the
  * code that runs in n8n is this code.
  */
 
-const { ORCHESTRATOR_PROMPT_TEMPLATE, extractSuppliedToken, parsePageMessage, requestRaw, callLiteLLM, isTitleRequest, extractConvoCaseText, buildTitleResponse } = require('./shared');
-const { createStoreClient } = require('./store-client');
-// The admin's live template is what the steps get at request time; without
-// it (no store, admin down) the template generated from the prompt files
-// stands in, so the chat keeps working with the seed texts.
-const { DEFAULT_TEMPLATE: TEMPLATE_DEFAULTS, stepFromTemplate } = require('./template');
+const {
+  TITLE_REQUEST_MARKER,
+  TITLE_PREFIX,
+  extractSuppliedToken,
+  parsePageMessage,
+  isTitleRequest,
+  buildFallbackTitle,
+  extractConvoUserText,
+  toolCalls,
+  nodeError,
+} = require('./shared');
+const { stepFromTemplate } = require('./template');
 
-// Which step id belongs to which webhook path in n8n. The paths are the
-// addresses of the four step workflows.
-const STEP_ROUTES = {
-  stap1: 'beleidskompas-step-stap1',
-  stap2: 'beleidskompas-step-stap2',
-  stap3: 'beleidskompas-step-stap3',
-  stap4: 'beleidskompas-step-stap4',
+// What the user reads in the chat when a message cannot be answered.
+//
+// Without the store or the template there is no answer. The store is where
+// the agents get the earlier reports and the conversation from, and where
+// a report is kept. Without it an agent would answer as if the case were
+// new and the answer would be lost, while the user sees a normal answer.
+// The template, which the same service keeps, holds the prompts.
+const MESSAGES = {
+  // The page asked for a report of a substep that does not exist.
+  unknown_step:
+    'Beleidskompas kon niet bepalen voor welke stap dit bericht is en heeft het daarom niet beantwoord. ' +
+    'Stel je vraag opnieuw vanaf de Beleidskompas-pagina, met een stap gekozen.',
+  // The store is not set up, or the request names no conversation or user.
+  store_missing: 'Beleidskompas kan zijn opslag niet gebruiken en heeft dit bericht daarom niet beantwoord. Meld dit bij de beheerder.',
+  // The store or the template could not be read, or the message of the user
+  // could not be stored.
+  store_failed: 'De opslag van Beleidskompas gaf een fout. Dit bericht is daarom niet beantwoord; probeer het later opnieuw.',
+  // Goes in front of an answer that could not be stored.
+  store_warning: 'Let op: de opslag van Beleidskompas gaf een fout. Dit antwoord is mogelijk niet bewaard.',
+  // The orchestrator failed or said nothing.
+  no_answer: 'Beleidskompas kon dit bericht niet beantwoorden. Probeer het later opnieuw.',
 };
 
-// The step a question from LibreChat's own chat is about when the model
-// picks no other: there is no page to say where the user is.
-const DEFAULT_STEP_ID = 'stap1';
+/** The result when a message is not answered: `text` is what the chat
+ *  shows, `error` says what went wrong for whoever reads the execution.
+ *  `base` is what the result carries along. */
+function failure(base, error, text) {
+  return { step_id: null, ...base, ok: false, error, text, answer: text };
+}
 
-// Shown in the chat when a message names no known step.
-const UNKNOWN_STEP_TEXT =
-  'Beleidskompas kon niet bepalen voor welke stap dit bericht is en heeft het daarom niet beantwoord. ' +
-  'Stel je vraag opnieuw vanaf de Beleidskompas-pagina, met een stap gekozen.';
+const TITLE_SYSTEM_PROMPT =
+  'Je genereert uitsluitend een korte titel (maximaal 6 woorden) voor een gesprek, in het Nederlands. ' +
+  'Geen opmaak, geen aanhalingstekens, geen toelichting: alleen de titel zelf.';
 
-// Shown in the chat when the store cannot be used. The store is where a
-// step gets the case, the earlier reports and the conversation from, and
-// where the answer is kept. Without it a step would answer as if the case
-// were new and the answer would be lost, while the user sees a normal
-// answer. So the user is told instead.
-const STORE_MISSING_TEXT =
-  'Beleidskompas kan zijn opslag niet gebruiken en heeft dit bericht daarom niet beantwoord. Meld dit bij de beheerder.';
-const STORE_FAILED_TEXT = 'De opslag van Beleidskompas gaf een fout. Dit bericht is daarom niet beantwoord; probeer het later opnieuw.';
-const STORE_WARNING_TEXT = 'Let op: de opslag van Beleidskompas gaf een fout. Dit antwoord is mogelijk niet bewaard.';
+// How many turns of the conversation the agents get to read.
+const MAX_TURNS = 100;
 
 /** The text of the incoming message: the bridge delivers it in
  *  `currentMessage` and `chatInput`, direct webhook calls in `question`. */
@@ -71,357 +82,226 @@ function incomingMessage(body) {
   return String(b.currentMessage || b.chatInput || b.question || '');
 }
 
-/** Returns the id of the step a message is for, or '' when it names no step
- *  that is in `routes`. */
-function determineStep(parts, routes) {
-  const stepId = String((parts && parts.stepId) || '');
-  return Object.prototype.hasOwnProperty.call(routes, stepId) ? stepId : '';
+/** The name of the tool that calls the agent of a step. */
+function stepToolName(step) {
+  return `${step.id}_agent`;
 }
 
-/** What the orchestrator knows about a step of the template: number,
- *  title, role and the substeps (titles for the model that picks a step, ids
- *  for the order of the reports). The instructions stay out; they are for
- *  the step itself. */
-function stepSummary(step, index) {
-  const substeps = Array.isArray(step.substeps) ? step.substeps : [];
-  return {
-    id: step.id,
-    nr: Number(step.nr) || index + 1,
-    title: String(step.title || ''),
-    role: String(step.prompt || ''),
-    substeps: substeps.map((substep) => String(substep.title || '')),
-    substep_ids: substeps.map((substep) => substep.id),
-  };
-}
-
-/** Asks the model which step a typed message is about, and returns that
- *  step's id. `summaries` describes the steps the model can choose from
- *  (see stepSummary): id, number, title, role and substep titles. The model
- *  answers with a number only. When it names no step in `routes`, cannot
- *  be reached, or is not configured, the answer is `activeStepId`, the step
- *  the user is in: a wrong guess would send the message to a step it is
- *  not about. `model` and `promptTemplate` come from the live template. */
-async function chooseStep({ message, activeStepId, summaries, routes, env, model, promptTemplate, fetchImpl, httpModule, httpsModule, urlModule }) {
-  const steps = Array.isArray(summaries) ? summaries : [];
-  const litellmUrl = String((env && env.LITELLM_URL) || '').trim();
-  const litellmApiKey = String((env && (env.LITELLM_API_KEY || env.OPENAI_API_KEY)) || '').trim();
-  const active = steps.find((s) => s.id === activeStepId);
-  if (!litellmUrl || !litellmApiKey || !active || !String(message || '').trim()) return activeStepId;
-
+/** The system prompt of the orchestrator agent: `promptText` with the list
+ *  of step agents filled in. `steps` are the steps of the template that
+ *  have an agent. */
+function buildOrchestratorPrompt(steps, promptText) {
   const list = steps
-    .map((s) => `${s.nr}. ${s.title}. ${String(s.role || '').trim()} Deelstappen: ${(s.substeps || []).join(', ')}.`)
+    .map((step, index) => {
+      const substeps = step.substeps.map((substep) => `${substep.id} ${substep.title}`).join(', ');
+      return `- ${stepToolName(step)}: stap ${step.nr || index + 1}, ${step.title} (${substeps})`;
+    })
     .join('\n');
-  const systemPrompt = String(promptTemplate || ORCHESTRATOR_PROMPT_TEMPLATE).replaceAll('{{steps}}', list).replaceAll('{{active_nr}}', String(active.nr));
-
-  let raw;
-  try {
-    raw = await callLiteLLM({
-      baseUrl: litellmUrl,
-      apiKey: litellmApiKey,
-      model: model || (env && env.BELEIDSKOMPAS_MODEL) || 'govchat-default',
-      systemPrompt,
-      userPrompt: String(message).slice(0, 4000),
-      timeoutMs: 20000,
-      fetchImpl,
-      httpModule,
-      httpsModule,
-      urlModule,
-    });
-  } catch (_) {
-    return activeStepId;
-  }
-  const number = /\d+/.exec(String(raw || ''));
-  const chosen = number && steps.find((s) => String(s.nr) === number[0]);
-  return chosen && Object.prototype.hasOwnProperty.call(routes || {}, chosen.id) ? chosen.id : activeStepId;
+  return String(promptText || '').replaceAll('{{steps}}', list);
 }
 
-/** What a step gets to work with, from the state of the case in the store:
- *  the newest case text, the newest report per substep as one text, and
- *  the conversation. For a typed message every report goes along, so a step
- *  answering from a later step knows what was worked out there. For a
- *  report only the reports up to and including the substep go along, the
- *  way the page did it: a report builds on what came before. The
- *  conversation is the last turns of the whole case, in the form the steps
- *  know ("Gebruiker: ..." and "Beleidskompas: ..."). `summaries` gives the
- *  order of the substeps. */
-function contextFromState(state, { substepId, forReport, summaries }) {
-  const order = (Array.isArray(summaries) ? summaries : []).flatMap((s) => s.substep_ids || []);
-  const reports = (state && state.reports) || {};
-  let ids = Object.keys(reports).sort((a, b) => order.indexOf(a) - order.indexOf(b));
-  if (forReport && substepId) {
-    const upTo = order.indexOf(substepId);
-    ids = ids.filter((id) => upTo === -1 || order.indexOf(id) <= upTo);
-  }
-  const findings = ids
-    .map((id) => String(reports[id].text || '').trim())
-    .filter(Boolean)
-    .join('\n\n');
-  const conversation = ((state && state.turns) || [])
-    .map((t) => `${t.role === 'user' ? 'Gebruiker' : 'Beleidskompas'}: ${String(t.text || '').trim()}`)
-    .join('\n');
-  return {
-    caseText: String((state && state.case_text && state.case_text.text) || '').trim(),
-    findings,
-    conversation,
-  };
-}
-
-/** What a step workflow receives: the parts of the message as fields, the
- *  reports and the conversation from the store (`findings` and
- *  `conversation`, see contextFromState), who is asking, and under
- *  `template` what the step needs from the live template: its own
- *  definition, the rules, the prompt texts, the disclaimer and the model.
- *  The substep only goes along when it belongs to `stepId`; a message sent
- *  to another step is about that whole step. `asked_from` always says which
- *  substep the user was in. */
-function buildStepRequest(stepId, parts, body, live) {
+/** What kind of request came in, and its parts. `kind` is:
+ *  - "refused": nothing is done; `text` is what the chat shows (empty for a
+ *    wrong token, so the caller learns nothing);
+ *  - "title": LibreChat asks for a conversation title, made from `title_source`;
+ *  - "report": the page asks for the report of `substep_id`;
+ *  - "message": the user typed `message`, from `substep_id` when the page
+ *    said where the user is.
+ *  Whether `substep_id` exists is checked later, against the template. The
+ *  case is the conversation (`sessionId`) and belongs to the user
+ *  (`userId`), both passed on by the bridge. `now` is the time in
+ *  milliseconds, for the duration. */
+function prepareRequest({ body, headers, env, now }) {
   const b = body && typeof body === 'object' ? body : {};
-  const ownSubstep = stepId === parts.stepId ? parts.substepId || null : null;
-  const t = live && live.template ? live.template : null;
-  return {
-    step_id: stepId,
-    substep_id: ownSubstep,
-    asked_from: parts.substepId || null,
-    case_text: parts.caseText,
-    findings: parts.findings || '',
-    conversation: parts.conversation || '',
-    message: parts.message,
-    sessionId: b.sessionId || null,
-    userId: b.userId || null,
-    template: t
-      ? {
-          model: live.model || null,
-          rules: String(t.rules || ''),
-          report_prompt: String(t.report_prompt || ''),
-          conversation_prompt: String(t.conversation_prompt || ''),
-          report_disclaimer: String(t.report_disclaimer || ''),
-          step: stepFromTemplate(t, stepId),
-        }
-      : undefined,
-  };
-}
+  const started_at = now;
+  const refuse = (error, text) => failure({ kind: 'refused', started_at }, error, text);
 
-/** Sends a request to a step workflow and returns that step's answer.
- *
- *  Takes everything it needs as named arguments: the n8n address
- *  (`baseUrl`) and the step's webhook path, the request `body` to send (see
- *  buildStepRequest), the caller's own token (so the step still checks it itself),
- *  and the means to send HTTP (`fetchImpl`, or the http/https/url modules
- *  when fetch is not available). The answer always has `text` (what the
- *  chat pipeline reads) and `answer` (what direct callers read); when a step
- *  fills only one of them, the other is copied from it. When the step cannot
- *  be reached or answers with an error or something that is not JSON, the
- *  result is `ok: false` with a message for the chat in `text`. */
-async function forwardToStep({ baseUrl, path, stepId, body, callerToken, timeoutMs, fetchImpl, httpModule, httpsModule, urlModule }) {
-  const url = String(baseUrl || 'http://n8n:5678').replace(/\/$/, '') + '/webhook/' + path;
-  const hasFetch = typeof fetchImpl === 'function';
-  const controller = hasFetch && typeof AbortController === 'function' ? new AbortController() : null;
-  const timer = controller && timeoutMs ? setTimeout(() => controller.abort(), timeoutMs) : null;
-
-  let res;
-  try {
-    res = await requestRaw(
-      url,
-      {
-        method: 'POST',
-        headers: { 'content-type': 'application/json', 'x-govchat-token': String(callerToken || '') },
-        body: JSON.stringify(body || {}),
-        signal: controller ? controller.signal : undefined,
-      },
-      hasFetch,
-      fetchImpl,
-      httpModule,
-      httpsModule,
-      urlModule,
-    );
-  } catch (err) {
-    const text = `Beleidskompas kon de workflow van ${stepId} niet bereiken (${String((err && err.message) || err)}).`;
-    return { ok: false, step_id: stepId, error: 'Step workflow unreachable', text, answer: text };
-  } finally {
-    if (timer) clearTimeout(timer);
-  }
-
-  let payload = null;
-  try {
-    payload = JSON.parse(res.text || '');
-  } catch (_) {
-    payload = null;
-  }
-  if (!res.ok || !payload || typeof payload !== 'object') {
-    const text = `Beleidskompas kreeg geen geldig antwoord van de workflow van ${stepId} (HTTP ${res.status}).`;
-    return { ok: false, step_id: stepId, error: 'Step workflow HTTP ' + res.status, text, answer: text };
-  }
-
-  return Object.assign({}, payload, {
-    text: String(payload.text || payload.answer || ''),
-    answer: String(payload.answer || payload.text || ''),
-  });
-}
-
-/** What the Code node of the orchestrator workflow runs, from start to end.
- *
- *  `input` is the incoming request as n8n hands it over (`$json`: the
- *  request's `body` and `headers`), `env` holds the settings read from
- *  n8n's `$env`, `summaries` describes the steps for chooseStep, and the
- *  rest are the means to send HTTP. In order: check the token, answer a
- *  title request, take the message apart and read the step from it, let
- *  the model pick the step a typed message is about, read the state of the
- *  case from the store, send the parts and the state to that step, keep
- *  the answer in the store. The returned object is what the workflow
- *  responds with. */
-async function runOrchestrator(ctx) {
-  const { input, env, fetchImpl, httpModule, httpsModule, urlModule } = ctx;
-  const raw = input || {};
-  const body = raw.body || {};
-  const headers = raw.headers || {};
-
-  // What this request writes to the store, and what went wrong doing so.
-  // Nothing is written without the conversation and the user from the
-  // bridge: without them there is no case to write to.
-  const store = createStoreClient({ env, fetchImpl, httpModule, httpsModule, urlModule });
-  const caseId = String(body.sessionId || '').trim();
-  const userId = String(body.userId || '').trim();
-  const stored = { enabled: store.enabled && Boolean(caseId && userId), written: [], errors: [] };
-  async function write(name, call) {
-    if (!stored.enabled) return;
-    const result = await call();
-    if (result.ok) stored.written.push(name);
-    else stored.errors.push(`${name}: ${result.error}`);
-  }
-
-  // The same token check as in the step workflows. A wrong token gives a
-  // normal answer with ok: false, not a thrown error: n8n can turn a thrown
-  // error into an empty response, and then the caller sees nothing at all.
-  const callerToken = extractSuppliedToken(headers);
+  // A wrong token gives a normal answer with ok: false, not a thrown error:
+  // n8n can turn a thrown error into an empty response, and then the caller
+  // sees nothing at all.
   const expectedToken = String((env && (env.BELEIDSKOMPAS_N8N_WEBHOOK_TOKEN || env.N8N_WEBHOOK_TOKEN)) || '').trim();
-  if (expectedToken && callerToken !== expectedToken) {
-    return { ok: false, step_id: null, error: 'Unauthorized webhook token', text: '', answer: '' };
-  }
+  if (expectedToken && extractSuppliedToken(headers) !== expectedToken) return refuse('Unauthorized webhook token', '');
 
-  // The live template from the admin, or the seed when it cannot be read.
-  const liveAnswer = await store.getLive();
-  const liveOk = Boolean(liveAnswer.ok && liveAnswer.payload && liveAnswer.payload.flow && Array.isArray(liveAnswer.payload.flow.steps));
-  const template = liveOk ? liveAnswer.payload.flow : TEMPLATE_DEFAULTS;
-  const settings = (liveOk && liveAnswer.payload.settings) || {};
-  const live = {
-    template,
-    model: String(settings.default_model || (env && env.BELEIDSKOMPAS_MODEL) || 'govchat-default'),
-  };
-  stored.template = liveOk ? 'live' : `fallback (${liveAnswer.error || 'no template in the answer'})`;
-  const summaries = template.steps.map(stepSummary);
-  // Only the steps that have a workflow can be asked.
-  const routes = {};
-  for (const step of template.steps) if (Object.prototype.hasOwnProperty.call(STEP_ROUTES, step.id)) routes[step.id] = STEP_ROUTES[step.id];
+  const case_id = String(b.sessionId || '').trim();
+  const user_id = String(b.userId || '').trim();
 
   // LibreChat asks for a conversation title through this same endpoint. That
   // request carries TITLE_REQUEST_MARKER (set in librechat.yaml), sometimes
-  // in systemPrompt and sometimes in the message itself. It names no step,
-  // so it is answered here with a title instead of being forwarded.
-  const message = incomingMessage(body);
-  if (isTitleRequest(message) || isTitleRequest(String(body.systemPrompt || ''))) {
-    // The title is made from the case itself, not from the block the page
-    // put behind it.
-    const caseText = parsePageMessage(extractConvoCaseText(message)).caseText;
-    const titled = await buildTitleResponse({ titleSource: caseText || message, env, model: live.model, fetchImpl, httpModule, httpsModule, urlModule });
-    await write('title', () => store.setTitle({ caseId, userId, title: titled.answer }));
-    return Object.assign({}, titled, { store: stored });
+  // in systemPrompt and sometimes in the message itself.
+  const text = incomingMessage(b);
+  if (isTitleRequest(text) || isTitleRequest(String(b.systemPrompt || ''))) {
+    // The title is made from what the user wrote, not from the block the
+    // page put behind it.
+    const conversation = parsePageMessage(extractConvoUserText(text.replaceAll(TITLE_REQUEST_MARKER, '')));
+    const title_source = conversation.message || conversation.shown;
+    return { kind: 'title', ok: true, case_id, user_id, title_source: title_source.slice(0, 2000), started_at };
   }
 
-  const parts = parsePageMessage(message);
-  let activeStepId = determineStep(parts, routes);
-  // A message without the block of the page was typed in LibreChat's own
-  // chat: it is a question, and there is no page to say where the user is.
-  if (!activeStepId && !parts.fromPage) activeStepId = DEFAULT_STEP_ID;
-  if (!activeStepId) {
-    return { ok: false, step_id: null, error: 'No step recognised in the request', text: UNKNOWN_STEP_TEXT, answer: UNKNOWN_STEP_TEXT };
-  }
-  if (!stored.enabled) {
-    const error = store.enabled ? 'No conversation or user from the bridge' : 'Store not configured';
-    return { ok: false, step_id: null, error, text: STORE_MISSING_TEXT, answer: STORE_MISSING_TEXT, store: stored };
+  const storeConfigured = Boolean(String((env && env.BELEIDSKOMPAS_STORE_URL) || '').trim() && String((env && env.BELEIDSKOMPAS_STORE_TOKEN) || '').trim());
+  if (!storeConfigured) return refuse('Store not configured', MESSAGES.store_missing);
+  if (!case_id || !user_id) return refuse('No conversation or user from the bridge', MESSAGES.store_missing);
+
+  const parts = parsePageMessage(text);
+  return {
+    kind: parts.message ? 'message' : 'report',
+    ok: true,
+    case_id,
+    user_id,
+    substep_id: parts.substepId,
+    message: parts.message,
+    started_at,
+  };
+}
+
+/** What the agents get to read and work with, from the template the admin
+ *  published and the state of the case in the store.
+ *
+ *  From the state: the reports so far, the last turns of the conversation
+ *  and the request. The orchestrator reads `prompt`, with every report in
+ *  it. The agent of a step gets the reports as `findings`. For a typed
+ *  message that is every report too. For a request for a report it is
+ *  every report up to and including the substep asked for, because a report
+ *  builds on what came before.
+ *
+ *  From the template: the instruction of the orchestrator (`system_prompt`),
+ *  the model, and per step what its agent needs (`step_templates`, as JSON
+ *  text, because an input of a workflow is text). Only the steps in
+ *  `stepIds` count, the steps that have an agent.
+ *
+ *  `request` is what prepareRequest returned, `state` what the store
+ *  answered and `live` what the admin answered. Without the store or the
+ *  template there is no answer: the result is then `ok: false` with a
+ *  message for the chat. */
+function buildContext({ request, state, live, stepIds }) {
+  const flow = live && live.flow;
+  const templateError = nodeError(live) || (flow && Array.isArray(flow.steps) ? null : 'No template in the answer of the admin');
+  if (templateError) return failure(request, `template: ${templateError}`, MESSAGES.store_failed);
+
+  const stateError = nodeError(state) || (state && state.reports !== null && typeof state.reports === 'object' ? null : 'No state in the answer of the store');
+  if (stateError) return failure(request, `state: ${stateError}`, MESSAGES.store_failed);
+
+  const steps = flow.steps.filter((step) => step && Array.isArray(step.substeps) && stepIds.includes(step.id));
+  const order = steps.flatMap((step) => step.substeps.map((substep) => substep.id));
+  const substep_id = order.includes(request.substep_id) ? request.substep_id : '';
+  if (request.kind === 'report' && !substep_id) return failure(request, 'No substep recognised in the request', MESSAGES.unknown_step);
+
+  const model = String((live.settings && live.settings.default_model) || '').trim() || 'govchat-default';
+  const step_templates = {};
+  for (const step of steps) {
+    step_templates[step.id] = JSON.stringify({
+      model,
+      rules: String(flow.rules || ''),
+      report_prompt: String(flow.report_prompt || ''),
+      conversation_prompt: String(flow.conversation_prompt || ''),
+      report_disclaimer: String(flow.report_disclaimer || ''),
+      step: stepFromTemplate(flow, step.id),
+    });
   }
 
-  // A report is always written by the step of the substep the page named.
-  // A typed message is answered by the step it is about.
-  const stepId = parts.message
-    ? await chooseStep({ message: parts.message, activeStepId, summaries, routes, env, model: live.model, promptTemplate: template.orchestrator_prompt, fetchImpl, httpModule, httpsModule, urlModule })
-    : activeStepId;
+  const reports = state.reports;
+  const ids = Object.keys(reports).sort((a, b) => order.indexOf(a) - order.indexOf(b));
+  const reportTexts = (reportIds) =>
+    reportIds
+      .map((id) => String(reports[id].text || '').trim())
+      .filter(Boolean)
+      .join('\n\n');
 
-  // The case text goes to the store first, so the state read next has it.
-  // The user's message is written after the state is read, so the
-  // conversation the step gets does not already contain it. Writing before
-  // the step answers keeps the message even when the step fails.
-  if (parts.caseText) await write('case_text', () => store.setCaseText({ caseId, userId, text: parts.caseText }));
-  let context = parts;
-  stored.read = false;
-  const state = await store.getState({ caseId, userId, maxTurns: 100 });
-  if (state.ok && state.payload) {
-    context = Object.assign({}, parts, contextFromState(state.payload, { substepId: parts.substepId, forReport: !parts.message, summaries }));
-    stored.read = true;
-  } else {
-    stored.errors.push(`state: ${state.error || 'no state in the answer'}`);
-  }
-  if (parts.message) await write('user_turn', () => store.addTurn({ caseId, userId, role: 'user', askedFrom: parts.substepId || null, text: parts.message }));
-  // An error so far means the step would answer without the state of the
-  // case, or the user's message would not be kept. Then better no answer.
-  if (stored.errors.length) {
-    return { ok: false, step_id: null, error: stored.errors.join('; '), text: STORE_FAILED_TEXT, answer: STORE_FAILED_TEXT, store: stored };
-  }
+  const upTo = request.kind === 'report' ? order.indexOf(substep_id) : -1;
+  const findings = reportTexts(ids.filter((id) => upTo === -1 || order.indexOf(id) <= upTo));
+  const allReports = reportTexts(ids);
+  const turns = Array.isArray(state.turns) ? state.turns : [];
+  const conversation = turns.map((t) => `${t.role === 'user' ? 'Gebruiker' : 'Beleidskompas'}: ${String(t.text || '').trim()}`).join('\n');
+  const asked =
+    request.kind === 'message'
+      ? `Bericht van de gebruiker (de gebruiker zit in deelstap ${substep_id || 'onbekend'}):\n${request.message}`
+      : `Verzoek: werk deelstap ${substep_id} uit.`;
 
-  const result = await forwardToStep({
-    baseUrl: env && env.BELEIDSKOMPAS_N8N_BASE_URL,
-    path: routes[stepId],
-    stepId,
-    body: buildStepRequest(stepId, context, body, live),
-    callerToken,
-    timeoutMs: 120000,
-    fetchImpl,
-    httpModule,
-    httpsModule,
-    urlModule,
-  });
+  const prompt = [
+    allReports ? `Bevindingen tot nu toe:\n${allReports}` : 'Bevindingen tot nu toe: (nog geen deelstap uitgewerkt)',
+    conversation && `Laatste beurten van het gesprek:\n${conversation}`,
+    asked,
+  ]
+    .filter(Boolean)
+    .join('\n\n');
 
-  if (result.ok && result.mode === 'report') {
-    const substepId = String(result.substep_id || parts.substepId || '').trim();
-    if (substepId) {
-      await write('report', () =>
-        store.addReport({
-          caseId,
-          userId,
-          substepId,
-          text: result.answer,
-          citations: result.citations,
-          retrievalTrace: result.retrieval_trace,
-        }),
-      );
-    } else {
-      stored.errors.push('report: no substep to file the report under');
-    }
-  }
-  if (result.ok && parts.message) {
-    await write('assistant_turn', () => store.addTurn({ caseId, userId, role: 'assistant', stepId: result.step_id || stepId, askedFrom: parts.substepId || null, text: result.answer }));
-  }
+  return {
+    ...request,
+    substep_id,
+    findings,
+    conversation,
+    prompt,
+    system_prompt: buildOrchestratorPrompt(steps, flow.orchestrator_prompt),
+    model,
+    step_templates,
+  };
+}
 
-  // `text` carries the meta block behind the answer, so the warning goes
-  // in front, in both.
-  const warned = result.ok && stored.errors.length
-    ? Object.assign({}, result, { answer: `${STORE_WARNING_TEXT}\n\n${result.answer}`, text: `${STORE_WARNING_TEXT}\n\n${result.text}` })
-    : result;
-  return Object.assign({}, warned, { store: stored });
+/** The result when the message the user typed could not be stored. `saved`
+ *  is what the store answered. */
+function userTurnFailure({ saved }) {
+  return failure({}, `user_turn: ${nodeError(saved)}`, MESSAGES.store_failed);
+}
+
+/** The title LibreChat asked for, from what the model replied. Never fails:
+ *  without a usable reply the title is made from the first words of the
+ *  case, since a broken title must never break the conversation. */
+function buildTitle({ request, reply }) {
+  const raw = nodeError(reply) ? '' : String((reply && reply.text) || '');
+  const wrapperChars = new Set(['"', "'", '#', '*', '_']);
+  let start = 0;
+  let end = raw.length;
+  while (start < end && (wrapperChars.has(raw[start]) || /\s/.test(raw[start]))) start += 1;
+  while (end > start && (wrapperChars.has(raw[end - 1]) || /\s/.test(raw[end - 1]))) end -= 1;
+  // Prefixed so Beleidskompas conversations are visually grouped in
+  // LibreChat's conversation-list sidebar, alongside other endpoints/agents.
+  const title = TITLE_PREFIX + (raw.slice(start, end) || buildFallbackTitle(request.title_source));
+  return { ok: true, step_id: null, mode: 'title', case_id: request.case_id, user_id: request.user_id, answer: title, text: title };
+}
+
+/** The answer to a request, from what the orchestrator agent returned.
+ *  `text` is its message for the chat. `step_id` is the step whose agent it
+ *  called first and `tools` every tool it called. `context` is what
+ *  buildContext returned. When the agent failed or said nothing, the result
+ *  is `ok: false` with a message for the chat. */
+function buildAnswer({ context, agent, now }) {
+  const tools = toolCalls(agent);
+  const error = nodeError(agent);
+  const text = error ? '' : String((agent && agent.output) || '').trim();
+  const called = tools.map((t) => /^(.+)_agent$/.exec(String(t.tool || ''))).find(Boolean);
+
+  const base = {
+    case_id: context.case_id,
+    user_id: context.user_id,
+    mode: context.kind === 'report' ? 'report' : 'conversation',
+    step_id: called ? called[1] : null,
+    asked_from: context.substep_id || null,
+    tools,
+    duration_ms: now - context.started_at,
+  };
+  if (!text) return failure(base, error || 'The orchestrator returned no text', MESSAGES.no_answer);
+  return { ...base, ok: true, text, answer: text };
+}
+
+/** The answer as it goes back, after the turn of the orchestrator was
+ *  written to the store: with a warning in front when that failed. */
+function finishAnswer({ answer, saveError }) {
+  if (!saveError) return answer;
+  const text = `${MESSAGES.store_warning}\n\n${answer.text}`;
+  return { ...answer, text, answer: text, store_error: `assistant_turn: ${saveError}` };
 }
 
 module.exports = {
-  STEP_ROUTES,
-  DEFAULT_STEP_ID,
-  UNKNOWN_STEP_TEXT,
-  STORE_MISSING_TEXT,
-  STORE_FAILED_TEXT,
-  STORE_WARNING_TEXT,
+  MESSAGES,
+  failure,
+  TITLE_SYSTEM_PROMPT,
+  MAX_TURNS,
   incomingMessage,
-  determineStep,
-  stepSummary,
-  chooseStep,
-  contextFromState,
-  buildStepRequest,
-  forwardToStep,
-  runOrchestrator,
+  stepToolName,
+  buildOrchestratorPrompt,
+  prepareRequest,
+  buildContext,
+  userTurnFailure,
+  buildTitle,
+  buildAnswer,
+  finishAnswer,
 };

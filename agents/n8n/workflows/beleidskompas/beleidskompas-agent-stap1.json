@@ -1,0 +1,345 @@
+[
+  {
+    "id": "govchat-beleidskompas-agent-stap1",
+    "name": "Beleidskompas - Agent stap 1",
+    "active": false,
+    "isArchived": false,
+    "nodes": [
+      {
+        "parameters": {
+          "inputSource": "workflowInputs",
+          "workflowInputs": {
+            "values": [
+              {
+                "name": "substep_id",
+                "type": "string"
+              },
+              {
+                "name": "assignment",
+                "type": "string"
+              },
+              {
+                "name": "case_id",
+                "type": "string"
+              },
+              {
+                "name": "user_id",
+                "type": "string"
+              },
+              {
+                "name": "findings",
+                "type": "string"
+              },
+              {
+                "name": "conversation",
+                "type": "string"
+              },
+              {
+                "name": "template",
+                "type": "string"
+              }
+            ]
+          }
+        },
+        "id": "WhenExecutedbyAnotherWorkflow",
+        "name": "When Executed by Another Workflow",
+        "type": "n8n-nodes-base.executeWorkflowTrigger",
+        "typeVersion": 1.1,
+        "position": [
+          0,
+          180
+        ]
+      },
+      {
+        "parameters": {
+          "jsCode": "function asksForReport(assignmentText) {\n  return /^uitwerk/i.test(String(assignmentText || '').trim());\n}\n\nfunction buildSystemPrompt({ template, step, substeps, rules }) {\n  const values = {\n    role: step.role,\n    substeps: substeps.map((substep) => `Deelstap ${substep.id}: ${substep.title}\\n${substep.instruction}`).join('\\n\\n'),\n    rules: rules.map((rule) => '- ' + rule).join('\\n'),\n    substep_format: substeps.map((substep) => substep.format).join('\\n\\n'),\n  };\n  // {{name}} in the template becomes values.name; an unknown name stays.\n  return template.replace(/\\{\\{(\\w+)\\}\\}/g, (placeholder, name) => (name in values ? values[name] : placeholder));\n}\n\nfunction buildUserPrompt({ input, task }) {\n  const parts = [];\n\n  if (input.findings) parts.push(`Bevindingen tot nu toe:\\n${input.findings}`);\n  if (input.conversation) parts.push(`Laatste beurten van het gesprek:\\n${input.conversation}`);\n  parts.push(task);\n\n  return parts.join('\\n\\n');\n}\n\nfunction readStepTemplate(text) {\n  try {\n    const template = JSON.parse(String(text || ''));\n    const complete = template && template.step && Array.isArray(template.step.substeps);\n    return complete ? template : null;\n  } catch (_) {\n    return null;\n  }\n}\n\nfunction buildAssignment({ input }) {\n  const given = input || {};\n\n  const template = readStepTemplate(given.template);\n  if (!template) {\n    const error = 'De agent van deze stap kreeg geen template mee.';\n    return { case_id: given.case_id, user_id: given.user_id, mode: 'invalid', valid: false, error };\n  }\n  const step = template.step;\n\n  const substepId = String(given.substep_id || '').trim();\n  const substep = step.substeps.find((candidate) => candidate.id === substepId) || null;\n  const forReport = asksForReport(given.assignment);\n\n  // What every result carries, whatever the mode.\n  const about = {\n    case_id: given.case_id,\n    user_id: given.user_id,\n    step_id: step.id,\n    step_nr: step.nr,\n    step_title: step.title,\n    substep_id: substep ? substep.id : '',\n    substep_title: substep ? substep.title : '',\n    model: template.model,\n    report_disclaimer: String(template.report_disclaimer || ''),\n  };\n\n  if (forReport && !substep) {\n    const known = step.substeps.map((candidate) => candidate.id).join(', ');\n    const error = `Stap ${step.nr} kent deelstap \"${substepId}\" niet. Bekende deelstappen: ${known}.`;\n    return { ...about, mode: 'invalid', valid: false, error };\n  }\n\n  // One rule per line.\n  const rules = String(template.rules || '')\n    .split('\\n')\n    .map((line) => line.trim())\n    .filter(Boolean);\n  // A question without a substep is about the whole step.\n  const substeps = substep ? [substep] : step.substeps;\n\n  if (forReport) {\n    return {\n      ...about,\n      mode: 'report',\n      valid: true,\n      system_prompt: buildSystemPrompt({ template: String(template.report_prompt || ''), step, substeps, rules }),\n      user_prompt: buildUserPrompt({ input: given, task: `Opdracht: werk deelstap ${substep.id} (${substep.title}) uit.` }),\n    };\n  }\n\n  return {\n    ...about,\n    mode: 'conversation',\n    valid: true,\n    system_prompt: buildSystemPrompt({ template: String(template.conversation_prompt || ''), step, substeps, rules }),\n    user_prompt: buildUserPrompt({ input: given, task: `Bericht van de gebruiker:\\n${String(given.assignment || '').trim()}` }),\n  };\n}\n\nreturn [{ json: buildAssignment({ input: $json }) }];"
+        },
+        "id": "Opdrachtopbouwen",
+        "name": "Opdracht opbouwen",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          220,
+          180
+        ]
+      },
+      {
+        "parameters": {
+          "conditions": {
+            "options": {
+              "caseSensitive": true,
+              "leftValue": "",
+              "typeValidation": "strict",
+              "version": 2
+            },
+            "conditions": [
+              {
+                "leftValue": "={{ $json.valid === true }}",
+                "rightValue": true,
+                "operator": {
+                  "type": "boolean",
+                  "operation": "equals"
+                }
+              }
+            ],
+            "combinator": "and"
+          }
+        },
+        "id": "Opdrachtopgebouwd",
+        "name": "Opdracht opgebouwd?",
+        "type": "n8n-nodes-base.if",
+        "typeVersion": 2.2,
+        "position": [
+          440,
+          180
+        ]
+      },
+      {
+        "parameters": {
+          "promptType": "define",
+          "text": "={{ $json.user_prompt }}",
+          "hasOutputParser": false,
+          "options": {
+            "systemMessage": "={{ $json.system_prompt }}",
+            "enableStreaming": false,
+            "maxIterations": 8,
+            "returnIntermediateSteps": true
+          }
+        },
+        "id": "AIAgentStap1",
+        "name": "AI Agent Stap 1",
+        "type": "@n8n/n8n-nodes-langchain.agent",
+        "typeVersion": 3.1,
+        "position": [
+          660,
+          0
+        ],
+        "onError": "continueRegularOutput"
+      },
+      {
+        "parameters": {
+          "model": {
+            "__rl": true,
+            "mode": "id",
+            "value": "={{ $('Opdracht opbouwen').first().json.model }}"
+          },
+          "options": {
+            "baseURL": "={{ (String($env.LITELLM_URL || 'http://litellm:4000').replace(/\\/$/, '')) + '/v1' }}"
+          }
+        },
+        "id": "OpenAIChatModelStap1",
+        "name": "OpenAI Chat Model (Stap 1)",
+        "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+        "typeVersion": 1.3,
+        "position": [
+          660,
+          180
+        ],
+        "credentials": {
+          "openAiApi": {
+            "id": "00000000-0000-4000-8000-000000000111",
+            "name": "LiteLLM API"
+          }
+        }
+      },
+      {
+        "parameters": {
+          "jsCode": "function toolCalls(agentOutput) {\n  const steps = agentOutput && Array.isArray(agentOutput.intermediateSteps) ? agentOutput.intermediateSteps : [];\n  return steps.map((step) => ({\n    tool: (step && step.action && step.action.tool) || null,\n    input: step && step.action ? step.action.toolInput : null,\n  }));\n}\n\nfunction nodeError(output) {\n  const error = output && output.error;\n  if (!error) return null;\n  return String((typeof error === 'object' && error.message) || error);\n}\n\nfunction unwrapCodeBlock(text) {\n  const trimmed = String(text || '').trim();\n  const wrapped = /^```(?:markdown|md)?\\s*\\n([\\s\\S]*?)\\n```$/i.exec(trimmed);\n  return wrapped ? wrapped[1].trim() : trimmed;\n}\n\nfunction processReply({ assignment, agent }) {\n  const text = unwrapCodeBlock(agent && agent.output);\n\n  let error = nodeError(agent);\n  if (!error && !text) error = `De agent van stap ${assignment.step_nr} gaf geen antwoord.`;\n\n  const heading = `**Stap ${assignment.step_nr} · ${assignment.step_title} · ${assignment.substep_id} ${assignment.substep_title}**`;\n  const footer = assignment.report_disclaimer ? '---\\n' + assignment.report_disclaimer : '';\n\n  return {\n    mode: assignment.mode,\n    case_id: assignment.case_id,\n    user_id: assignment.user_id,\n    substep_id: assignment.substep_id,\n    save: assignment.mode === 'report' && !error,\n    report_text: [heading, text, footer].filter(Boolean).join('\\n\\n'),\n    answer: text,\n    tools: toolCalls(agent),\n    error,\n  };\n}\n\nreturn [{ json: processReply({ assignment: $('Opdracht opbouwen').first().json, agent: $json }) }];"
+        },
+        "id": "Antwoordverwerken",
+        "name": "Antwoord verwerken",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          1100,
+          0
+        ]
+      },
+      {
+        "parameters": {
+          "conditions": {
+            "options": {
+              "caseSensitive": true,
+              "leftValue": "",
+              "typeValidation": "strict",
+              "version": 2
+            },
+            "conditions": [
+              {
+                "leftValue": "={{ $json.save === true }}",
+                "rightValue": true,
+                "operator": {
+                  "type": "boolean",
+                  "operation": "equals"
+                }
+              }
+            ],
+            "combinator": "and"
+          }
+        },
+        "id": "Rapportgemaakt",
+        "name": "Rapport gemaakt?",
+        "type": "n8n-nodes-base.if",
+        "typeVersion": 2.2,
+        "position": [
+          1320,
+          0
+        ]
+      },
+      {
+        "parameters": {
+          "method": "POST",
+          "url": "={{ $env.BELEIDSKOMPAS_STORE_URL }}/api/beleidskompas/cases/{{ encodeURIComponent($json.case_id) }}/reports",
+          "sendHeaders": true,
+          "headerParameters": {
+            "parameters": [
+              {
+                "name": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "name": "Authorization",
+                "value": "=Bearer {{ $env.BELEIDSKOMPAS_STORE_TOKEN }}"
+              }
+            ]
+          },
+          "options": {
+            "timeout": 10000
+          },
+          "sendBody": true,
+          "specifyBody": "json",
+          "jsonBody": "={{ JSON.stringify({\n  user_id: $json.user_id,\n  substep_id: $json.substep_id,\n  text: $json.report_text,\n  citations: [],\n}) }}"
+        },
+        "id": "Rapportopslaan",
+        "name": "Rapport opslaan",
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.2,
+        "position": [
+          1540,
+          0
+        ],
+        "onError": "continueRegularOutput"
+      },
+      {
+        "parameters": {
+          "jsCode": "function buildResult({ assignment, reply, saved }) {\n  if (assignment.mode === 'invalid') {\n    return { kind: 'error', error: assignment.error };\n  }\n  if (reply.error) {\n    return { kind: 'error', error: reply.error };\n  }\n  if (reply.mode === 'conversation') {\n    return { kind: 'answer', step_id: assignment.step_id, answer: reply.answer, tools: reply.tools };\n  }\n\n  // The store answers with the version number of the report it stored.\n  const stored = Boolean(saved) && Number.isInteger(saved.version);\n\n  return {\n    kind: 'report',\n    step_id: assignment.step_id,\n    substep_id: reply.substep_id,\n    saved: stored,\n    version: stored ? saved.version : null,\n    error: stored ? null : 'Het rapport is gemaakt, maar opslaan is mislukt.',\n    report: reply.report_text,\n    tools: reply.tools,\n  };\n}\n\nconst assignment = $('Opdracht opbouwen').first().json;\n\n// The agent did not run for an invalid assignment, so there is no reply then.\nconst reply = assignment.valid ? $('Antwoord verwerken').first().json : null;\n\n// Only after a report was stored does this node get the answer of the store.\nconst saved = reply && reply.save ? $json : null;\n\nreturn [{ json: buildResult({ assignment, reply, saved }) }];"
+        },
+        "id": "Resultaatvoordeorchestrator",
+        "name": "Resultaat voor de orchestrator",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          1760,
+          180
+        ]
+      }
+    ],
+    "connections": {
+      "When Executed by Another Workflow": {
+        "main": [
+          [
+            {
+              "node": "Opdracht opbouwen",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Opdracht opbouwen": {
+        "main": [
+          [
+            {
+              "node": "Opdracht opgebouwd?",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Opdracht opgebouwd?": {
+        "main": [
+          [
+            {
+              "node": "AI Agent Stap 1",
+              "type": "main",
+              "index": 0
+            }
+          ],
+          [
+            {
+              "node": "Resultaat voor de orchestrator",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "OpenAI Chat Model (Stap 1)": {
+        "ai_languageModel": [
+          [
+            {
+              "node": "AI Agent Stap 1",
+              "type": "ai_languageModel",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "AI Agent Stap 1": {
+        "main": [
+          [
+            {
+              "node": "Antwoord verwerken",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Antwoord verwerken": {
+        "main": [
+          [
+            {
+              "node": "Rapport gemaakt?",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Rapport gemaakt?": {
+        "main": [
+          [
+            {
+              "node": "Rapport opslaan",
+              "type": "main",
+              "index": 0
+            }
+          ],
+          [
+            {
+              "node": "Resultaat voor de orchestrator",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Rapport opslaan": {
+        "main": [
+          [
+            {
+              "node": "Resultaat voor de orchestrator",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      }
+    },
+    "settings": {
+      "executionOrder": "v1"
+    }
+  }
+]
