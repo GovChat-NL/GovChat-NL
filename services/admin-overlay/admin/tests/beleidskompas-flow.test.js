@@ -56,9 +56,10 @@ test("an empty prompt-like field means the seed text; the four steps are fixed",
   const firstId = seed.steps[0].substeps[0].id;
   const flow = normalizeBeleidskompasFlow({
     rules: " ",
+    webhook_token: "oud",
     steps: [
       { id: "stapX", title: "Vreemd" },
-      { id: "stap1", prompt: "", substeps: [{ id: firstId, prompt: "eigen", answer_format: "" }, { id: "1.9", title: "Nieuw" }] },
+      { id: "stap1", prompt: "", workflow_id: "oud", substeps: [{ id: firstId, prompt: "eigen", answer_format: "" }, { id: "1.9", title: "Nieuw" }] },
     ],
   });
   assert.equal(flow.rules, seed.rules);
