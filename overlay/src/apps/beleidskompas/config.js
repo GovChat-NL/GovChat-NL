@@ -115,13 +115,14 @@ function buildSteps(cfg, stepsData) {
 /** `step` gives id, nr, title and substeps; `own` the description. */
 function shapeStep(step, idx, own) {
   const id = String(step.id);
+  const nr = Number(step.nr) || idx + 1;
   const texts = DEFAULT_STEP_TEXTS[id] || { short: "", info: "", help: [], deep: [] };
   const substeps = Array.isArray(step.substeps) ? step.substeps : [];
   return {
     id,
-    nr: Number(step.nr) || idx + 1,
+    nr,
     title: String(step.title || "").trim(),
-    substeps: substeps.map((s) => ({ id: String(s.id), title: String(s.title || "").trim() })),
+    substeps: substeps.map((s, i) => ({ id: String(s.id), label: `${nr}.${i + 1}`, title: String(s.title || "").trim() })),
     short: String(own.description || "").trim() || texts.short,
     info: String(own.description || "").trim() || texts.info,
     help: texts.help,

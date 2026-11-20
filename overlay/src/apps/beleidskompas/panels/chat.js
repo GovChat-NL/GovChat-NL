@@ -129,7 +129,7 @@ export function setupChat(store, { refreshState, versionId }) {
    *  request is under way. */
   function renderComposer() {
     chatInputEl.placeholder = store.caseStarted()
-      ? `Stel een vraag of reageer op deelstap ${store.activeSubstep().id}`
+      ? `Stel een vraag of reageer op deelstap ${store.activeSubstep().label}`
       : "Beschrijf je casus";
     sendBtn.disabled = Boolean(state.asking);
     chatInputEl.disabled = Boolean(state.asking);

@@ -22,7 +22,7 @@ export function setupStepper(store) {
     if (store.substepDone(substep.id)) classes.push("is-done");
     const index = substeps.findIndex((s) => s.id === substep.id);
     const busy = store.reportUnderWay(substep.id) ? '<span class="gc-bk-spinner" aria-label="wordt uitgewerkt"></span>' : "";
-    return `<button type="button" class="${classes.join(" ")}" data-substep-index="${index}">${escapeHTML(substep.id)} ${escapeHTML(substep.title)}${store.substepDone(substep.id) ? " ✓" : ""}${busy}</button>`;
+    return `<button type="button" class="${classes.join(" ")}" data-substep-index="${index}">${escapeHTML(substep.label)} ${escapeHTML(substep.title)}${store.substepDone(substep.id) ? " ✓" : ""}${busy}</button>`;
   }
 
   function renderStepper() {
