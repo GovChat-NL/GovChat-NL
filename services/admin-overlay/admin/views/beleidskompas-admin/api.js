@@ -81,9 +81,11 @@ export const downloadUrl = (id) =>
 export const stepDocumentIds = (step) =>
   new Set((step.document_ids || []).map(String));
 
-// Feedback currently has no reliable template/version or original-answer attribution.
-// Show only what the server actually recorded.
-export async function listFeedback() {
+// The template follows from version_id; items without a known version show as "Onbekend template".
+export async function listFeedback(templates) {
   const data = await request("GET", "/api/beleidskompas-feedback");
-  return data.items || [];
+  return (data.items || []).map((item) => ({
+    ...item,
+    template_id: templates.find((t) => t.versions.some((v) => v.id === String(item.version_id)))?.id || null,
+  }));
 }
