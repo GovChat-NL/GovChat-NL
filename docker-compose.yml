@@ -740,6 +740,7 @@ services:
       - n8n-data:/home/node/.n8n
       - ./agents:/workspace/agents:ro
       - ./n8n/bootstrap.js:/bootstrap/bootstrap.js:ro
+      - ./scripts/topdesk-workflow-security.js:/scripts/topdesk-workflow-security.js:ro
     entrypoint: ["node", "/bootstrap/bootstrap.js"]
     networks:
       - librechat-net

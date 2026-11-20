@@ -5,7 +5,7 @@ GovChat bevat twee generieke n8n-workflows voor het indexeren en semantisch bevr
 - `topdesk-knowledge-items-ingest.json` haalt directe kinderen van een gekozen hoofdkennisitem op basis van het TOPdesk-ID op, voegt artikel- en optioneel bijlagetext samen, genereert embeddings en upsert de punten in Qdrant.
 - `topdesk-knowledge-items-search.json` embedt een vraag, zoekt in een gekozen Qdrant-collectie en geeft resultaten met score, titel, TOPdesk-nummer, bron-id en URL terug.
 
-Beide exports worden automatisch meegenomen door [`n8n/bootstrap.js`](../n8n/bootstrap.js). Bootstrap behoudt standaard hun inactieve status. Met `N8N_ENABLE_TOPDESK_SEARCH=true` publiceert bootstrap de zoekworkflow en verbindt die als tool met de GovChat Orchestrator. Ingest en de ingestplanning worden hierdoor niet geactiveerd.
+Beide exports worden automatisch meegenomen door [`n8n/bootstrap.js`](../n8n/bootstrap.js). Bootstrap behoudt standaard hun inactieve status. Met `N8N_ENABLE_TOPDESK_SEARCH=true` publiceert bootstrap de zoekworkflow en verbindt die als tool met de GovChat Orchestrator. Ingest en de ingestplanning worden hierdoor niet geactiveerd. Toegang vereist daarnaast de optionele Graph/OBO-service: volg [bedrijfsautorisatie activeren](topdesk-company-graph-security.md). Zonder die service weigeren de aanwezige guards TOPdesk, ook als de zoekflag aanstaat.
 
 ## Vereisten
 
@@ -82,7 +82,7 @@ Voer ingest één keer uit voordat je de zoekworkflow test, zodat de collectie b
 
 ### TOPdesk zoeken vanuit de orchestrator
 
-Zet `N8N_ENABLE_TOPDESK_SEARCH=true` in de lokale `.env` om de koppeling in te schakelen. Bootstrap configureert automatisch de volgende onderdelen:
+Configureer eerst Entra en de private secretmount volgens [bedrijfsautorisatie activeren](topdesk-company-graph-security.md). Neem de optionele Compose-overlay op en zet zowel de Graph-serviceflag als de zoekflag aan in de private omgeving. De zoekflag regelt alleen publicatie en koppeling; een gebruiker krijgt pas toegang na een verse bedrijfscontrole. Bootstrap configureert automatisch de volgende onderdelen:
 
 - De bestaande GovChat Orchestrator krijgt een TOPdesk Workflow Tool, naast de OpenBesluitvorming-tool, verbonden met **AI Agent Orchestrator**.
 - De agent levert een concrete `question` aan de TOPdesk-zoekworkflow; `top_k` staat in de toolmapping op 5. Credentials, endpoints en de collectie worden niet door het taalmodel gekozen.
@@ -94,17 +94,17 @@ Bij `N8N_ENABLE_TOPDESK_SEARCH=false` verwijdert bootstrap de TOPdesk-tool uit d
 Voer na een flagwijziging, zodra de Docker-stack draait, de bootstrap uit en herstart n8n om CLI-publicatiewijzigingen te laden:
 
 ```sh
-docker compose --env-file .env run --rm --no-deps n8n-bootstrap
-docker compose --env-file .env restart n8n n8n-runners
+docker compose --env-file .env -f docker-compose.yml -f docker-compose.topdesk-company-graph.yml run --rm --no-deps n8n-bootstrap
+docker compose --env-file .env -f docker-compose.yml -f docker-compose.topdesk-company-graph.yml restart n8n
 ```
 
-De bootstrap-update is een deploymentstap, geen live checkbox: het aanpassen van `.env` alleen verandert een al draaiende agent niet. De eerste bootstrap met deze versie gebruikt een nieuwe seedmarker en importeert de volledige workflowset; latere flagwijzigingen zijn gericht.
+Gebruik bij deze beheercommando's ook alle bestaande private Compose-overlays van de installatie, in dezelfde volgorde. De bootstrap-update is een deploymentstap, geen live checkbox: het aanpassen van de private omgeving alleen verandert een al draaiende agent niet. Op een reeds volledig gezaaide installatie werkt de securitymigratie uitsluitend de managed orchestrator en TOPdesk Search bij, ook als zoeken uitstaat. Een herhaling importeert niets. Oudere ontbrekende migratiemarkers behouden hun eigen scoped updates; alleen een nieuwe installatie importeert de volledige workflowset. Voor deze securitymigratie is geen force-import nodig; laat de forceflag op false en behoud bestaande owners en credentials.
 
-**Toegang:** schakel de tool alleen in voor een GovChat-omgeving waarvan de gebruikers deze kennisbank mogen lezen. De flag regelt beschikbaarheid, niet individuele TOPdesk-autorisatie. Search filtert op zichtbare TOPdesk-punten, maar voert geen persoonlijke TOPdesk-rechtencontrole uit. Zoekresultaten kunnen ook bijlagetext bevatten als die eerder is geïndexeerd. De zoekworkflow heeft geen eigen publieke webhook; de tool gebruikt een interne subworkflow-aanroep.
+**Toegang:** de server controleert de actuele bedrijfsnaam in Microsoft Graph, zowel voor toolbeschikbaarheid in beide agentpaden als onafhankelijk vóór embeddings/Qdrant. De standaard is exact Provincie Limburg; beheer kan de toegestane naam configureren. Dit is geen persoonlijke TOPdesk-ACL-controle: geef de toegestane organisatie alleen toegang tot kennisitems die zij mag lezen. Search filtert op zichtbare TOPdesk-punten; resultaten kunnen eerder geïndexeerde bijlagetext bevatten. De zoekworkflow heeft geen publieke webhook en accepteert geen door de gebruiker opgegeven identiteit als autorisatie.
 
-Voer eerst **Test workflow** uit met een kleine testcollectie. Controleer de TOPdesk-response, embeddingdimensie, Tika-extractie en Qdrant-upsert. Activeer daarna de ingest-workflow om de ingestelde planning te gebruiken. De zoekworkflow is bedoeld om vanuit een bovenliggende n8n-workflow of tool aangeroepen te worden; voer bij het testen `question` mee en eventueel `top_k`, `collection` en `score_threshold`.
+Controleer ingest afzonderlijk met een kleine collectie voordat je de ingestplanning activeert. Zoekaanroepen moeten via de geautoriseerde chatketen lopen: de bridge levert de server-owned requesthandle en de toolmapping geeft die door. Een handmatige search-aanroep met alleen een vraag wordt geweigerd; een handle mag nooit een modelargument, handmatig testveld of publiek configuratievoorbeeld worden.
 
-Voorbeeld zoekinput:
+Voorbeeld inhoudelijke zoekinput (de server voegt de autorisatiecontext onafhankelijk toe; dit is geen zelfstandig geautoriseerde aanroep):
 
 ```json
 {
@@ -123,3 +123,9 @@ De zoekoutput bevat de gerangschikte bronnen; laat een antwoordagent de inhoud u
 - Tika verwerkt bestanden intern en krijgt geen publiek gepubliceerde Compose-poort. Beperk toegestane bestandstypen/grootte aan de bronzijde en voer software-updates volgens het reguliere patchbeleid uit.
 - De workflows verwijderen geen punten die in TOPdesk zijn verwijderd of niet langer onder het hoofditem vallen. Plan voor productie een expliciete reconcile/cleanup-strategie voordat de bronstructuur verandert.
 - `pageSize` en de API-paginering verschillen mogelijk per TOPdesk-release. Test met meer records dan één pagina voordat je de workflow voor een volledige dataset activeert.
+## Beveiliging bij chat-retrieval
+
+TOPdesk-search vereist nu een verse server-side exacte bedrijfscontrole via
+Microsoft Graph, zowel bij toolbeschikbaarheid als onafhankelijk vóór embeddings
+en Qdrant. Alleen het globale search-vlagje aanzetten verleent geen toegang.
+Zie [architectuur, Entra-inrichting en activatie](topdesk-company-graph-security.md).

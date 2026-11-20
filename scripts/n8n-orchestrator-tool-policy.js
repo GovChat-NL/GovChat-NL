@@ -26,8 +26,12 @@ function readPolicy(filename = process.env.N8N_ORCHESTRATOR_POLICY_FILE || "/gov
 }
 
 function selectTools(tools, policy = readPolicy()) {
-  return tools.filter((tool) => !Object.hasOwn(TOOL_KEYS, tool.name) ||
-    policy?.tools?.[TOOL_KEYS[tool.name]] === true);
+  return tools.filter((tool) => {
+    if (tool.name === "topdesk_knowledge_search_tool") {
+      return typeof tool.description === "string" && tool.description.startsWith("[GOVCHAT_TOPDESK_AVAILABLE] ");
+    }
+    return !Object.hasOwn(TOOL_KEYS, tool.name) || policy?.tools?.[TOOL_KEYS[tool.name]] === true;
+  });
 }
 
 function guardTool(tool) {

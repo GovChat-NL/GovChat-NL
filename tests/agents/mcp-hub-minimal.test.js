@@ -246,15 +246,15 @@ test('pinned n8n image contains the configured native MCP class', {
 test('essential bootstrap discovers hub IDs, updates old seed markers and preserves owner/credential collisions', () => {
   const bootstrap = require('../../n8n/bootstrap');
   const entries = bootstrap.discoverWorkflows(path.join(root, 'agents/n8n/workflows'), {});
-  const plan = bootstrap.getWorkflowImportPlan(entries, JSON.stringify({ version: 8, statisticsIntegrationVersion: 1, topdeskSearchEnabled: false }), false, {});
+  const plan = bootstrap.getWorkflowImportPlan(entries, JSON.stringify({ version: 8, statisticsIntegrationVersion: 1, topdeskCompanySecurityVersion: 1, topdeskSearchEnabled: false }), false, {});
   assert.deepEqual(plan.flatMap(e => e.ids).sort(), ['govchat-mcp-executor-hub', 'govchat-mcp-registry-sync', 'govchat-orchestrator-litellm']);
-  const marker = { version: 8, topdeskSearchEnabled: false, mcpHubVersion: 2, statisticsIntegrationVersion: 1 };
+  const marker = { version: 8, topdeskSearchEnabled: false, mcpHubVersion: 2, statisticsIntegrationVersion: 1, topdeskCompanySecurityVersion: 1 };
   assert.deepEqual(bootstrap.getWorkflowImportPlan(entries, JSON.stringify(marker), false, {}), []);
   const legacy = { ...marker, mcpHubVersion: 1 };
   assert.deepEqual(bootstrap.getWorkflowImportPlan(entries, JSON.stringify(legacy), false, {}).flatMap(e => e.ids).sort(), ['govchat-mcp-executor-hub', 'govchat-mcp-registry-sync', 'govchat-orchestrator-litellm']);
   assert.deepEqual(bootstrap.getWorkflowImportPlan(entries, JSON.stringify({ ...marker, statisticsIntegrationVersion: 0 }), false, {}).flatMap(e => e.ids).sort(),
     ['govchat-obv-statistics', 'govchat-orchestrator-litellm']);
-  assert.deepEqual(bootstrap.getWorkflowImportPlan(entries, JSON.stringify({ version: 8, topdeskSearchEnabled: false }), false, {}).flatMap(e => e.ids).sort(),
+  assert.deepEqual(bootstrap.getWorkflowImportPlan(entries, JSON.stringify({ version: 8, topdeskSearchEnabled: false, topdeskCompanySecurityVersion: 1 }), false, {}).flatMap(e => e.ids).sort(),
     ['govchat-mcp-executor-hub', 'govchat-mcp-registry-sync', 'govchat-obv-statistics', 'govchat-orchestrator-litellm']);
   assert.equal(bootstrap.buildJemsCredential({}), null);
   assert.throws(() => bootstrap.buildJemsCredential({ JEMS_MCP_API_KEY: 'dummy' }), /All three/);
