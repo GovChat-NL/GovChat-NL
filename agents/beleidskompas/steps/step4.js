@@ -17,9 +17,9 @@ const STEP = {
   title: 'Governance-inrichting',
   role: readPrompt('step4/role.md'),
   substeps: [
-    { id: '4.1', title: 'Good governance-principes', ...readSubstepPrompt('step4/4.1-good-governance-principes.md') },
-    { id: '4.2', title: 'Organisatorische governance', ...readSubstepPrompt('step4/4.2-organisatorische-governance.md') },
-    { id: '4.3', title: 'Governance-richtlijnen', ...readSubstepPrompt('step4/4.3-governance-richtlijnen.md') },
+    { id: 'sub_79tvogur', title: 'Good governance-principes', ...readSubstepPrompt('step4/4.1-good-governance-principes.md') },
+    { id: 'sub_ychd11mr', title: 'Organisatorische governance', ...readSubstepPrompt('step4/4.2-organisatorische-governance.md') },
+    { id: 'sub_t1723lbi', title: 'Governance-richtlijnen', ...readSubstepPrompt('step4/4.3-governance-richtlijnen.md') },
   ],
 };
 

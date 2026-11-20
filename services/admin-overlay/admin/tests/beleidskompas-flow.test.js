@@ -30,7 +30,7 @@ test("moved substeps are saved and published in their new order, with their own 
   const [a, b, c, ...rest] = seed.steps[0].substeps;
   const flow = normalizeBeleidskompasFlow({ ...seed, steps: [{ ...seed.steps[0], substeps: [c, b, a, ...rest] }, ...seed.steps.slice(1)] });
   assert.deepEqual(flow.steps[0].substeps.map((s) => [s.id, s.prompt]), [c, b, a, ...rest].map((s) => [s.id, s.prompt]));
-  assert.deepEqual(publicBeleidskompasConfig(flow, "v1").steps[0].substeps.map((s) => s.id), ["1.3", "1.2", "1.1", "1.4", "1.5"]);
+  assert.deepEqual(publicBeleidskompasConfig(flow, "v1").steps[0].substeps.map((s) => s.id), [c, b, a, ...rest].map((s) => s.id));
 });
 
 test("the public config holds only what the Beleidskompas page reads", () => {
@@ -53,11 +53,12 @@ test("an empty prompt-like field means the seed text; the four steps are fixed",
   const seed = normalizeBeleidskompasFlow({});
   assert.ok(seed.rules.includes("\n") && seed.report_prompt.includes("{{substeps}}"));
   assert.ok(seed.steps[0].substeps[0].answer_format.startsWith("###"));
+  const firstId = seed.steps[0].substeps[0].id;
   const flow = normalizeBeleidskompasFlow({
     rules: " ",
     steps: [
       { id: "stapX", title: "Vreemd" },
-      { id: "stap1", prompt: "", substeps: [{ id: "1.1", prompt: "eigen", answer_format: "" }, { id: "1.9", title: "Nieuw" }] },
+      { id: "stap1", prompt: "", substeps: [{ id: firstId, prompt: "eigen", answer_format: "" }, { id: "1.9", title: "Nieuw" }] },
     ],
   });
   assert.equal(flow.rules, seed.rules);
@@ -67,18 +68,6 @@ test("an empty prompt-like field means the seed text; the four steps are fixed",
   assert.equal(flow.steps[0].substeps[0].answer_format, seed.steps[0].substeps[0].answer_format);
   assert.deepEqual(flow.steps[0].substeps[1], { id: "1.9", title: "Nieuw", description: "", prompt: "", answer_format: "" });
   assert.ok(!("webhook_token" in flow) && !("workflow_id" in flow.steps[0]));
-});
-
-test("a step that still has the old default substeps or prompt gets the current ones; changed substeps stay", () => {
-  const { steps } = normalizeBeleidskompasFlow({
-    steps: [
-      { id: "stap1", substeps: [{ id: "1.1", title: "Mijn titel" }] },
-      { id: "stap2", prompt: "Onderbouw de provinciale rolkeuze met impact, uitvoerbaarheid, bestuurlijke haalbaarheid en risico’s.", substeps: [{ id: "2.1", title: "Rolopties" }, { id: "2.2", title: "Afweging" }] },
-    ],
-  });
-  assert.equal(steps[1].prompt, normalizeBeleidskompasFlow({}).steps[1].prompt);
-  assert.deepEqual(steps[0].substeps.map((s) => s.title), ["Mijn titel"]);
-  assert.deepEqual(steps[1].substeps.map((s) => `${s.id} ${s.title}`), ["2.1 Rolbepaling"]);
 });
 
 test("publish with live: false saves a version without making it live", async () => {

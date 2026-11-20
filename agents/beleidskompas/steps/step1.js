@@ -17,11 +17,11 @@ const STEP = {
   title: 'Publiek en provinciaal belang',
   role: readPrompt('step1/role.md'),
   substeps: [
-    { id: '1.1', title: 'Probleemdefinitie', ...readSubstepPrompt('step1/1.1-probleemdefinitie.md') },
-    { id: '1.2', title: 'Overheidsinterventie', ...readSubstepPrompt('step1/1.2-overheidsinterventie.md') },
-    { id: '1.3', title: 'Stakeholderanalyse', ...readSubstepPrompt('step1/1.3-stakeholderanalyse.md') },
-    { id: '1.4', title: 'Provinciaal doel', ...readSubstepPrompt('step1/1.4-provinciaal-doel.md') },
-    { id: '1.5', title: 'Integrale afweging', ...readSubstepPrompt('step1/1.5-integrale-afweging.md') },
+    { id: 'sub_qklcsmmg', title: 'Probleemdefinitie', ...readSubstepPrompt('step1/1.1-probleemdefinitie.md') },
+    { id: 'sub_44xmfrqq', title: 'Overheidsinterventie', ...readSubstepPrompt('step1/1.2-overheidsinterventie.md') },
+    { id: 'sub_rno733xd', title: 'Stakeholderanalyse', ...readSubstepPrompt('step1/1.3-stakeholderanalyse.md') },
+    { id: 'sub_5awqht5w', title: 'Provinciaal doel', ...readSubstepPrompt('step1/1.4-provinciaal-doel.md') },
+    { id: 'sub_ipcjfnt7', title: 'Integrale afweging', ...readSubstepPrompt('step1/1.5-integrale-afweging.md') },
   ],
 };
 
