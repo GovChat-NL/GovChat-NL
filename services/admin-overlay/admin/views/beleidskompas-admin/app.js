@@ -59,9 +59,8 @@ async function loadDocuments() {
 }
 
 export async function reload() {
-  const { state, workflow_manifest } = await api.getState();
+  const { state } = await api.getState();
   store.state = state;
-  store.manifest = workflow_manifest;
   store.templates = api.listTemplates(state);
   if (!store.templates.some((t) => t.id === store.templateId)) store.templateId = null;
   store.flow = flowOf(template());

@@ -17,6 +17,23 @@ process.env.BELEIDSKOMPAS_STORE_TOKEN = "secret-token";
 const { normalizeBeleidskompasFlow, publicBeleidskompasConfig } = require("../server.js");
 test.after(() => fs.rmSync(dir, { recursive: true, force: true }));
 
+test("a new substep gets an id the step does not have and did not have in a saved version", async () => {
+  const { nextSubstepId } = await import("../views/beleidskompas-admin/pages/flow.js");
+  const step = (ids) => ({ id: "stap1", substeps: ids.map((id) => ({ id })) });
+  assert.equal(nextSubstepId(1, step(["1.1", "1.2", "1.4", "1.5"])), "1.6");
+  // 1.3 was the last substep of a saved version and is deleted since.
+  assert.equal(nextSubstepId(1, step(["1.1", "1.2"]), [null, { steps: [step(["1.1", "1.2", "1.3"])] }]), "1.4");
+  assert.equal(nextSubstepId(2, { id: "stap2", substeps: [] }), "2.1");
+});
+
+test("moved substeps are saved and published in their new order, with their own ids and prompts", () => {
+  const seed = normalizeBeleidskompasFlow({});
+  const [a, b, c, ...rest] = seed.steps[0].substeps;
+  const flow = normalizeBeleidskompasFlow({ ...seed, steps: [{ ...seed.steps[0], substeps: [c, b, a, ...rest] }, ...seed.steps.slice(1)] });
+  assert.deepEqual(flow.steps[0].substeps.map((s) => [s.id, s.prompt]), [c, b, a, ...rest].map((s) => [s.id, s.prompt]));
+  assert.deepEqual(publicBeleidskompasConfig(flow, "v1").steps[0].substeps.map((s) => s.id), ["1.3", "1.2", "1.1", "1.4", "1.5"]);
+});
+
 test("the public config holds only what the Beleidskompas page reads", () => {
   const flow = normalizeBeleidskompasFlow({
     rules: "r",
@@ -38,9 +55,10 @@ test("an empty prompt-like field means the seed text; the four steps are fixed",
   assert.ok(seed.steps[0].substeps[0].answer_format.startsWith("###"));
   const flow = normalizeBeleidskompasFlow({
     rules: " ",
+    webhook_token: "oud",
     steps: [
       { id: "stapX", title: "Vreemd" },
-      { id: "stap1", prompt: "", substeps: [{ id: "1.1", prompt: "eigen", answer_format: "" }, { id: "1.9", title: "Nieuw" }] },
+      { id: "stap1", prompt: "", workflow_id: "oud", substeps: [{ id: "1.1", prompt: "eigen", answer_format: "" }, { id: "1.9", title: "Nieuw" }] },
     ],
   });
   assert.equal(flow.rules, seed.rules);
@@ -49,6 +67,7 @@ test("an empty prompt-like field means the seed text; the four steps are fixed",
   assert.equal(flow.steps[0].substeps[0].prompt, "eigen");
   assert.equal(flow.steps[0].substeps[0].answer_format, seed.steps[0].substeps[0].answer_format);
   assert.deepEqual(flow.steps[0].substeps[1], { id: "1.9", title: "Nieuw", description: "", prompt: "", answer_format: "" });
+  assert.ok(!("webhook_token" in flow) && !("workflow_id" in flow.steps[0]));
 });
 
 test("a step that still has the old default substeps or prompt gets the current ones; changed substeps stay", () => {

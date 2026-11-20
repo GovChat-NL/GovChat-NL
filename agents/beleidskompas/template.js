@@ -3,8 +3,9 @@
 /**
  * The default Beleidskompas template in the admin's flow shape, built from
  * steps/*.js and prompts/**. generate-workflow.js writes it to
- * services/admin-overlay/admin/lib/beleidskompas/default-template.json (the
- * admin's seed) and bakes it into the orchestrator as its fallback.
+ * services/admin-overlay/admin/lib/beleidskompas/default-template.json, the
+ * template the admin starts with. The workflows read the template the admin
+ * published, never this one.
  */
 
 const {
@@ -78,7 +79,8 @@ const DEFAULT_TEMPLATE = {
   steps: [step1, step2, step3, step4].map(templateStep),
 };
 
-/** The step of a template in the shape runStep works with, or null. */
+/** The step of a template in the shape the agent of a step works with,
+ *  or null. */
 function stepFromTemplate(template, stepId) {
   const steps = template && Array.isArray(template.steps) ? template.steps : [];
   const index = steps.findIndex((step) => step && step.id === stepId);

@@ -3,14 +3,10 @@
 /**
  * Beleidskompas step 3 ("Instrumentkeuze"): which substeps it has, and where
  * their prompts are. Each prompt file holds the instruction for the model
- * and, at the end, the answer format. runStep in shared.js works
- * through all substeps in one model call.
+ * and, at the end, the answer format.
  *
- * In n8n this is the Code node "Build Step 3 Answer" in the workflow
- * "Beleidskompas Specialist - Stap 3": generate-workflow.js pastes this
- * definition there, texts included, together with runStep and the other
- * functions from shared.js. Change it here, not in n8n; the next run of the
- * generator overwrites the node.
+ * This is what the admin starts with (see template.js). The workflows read
+ * the steps from the template the admin published.
  */
 
 const { readPrompt, readSubstepPrompt } = require('../shared');
