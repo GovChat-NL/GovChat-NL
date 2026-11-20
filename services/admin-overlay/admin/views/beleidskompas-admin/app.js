@@ -24,7 +24,6 @@ const DEFAULT_ROUTE = "editor";
 
 export const store = {
   state: null, // server state: templates, live, settings, default_flow
-  manifest: null,
   templates: [],
   templateId: null, // nothing selected until the admin picks a template in the Editor
   flow: null, // working copy of the selected template's newest version; saved as a whole

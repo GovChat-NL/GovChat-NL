@@ -583,11 +583,8 @@ async function ensureLiveBeleidskompasTemplate() {
   await templateStore.deployVersion(template.id, template.versions[0].id, publishTemplateLive);
 }
 
-async function publishTemplateLive(flow, documents, versionId) {
-  documents = documents || await templateStore.listDocuments();
-  const manifest = syncBeleidskompasWorkflowFiles({ live: flow, draft: flow, documents });
+async function publishTemplateLive(flow, _documents, versionId) {
   publishBeleidskompasLiveConfig(flow, versionId);
-  return manifest;
 }
 
 // beleidskompas-config.json is public (nginx serves it without auth), so it holds only what the
@@ -2274,7 +2271,6 @@ templateRoutes.mount(app, {
   normalizeFlow: normalizeBeleidskompasFlow,
   defaultFlow: defaultBeleidskompasFlow,
   publishLive: publishTemplateLive,
-  readManifest: readBeleidskompasWorkflowManifest,
 });
 
 // ── Beleidskompas user feedback ──────────────────────────────────

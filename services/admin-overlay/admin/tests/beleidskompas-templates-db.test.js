@@ -40,7 +40,6 @@ test("admin template API persists UI actions in PostgreSQL", { skip: !enabled &&
       if (failPublication) throw new Error("publication unavailable");
       published = flow;
     },
-    readManifest: () => null,
   });
   const server = app.listen(0, "127.0.0.1");
   await once(server, "listening");

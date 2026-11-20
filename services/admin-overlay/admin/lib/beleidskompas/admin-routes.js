@@ -2,7 +2,7 @@
 
 const { StoreError } = require("./store");
 
-function mount(app, { requireAuth, getStore, normalizeFlow, defaultFlow, publishLive, readManifest }) {
+function mount(app, { requireAuth, getStore, normalizeFlow, defaultFlow, publishLive }) {
   const route = (method, path, run) => app[method](path, requireAuth, async (req, res) => {
     try {
       const store = getStore();
@@ -23,7 +23,7 @@ function mount(app, { requireAuth, getStore, normalizeFlow, defaultFlow, publish
   };
 
   route("get", "/api/beleidskompas/state", async (store, req, res) => {
-    res.json({ ok: true, state: { ...await store.getState(), default_flow: defaultFlow() }, workflow_manifest: readManifest() });
+    res.json({ ok: true, state: { ...await store.getState(), default_flow: defaultFlow() } });
   });
   route("post", "/api/beleidskompas/templates", async (store, req, res) => {
     const template = await store.createTemplate(req.body?.name, flow(req.body?.flow ?? defaultFlow()));
