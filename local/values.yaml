@@ -1,0 +1,23 @@
+# Local test on a throwaway cluster (see README.md). Goes on top of values.yaml,
+# instead of values-gemeente.yaml: no ingress, a local account instead of Entra,
+# and the stub model and the database from services.yaml.
+
+mongodb:
+  enabled: false
+
+ingress:
+  enabled: false
+
+librechat:
+  configEnv:
+    MONGO_URI: "mongodb://mongodb:27017/LibreChat"
+    DOMAIN_CLIENT: "http://localhost:3080"
+    DOMAIN_SERVER: "http://localhost:3080"
+    ALLOW_EMAIL_LOGIN: "true"
+    ALLOW_REGISTRATION: "true"
+    ALLOW_SOCIAL_LOGIN: "false"
+    OPENID_AUTO_REDIRECT: "false"
+    AZURE_INSTANCE_NAME: "local"
+    AZURE_DEPLOYMENT_NAME: "test-model"
+    AZURE_API_VERSION: "2024-10-21"
+    AZURE_BASE_URL: "http://stub-model:8080/openai/deployments/test-model"

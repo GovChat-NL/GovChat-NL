@@ -1,0 +1,105 @@
+# For local tests only: a stand-in for the language model and a throwaway database.
+#
+# The stub answers every chat request with the same sentence, so the whole route can
+# be tested without an Azure key.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: stub-model
+data:
+  server.js: |
+    const http = require('node:http');
+    const ANSWER = 'Dit is een testantwoord van het stubmodel.';
+
+    http.createServer((req, res) => {
+      let body = '';
+      req.on('data', (part) => { body += part; });
+      req.on('end', () => {
+        console.log(req.method, req.url);
+        if (req.method !== 'POST' || !req.url.split('?')[0].endsWith('/chat/completions')) {
+          res.writeHead(404).end();
+          return;
+        }
+        const request = JSON.parse(body);
+        const base = { id: 'chatcmpl-stub', created: 0, model: request.model || 'stub' };
+        if (!request.stream) {
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({
+            ...base, object: 'chat.completion',
+            choices: [{ index: 0, message: { role: 'assistant', content: ANSWER }, finish_reason: 'stop' }],
+            usage: { prompt_tokens: 10, completion_tokens: 8, total_tokens: 18 },
+          }));
+          return;
+        }
+        res.writeHead(200, { 'Content-Type': 'text/event-stream' });
+        const chunk = (choices, extra = {}) =>
+          res.write(`data: ${JSON.stringify({ ...base, object: 'chat.completion.chunk', choices, ...extra })}\n\n`);
+        chunk([{ index: 0, delta: { role: 'assistant', content: '' }, finish_reason: null }]);
+        for (const word of ANSWER.split(' ')) {
+          chunk([{ index: 0, delta: { content: word + ' ' }, finish_reason: null }]);
+        }
+        chunk([{ index: 0, delta: {}, finish_reason: 'stop' }]);
+        chunk([], { usage: { prompt_tokens: 10, completion_tokens: 8, total_tokens: 18 } });
+        res.end('data: [DONE]\n\n');
+      });
+    }).listen(8080);
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: stub-model
+spec:
+  selector:
+    matchLabels: { app: stub-model }
+  template:
+    metadata:
+      labels: { app: stub-model }
+    spec:
+      containers:
+        - name: stub-model
+          image: node:22-alpine
+          command: ["node", "/stub/server.js"]
+          ports:
+            - containerPort: 8080
+          volumeMounts:
+            - { name: stub, mountPath: /stub }
+      volumes:
+        - name: stub
+          configMap: { name: stub-model }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: stub-model
+spec:
+  selector: { app: stub-model }
+  ports:
+    - port: 8080
+---
+# A MongoDB without a password and without a volume. The MongoDB that comes with the
+# chart has no arm64 image, so it does not run on a Mac with Apple Silicon.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mongodb
+spec:
+  selector:
+    matchLabels: { app: mongodb }
+  template:
+    metadata:
+      labels: { app: mongodb }
+    spec:
+      containers:
+        - name: mongodb
+          image: mongo:8.0
+          ports:
+            - containerPort: 27017
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mongodb
+spec:
+  selector: { app: mongodb }
+  ports:
+    - port: 27017

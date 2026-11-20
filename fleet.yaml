@@ -1,0 +1,13 @@
+# Rancher Fleet: install the official LibreChat chart with the two values files in this repo.
+# Not needed for a plain `helm upgrade --install` (see README.md).
+defaultNamespace: govchat
+
+helm:
+  releaseName: librechat
+  chart: oci://ghcr.io/librechat-ai/librechat-chart/librechat
+  version: 3.2.1
+  valuesFiles:
+    - values.yaml
+    - values-gemeente.yaml
+  # librechat.yaml contains ${NAME}; LibreChat fills those in, not Fleet.
+  disablePreProcess: true

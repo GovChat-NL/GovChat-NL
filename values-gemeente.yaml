@@ -1,0 +1,41 @@
+# What differs per organisation. Replace every example value below.
+# No secrets here: see scripts/create-secrets.sh.
+
+librechat:
+  configEnv:
+    # The public address (also in the ingress block below).
+    DOMAIN_CLIENT: "https://govchat.example.nl"
+    DOMAIN_SERVER: "https://govchat.example.nl"
+    # Microsoft Entra ID. Redirect URI in the app registration:
+    #   https://govchat.example.nl/oauth/openid/callback
+    OPENID_ISSUER: "https://login.microsoftonline.com/00000000-0000-0000-0000-000000000000/v2.0/"
+    OPENID_CLIENT_ID: "00000000-0000-0000-0000-000000000000"
+    # The model in Azure AI Foundry / Azure OpenAI. The base URL ends in the deployment name.
+    AZURE_INSTANCE_NAME: "example-resource"
+    AZURE_DEPLOYMENT_NAME: "example-deployment"
+    AZURE_API_VERSION: "2024-10-21"
+    AZURE_BASE_URL: "https://example-resource.cognitiveservices.azure.com/openai/deployments/example-deployment"
+
+ingress:
+  className: ""                # for example nginx or haproxy
+  annotations: {}
+    # cert-manager.io/cluster-issuer: letsencrypt-prod
+    # Answers are streamed. Give the ingress a long read timeout (for example 600s),
+    # in the annotation of your ingress controller.
+  hosts:
+    - host: govchat.example.nl
+      paths:
+        - path: /
+          pathType: Prefix
+  tls:
+    - secretName: librechat-tls
+      hosts:
+        - govchat.example.nl
+
+# Storage class, if the cluster default is not the right one.
+# mongodb:
+#   persistence:
+#     storageClass: longhorn
+# librechat:
+#   imageVolume:
+#     storageClassName: longhorn

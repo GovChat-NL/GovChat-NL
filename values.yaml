@@ -1,0 +1,140 @@
+# GovChat core: the settings that are the same for every organisation.
+# Used with the official LibreChat chart (see README.md). Organisation-specific
+# settings are in values-gemeente.yaml. No secrets here: see scripts/create-secrets.sh.
+
+# One replica on a ReadWriteOnce volume, so stop the old pod before starting the new one.
+updateStrategy:
+  type: Recreate
+
+resources:
+  requests: { cpu: 100m, memory: 512Mi }
+  limits: { memory: 1536Mi }
+
+# The database that comes with the chart. The password comes from our own Secret,
+# so that a `helm upgrade` does not need the generated password passed in again.
+mongodb:
+  auth:
+    existingSecret: librechat-mongodb-auth
+  persistence:
+    size: 10Gi
+
+# Search in old conversations is off, so no Meilisearch. Redis is off by default.
+meilisearch:
+  enabled: false
+
+librechat:
+  imageVolume:
+    size: 2G
+
+  configEnv:
+    APP_TITLE: "GovChat"
+    CUSTOM_FOOTER: "GovChat kan fouten maken. Controleer belangrijke informatie."
+    ENDPOINTS: "azureOpenAI"
+    SEARCH: "false"
+    # Scheduled chats are off; this also tells LibreChat it runs as a single replica without Redis.
+    SCHEDULES_DISABLED: "true"
+    SCHEDULES_SINGLE_PROCESS: "true"
+    # Login only through the organisation's identity provider (OpenID Connect).
+    # LibreChat itself refuses local login, registration and password reset (403).
+    ALLOW_EMAIL_LOGIN: "false"
+    ALLOW_REGISTRATION: "false"
+    ALLOW_PASSWORD_RESET: "false"
+    ALLOW_SOCIAL_LOGIN: "true"
+    ALLOW_SOCIAL_REGISTRATION: "true"
+    OPENID_SCOPE: "openid profile email"
+    OPENID_CALLBACK_URL: "/oauth/openid/callback"
+    OPENID_BUTTON_LABEL: "Inloggen met Microsoft"
+    OPENID_AUTO_REDIRECT: "true"
+    OPENID_USE_END_SESSION_ENDPOINT: "true"
+    # Only accounts with the role govchat-user get in; govchat-admin is administrator.
+    OPENID_REQUIRED_ROLE: "govchat-user"
+    OPENID_REQUIRED_ROLE_TOKEN_KIND: "id"
+    OPENID_REQUIRED_ROLE_PARAMETER_PATH: "roles"
+    OPENID_ADMIN_ROLE: "govchat-admin"
+    OPENID_ADMIN_ROLE_TOKEN_KIND: "id"
+    OPENID_ADMIN_ROLE_PARAMETER_PATH: "roles"
+
+  # The whole librechat.yaml. A change here restarts the pod.
+  # ${NAME} is filled in by LibreChat from the environment (configEnv and the Secret).
+  # Reference: https://www.librechat.ai/docs/configuration/librechat_yaml
+  configYamlContent: |
+    version: 1.3.19
+    cache: true
+
+    # The core is chat only. Everything else is off until there is a decision to turn it on.
+    interface:
+      modelSelect: false
+      parameters: false
+      presets: false
+      multiConvo: false
+      agents: false
+      prompts: false
+      bookmarks: false
+      memories: false
+      runCode: false
+      webSearch: false
+      fileSearch: false
+      fileCitations: false
+      skills: false
+      sharedLinks: false
+      schedules: false
+      feedback: false
+      buildInfo: false
+      autoSubmitFromUrl: false
+      marketplace: { use: false }
+      mcpServers: { use: false, create: false, share: false, public: false }
+      remoteAgents: { use: false, create: false, share: false, public: false }
+      peoplePicker: { users: false, groups: false, roles: false }
+      temporaryChat: true
+      retentionMode: all            # every conversation gets an expiry date
+      generalChatRetention: 720     # hours: 30 days
+      temporaryChatRetention: 720
+
+    registration:
+      socialLogins: ["openid"]
+
+    # Speech off: the browser's speech recognition can send audio to the browser vendor.
+    speech:
+      speechTab:
+        conversationMode: false
+        speechToText: false
+        textToSpeech: false
+
+    # No uploads in the core.
+    fileConfig:
+      endpoints:
+        default:
+          disabled: true
+
+    endpoints:
+      azureOpenAI:
+        titleModel: "current_model"
+        groups:
+          - group: "govchat"
+            apiKey: "${AZURE_MODEL_KEY}"
+            instanceName: "${AZURE_INSTANCE_NAME}"
+            version: "${AZURE_API_VERSION}"
+            baseURL: "${AZURE_BASE_URL}"
+            models:
+              govchat-standaard:
+                deploymentName: "${AZURE_DEPLOYMENT_NAME}"
+
+    # One fixed assistant. A new assistant is a new entry in this list.
+    modelSpecs:
+      enforce: true
+      prioritize: true
+      list:
+        - name: govchat-standaard
+          label: "GovChat standaard"
+          default: true
+          description: "Algemene chat. Geen persoonsgegevens invoeren."
+          preset:
+            endpoint: "azureOpenAI"
+            model: "govchat-standaard"
+            modelLabel: "GovChat"
+            promptPrefix: |
+              Je bent GovChat, een AI-assistent voor medewerkers van een Nederlandse overheidsorganisatie. Je antwoordt in helder Nederlands, tenzij de gebruiker om een andere taal vraagt.
+
+              Persoonsgegevens horen niet in dit gesprek. Bevat een bericht van de gebruiker gegevens waarmee een persoon te herkennen is (zoals een naam met adres, een BSN, een geboortedatum, een telefoonnummer, een e-mailadres van een inwoner, of gegevens over gezondheid, schulden of strafrecht), begin je antwoord dan met deze waarschuwing: "Let op: dit bericht lijkt persoonsgegevens te bevatten. Voer geen persoonsgegevens in GovChat in. Haal ze weg of maak ze anoniem." Herhaal de persoonsgegevens niet in je antwoord en help verder alleen met het deel van de vraag dat zonder die gegevens te beantwoorden is.
+
+              Je kunt fouten maken. Zeg het als je iets niet zeker weet, en verzin geen bronnen, wetsartikelen of cijfers.
