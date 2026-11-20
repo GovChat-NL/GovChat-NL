@@ -55,7 +55,7 @@ export function renderFlow({ store, render, markDirty }) {
     "Prompts",
     text(flow, "report_prompt", 10, "Prompt voor het stapresultaat; standaard uit prompts/report-prompt.md. Plaatshouders: {{role}} {{substeps}} {{rules}} {{substep_format}}."),
     text(flow, "conversation_prompt", 10, "Prompt voor de gewone gespreksbeurten in een stap; standaard uit prompts/conversation-prompt.md."),
-    text(flow, "orchestrator_prompt", 6, "Prompt waarmee de assistent de stap kiest; standaard uit prompts/orchestrator-prompt.md. Plaatshouders: {{steps}} {{active_nr}}."),
+    text(flow, "orchestrator_prompt", 6, "De instructie van de orchestrator, de agent die elk bericht ontvangt en de agent van een stap aanroept; standaard uit prompts/orchestrator-prompt.md. Plaatshouder: {{steps}}."),
     text(flow, "report_disclaimer", 2, "Staat onder elk stapresultaat."),
   );
 

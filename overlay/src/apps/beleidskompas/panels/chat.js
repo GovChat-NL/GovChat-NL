@@ -8,7 +8,7 @@
 import { escapeHTML } from "../../../shared/html.js";
 import { requireElement } from "../../../shared/dom.js";
 import { composePrompt, sendBeleidskompasChatMessage, sendBeleidskompasFeedback } from "../beleidskompas-api.js";
-import { formatRichText, formatTime, normalizeCitations } from "../format.js";
+import { formatRichText, formatTime } from "../format.js";
 import { citationButtonHTML, openCitationFromClick } from "../popups.js";
 
 /** A rating per answer, sent anonymously (no user or case id) to the
@@ -29,6 +29,12 @@ function feedbackHTML(message, index) {
            <button type="button" class="gc-bk-feedback-send" data-feedback-send="1">Versturen</button>`
         : ""}
     </div>`;
+}
+
+/** What an error says, without the full stop it may end with, so it fits
+ *  inside a sentence. */
+function reasonOf(err) {
+  return String(err?.message || err).replace(/\.+$/, "");
 }
 
 const CHART_ICON =
@@ -58,17 +64,18 @@ function messageHTML(m, idx, stepLabel) {
           ${Array.isArray(m.citations) && m.citations.length
             ? `<div class="gc-bk-citations">${m.citations.map(citationButtonHTML).join("")}</div>`
             : ""}
-          ${!isUser && !m.pending && m.text ? feedbackHTML(m, idx) : ""}
+          ${!isUser && !m.pending && !m.notice && m.text ? feedbackHTML(m, idx) : ""}
         </div>
         <div class="gc-bk-msg-time">${escapeHTML(formatTime(m.ts))}</div>
       </div>
     </div>`;
 }
 
-/** `refreshState(conversationId)` (from cases.js) puts the case text and
- *  the reports as the store has them on the screen; the chat calls it
- *  after every answer. `versionId` is the template version the page runs
- *  on; it goes along with feedback. */
+/** `refreshState(conversationId)` (from cases.js) puts the reports as the
+ *  store has them on the screen and returns the conversation as the store
+ *  has it; the chat calls it after every answer.
+ *  `versionId` is the template version the page runs on; it goes along
+ *  with feedback. */
 export function setupChat(store, { refreshState, versionId }) {
   const { state } = store;
   const chatLogEl = requireElement("gc-bk-chat-log");
@@ -117,9 +124,9 @@ export function setupChat(store, { refreshState, versionId }) {
     return result;
   }
 
-  /** The text field is for the case at the start, and for the conversation
-   *  about the substep shown after that. It waits while a request is under
-   *  way. */
+  /** The text field invites the user to describe the case at the start,
+   *  and to talk about the substep shown after that. It waits while a
+   *  request is under way. */
   function renderComposer() {
     chatInputEl.placeholder = store.caseStarted()
       ? `Stel een vraag of reageer op deelstap ${store.activeSubstep().label}`
@@ -137,21 +144,16 @@ export function setupChat(store, { refreshState, versionId }) {
    *  the card of its substep, even if the user has gone to another substep
    *  in the meantime.
    *
-   *  `caseDescription` is only passed with the first message, which is the
-   *  case. That message asks for a report too, but the user typed it, so
-   *  the case does show in the chat. While a request is under way, a new
-   *  one is not sent.
+   *  While a request is under way, a new one is not sent.
    *
    *  The user may start a new session or open another case while the
    *  request is under way. Its answer then belongs to a case that is no
    *  longer on the screen, so it is dropped here; the store keeps it with
    *  its own case. */
-  async function ask(substep, message, caseDescription) {
+  async function ask(substep, message) {
     if (state.asking) return;
-    const shown = caseDescription || message || `Deelstap ${substep.id}: ${substep.title}`;
-    const text = composePrompt({ substep, caseText: state.caseText, message, shown });
+    const text = composePrompt({ substep, message });
     if (message) store.addMessage("user", message, { substepId: substep.id });
-    else if (caseDescription) store.addMessage("user", caseDescription);
     // Without text, the answer bubble shows typing dots until the answer
     // arrives.
     const pendingMessage = message ? store.addMessage("assistant", "", { pending: true, substepId: substep.id }) : null;
@@ -159,7 +161,6 @@ export function setupChat(store, { refreshState, versionId }) {
 
     const session = state.session;
     const stillOpen = () => state.session === session;
-    const reportBefore = store.substepResult(substep.id).updated_at;
     try {
       const result = await requestOrchestrator(text);
       if (!stillOpen()) {
@@ -174,35 +175,27 @@ export function setupChat(store, { refreshState, versionId }) {
       // A new conversation id already refreshes the list of cases; for the
       // same id the list is refreshed here, for its new date.
       if (state.conversationId === conversationIdBefore) store.changed("conversation");
-      if (pendingMessage) {
-        store.updateMessage(pendingMessage, {
-          pending: false,
-          text: String(result.text || "").trim(),
-          citations: normalizeCitations(result.citations),
-          retrieval_trace: result.retrieval_trace || null,
-          agent: result.agent || null,
-        });
-      }
+      const answer = String(result.text || "").trim();
+      if (pendingMessage) store.updateMessage(pendingMessage, { pending: false, text: answer });
       // When the store cannot be read, only the cards are behind, so that
       // is a message of its own and not an error in place of the answer.
+      let stored = [];
       try {
-        await refreshState(state.conversationId);
+        stored = await refreshState(state.conversationId);
       } catch (err) {
-        store.addMessage("assistant", `Kon de stand van de casus niet ophalen (${String(err?.message || err)}). Open de casus opnieuw om de kaarten bij te werken.`);
+        store.addMessage("assistant", `De kaarten zijn niet bijgewerkt: ${reasonOf(err)}. Open de casus opnieuw om ze bij te werken.`, { notice: true });
       }
-      // Beleidskompas answers a report request that went wrong (the store
-      // gave an error, the step failed) with a normal answer that explains
-      // it. The page cannot tell that answer from a report, but the store
-      // then has no new report for the substep. So the answer goes to the
-      // chat, where the user sees it.
-      if (!pendingMessage && stillOpen() && !store.reportArrived(substep.id, reportBefore)) {
-        store.addMessage("assistant", result.text);
-      }
+      // Only text comes back with the answer. Which step gave it, the store
+      // knows.
+      const turn = stored.findLast((m) => m.role === "assistant" && m.text === answer);
+      const agent = turn ? turn.agent : null;
+      if (pendingMessage) store.updateMessage(pendingMessage, { agent });
+      else if (stillOpen() && answer) store.addMessage("assistant", answer, { agent });
     } catch (err) {
       if (!stillOpen()) return;
-      const failure = `Beleidskompas niet bereikbaar of fout: ${String(err?.message || err)}. Probeer het opnieuw of open een nieuwe chat.`;
-      if (pendingMessage) store.updateMessage(pendingMessage, { pending: false, text: failure });
-      else store.addMessage("assistant", failure);
+      const failure = `Beleidskompas niet bereikbaar of fout: ${reasonOf(err)}. Probeer het opnieuw of open een nieuwe chat.`;
+      if (pendingMessage) store.updateMessage(pendingMessage, { pending: false, text: failure, notice: true });
+      else store.addMessage("assistant", failure, { notice: true });
     } finally {
       if (stillOpen()) {
         store.setAsking("");
@@ -211,23 +204,13 @@ export function setupChat(store, { refreshState, versionId }) {
     }
   }
 
-  /** What the user types first is the case. The case is stored, and
-   *  Beleidskompas writes the report of the active substep. Everything typed
-   *  after that is a message about the active substep. */
+  /** What the user types is a message, sent from the active substep. */
   function sendUserMessage() {
     const text = chatInputEl.value.trim();
     if (!text || state.asking) return;
     chatInputEl.value = "";
     autoGrowInput();
-    if (store.caseStarted()) {
-      // A message about the active substep.
-      ask(store.activeSubstep(), text);
-    } else {
-      // The first text is the case. Sending it asks for the report of the
-      // active substep. The user's bubble shows the case.
-      store.setCaseText(text);
-      ask(store.activeSubstep(), "", text);
-    }
+    ask(store.activeSubstep(), text);
   }
 
   /** The field grows with its text, up to the CSS max-height. */
