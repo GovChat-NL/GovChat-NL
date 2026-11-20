@@ -522,7 +522,6 @@ function buildOrchestratorWorkflow(steps) {
         '  headers: $json.headers,',
         '  env: {',
         '    N8N_WEBHOOK_TOKEN: $env.N8N_WEBHOOK_TOKEN,',
-        '    BELEIDSKOMPAS_N8N_WEBHOOK_TOKEN: $env.BELEIDSKOMPAS_N8N_WEBHOOK_TOKEN,',
         '    BELEIDSKOMPAS_STORE_URL: $env.BELEIDSKOMPAS_STORE_URL,',
         '    BELEIDSKOMPAS_STORE_TOKEN: $env.BELEIDSKOMPAS_STORE_TOKEN,',
         '  },',
