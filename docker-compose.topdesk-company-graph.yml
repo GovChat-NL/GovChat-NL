@@ -1,0 +1,22 @@
+# Optional server-private Graph/OBO service; enable explicitly in private env.
+# See docs/topdesk-company-graph-security.md for Entra and verifier requirements.
+# The host credential file must exist and be readable by the bridge's UID/GID.
+# Keep it outside Git, restrict host permissions, and never publish port 3334.
+services:
+  n8n-openai-bridge:
+    environment:
+      TOPDESK_COMPANY_GRAPH_ENABLED: ${TOPDESK_COMPANY_GRAPH_ENABLED:-false}
+      TOPDESK_ALLOWED_COMPANY_NAME: ${TOPDESK_ALLOWED_COMPANY_NAME:-Provincie Limburg}
+      TOPDESK_OBO_CLIENT_SECRET_FILE: /run/secrets/topdesk-obo-client-secret
+      # Compose replaces this value; preserve both preloads in later overrides.
+      NODE_OPTIONS: --require=/app/govchat-overlay/n8n-bridge-tool-events.js --require=/app/govchat-overlay/topdesk/bridge-preload.cjs
+    volumes:
+      - ./security/topdesk:/app/govchat-overlay/topdesk:ro
+      - type: bind
+        source: ${TOPDESK_OBO_CLIENT_SECRET_PATH:?Provide the private GovChat API resource client-secret file}
+        target: /run/secrets/topdesk-obo-client-secret
+        read_only: true
+        bind:
+          create_host_path: false
+    expose:
+      - "3334"

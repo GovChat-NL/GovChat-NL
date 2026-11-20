@@ -75,7 +75,7 @@ test('bridge smoke decoder proves actual statistics tool call/completion and exc
 });
 test('bootstrap upgrades only statistics + orchestrator after v8 and then stays idle', () => {
   const workflows = bootstrap.discoverWorkflows(path.join(root,'agents/n8n/workflows'),{N8N_ENABLE_TOPDESK_SEARCH:'false'});
-  const old = {version:8,topdeskSearchEnabled:false,mcpHubVersion:2};
+  const old = {version:8,topdeskSearchEnabled:false,mcpHubVersion:2,topdeskCompanySecurityVersion:1};
   const plan = bootstrap.getWorkflowImportPlan(workflows,JSON.stringify(old),false,{N8N_ENABLE_TOPDESK_SEARCH:'false'});
   assert.deepEqual(plan.flatMap(w=>w.ids).sort(),[b.id,'govchat-orchestrator-litellm'].sort());
   assert.deepEqual(bootstrap.getWorkflowImportPlan(workflows,JSON.stringify({...old,statisticsIntegrationVersion:1}),false,{N8N_ENABLE_TOPDESK_SEARCH:'false'}),[]);

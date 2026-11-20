@@ -27,10 +27,10 @@ test('the merged bootstrap imports new workflows after either parent marker, the
   for (const version of [6, 7]) {
     assert.deepEqual(getWorkflowImportPlan(workflows, JSON.stringify({ version, topdeskSearchEnabled: false }), false, env), workflows);
   }
-  const legacyMarker = JSON.stringify({ version: 8, statisticsIntegrationVersion: 1, topdeskSearchEnabled: false });
+  const legacyMarker = JSON.stringify({ version: 8, statisticsIntegrationVersion: 1, topdeskCompanySecurityVersion: 1, topdeskSearchEnabled: false });
   assert.deepEqual(getWorkflowImportPlan(workflows, legacyMarker, false, env).flatMap(entry => entry.ids).sort(),
     ['govchat-mcp-executor-hub', 'govchat-mcp-registry-sync', 'govchat-orchestrator-litellm']);
-  const marker = JSON.stringify({ version: 8, statisticsIntegrationVersion: 1, mcpHubVersion: 2, topdeskSearchEnabled: false });
+  const marker = JSON.stringify({ version: 8, statisticsIntegrationVersion: 1, mcpHubVersion: 2, topdeskCompanySecurityVersion: 1, topdeskSearchEnabled: false });
   assert.deepEqual(getWorkflowImportPlan(workflows, marker, false, env), []);
   const changed = getWorkflowImportPlan(workflows, marker, false, { N8N_ENABLE_TOPDESK_SEARCH: 'true' });
   assert.deepEqual(changed.map(entry => entry.file).sort(), ['algemeen/orchestrator-litellm.json', 'topdesk-knowledge-items-search.json']);
@@ -71,7 +71,7 @@ test('regenerating the moved orchestrator does not create duplicate utility expo
       'orchestrator-image-edit-workflow.js', 'openbesluitvorming-statistics-workflow.js',
       'openbesluitvorming-tool-inputs.js', 'openbesluitvorming-search-performance.js',
       'openbesluitvorming-filter-description.js',
-      'workflow-function-source.js']) {
+      'workflow-function-source.js', 'topdesk-workflow-security.js']) {
       fs.copyFileSync(path.resolve(__dirname, '../../scripts', file), path.join(scripts, file));
     }
     const workflowsDir = path.join(temporary, 'agents/n8n/workflows');
@@ -80,14 +80,18 @@ test('regenerating the moved orchestrator does not create duplicate utility expo
       path.join(temporary, 'agents/mcp-hub/workflows'), { recursive: true });
     execFileSync(process.execPath, [path.join(scripts, 'update-orchestrator-workflow.js')]);
     const renderedOnce = fs.readFileSync(path.join(workflowsDir, 'algemeen/orchestrator-litellm.json'), 'utf8');
+    const searchOnce = fs.readFileSync(path.join(workflowsDir, 'topdesk-knowledge-items-search.json'), 'utf8');
     execFileSync(process.execPath, [path.join(scripts, 'update-orchestrator-workflow.js')]);
     assert.equal(fs.readFileSync(path.join(workflowsDir, 'algemeen/orchestrator-litellm.json'), 'utf8'), renderedOnce);
+    assert.equal(fs.readFileSync(path.join(workflowsDir, 'topdesk-knowledge-items-search.json'), 'utf8'), searchOnce);
     const workflows = discoverWorkflows(workflowsDir, env);
     assert.equal(workflows.length, discoverWorkflows(directory, env).length);
     const ids = workflows.flatMap(entry => entry.ids);
     assert.equal(new Set(ids).size, ids.length);
     assert.equal(workflows.filter(entry => entry.file.startsWith('algemeen/govchat-utility-')).length, 0);
     const template = JSON.parse(fs.readFileSync(path.join(workflowsDir, 'algemeen/orchestrator-litellm.json')))[0];
+    assert.equal(template.nodes.filter(node => node.name === 'TOPdesk availability').length, 1);
+    assert.match(template.nodes.find(node => node.name === 'topdesk_knowledge_search_tool').parameters.workflowInputs.value.topdesk_handle, /Webhook Orchestrator/);
     const detector = template.nodes.find(node => node.id === 'DetectImageMessages');
     assert.match(detector.parameters.jsCode, /api\/internal\/orchestrator\/prompt/);
     assert.match(detector.parameters.jsCode, /role: 'system', content: orchestratorPrompt/);

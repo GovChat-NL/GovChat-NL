@@ -341,5 +341,10 @@ for (const definition of utilityBuilder.definitions) {
   const utility = utilityBuilder.utilityWorkflow(definition);
   fs.writeFileSync(require('path').join(utilityWorkflowsDir, utility.id + '.json'), JSON.stringify([utility], null, 2) + '\n');
 }
+require('./topdesk-workflow-security').applyTopdeskSecurity(data);
+const topdeskSearchPath = require('path').resolve(__dirname, '../agents/n8n/workflows/topdesk-knowledge-items-search.json');
+const topdeskSearch = JSON.parse(fs.readFileSync(topdeskSearchPath, 'utf8'));
+require('./topdesk-workflow-security').applyTopdeskSecurity(topdeskSearch);
+fs.writeFileSync(topdeskSearchPath, JSON.stringify(topdeskSearch, null, 2) + '\n');
 fs.writeFileSync(workflowPath, JSON.stringify(data, null, 2));
 console.log('Updated orchestrator workflow detect node + passthrough prompt');

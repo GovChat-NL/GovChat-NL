@@ -145,7 +145,8 @@ test("generated workflow is idempotent and the actual agent prompt receives extr
   const workflow = JSON.parse(fs.readFileSync(path.join(__dirname, "../agents/n8n/workflows/algemeen/orchestrator-litellm.json")))[0];
   const before = structuredClone(workflow); applyDocumentContext(workflow);
   assert.deepEqual(workflow, before);
-  assert.equal(workflow.connections["Webhook Orchestrator"].main[0][0].node, "Extract Document Context");
+  assert.equal(workflow.connections["Webhook Orchestrator"].main[0][0].node, "TOPdesk availability");
+  assert.equal(workflow.connections["Restore TOPdesk request"].main[0][0].node, "Extract Document Context");
   assert.equal(workflow.connections["Extract Document Context"].main[0][0].node, "Detect Image Messages");
   assert.match(workflow.nodes.find((node) => node.id === "DetectImageMessages").parameters.jsCode, /raw\.precomputed_response/);
   const expression = workflow.nodes.find((node) => node.id === "AIAgentOrchestrator").parameters.text;

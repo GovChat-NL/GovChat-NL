@@ -94,9 +94,13 @@ for (const marker of ['TOPDESK_API_USERNAME', 'TOPDESK_API_PASSWORD', "type: 'ht
 const embeddingCredential = buildEmbeddingHeaderCredential({ LITELLM_API_KEY: 'test-only-key' });
 assert(embeddingCredential.type === 'httpHeaderAuth' && embeddingCredential.data.name === 'Authorization', 'LiteLLM header credential schema is incorrect');
 assert(embeddingCredential.data.value === 'Bearer test-only-key', 'LiteLLM Bearer header is not constructed from LITELLM_API_KEY');
-const embeddingHttpNodes = [...ingest.nodes, ...search.nodes].filter((node) => node.credentials?.httpHeaderAuth);
+const embeddingHttpNodes = [...ingest.nodes, ...search.nodes].filter((node) => node.credentials?.httpHeaderAuth && /embed/i.test(node.name));
 assert(embeddingHttpNodes.length === 3, 'Expected all three embedding HTTP nodes to use the managed header credential');
 assert(embeddingHttpNodes.every((node) => node.credentials.httpHeaderAuth.id === embeddingCredential.id), 'Embedding nodes must reference the bootstrap-managed credential');
+const freshCheck = nodeByName(search, 'TOPdesk fresh retrieval check');
+assert(freshCheck?.credentials?.httpHeaderAuth?.id === '00000000-0000-4000-8000-000000000444', 'TOPdesk fresh check needs the private managed transport credential');
+assert(search.connections['Execute Workflow Trigger'].main[0][0].node === freshCheck.name, 'TOPdesk retrieval must start with fresh Graph authorization');
+assert(nodeByName(search, 'TOPdesk enforce retrieval').parameters.jsCode.includes("$json.allowed !== true"), 'TOPdesk retrieval must fail closed before embeddings');
 const generatedTopdeskCredential = buildTopdeskCredential({ TOPDESK_API_USERNAME: 'APILAICA', TOPDESK_API_PASSWORD: 'test-only-password' });
 assert(generatedTopdeskCredential.type === 'httpBasicAuth' && generatedTopdeskCredential.data.user === 'APILAICA', 'TOPdesk Basic Auth credential username/type is incorrect');
 assert(generatedTopdeskCredential.id === '00000000-0000-4000-8000-000000000222', 'TOPdesk Basic Auth credential ID is not stable');
