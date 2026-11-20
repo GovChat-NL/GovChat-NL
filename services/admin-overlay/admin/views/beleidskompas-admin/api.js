@@ -25,30 +25,22 @@ async function request(method, url, body) {
 export const getState = () => request("GET", `${BASE}/state`);
 
 // WIRED: POST /api/beleidskompas/settings
-export const saveSettings = (settings) =>
-  request("POST", `${BASE}/settings`, settings);
+export const saveSettings = (settings) => request("POST", `${BASE}/settings`, settings);
 
 // Creating and saving do not deploy: the selected saved version goes live via Deploy.
-export const saveVersion = (templateId, flow, note) =>
-  request("POST", `${BASE}/templates/${templateId}/versions`, { flow, note });
+export const saveVersion = (templateId, flow, note) => request("POST", `${BASE}/templates/${templateId}/versions`, { flow, note });
 
-export const deployVersion = (tpl, versionId) =>
-  request("POST", `${BASE}/templates/${tpl.id}/versions/${versionId}/deploy`);
+export const deployVersion = (tpl, versionId) => request("POST", `${BASE}/templates/${tpl.id}/versions/${versionId}/deploy`);
 
-export const exportUrl = (templateId) =>
-  `${BASE}/templates/${templateId}/export`;
+export const exportUrl = (templateId) => `${BASE}/templates/${templateId}/export`;
 export const importState = (json) => request("POST", `${BASE}/import`, json);
 export const listTemplates = (state) => state.templates;
-export const saveAsNewTemplate = (name, flow) =>
-  request("POST", `${BASE}/templates`, { name, flow }).then(
-    (data) => data.template,
-  );
+export const saveAsNewTemplate = (name, flow) => request("POST", `${BASE}/templates`, { name, flow }).then((data) => data.template);
 
 // ── Documents ──────────────────────────────────────────────────────
 
 // WIRED: GET /api/beleidskompas/documents (one shared library, without file contents)
-export const listDocuments = () =>
-  request("GET", `${BASE}/documents`).then((d) => d.documents || []);
+export const listDocuments = () => request("GET", `${BASE}/documents`).then((d) => d.documents || []);
 
 // WIRED: POST /api/beleidskompas/documents (file sent as base64)
 export async function uploadDocument(file) {

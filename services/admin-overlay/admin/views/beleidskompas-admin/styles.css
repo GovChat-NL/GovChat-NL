@@ -220,8 +220,6 @@ textarea.input { resize: vertical; line-height: 1.45; }
 .fb-meta { display: flex; gap: 10px; color: var(--muted); font-size: 12px; }
 .fb-version { padding: 0 7px; border-radius: 9px; background: #f0f0f3; }
 .fb-comment.is-empty { color: #b0b0b8; font-style: italic; }
-.fb-answer summary { cursor: pointer; color: var(--select); font-size: 12px; }
-.fb-answer p { margin-top: 6px; padding: 10px 12px; border-left: 3px solid var(--line-strong); background: #f7f7f9; border-radius: 0 6px 6px 0; color: #3a3a3c; line-height: 1.5; }
 
 /* ── Dialog and toasts ────────────────────────────── */
 .dialog { margin: auto; border: none; border-radius: 12px; padding: 20px; width: min(440px, 92vw); box-shadow: 0 20px 60px rgba(0,0,0,.3); }

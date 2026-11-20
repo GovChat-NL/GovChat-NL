@@ -2,10 +2,8 @@
 import * as api from "../api.js";
 import { h, icon, toast, askText, formatDate, formatBytes } from "../dom.js";
 import { finder } from "../components/finder.js";
-import { template } from "../app.js";
 
 export function renderDocuments({ store, render }) {
-  const tpl = template();
   const docs = store.documents;
   const ui = store.ui;
   const selected = docs.find((d) => d.id === ui.docId) || null;
@@ -17,7 +15,7 @@ export function renderDocuments({ store, render }) {
 
   const files = docs.map((d) => ({ id: d.id, name: d.filename }));
 
-  const preview = selected ? docPreview(selected, { tpl, store, reloadDocs }) : emptyPreview();
+  const preview = selected ? docPreview(selected, { store, reloadDocs }) : emptyPreview();
 
   const uploadInput = h("input", { type: "file", multiple: true, hidden: true });
   uploadInput.addEventListener("change", async () => {
@@ -61,7 +59,7 @@ function emptyPreview() {
   return h("div", { class: "preview-empty" }, icon("file", 40), h("p", {}, "Selecteer een document om het te bekijken."));
 }
 
-function docPreview(doc, { tpl, store, reloadDocs }) {
+function docPreview(doc, { store, reloadDocs }) {
   const usedIn = store.flow.steps.filter((s) => api.stepDocumentIds(s).has(doc.id));
 
   const actions = h(

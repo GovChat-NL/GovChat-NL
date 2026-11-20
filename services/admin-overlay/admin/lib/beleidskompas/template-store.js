@@ -98,7 +98,6 @@ function createTemplateStore(pool, defaultSettings = {}) {
       const { rows } = await db.query("SELECT snapshot FROM template_versions WHERE id = $1 AND template_id = $2", [id(versionId), id(templateId)]);
       if (!rows[0]) throw new StoreError(404, "Version not found for this template");
       await db.query("INSERT INTO live (template_id, version_id) VALUES ($1, $2) ON CONFLICT (key) DO UPDATE SET template_id = EXCLUDED.template_id, version_id = EXCLUDED.version_id", [templateId, versionId]);
-      await db.query("UPDATE templates SET live_version_id = CASE WHEN id = $1 THEN $2::int ELSE NULL END", [templateId, versionId]);
       const documents = (await db.query(`SELECT ${documentColumns} FROM documents`)).rows;
       await publish(rows[0].snapshot, documents, String(versionId));
       return rows[0].snapshot;

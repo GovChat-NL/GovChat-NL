@@ -55,8 +55,6 @@ CREATE TABLE IF NOT EXISTS conversation_turns (
 CREATE TABLE IF NOT EXISTS templates (
   id serial PRIMARY KEY,
   name text NOT NULL,
-  live_version_id integer,
-  created_from_version_id integer,
   created_at timestamptz NOT NULL DEFAULT now()
 );
 CREATE TABLE IF NOT EXISTS template_versions (
