@@ -19,7 +19,7 @@ const publicFile = path.join(process.env.PUBLISH_DIR, "beleidskompas-config.json
 test.after(() => fs.rmSync(dir, { recursive: true, force: true }));
 
 test("a new substep gets an id the step does not have and did not have in a saved version", async () => {
-  const { nextSubstepId } = await import("../views/beleidskompas-admin/api.js");
+  const { nextSubstepId } = await import("../views/beleidskompas-admin/pages/flow.js");
   const step = (ids) => ({ id: "stap1", substeps: ids.map((id) => ({ id })) });
   assert.equal(nextSubstepId(1, step(["1.1", "1.2", "1.4", "1.5"])), "1.6");
   // 1.3 was the last substep of a saved version and is deleted since.
@@ -57,9 +57,10 @@ test("an empty prompt-like field means the seed text; the four steps are fixed",
   assert.ok(seed.steps[0].substeps[0].answer_format.startsWith("###"));
   const flow = normalizeBeleidskompasFlow({
     rules: " ",
+    webhook_token: "oud",
     steps: [
       { id: "stapX", title: "Vreemd" },
-      { id: "stap1", prompt: "", substeps: [{ id: "1.1", prompt: "eigen", answer_format: "" }, { id: "1.9", title: "Nieuw" }] },
+      { id: "stap1", prompt: "", workflow_id: "oud", substeps: [{ id: "1.1", prompt: "eigen", answer_format: "" }, { id: "1.9", title: "Nieuw" }] },
     ],
   });
   assert.equal(flow.rules, seed.rules);
