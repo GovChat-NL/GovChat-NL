@@ -72,6 +72,7 @@ test("admin template API persists UI actions in PostgreSQL", { skip: !enabled &&
     assert.equal((await api.getState()).state.live, null);
     assert.equal((await pool.query("SELECT name FROM templates")).rows[0].name, "First template");
     await assert.rejects(api.saveAsNewTemplate(" ", defaultFlow()), /name is required/);
+    await assert.rejects(api.saveAsNewTemplate("Twice", { steps: [{ substeps: [{ id: "1.1" }, { id: "1.1" }] }] }), /used more than once/);
   });
 
   await t.test("documents, saved versions and copies persist independently", async () => {

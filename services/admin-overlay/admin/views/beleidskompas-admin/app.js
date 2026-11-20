@@ -39,7 +39,7 @@ export const template = () => store.templates.find((t) => t.id === store.templat
 // Versions arrive newest first. Use their persisted version numbers.
 export function versionLabel(tpl, versionId) {
   const version = tpl.versions.find((v) => v.id === versionId);
-  return version ? `v${version.version}` : "geen live versie";
+  return version ? `v${version.version}` : "onbekende versie";
 }
 
 export const newestVersion = (tpl) => tpl.versions[0];
@@ -152,7 +152,7 @@ function subtitleFor(def) {
 // "v2 live", or "v3 nieuwste · v2 live" when the newest version is not deployed yet.
 export function versionStatus(tpl) {
   const newest = newestVersion(tpl);
-  const live = `${versionLabel(tpl, tpl.live_version_id)} live`;
+  const live = tpl.live_version_id ? `${versionLabel(tpl, tpl.live_version_id)} live` : "niet live";
   return newest.id === tpl.live_version_id ? live : `${versionLabel(tpl, newest.id)} nieuwste · ${live}`;
 }
 
