@@ -56,7 +56,7 @@ const REQUEST_META_LABEL = "beleidskompas-request";
  *  writes the report of the substep. */
 export function composePrompt({ substep, message }) {
   const request = { substep_id: substep.id, message: String(message || "").trim() };
-  const visible = request.message || `Deelstap ${substep.id}: ${substep.title}`;
+  const visible = request.message || `Deelstap ${substep.label}: ${substep.title}`;
   return `${visible}\n\n[${REQUEST_META_LABEL}]: data:application/json;base64,${base64Utf8(JSON.stringify(request))}`;
 }
 

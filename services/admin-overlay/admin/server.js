@@ -433,28 +433,18 @@ function defaultBeleidskompasFlow() {
   return { ...template, steps: template.steps.map((step) => ({ ...step, rag: defaultStepRagSettings(step) })) };
 }
 
-// The default substeps from before they followed steps.json. A saved step that still has exactly
-// these gets the current default substeps; any other substeps stay as the admin saved them.
-const OLD_DEFAULT_SUBSTEPS = {
-  stap1: "1.1 Casus context|1.2 Toetsing publiek|1.3 Toetsing provinciaal",
-  stap2: "2.1 Rolopties|2.2 Afweging",
-  stap3: "3.1 Selectie|3.2 Weging|3.3 Voorkeur",
-  stap4: "4.1 Sturing|4.2 Toezicht|4.3 KPI’s",
-};
-
-// The default step prompts from before the seed. A saved step that still has exactly this text
-// gets the seed's role, like an empty field.
-const OLD_DEFAULT_STEP_PROMPTS = {
-  stap1: "Toets publiek en provinciaal belang. Benoem doelgroep, maatschappelijke impact, legitimiteit en conflicterende belangen.",
-  stap2: "Onderbouw de provinciale rolkeuze met impact, uitvoerbaarheid, bestuurlijke haalbaarheid en risico’s.",
-  stap3: "Scoor instrumenten op effectiviteit, juridische robuustheid, financiën en uitvoerbaarheid. Geef voorkeursoptie met alternatieven.",
-  stap4: "Werk governance-advies uit conform SiS 4.0 hoofdstuk 10 en het uitvoeringskader. Neem ook alternatieven mee.",
-};
-
 /** The saved value, or the default when it is empty: a prompt-like field
  *  that is blank means "the seed text", so an older state gets the prompts. */
 function textOrDefault(value, fallback) {
   return String(value ?? "").trim() || String(fallback ?? "").trim();
+}
+
+/** Throws when two substeps of `flow` have the same id. Reports and feedback are stored by
+ *  substep id, so two substeps with one id would share them. */
+function assertUniqueSubstepIds(flow) {
+  const ids = flow.steps.flatMap((step) => step.substeps.map((substep) => substep.id));
+  const duplicate = ids.find((id, index) => ids.indexOf(id) !== index);
+  if (duplicate) throw new Error(`Deelstap-id ${duplicate} komt meer dan één keer voor in het template.`);
 }
 
 function normalizeBeleidskompasFlow(input) {
@@ -465,16 +455,14 @@ function normalizeBeleidskompasFlow(input) {
   // The four steps are fixed (the SiS 4.0 pillars): a saved step is matched by id, the rest is dropped.
   const steps = fallback.steps.map((fb, idx) => {
     const step = stepsRaw.find((s) => s && String(s.id || "").trim() === fb.id) || {};
-    let substepsRaw = Array.isArray(step.substeps) ? step.substeps : fb.substeps;
-    const oldDefault = OLD_DEFAULT_SUBSTEPS[fb.id];
-    if (oldDefault === substepsRaw.map((s) => `${s?.id} ${s?.title}`).join("|")) substepsRaw = fb.substeps;
+    const substepsRaw = Array.isArray(step.substeps) ? step.substeps : fb.substeps;
     return {
       id: fb.id,
       nr: idx + 1,
       title: String(step.title || fb.title).trim() || fb.title,
       // An empty string is the admin's choice; defaults only fill fields that are missing.
       description: String(step.description ?? fb.description ?? "").trim(),
-      prompt: textOrDefault(String(step.prompt ?? "").trim() === OLD_DEFAULT_STEP_PROMPTS[fb.id] ? "" : step.prompt, fb.prompt),
+      prompt: textOrDefault(step.prompt, fb.prompt),
       doc_tags: normalizeTags(step.doc_tags || fb.doc_tags),
       // Documents picked in the Flow builder; nothing reads them yet. Missing = not picked yet.
       document_ids: Array.isArray(step.document_ids) ? [...new Set(step.document_ids.map(String))] : undefined,
@@ -2315,10 +2303,11 @@ app.post("/api/beleidskompas/import", requireAuth, (req, res) => {
   try {
     const incoming = req.body && typeof req.body === "object" ? req.body : {};
     const current = readBeleidskompasState();
-    const next = {
+    const next = normalizeBeleidskompasState({
       ...current,
       ...(incoming.state && typeof incoming.state === "object" ? incoming.state : incoming),
-    };
+    });
+    for (const flow of [next.draft, next.live, ...next.versions.map((version) => version.snapshot)]) assertUniqueSubstepIds(flow);
     const saved = writeBeleidskompasState(next);
     publishBeleidskompasLiveConfig(saved.live, saved.live_version_id);
     return res.json({ ok: true, state: saved });
@@ -2359,6 +2348,7 @@ app.post("/api/beleidskompas/publish", requireAuth, (req, res) => {
   try {
     const state = readBeleidskompasState();
     const flow = normalizeBeleidskompasFlow(req.body?.flow || state.draft || state.live);
+    assertUniqueSubstepIds(flow);
     const note = String(req.body?.note || "").trim();
     // live: false saves a new version without deploying it (deploy goes through /rollback/:versionId).
     const goLive = req.body?.live !== false;

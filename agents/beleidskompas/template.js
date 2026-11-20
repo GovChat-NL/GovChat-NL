@@ -20,25 +20,12 @@ const { STEP: step2 } = require('./steps/step2');
 const { STEP: step3 } = require('./steps/step3');
 const { STEP: step4 } = require('./steps/step4');
 
-// The descriptions of the steps and substeps in the admin template, by id.
+// The step descriptions the admin and the page show, by id.
 const DESCRIPTIONS = {
   stap1: 'Bepaal probleem, publiek belang en provinciale legitimiteit op basis van wettelijke taken en beleidskaders.',
-  '1.1': 'Probleem, oorzaken en symptomen.',
-  '1.2': 'Is overheidsingrijpen gerechtvaardigd?',
-  '1.3': 'Belanghebbenden, belangen en invloed.',
-  '1.4': 'Aansluiting op provinciale beleidsdoelen.',
-  '1.5': 'Oordeel over publiek en provinciaal belang.',
   stap2: 'Kies passende provinciale rol(len): regulerend, regisserend, stimulerend of faciliterend.',
-  '2.1': 'Welke rol past de provincie, en waarom?',
   stap3: 'Vergelijk beleids- en uitvoeringsinstrumenten, inclusief argumentatie, risicobeoordeling en alternatieven.',
-  '3.1': 'Mate van sturing bij de gekozen rol.',
-  '3.2': 'Instrumenten bij rol, sturing en probleem.',
-  '3.3': 'Meest geschikte samenwerkingsvorm.',
-  '3.4': 'Gevolgen per instrument en de nuloptie.',
   stap4: 'Adviseer inrichting voor sturing, toezicht, beheersing en verantwoording, inclusief KPI’s.',
-  '4.1': 'Sturing, toezicht, beheersing en verantwoording.',
-  '4.2': 'Organisatorische inrichting van goed bestuur.',
-  '4.3': 'Concrete richtlijnen per component.',
 };
 
 /** A STEP object from steps/ in the admin's step shape. */
@@ -53,7 +40,6 @@ function templateStep(step) {
     substeps: step.substeps.map((substep) => ({
       id: substep.id,
       title: substep.title,
-      description: DESCRIPTIONS[substep.id] || '',
       prompt: substep.instruction,
       answer_format: substep.format,
     })),
@@ -86,13 +72,17 @@ function stepFromTemplate(template, stepId) {
   const index = steps.findIndex((step) => step && step.id === stepId);
   if (index === -1) return null;
   const step = steps[index];
+  const nr = Number(step.nr) || index + 1;
   return {
     id: step.id,
-    nr: Number(step.nr) || index + 1,
+    nr,
     title: String(step.title || ''),
     role: String(step.prompt || ''),
-    substeps: (Array.isArray(step.substeps) ? step.substeps : []).map((substep) => ({
+    // The label is the number a person sees: the step number and the place in the step.
+    // The id stays the same when a substep moves, so the stored reports keep their substep.
+    substeps: (Array.isArray(step.substeps) ? step.substeps : []).map((substep, position) => ({
       id: substep.id,
+      label: `${nr}.${position + 1}`,
       title: String(substep.title || ''),
       instruction: String(substep.prompt || ''),
       format: String(substep.answer_format || ''),
