@@ -439,6 +439,14 @@ function textOrDefault(value, fallback) {
   return String(value ?? "").trim() || String(fallback ?? "").trim();
 }
 
+/** Throws when two substeps of `flow` have the same id. Reports and feedback are stored by
+ *  substep id, so two substeps with one id would share them. */
+function assertUniqueSubstepIds(flow) {
+  const ids = flow.steps.flatMap((step) => step.substeps.map((substep) => substep.id));
+  const duplicate = ids.find((id, index) => ids.indexOf(id) !== index);
+  if (duplicate) throw new Error(`Deelstap-id ${duplicate} komt meer dan één keer voor in het template.`);
+}
+
 function normalizeBeleidskompasFlow(input) {
   const fallback = defaultBeleidskompasFlow();
   const src = input && typeof input === "object" ? input : {};
@@ -2295,10 +2303,11 @@ app.post("/api/beleidskompas/import", requireAuth, (req, res) => {
   try {
     const incoming = req.body && typeof req.body === "object" ? req.body : {};
     const current = readBeleidskompasState();
-    const next = {
+    const next = normalizeBeleidskompasState({
       ...current,
       ...(incoming.state && typeof incoming.state === "object" ? incoming.state : incoming),
-    };
+    });
+    for (const flow of [next.draft, next.live, ...next.versions.map((version) => version.snapshot)]) assertUniqueSubstepIds(flow);
     const saved = writeBeleidskompasState(next);
     publishBeleidskompasLiveConfig(saved.live, saved.live_version_id);
     return res.json({ ok: true, state: saved });
@@ -2339,6 +2348,7 @@ app.post("/api/beleidskompas/publish", requireAuth, (req, res) => {
   try {
     const state = readBeleidskompasState();
     const flow = normalizeBeleidskompasFlow(req.body?.flow || state.draft || state.live);
+    assertUniqueSubstepIds(flow);
     const note = String(req.body?.note || "").trim();
     // live: false saves a new version without deploying it (deploy goes through /rollback/:versionId).
     const goLive = req.body?.live !== false;
