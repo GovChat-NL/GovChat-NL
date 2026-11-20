@@ -6,8 +6,8 @@ librechat:
     # The public address (also in the ingress block below).
     DOMAIN_CLIENT: "https://govchat.example.nl"
     DOMAIN_SERVER: "https://govchat.example.nl"
-    # Microsoft Entra ID. Redirect URI in the app registration:
-    #   https://govchat.example.nl/oauth/openid/callback
+    # Microsoft Entra ID. Redirect URI in the app registration: the address above,
+    # followed by /oauth/openid/callback
     OPENID_ISSUER: "https://login.microsoftonline.com/00000000-0000-0000-0000-000000000000/v2.0/"
     OPENID_CLIENT_ID: "00000000-0000-0000-0000-000000000000"
     # The model in Azure AI Foundry / Azure OpenAI. The base URL ends in the deployment name.
@@ -17,7 +17,7 @@ librechat:
     AZURE_BASE_URL: "https://example-resource.cognitiveservices.azure.com/openai/deployments/example-deployment"
 
 ingress:
-  className: ""                # for example nginx or haproxy
+  className: "" # for example nginx or haproxy
   annotations: {}
     # cert-manager.io/cluster-issuer: letsencrypt-prod
     # Answers are streamed. Give the ingress a long read timeout (for example 600s),

@@ -1,0 +1,240 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>GovChat admin</title>
+<link rel="icon" href="/branding/favicon-32x32.png">
+<style>
+  :root {
+    --bg: #f6f7f9; --card: #fff; --text: #1a1f29; --muted: #5f6b7a; --line: #dde1e7;
+    --accent: #1f5fbf; --accent-text: #fff; --warn: #a15c00; --warn-bg: #fff4dc; --ok: #1d7a46; --code: #f0f2f5;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #14171c; --card: #1c2027; --text: #e8ebf0; --muted: #9aa5b4; --line: #303641;
+      --accent: #6ea8ff; --accent-text: #0c1320; --warn: #f0b95a; --warn-bg: #3a2c10; --ok: #5fce8f; --code: #12151a;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.5 system-ui, sans-serif; }
+  header { display: flex; align-items: center; gap: 12px; padding: 14px 24px; background: var(--card); border-bottom: 1px solid var(--line); }
+  header img { width: 32px; height: 32px; }
+  header h1 { font-size: 17px; margin: 0; flex: 1; }
+  nav { display: flex; gap: 4px; padding: 0 24px; background: var(--card); border-bottom: 1px solid var(--line); overflow-x: auto; }
+  nav a { padding: 10px 14px; color: var(--muted); text-decoration: none; border-bottom: 2px solid transparent; white-space: nowrap; }
+  nav a.on { color: var(--text); border-color: var(--accent); font-weight: 600; }
+  main { max-width: 820px; margin: 0 auto; padding: 24px 16px 80px; }
+  h2 { font-size: 20px; margin: 0 0 4px; }
+  h3 { font-size: 15px; margin: 0 0 2px; }
+  p { margin: 0 0 12px; }
+  .lead, .hint, small { color: var(--muted); }
+  .hint, small { font-size: 13px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 18px 20px; margin: 16px 0; }
+  label { display: block; font-weight: 600; margin-top: 14px; }
+  label:first-child { margin-top: 0; }
+  input[type=text] { width: 100%; margin-top: 4px; padding: 8px 10px; font: inherit; color: inherit; background: var(--bg); border: 1px solid var(--line); border-radius: 6px; }
+  input[type=text]:focus-visible, button:focus-visible, a:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+  input.todo { border-color: var(--warn); }
+  button, .button { font: inherit; font-weight: 600; padding: 8px 14px; border-radius: 6px; border: 1px solid var(--accent); background: var(--accent); color: var(--accent-text); cursor: pointer; }
+  button.quiet, .button { background: transparent; color: var(--accent); border-color: var(--line); font-weight: 500; padding: 5px 10px; font-size: 13px; }
+  .actions { margin-top: 18px; }
+  .badge { font-size: 13px; padding: 3px 10px; border-radius: 99px; background: var(--warn-bg); color: var(--warn); }
+  .badge.ok { background: transparent; color: var(--ok); }
+  .row { display: flex; align-items: center; gap: 14px; }
+  .row > .grow { flex: 1; min-width: 0; }
+  .files .row { padding: 12px 0; border-top: 1px solid var(--line); }
+  .files .row:first-child { border-top: 0; padding-top: 0; }
+  .files img { width: 48px; height: 48px; object-fit: contain; background: var(--bg); border: 1px solid var(--line); border-radius: 6px; }
+  .check { display: flex; gap: 8px; align-items: center; font-weight: 500; margin-top: 10px; }
+  .cmd { position: relative; }
+  pre { margin: 8px 0 0; padding: 12px 76px 12px 14px; background: var(--code); border: 1px solid var(--line); border-radius: 6px; overflow-x: auto; font: 13px/1.5 ui-monospace, Menlo, monospace; }
+  code { font: 13px ui-monospace, Menlo, monospace; background: var(--code); padding: 1px 5px; border-radius: 4px; }
+  .copy { position: absolute; top: 8px; right: 8px; background: var(--card); }
+  table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  th, td { text-align: left; padding: 7px 8px 7px 0; border-top: 1px solid var(--line); vertical-align: top; }
+  th { border-top: 0; color: var(--muted); font-weight: 500; font-size: 13px; }
+  ol.steps { padding: 0; margin: 0; list-style: none; counter-reset: step; }
+  ol.steps li { counter-increment: step; margin-top: 18px; }
+  ol.steps li:first-child { margin-top: 0; }
+  ol.steps h3::before { content: counter(step) ". "; }
+  .blocked { border-color: var(--warn); background: var(--warn-bg); }
+  #toast { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); padding: 10px 16px; border-radius: 8px; background: var(--text); color: var(--bg); display: none; max-width: 90vw; }
+  #toast.error { background: #b3261e; color: #fff; }
+</style>
+</head>
+<body>
+<header>
+  <img src="/branding/logo.svg" alt="">
+  <h1>GovChat admin</h1>
+  <span id="status"></span>
+</header>
+<nav id="nav"></nav>
+<main id="main"></main>
+<div id="toast" role="status"></div>
+
+<script>
+const TABS = { organisation: 'Organisation', branding: 'Branding', apps: 'Apps', rollout: 'Roll-out' };
+let state;
+
+const esc = (value) => String(value).replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
+const $ = (selector) => document.querySelector(selector);
+const kB = (bytes) => `${Math.ceil(bytes / 1000)} kB`;
+
+function toast(message, isError) {
+  const el = $('#toast');
+  el.textContent = message;
+  el.className = isError ? 'error' : '';
+  el.style.display = 'block';
+  clearTimeout(toast.timer);
+  toast.timer = setTimeout(() => { el.style.display = 'none'; }, isError ? 8000 : 3000);
+}
+
+async function save(url, body) {
+  const response = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  const result = await response.json();
+  if (!response.ok) return toast(result.error, true);
+  state = result;
+  render();
+  toast(result.committed ? `Committed ${result.committed}` : 'Nothing changed');
+}
+
+const field = (f) => `
+  <label>${esc(f.label)}
+    <input type="text" name="${esc(f.key)}" value="${esc(f.value)}" class="${f.todo ? 'todo' : ''}" spellcheck="false" autocomplete="off">
+  </label>
+  <div class="hint">${esc(f.hint)}${f.todo ? ' <b>Still an example value.</b>' : ''}</div>`;
+
+const command = (text) => `<div class="cmd"><pre>${esc(text)}</pre><button type="button" class="quiet copy" data-copy="${esc(text)}">Copy</button></div>`;
+
+const pages = {
+  organisation: () => `
+    <h2>Organisation</h2>
+    <p class="lead">What differs per organisation. Saved in <code>deploy/values-gemeente.yaml</code>.</p>
+    <form class="card" data-save="/api/org">
+      ${state.org.map(field).join('')}
+      <div class="actions"><button>Save</button></div>
+    </form>
+    <div class="card">
+      <h3>In the Entra ID app registration</h3>
+      <p class="hint">Not something this panel can set. The roles must be in the ID token (<code>roles</code> claim).</p>
+      <table>
+        <tr><td>Redirect URI</td><td><code>${esc(state.rollout.redirectUri)}</code></td></tr>
+        <tr><td>App roles</td><td>${state.rollout.roles.map((role) => `<code>${esc(role)}</code>`).join(' ')}</td></tr>
+      </table>
+    </div>`,
+
+  branding: () => `
+    <h2>Branding</h2>
+    <p class="lead">The name, the texts, the logo and the icons.</p>
+    <form class="card" data-save="/api/texts">
+      ${state.branding.texts.map(field).join('')}
+      <div class="actions"><button>Save</button></div>
+    </form>
+    <div class="card files">
+      ${state.branding.files.map((file) => `
+        <div class="row">
+          <img src="/branding/${esc(file.name)}?${file.bytes}" alt="">
+          <div class="grow"><h3>${esc(file.label)}</h3>
+            <div class="hint"><code>${esc(file.name)}</code> · ${kB(file.bytes)}${file.px ? ` · PNG of ${file.px} × ${file.px} px` : ' · SVG'}</div></div>
+          <label class="button">Replace<input type="file" hidden accept="${esc(file.type)}" data-file="${esc(file.name)}"></label>
+        </div>`).join('')}
+      <p class="hint" style="margin:12px 0 0">Together ${kB(state.branding.bytes)} of the ${kB(state.branding.max)} that fit.
+        Browsers keep the old logo for up to two days; a hard refresh shows the new one.</p>
+    </div>`,
+
+  apps: () => `
+    <h2>Apps</h2>
+    <p class="lead">Extras for the chat. Each app is a folder in <code>apps/</code>; switching one on or off changes
+      <code>librechat.yaml</code> inside <code>deploy/values.yaml</code>.</p>
+    ${state.apps.map((app) => `
+      <form class="card" data-save="/api/app" data-app="${esc(app.name)}">
+        <div class="row">
+          <div class="grow"><h3>${esc(app.name)}</h3><div class="hint">${esc(app.description)}</div></div>
+          <label class="check" style="margin:0"><input type="checkbox" name="enabled" ${app.enabled ? 'checked' : ''}> On</label>
+        </div>
+        ${app.enabled ? `
+          <label>Name shown to users<input type="text" name="title" value="${esc(app.title)}"></label>
+          <label class="check"><input type="checkbox" name="pinned" ${app.pinned ? 'checked' : ''}> Always on, in every assistant</label>
+          <div class="hint">Off: users switch the app on themselves in the chat's tool menu.</div>
+          ${app.token ? `<div class="hint">Needs the key <code>${esc(app.token)}</code> in the Secret; see Roll-out.</div>` : ''}
+          <div class="actions"><button>Save</button></div>` : `
+          <div class="hint" style="margin-top:10px">Off. A pod that still runs is removed with
+            <code>kubectl -n ${esc(state.rollout.namespace)} delete -f ${esc(app.dir)}/</code>, or with Fleet by taking its path out of the GitRepo.</div>`}
+      </form>`).join('') || '<div class="card">No apps yet. See <code>docs/adding-a-tool.md</code>.</div>'}`,
+
+  rollout: () => `
+    <h2>Roll-out</h2>
+    <p class="lead">This panel only changes files, one commit per save. Rolling out is done by you, or by Rancher Fleet after a push.</p>
+    <form class="card" data-save="/api/deploy">
+      <label>Namespace<input type="text" name="namespace" value="${esc(state.rollout.namespace)}"></label>
+      <label>LibreChat chart version<input type="text" name="version" value="${esc(state.rollout.version)}"></label>
+      <div class="hint">Saved in <code>deploy/fleet.yaml</code>. Test a new version locally first.</div>
+      <div class="actions"><button>Save</button></div>
+    </form>
+    <div class="card">
+      <h3>Secrets in the cluster</h3>
+      <p class="hint">Secrets never go into Git and never through this panel.</p>
+      <table>
+        <tr><th>Secret</th><th>Key</th><th>Comes from</th></tr>
+        ${state.rollout.secrets.map((s) => `<tr><td><code>${esc(s.secret)}</code></td><td><code>${esc(s.key)}</code></td><td>${esc(s.from)}</td></tr>`).join('')}
+      </table>
+    </div>
+    <div class="card">
+      <ol class="steps">
+        ${state.rollout.steps.map((step) => `<li><h3>${esc(step.title)}</h3><div class="hint">${esc(step.note)}</div>${command(step.command)}</li>`).join('')}
+      </ol>
+    </div>
+    <div class="card">
+      <h3>With Rancher Fleet</h3>
+      <div class="hint">Push the commits to your private copy. The GitRepo reads these folders:</div>
+      ${command(state.rollout.gitRepo)}
+    </div>
+    <div class="card">
+      <h3>History</h3>
+      <div class="hint">Every save is a commit on <code>${esc(state.git.branch)}</code>. Go back with <code>git revert &lt;commit&gt;</code>.
+        The panel never pushes${Number(state.git.unpushed) ? `: <b>${esc(state.git.unpushed)} commit${state.git.unpushed === '1' ? '' : 's'} not pushed yet</b>` : ''}.</div>
+      <table>${state.git.history.map((c) => `<tr><td><code>${esc(c.hash)}</code></td><td>${esc(c.subject)}</td><td>${esc(c.author)}</td><td style="white-space:nowrap">${esc(c.date)}</td></tr>`).join('')}</table>
+    </div>`,
+};
+
+function render() {
+  const tab = TABS[location.hash.slice(1)] ? location.hash.slice(1) : 'organisation';
+  const todo = state.org.filter((f) => f.todo).length;
+  $('#status').innerHTML = todo
+    ? `<a href="#organisation" class="badge">${todo} example value${todo > 1 ? 's' : ''} left</a>`
+    : '<span class="badge ok">✓ Organisation filled in</span>';
+  $('#nav').innerHTML = Object.entries(TABS).map(([id, label]) => `<a href="#${id}" class="${id === tab ? 'on' : ''}">${label}</a>`).join('');
+  const pending = state.git.uncommitted;
+  $('#main').innerHTML = (pending.length ? `<div class="card blocked"><h3>Saving is off</h3>These files have changes that are not committed.
+    Commit or discard them first, so that every change by the panel is a commit of its own.<br>${pending.map((file) => `<code>${esc(file)}</code>`).join(' ')}</div>` : '') + pages[tab]();
+}
+
+document.addEventListener('submit', (event) => {
+  event.preventDefault();
+  const form = event.target;
+  const body = { name: form.dataset.app };
+  for (const input of form.elements) if (input.name) body[input.name] = input.type === 'checkbox' ? input.checked : input.value;
+  if (form.dataset.app && body.pinned === undefined) body.pinned = true; // just switched on
+  save(form.dataset.save, body);
+});
+
+document.addEventListener('change', (event) => {
+  const input = event.target;
+  if (input.name === 'enabled') return input.form.requestSubmit();
+  if (!input.dataset.file || !input.files[0]) return;
+  const reader = new FileReader();
+  reader.onload = () => save('/api/brand-file', { name: input.dataset.file, data: reader.result.split(',')[1] });
+  reader.readAsDataURL(input.files[0]);
+});
+
+document.addEventListener('click', (event) => {
+  const text = event.target.dataset.copy;
+  if (text) navigator.clipboard.writeText(text).then(() => toast('Copied'));
+});
+
+window.addEventListener('hashchange', render);
+fetch('/api/state').then((response) => response.json()).then((result) => { state = result; render(); });
+</script>
+</body>
+</html>

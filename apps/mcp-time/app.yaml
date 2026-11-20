@@ -1,0 +1,8 @@
+# Read by the admin panel (admin/). Not rolled out: only the folder deploy/ is.
+title: "Datum en tijd"
+description: >-
+  Five tools for dates and times. Needs no secret and no network access. A small
+  community project: use it to try the route, not as a product choice.
+mcp:
+  url: "http://mcp-time:8080/mcp"
+  # token: MCP_TIME_TOKEN   # only if the server wants one; the name of its key in the Secret

@@ -1,0 +1,3 @@
+# Rancher Fleet: roll out the manifests in this folder. The admin panel keeps the
+# namespace the same as in deploy/fleet.yaml.
+defaultNamespace: govchat

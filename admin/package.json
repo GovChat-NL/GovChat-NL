@@ -1,0 +1,8 @@
+{
+  "name": "govchat-admin",
+  "private": true,
+  "description": "Local admin panel for the settings in this repo",
+  "scripts": { "start": "node server.js" },
+  "engines": { "node": ">=20" },
+  "dependencies": { "yaml": "^2.8.0" }
+}

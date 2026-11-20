@@ -86,12 +86,13 @@ librechat:
       remoteAgents: { use: false, create: false, share: false, public: false }
       peoplePicker: { users: false, groups: false, roles: false }
       temporaryChat: true
-      retentionMode: all            # every conversation gets an expiry date
-      generalChatRetention: 720     # hours: 30 days
+      retentionMode: all # every conversation gets an expiry date
+      generalChatRetention: 720 # hours: 30 days
       temporaryChatRetention: 720
 
     registration:
-      socialLogins: ["openid"]
+      socialLogins:
+        - openid
 
     # Speech off: the browser's speech recognition can send audio to the browser vendor.
     speech:

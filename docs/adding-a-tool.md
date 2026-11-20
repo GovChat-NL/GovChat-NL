@@ -31,13 +31,17 @@ is stored in the database.
 
 ### Step 1. Run the server (pull request 1)
 
-Add a folder `apps/<name>/` with a Deployment, a Service and a NetworkPolicy. Section 3 has
-a complete example. Same namespace as LibreChat, no Ingress, and the NetworkPolicy lets
-only LibreChat in.
+Add a folder `apps/<name>/deploy/` with a Deployment, a Service and a NetworkPolicy. Section 3
+has a complete example, and it is in this repo as `apps/mcp-time/`. Same namespace as
+LibreChat, no Ingress, and the NetworkPolicy lets only LibreChat in. The `fleet.yaml` next
+to the manifests is for Rancher Fleet only, so name the manifest file for `kubectl`:
 
 ```sh
-kubectl -n govchat apply -f apps/<name>/
+kubectl -n govchat apply -f apps/<name>/deploy/<name>.yaml
 ```
+
+Add `apps/<name>/app.yaml` too (copy the one of `mcp-time`): with it the app shows up in
+the admin panel, which then does step 3 for you.
 
 Users notice nothing yet: LibreChat does not know the server.
 
@@ -53,7 +57,8 @@ kubectl -n govchat rollout restart deployment/librechat-librechat
 
 ### Step 3. Switch it on (pull request 2)
 
-All lines are inside `librechat.configYamlContent` in `deploy/values.yaml`.
+All lines are inside `librechat.configYamlContent` in `deploy/values.yaml`. The admin panel
+(`admin/`, tab Apps) writes exactly these lines; by hand works as well.
 
 ```diff
      interface:
@@ -91,7 +96,7 @@ All lines are inside `librechat.configYamlContent` in `deploy/values.yaml`.
 Follow "Test locally" in the README, and apply the app before the `helm upgrade`:
 
 ```sh
-kubectl -n govchat apply -f apps/<name>/
+kubectl -n govchat apply -f apps/<name>/deploy/<name>.yaml
 kubectl -n govchat logs deployment/librechat-librechat | grep '\[MCP\]'
 ```
 
@@ -113,7 +118,7 @@ test of a tool call needs a real model.
   chart restarts LibreChat because its configuration changed.
 - **Off:** `git revert` pull request 2. The server still runs, nothing calls it.
 - **Gone:** also `git revert` pull request 1 and remove the key from the Secret.
-- **New version:** change the image tag and digest in `apps/<name>/`, in a pull request.
+- **New version:** change the image tag and digest in `apps/<name>/deploy/`, in a pull request.
 
 ## 3. Worked example: date and time
 
@@ -121,7 +126,7 @@ test of a tool call needs a real model.
 for dates and times. It needs no secret and no network access, which makes it a safe first
 test. It is a small community project: use it to try the route, not as a product choice.
 
-`apps/mcp-time/mcp-time.yaml`:
+`apps/mcp-time/deploy/mcp-time.yaml`:
 
 ```yaml
 apiVersion: apps/v1
@@ -250,8 +255,8 @@ in step 1.
   `Updating 'USER' role permission 'MCP_SERVERS'` shows it. Check 4 in step 5 covers this.
 - What a user sees when the server is down.
 - A server that needs a token (`headers`).
-- The folder `apps/<name>/` with Rancher Fleet. It probably needs its own `fleet.yaml`
-  with `defaultNamespace`.
+- The folder `apps/<name>/deploy/` with Rancher Fleet. It has its own `fleet.yaml` with
+  `defaultNamespace`, and its path must be added to the GitRepo.
 - Section 4, both routes. They come from the documentation and the source code only.
 
 **Good to know:**

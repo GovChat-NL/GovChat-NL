@@ -1,0 +1,47 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mcp-time
+spec:
+  selector:
+    matchLabels: { app: mcp-time }
+  template:
+    metadata:
+      labels: { app: mcp-time }
+    spec:
+      automountServiceAccountToken: false
+      securityContext: { runAsNonRoot: true, runAsUser: 65532, seccompProfile: { type: RuntimeDefault } }
+      containers:
+        - name: mcp-time
+          image: docker.io/theo01/mcp-time:0.4.0@sha256:68f2a2d78dc66efa84f30b7a5209c90da64bf936de923c20861122062ef8ff0f
+          args: ["--transport", "stream", "--address", "http://0.0.0.0:8080/mcp"]
+          ports:
+            - containerPort: 8080
+          readinessProbe: { tcpSocket: { port: 8080 } }
+          securityContext: { allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: { drop: ["ALL"] } }
+          resources: { requests: { cpu: 10m, memory: 32Mi }, limits: { memory: 64Mi } }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mcp-time
+spec:
+  selector: { app: mcp-time }
+  ports:
+    - port: 8080
+---
+# Only LibreChat may reach the server, and the server may reach nothing.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: mcp-time
+spec:
+  podSelector:
+    matchLabels: { app: mcp-time }
+  policyTypes: ["Ingress", "Egress"]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels: { app.kubernetes.io/name: librechat-librechat }
+      ports:
+        - port: 8080
