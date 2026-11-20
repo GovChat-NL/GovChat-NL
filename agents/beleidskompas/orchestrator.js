@@ -119,7 +119,7 @@ function prepareRequest({ body, headers, env, now }) {
   // A wrong token gives a normal answer with ok: false, not a thrown error:
   // n8n can turn a thrown error into an empty response, and then the caller
   // sees nothing at all.
-  const expectedToken = String((env && (env.BELEIDSKOMPAS_N8N_WEBHOOK_TOKEN || env.N8N_WEBHOOK_TOKEN)) || '').trim();
+  const expectedToken = String((env && env.N8N_WEBHOOK_TOKEN) || '').trim();
   if (expectedToken && extractSuppliedToken(headers) !== expectedToken) return refuse('Unauthorized webhook token', '');
 
   const case_id = String(b.sessionId || '').trim();
