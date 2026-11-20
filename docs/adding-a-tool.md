@@ -7,10 +7,10 @@ How to give the chat something extra, step by step. Written 20 November 2026 for
 
 | Need | Pick | What changes |
 |---|---|---|
-| A fixed instruction or tone ("write at B1 level") | An extra entry under `modelSpecs.list` with its own `promptPrefix`. Not a tool. | `values.yaml` |
-| The model must look something up or do something | **An MCP server** as its own pod (section 2) | a folder `apps/<name>/` and `values.yaml` |
-| An existing REST API with an OpenAPI description, and no MCP server for it | An agent with an Action (section 4) | `values.yaml`, plus an agent built in the screen |
-| An own app that writes the whole answer itself | A custom endpoint (section 4) | a folder `apps/<name>/` and `values.yaml` |
+| A fixed instruction or tone ("write at B1 level") | An extra entry under `modelSpecs.list` with its own `promptPrefix`. Not a tool. | `deploy/values.yaml` |
+| The model must look something up or do something | **An MCP server** as its own pod (section 2) | a folder `apps/<name>/` and `deploy/values.yaml` |
+| An existing REST API with an OpenAPI description, and no MCP server for it | An agent with an Action (section 4) | `deploy/values.yaml`, plus an agent built in the screen |
+| An own app that writes the whole answer itself | A custom endpoint (section 4) | a folder `apps/<name>/` and `deploy/values.yaml` |
 
 Prefer an MCP server. It is switched on and off with one small change in Git, and nothing
 is stored in the database.
@@ -53,7 +53,7 @@ kubectl -n govchat rollout restart deployment/librechat-librechat
 
 ### Step 3. Switch it on (pull request 2)
 
-All lines are inside `librechat.configYamlContent` in `values.yaml`.
+All lines are inside `librechat.configYamlContent` in `deploy/values.yaml`.
 
 ```diff
      interface:
@@ -173,7 +173,7 @@ spec:
         - port: 8080
 ```
 
-In `values.yaml`, inside `librechat.configYamlContent`:
+In `deploy/values.yaml`, inside `librechat.configYamlContent`:
 
 ```yaml
     interface:

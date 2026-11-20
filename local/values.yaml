@@ -1,4 +1,4 @@
-# Local test on a throwaway cluster (see README.md). Goes on top of values.yaml,
+# Local test on a throwaway cluster (see README.md). Goes on top of deploy/values.yaml,
 # instead of values-gemeente.yaml: no ingress, a local account instead of Entra,
 # and the stub model and the database from services.yaml.
 
