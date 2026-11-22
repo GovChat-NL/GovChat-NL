@@ -34,7 +34,6 @@ function feedbackRow(item, versionLabel) {
       { class: "fb-main" },
       h("div", { class: "fb-meta" }, h("time", { datetime: item.created_at }, formatDate(item.created_at)), h("span", { class: "fb-version" }, versionLabel)),
       item.comment ? h("p", { class: "fb-comment" }, item.comment) : h("p", { class: "fb-comment is-empty" }, "Geen opmerking"),
-      h("details", { class: "fb-answer" }, h("summary", {}, "Antwoord waarop gereageerd is"), h("p", {}, item.answer_text || "—")),
     ),
   );
 }

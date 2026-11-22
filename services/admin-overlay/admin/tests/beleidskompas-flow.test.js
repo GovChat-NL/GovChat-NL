@@ -14,8 +14,7 @@ for (const name of ["DATA_DIR", "PUBLISH_DIR"]) {
 }
 process.env.ADMIN_PASSWORD = "test-password";
 process.env.BELEIDSKOMPAS_STORE_TOKEN = "secret-token";
-const { app, normalizeBeleidskompasFlow, publicBeleidskompasConfig } = require("../server.js");
-const publicFile = path.join(process.env.PUBLISH_DIR, "beleidskompas-config.json");
+const { normalizeBeleidskompasFlow, publicBeleidskompasConfig } = require("../server.js");
 test.after(() => fs.rmSync(dir, { recursive: true, force: true }));
 
 test("a new substep gets a random code, not a number that says where it is", async () => {
@@ -43,9 +42,8 @@ test("the public config holds only what the Beleidskompas page reads", () => {
   assert.equal(pub.version_id, "v7");
   assert.deepEqual(pub.steps[0], { id: "stap1", nr: 1, title: "T", description: "D", substeps: [{ id: "1.1", title: "S" }] });
   assert.equal(pub.steps.length, 4);
-  // The file nginx serves, written on startup from the default flow.
-  const published = fs.readFileSync(publicFile, "utf8");
-  assert.deepEqual(Object.keys(JSON.parse(published)).sort(), ["disclaimer", "specialist_team", "steps", "title", "version_id"]);
+  // What nginx serves for the default flow.
+  const published = JSON.stringify(publicBeleidskompasConfig(normalizeBeleidskompasFlow({}), "1"));
   for (const leak of ["secret-token", "Antwoord in markdown", "Deelstap", "prompt"]) assert.ok(!published.includes(leak), leak);
 });
 
@@ -69,53 +67,4 @@ test("an empty prompt-like field means the seed text; the four steps are fixed",
   assert.equal(flow.steps[0].substeps[0].answer_format, seed.steps[0].substeps[0].answer_format);
   assert.deepEqual(flow.steps[0].substeps[1], { id: "1.9", title: "Nieuw", description: "", prompt: "", answer_format: "" });
   assert.ok(!("webhook_token" in flow) && !("workflow_id" in flow.steps[0]));
-});
-
-test("a template in which two substeps share an id is refused, on publish and on import", async () => {
-  const server = app.listen(0);
-  const base = `http://127.0.0.1:${server.address().port}`;
-  try {
-    const login = await fetch(`${base}/login`, { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body: "password=test-password", redirect: "manual" });
-    const cookie = login.headers.get("set-cookie").split(";")[0];
-    const post = (url, body) => fetch(`${base}${url}`, { method: "POST", headers: { cookie, "Content-Type": "application/json" }, body: JSON.stringify(body) });
-    const state = async () => (await (await fetch(`${base}/api/beleidskompas/state`, { headers: { cookie } })).json()).state;
-
-    const before = await state();
-    const [stap1, stap2, ...rest] = before.live.steps;
-    // The substep of step 2 gets the id of the first substep of step 1.
-    const duplicated = { ...before.live, steps: [stap1, { ...stap2, substeps: [{ ...stap2.substeps[0], id: stap1.substeps[0].id }] }, ...rest] };
-    const message = `Deelstap-id ${stap1.substeps[0].id} komt meer dan één keer voor in het template.`;
-
-    const published = await post("/api/beleidskompas/publish", { flow: duplicated, note: "dubbel", live: false });
-    assert.equal(published.status, 400);
-    assert.equal((await published.json()).error, message);
-
-    const imported = await post("/api/beleidskompas/import", { state: { ...before, versions: [{ ...before.versions[0], snapshot: duplicated }] } });
-    assert.equal(imported.status, 400);
-    assert.equal((await imported.json()).error, message);
-
-    assert.deepEqual(await state(), before);
-  } finally {
-    server.close();
-  }
-});
-
-test("publish with live: false saves a version without making it live", async () => {
-  const server = app.listen(0);
-  const base = `http://127.0.0.1:${server.address().port}`;
-  try {
-    const login = await fetch(`${base}/login`, { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body: "password=test-password", redirect: "manual" });
-    const cookie = login.headers.get("set-cookie").split(";")[0];
-    const state = async () => (await (await fetch(`${base}/api/beleidskompas/state`, { headers: { cookie } })).json()).state;
-    const before = await state();
-    const publishedBefore = fs.readFileSync(publicFile, "utf8");
-    const saved = await (await fetch(`${base}/api/beleidskompas/publish`, { method: "POST", headers: { cookie, "Content-Type": "application/json" }, body: JSON.stringify({ flow: { ...before.live, title: "Niet live" }, note: "n", live: false }) })).json();
-    const after = await state();
-    assert.equal(after.live_version_id, before.live_version_id);
-    assert.equal(after.versions[0].id, saved.version.id);
-    assert.equal(after.live.title, before.live.title);
-    assert.equal(fs.readFileSync(publicFile, "utf8"), publishedBefore);
-  } finally {
-    server.close();
-  }
 });

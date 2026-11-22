@@ -2,10 +2,8 @@
 import * as api from "../api.js";
 import { h, icon, toast, askText, formatDate, formatBytes } from "../dom.js";
 import { finder } from "../components/finder.js";
-import { template } from "../app.js";
 
 export function renderDocuments({ store, render }) {
-  const tpl = template();
   const docs = store.documents;
   const ui = store.ui;
   const selected = docs.find((d) => d.id === ui.docId) || null;
@@ -17,7 +15,7 @@ export function renderDocuments({ store, render }) {
 
   const files = docs.map((d) => ({ id: d.id, name: d.filename }));
 
-  const preview = selected ? docPreview(selected, { tpl, store, reloadDocs }) : emptyPreview();
+  const preview = selected ? docPreview(selected, { store, reloadDocs }) : emptyPreview();
 
   const uploadInput = h("input", { type: "file", multiple: true, hidden: true });
   uploadInput.addEventListener("change", async () => {
@@ -37,7 +35,7 @@ export function renderDocuments({ store, render }) {
   });
 
   const controls = [
-    h("button", { class: "btn btn-secondary", disabled: tpl.mock, onClick: () => uploadInput.click() }, icon("upload", 14), "Uploaden"),
+    h("button", { class: "btn btn-secondary", onClick: () => uploadInput.click() }, icon("upload", 14), "Uploaden"),
     uploadInput,
   ];
 
@@ -61,8 +59,7 @@ function emptyPreview() {
   return h("div", { class: "preview-empty" }, icon("file", 40), h("p", {}, "Selecteer een document om het te bekijken."));
 }
 
-function docPreview(doc, { tpl, store, reloadDocs }) {
-  const readOnly = tpl.mock;
+function docPreview(doc, { store, reloadDocs }) {
   const usedIn = store.flow.steps.filter((s) => api.stepDocumentIds(s).has(doc.id));
 
   const actions = h(
@@ -72,7 +69,6 @@ function docPreview(doc, { tpl, store, reloadDocs }) {
       "button",
       {
         class: "btn btn-small btn-secondary",
-        disabled: readOnly,
         onClick: async () => {
           const name = await askText({ title: "Document hernoemen", label: "Bestandsnaam", value: doc.filename, confirm: "Hernoemen", required: true });
           if (!name || name === doc.filename) return;
@@ -86,14 +82,11 @@ function docPreview(doc, { tpl, store, reloadDocs }) {
       },
       "Hernoemen",
     ),
-    readOnly
-      ? h("button", { class: "btn btn-small btn-secondary", disabled: true }, icon("download", 14), "Downloaden")
-      : h("a", { class: "btn btn-small btn-secondary", href: api.downloadUrl(doc.id), download: doc.filename }, icon("download", 14), "Downloaden"),
+    h("a", { class: "btn btn-small btn-secondary", href: api.downloadUrl(doc.id), download: doc.filename }, icon("download", 14), "Downloaden"),
     h(
       "button",
       {
         class: "btn btn-small btn-danger",
-        disabled: readOnly,
         onClick: async () => {
           if (!confirm(`“${doc.filename}” verwijderen?`)) return;
           try {

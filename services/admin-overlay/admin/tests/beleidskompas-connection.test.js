@@ -15,7 +15,7 @@ test("the migrations are numbered SQL files in order, starting with the tables",
   const migrations = listMigrations();
   assert.ok(migrations.length >= 1);
   assert.equal(migrations[0].name, "0001-init.sql");
-  assert.match(migrations[0].sql, /CREATE TABLE cases/);
+  assert.match(migrations[0].sql, /CREATE TABLE IF NOT EXISTS cases/);
   assert.deepEqual(migrations.map((m) => m.name), [...migrations.map((m) => m.name)].sort());
 });
 

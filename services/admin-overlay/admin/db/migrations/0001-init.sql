@@ -3,7 +3,7 @@
 -- reports are versioned: a change is a new version and the newest counts;
 -- older versions stay, so a previous one can be put back as a new version.
 
-CREATE TABLE cases (
+CREATE TABLE IF NOT EXISTS cases (
   id TEXT PRIMARY KEY,
   user_id TEXT NOT NULL,
   title TEXT,
@@ -11,9 +11,9 @@ CREATE TABLE cases (
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-CREATE INDEX cases_user_id_idx ON cases (user_id, updated_at DESC);
+CREATE INDEX IF NOT EXISTS cases_user_id_idx ON cases (user_id, updated_at DESC);
 
-CREATE TABLE case_texts (
+CREATE TABLE IF NOT EXISTS case_texts (
   case_id TEXT NOT NULL REFERENCES cases(id) ON DELETE CASCADE,
   version INTEGER NOT NULL,
   text TEXT NOT NULL,
@@ -22,7 +22,7 @@ CREATE TABLE case_texts (
 );
 
 -- text is the report as the page shows it.
-CREATE TABLE reports (
+CREATE TABLE IF NOT EXISTS reports (
   case_id TEXT NOT NULL REFERENCES cases(id) ON DELETE CASCADE,
   substep_id TEXT NOT NULL,
   version INTEGER NOT NULL,
@@ -36,7 +36,7 @@ CREATE TABLE reports (
 -- One row per turn: what the user typed (role user) or what a step answered
 -- (role assistant, with the step in step_id). asked_from is the substep the
 -- user was in.
-CREATE TABLE conversation_turns (
+CREATE TABLE IF NOT EXISTS conversation_turns (
   case_id TEXT NOT NULL REFERENCES cases(id) ON DELETE CASCADE,
   seq INTEGER NOT NULL,
   role TEXT NOT NULL CHECK (role IN ('user', 'assistant')),
@@ -45,4 +45,49 @@ CREATE TABLE conversation_turns (
   text TEXT NOT NULL,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   PRIMARY KEY (case_id, seq)
+);
+
+-- The Beleidskompas admin config: templates and their versions, the reference
+-- documents, which version is live, and the settings. A template is edited
+-- as a new version (a full snapshot of the flow plus the documents it uses);
+-- `live` holds the one version that end users get.
+
+CREATE TABLE IF NOT EXISTS templates (
+  id serial PRIMARY KEY,
+  name text NOT NULL,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE TABLE IF NOT EXISTS template_versions (
+  id serial PRIMARY KEY,
+  template_id integer NOT NULL REFERENCES templates(id),
+  version integer NOT NULL,
+  note text NOT NULL DEFAULT '',
+  created_by text NOT NULL DEFAULT 'System Administrator',
+  snapshot jsonb NOT NULL,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  UNIQUE (template_id, version)
+);
+CREATE TABLE IF NOT EXISTS documents (
+  id serial PRIMARY KEY,
+  sha256 text NOT NULL UNIQUE,
+  filename text NOT NULL,
+  content_type text NOT NULL,
+  size integer NOT NULL,
+  preview_text text NOT NULL DEFAULT '',
+  content bytea NOT NULL,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE TABLE IF NOT EXISTS version_documents (
+  version_id integer NOT NULL REFERENCES template_versions(id),
+  document_id integer NOT NULL REFERENCES documents(id),
+  PRIMARY KEY (version_id, document_id)
+);
+CREATE TABLE IF NOT EXISTS live (
+  key text PRIMARY KEY DEFAULT 'live',
+  template_id integer NOT NULL REFERENCES templates(id),
+  version_id integer NOT NULL REFERENCES template_versions(id)
+);
+CREATE TABLE IF NOT EXISTS settings (
+  key text PRIMARY KEY DEFAULT 'settings',
+  data jsonb NOT NULL
 );

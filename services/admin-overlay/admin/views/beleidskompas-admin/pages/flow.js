@@ -172,9 +172,9 @@ function stepEditor(step, { store, markDirty, render }) {
     "div",
     { class: "stack" },
     texts,
-    // MOCK #2: saved with the step, but retrieval does not read them yet.
+    // Saved with the version; assistant retrieval does not use these selections yet.
     card(
-      ["Documenten ", h("span", { class: "badge badge-mock", title: "Wordt opgeslagen, maar de assistent gebruikt dit nog niet" }, "Mock")],
+      ["Documenten ", h("span", { class: "badge badge-pending", title: "Wordt opgeslagen, maar de assistent gebruikt dit nog niet" }, "Nog niet gebruikt")],
       h("p", { class: "field-hint" }, "Zoekmethode en documentkeuze worden opgeslagen, maar de assistent gebruikt ze nog niet."),
       search,
       docList,

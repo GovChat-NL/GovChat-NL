@@ -85,8 +85,8 @@ function createBeleidskompasHandlers({ store, internalToken, resolveUser, getLiv
   const p = (req) => req.params || {};
 
   return {
-    // The live template for the orchestrator; it needs no database.
-    live: (req) => Promise.resolve(refuseToken(req) || { status: 200, body: typeof getLive === "function" ? getLive() : {} }),
+    // The live template for the orchestrator, read from the template tables.
+    live: (req) => Promise.resolve(refuseToken(req) || answer(async () => (typeof getLive === "function" ? getLive() : {}))),
 
     myCases: (req) => handleMine(req, (userId) => store.listCases({ userId, limit: q(req).limit })),
 
