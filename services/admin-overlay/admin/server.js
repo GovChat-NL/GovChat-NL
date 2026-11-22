@@ -454,7 +454,7 @@ function normalizeBeleidskompasFlow(input) {
       document_ids: Array.isArray(step.document_ids) ? [...new Set(step.document_ids.map(String))] : undefined,
       rag: normalizeStepRagSettings(step.rag || fb.rag || {}, step.id ? step : fb),
       substeps: substepsRaw.map((sub, subIdx) => {
-        const id = String(sub?.id || `${idx + 1}.${subIdx + 1}`).trim() || `${idx + 1}.${subIdx + 1}`;
+        const id = String(sub?.id || "").trim();
         const sfb = fb.substeps.find((d) => d.id === id) || {};
         return {
           id,
