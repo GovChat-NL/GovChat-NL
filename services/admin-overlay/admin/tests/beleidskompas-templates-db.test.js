@@ -17,7 +17,7 @@ test("admin template API persists UI actions in PostgreSQL", { skip: !enabled &&
   const schema = `templates_test_${process.pid}_${Date.now()}`;
   const admin = new Pool(connectionSettings());
   await admin.query(`CREATE SCHEMA ${schema}`);
-  const pool = new Pool({ ...connectionSettings(), options: `-c search_path=${schema}`, max: 5 });
+  const pool = new Pool({ ...connectionSettings(), options: `-c search_path=${schema},public`, max: 5 });
   t.after(async () => {
     await pool.end();
     await admin.query(`DROP SCHEMA ${schema} CASCADE`);

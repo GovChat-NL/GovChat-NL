@@ -21,7 +21,8 @@ test("the store against a real Postgres", { skip: !enabled && "set BELEIDSKOMPAS
   const schema = `test_${Date.now()}`;
   try {
     await client.query(`CREATE SCHEMA ${schema}`);
-    await client.query(`SET search_path TO ${schema}`);
+    // public stays on the path for the pgvector types.
+    await client.query(`SET search_path TO ${schema}, public`);
     const query = (sql, params) => client.query(sql, params);
 
     const applied = await applyMigrations(query);
