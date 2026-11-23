@@ -2,6 +2,7 @@
 import * as api from "../api.js";
 import { h, icon, card, toast, formatDate } from "../dom.js";
 import { dropdown } from "../components/dropdown.js";
+import { templateSelector } from "../components/template-selector.js";
 import { versionLabel, newestVersion, versionOptions } from "../app.js";
 
 export function renderDeploy({ store, render, reload }) {
@@ -16,11 +17,10 @@ export function renderDeploy({ store, render, reload }) {
   const filters = h(
     "div",
     { class: "filter-bar" },
-    dropdown({
-      label: "Template",
-      value: tpl.id,
-      options: store.templates.map((t) => ({ value: t.id, label: t.live_version_id ? `${t.name} (live)` : t.name })),
-      onChange: (v) => { ui.depTemplate = v; ui.depVersion = null; render(); },
+    templateSelector({
+      templates: store.templates,
+      currentId: tpl.id,
+      onSelect: (v) => { ui.depTemplate = v; ui.depVersion = null; render(); },
     }),
     dropdown({ label: "Versie", value: version.id, options: versionOptions(tpl), onChange: (v) => { ui.depVersion = v; render(); } }),
   );
