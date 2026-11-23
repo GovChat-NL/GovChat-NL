@@ -60,8 +60,8 @@ export function setupStepCard(store, { specialistTeam, requestReport }) {
     const substep = store.activeSubstep();
     const step = substep.step;
     const data = store.substepResult(substep.id);
-    formTitleEl.textContent = `Stap ${step.nr} · ${step.title} · ${substep.id} ${substep.title}`;
-    reportStatusEl.textContent = data.report_text ? `Uitwerking beschikbaar voor deelstap ${substep.id}.` : "";
+    formTitleEl.textContent = `Stap ${step.nr} · ${step.title} · ${substep.label} ${substep.title}`;
+    reportStatusEl.textContent = data.report_text ? `Uitwerking beschikbaar voor deelstap ${substep.label}.` : "";
     staleEl.hidden = !store.talkedSinceReport(substep.id);
 
     // While the report is being written, a notice says so above the card.
@@ -71,7 +71,7 @@ export function setupStepCard(store, { specialistTeam, requestReport }) {
     reportBusyEl.hidden = !busy;
     reportBusyEl.innerHTML = busy
       ? `<span class="gc-bk-typing-dots" aria-hidden="true"><span></span><span></span><span></span></span>
-         <strong>Deelstap ${escapeHTML(substep.id)} wordt uitgewerkt</strong>`
+         <strong>Deelstap ${escapeHTML(substep.label)} wordt uitgewerkt</strong>`
       : "";
 
     const hasReport = Boolean(String(data.report_text || "").trim());
@@ -101,8 +101,8 @@ export function setupStepCard(store, { specialistTeam, requestReport }) {
   /** The button says what it does. It asks for the report of this substep
    *  when there is none yet, and otherwise moves on to the next substep and
    *  asks for that report. The button waits while a request is under way,
-   *  and until there is a case, because the first report comes from the
-   *  case text the user types. */
+   *  and until the user has written something, because a report is made
+   *  from the conversation. */
   function renderReportButton(substep) {
     const isLast = state.activeSubstep >= substeps.length - 1;
     const done = store.substepDone(substep.id);

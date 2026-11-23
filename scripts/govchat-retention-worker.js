@@ -28,11 +28,13 @@ function loadLibreChatRuntime(apiRoot = process.env.GOVCHAT_LIBRECHAT_API_ROOT |
 }
 
 async function startRetentionWorker({
-  runtime = loadLibreChatRuntime(),
+  runtime,
+  loadRuntime = loadLibreChatRuntime,
   startPolicy = startGovChatRetentionPolicy,
   processRef = process,
-}) {
-  const { connectDb, db, getAppConfig, initializeFileStorage, logger, mongoose, runAsSystem } = runtime;
+} = {}) {
+  const initializedRuntime = runtime ?? loadRuntime();
+  const { connectDb, db, getAppConfig, initializeFileStorage, logger, mongoose, runAsSystem } = initializedRuntime;
   let stopPolicy;
   try {
     await connectDb();

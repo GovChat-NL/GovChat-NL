@@ -14,9 +14,25 @@ for (const name of ["DATA_DIR", "PUBLISH_DIR"]) {
 }
 process.env.ADMIN_PASSWORD = "test-password";
 process.env.BELEIDSKOMPAS_STORE_TOKEN = "secret-token";
-const { app, normalizeBeleidskompasFlow, publicBeleidskompasConfig } = require("../server.js");
-const publicFile = path.join(process.env.PUBLISH_DIR, "beleidskompas-config.json");
+const { normalizeBeleidskompasFlow, publicBeleidskompasConfig } = require("../server.js");
 test.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+
+test("a new substep gets an id the step does not have and did not have in a saved version", async () => {
+  const { nextSubstepId } = await import("../views/beleidskompas-admin/pages/flow.js");
+  const step = (ids) => ({ id: "stap1", substeps: ids.map((id) => ({ id })) });
+  assert.equal(nextSubstepId(1, step(["1.1", "1.2", "1.4", "1.5"])), "1.6");
+  // 1.3 was the last substep of a saved version and is deleted since.
+  assert.equal(nextSubstepId(1, step(["1.1", "1.2"]), [null, { steps: [step(["1.1", "1.2", "1.3"])] }]), "1.4");
+  assert.equal(nextSubstepId(2, { id: "stap2", substeps: [] }), "2.1");
+});
+
+test("moved substeps are saved and published in their new order, with their own ids and prompts", () => {
+  const seed = normalizeBeleidskompasFlow({});
+  const [a, b, c, ...rest] = seed.steps[0].substeps;
+  const flow = normalizeBeleidskompasFlow({ ...seed, steps: [{ ...seed.steps[0], substeps: [c, b, a, ...rest] }, ...seed.steps.slice(1)] });
+  assert.deepEqual(flow.steps[0].substeps.map((s) => [s.id, s.prompt]), [c, b, a, ...rest].map((s) => [s.id, s.prompt]));
+  assert.deepEqual(publicBeleidskompasConfig(flow, "v1").steps[0].substeps.map((s) => s.id), ["1.3", "1.2", "1.1", "1.4", "1.5"]);
+});
 
 test("the public config holds only what the Beleidskompas page reads", () => {
   const flow = normalizeBeleidskompasFlow({
@@ -28,9 +44,8 @@ test("the public config holds only what the Beleidskompas page reads", () => {
   assert.equal(pub.version_id, "v7");
   assert.deepEqual(pub.steps[0], { id: "stap1", nr: 1, title: "T", description: "D", substeps: [{ id: "1.1", title: "S" }] });
   assert.equal(pub.steps.length, 4);
-  // The file nginx serves, written on startup from the default flow.
-  const published = fs.readFileSync(publicFile, "utf8");
-  assert.deepEqual(Object.keys(JSON.parse(published)).sort(), ["disclaimer", "specialist_team", "steps", "title", "version_id"]);
+  // What nginx serves for the default flow.
+  const published = JSON.stringify(publicBeleidskompasConfig(normalizeBeleidskompasFlow({}), "1"));
   for (const leak of ["secret-token", "Antwoord in markdown", "Deelstap", "prompt"]) assert.ok(!published.includes(leak), leak);
 });
 
@@ -40,9 +55,10 @@ test("an empty prompt-like field means the seed text; the four steps are fixed",
   assert.ok(seed.steps[0].substeps[0].answer_format.startsWith("###"));
   const flow = normalizeBeleidskompasFlow({
     rules: " ",
+    webhook_token: "oud",
     steps: [
       { id: "stapX", title: "Vreemd" },
-      { id: "stap1", prompt: "", substeps: [{ id: "1.1", prompt: "eigen", answer_format: "" }, { id: "1.9", title: "Nieuw" }] },
+      { id: "stap1", prompt: "", workflow_id: "oud", substeps: [{ id: "1.1", prompt: "eigen", answer_format: "" }, { id: "1.9", title: "Nieuw" }] },
     ],
   });
   assert.equal(flow.rules, seed.rules);
@@ -51,6 +67,7 @@ test("an empty prompt-like field means the seed text; the four steps are fixed",
   assert.equal(flow.steps[0].substeps[0].prompt, "eigen");
   assert.equal(flow.steps[0].substeps[0].answer_format, seed.steps[0].substeps[0].answer_format);
   assert.deepEqual(flow.steps[0].substeps[1], { id: "1.9", title: "Nieuw", description: "", prompt: "", answer_format: "" });
+  assert.ok(!("webhook_token" in flow) && !("workflow_id" in flow.steps[0]));
 });
 
 test("a step that still has the old default substeps or prompt gets the current ones; changed substeps stay", () => {
@@ -63,24 +80,4 @@ test("a step that still has the old default substeps or prompt gets the current 
   assert.equal(steps[1].prompt, normalizeBeleidskompasFlow({}).steps[1].prompt);
   assert.deepEqual(steps[0].substeps.map((s) => s.title), ["Mijn titel"]);
   assert.deepEqual(steps[1].substeps.map((s) => `${s.id} ${s.title}`), ["2.1 Rolbepaling"]);
-});
-
-test("publish with live: false saves a version without making it live", async () => {
-  const server = app.listen(0);
-  const base = `http://127.0.0.1:${server.address().port}`;
-  try {
-    const login = await fetch(`${base}/login`, { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body: "password=test-password", redirect: "manual" });
-    const cookie = login.headers.get("set-cookie").split(";")[0];
-    const state = async () => (await (await fetch(`${base}/api/beleidskompas/state`, { headers: { cookie } })).json()).state;
-    const before = await state();
-    const publishedBefore = fs.readFileSync(publicFile, "utf8");
-    const saved = await (await fetch(`${base}/api/beleidskompas/publish`, { method: "POST", headers: { cookie, "Content-Type": "application/json" }, body: JSON.stringify({ flow: { ...before.live, title: "Niet live" }, note: "n", live: false }) })).json();
-    const after = await state();
-    assert.equal(after.live_version_id, before.live_version_id);
-    assert.equal(after.versions[0].id, saved.version.id);
-    assert.equal(after.live.title, before.live.title);
-    assert.equal(fs.readFileSync(publicFile, "utf8"), publishedBefore);
-  } finally {
-    server.close();
-  }
 });

@@ -14,6 +14,15 @@ const SEARCH_METHODS = [
 // The step's <li> in the rendered list (index in store.flow.steps).
 const stepEl = (idx) => document.querySelectorAll(".flow-list > .flow-step")[idx];
 
+// The id of a new substep: one past the highest number the step has or had in
+// `earlierFlows` (the saved versions). An id that comes back after a delete would
+// take over the deleted substep's default prompt and stored reports.
+export function nextSubstepId(stepNr, step, earlierFlows = []) {
+  const steps = [step, ...earlierFlows.map((flow) => flow?.steps?.find((s) => s.id === step.id))];
+  const highest = Math.max(0, ...steps.flatMap((s) => s?.substeps || []).map((s) => Number(String(s.id).split(".")[1]) || 0));
+  return `${stepNr}.${highest + 1}`;
+}
+
 export function renderFlow({ store, render, markDirty }) {
   const steps = store.flow.steps;
   const flow = store.flow;
@@ -46,7 +55,7 @@ export function renderFlow({ store, render, markDirty }) {
     "Prompts",
     text(flow, "report_prompt", 10, "Prompt voor het stapresultaat; standaard uit prompts/report-prompt.md. Plaatshouders: {{role}} {{substeps}} {{rules}} {{substep_format}}."),
     text(flow, "conversation_prompt", 10, "Prompt voor de gewone gespreksbeurten in een stap; standaard uit prompts/conversation-prompt.md."),
-    text(flow, "orchestrator_prompt", 6, "Prompt waarmee de assistent de stap kiest; standaard uit prompts/orchestrator-prompt.md. Plaatshouders: {{steps}} {{active_nr}}."),
+    text(flow, "orchestrator_prompt", 6, "De instructie van de orchestrator, de agent die elk bericht ontvangt en de agent van een stap aanroept; standaard uit prompts/orchestrator-prompt.md. Plaatshouder: {{steps}}."),
     text(flow, "report_disclaimer", 2, "Staat onder elk stapresultaat."),
   );
 
@@ -104,6 +113,12 @@ function stepEditor(step, { store, markDirty, render }) {
       : h("p", { class: "muted" }, "Nog geen documenten in de Documentenbibliotheek."),
   );
 
+  const moveSub = (i, delta) => {
+    const [sub] = step.substeps.splice(i, 1);
+    step.substeps.splice(i + delta, 0, sub);
+    markDirty();
+    render();
+  };
   const substeps = h(
     "div",
     { class: "substeps" },
@@ -111,7 +126,7 @@ function stepEditor(step, { store, markDirty, render }) {
       h(
         "div",
         { class: "substep" },
-        h("span", { class: "substep-id" }, sub.id),
+        h("span", { class: "substep-id" }, `${store.flow.steps.indexOf(step) + 1}.${i + 1}`),
         h(
           "div",
           { class: "stack-sm" },
@@ -119,7 +134,13 @@ function stepEditor(step, { store, markDirty, render }) {
           field("Instructies", bound(sub, "prompt", { multiline: true, rows: 3, onInput: markDirty })),
           field("Vereiste antwoordstructuur", bound(sub, "answer_format", { multiline: true, rows: 3, onInput: markDirty })),
         ),
-        h("button", { class: "icon-btn is-danger", "aria-label": "Substap verwijderen", onClick: () => { step.substeps.splice(i, 1); markDirty(); render(); } }, icon("trash", 18)),
+        h(
+          "div",
+          { class: "stack-sm" },
+          h("button", { class: "icon-btn", "aria-label": "Substap omhoog", disabled: i === 0, onClick: () => moveSub(i, -1) }, icon("up", 18)),
+          h("button", { class: "icon-btn", "aria-label": "Substap omlaag", disabled: i === step.substeps.length - 1, onClick: () => moveSub(i, 1) }, icon("down", 18)),
+          h("button", { class: "icon-btn is-danger", "aria-label": "Substap verwijderen", onClick: () => { step.substeps.splice(i, 1); markDirty(); render(); } }, icon("trash", 18)),
+        ),
       ),
     ),
     h(
@@ -127,8 +148,9 @@ function stepEditor(step, { store, markDirty, render }) {
       {
         class: "btn btn-small btn-secondary",
         onClick: () => {
-          const idx = store.flow.steps.indexOf(step) + 1;
-          step.substeps = [...(step.substeps || []), { id: `${idx}.${(step.substeps?.length || 0) + 1}`, title: "", prompt: "", answer_format: "" }];
+          const versions = store.templates.find((t) => t.id === store.templateId)?.versions || [];
+          const id = nextSubstepId(store.flow.steps.indexOf(step) + 1, step, [store.state?.live, ...versions.map((v) => v.snapshot)]);
+          step.substeps = [...(step.substeps || []), { id, title: "", prompt: "", answer_format: "" }];
           markDirty();
           render();
           const row = document.querySelector(".flow-step.is-open .substep:last-of-type");
@@ -146,9 +168,9 @@ function stepEditor(step, { store, markDirty, render }) {
     "div",
     { class: "stack" },
     texts,
-    // MOCK #2: saved with the step, but retrieval does not read them yet.
+    // Saved with the version; assistant retrieval does not use these selections yet.
     card(
-      ["Documenten ", h("span", { class: "badge badge-mock", title: "Wordt opgeslagen, maar de assistent gebruikt dit nog niet" }, "Mock")],
+      ["Documenten ", h("span", { class: "badge badge-pending", title: "Wordt opgeslagen, maar de assistent gebruikt dit nog niet" }, "Nog niet gebruikt")],
       h("p", { class: "field-hint" }, "Zoekmethode en documentkeuze worden opgeslagen, maar de assistent gebruikt ze nog niet."),
       search,
       docList,

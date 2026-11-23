@@ -98,8 +98,6 @@ textarea.input { resize: vertical; line-height: 1.45; }
 .muted { color: var(--muted); }
 .error { color: var(--red); }
 .empty { color: var(--muted); padding: 24px; text-align: center; border: 1px dashed var(--line-strong); border-radius: var(--radius); }
-.advanced { border-top: 1px solid var(--line); padding-top: 10px; }
-.advanced summary { cursor: pointer; color: var(--muted); font-weight: 600; margin-bottom: 10px; }
 .notice { display: flex; align-items: center; gap: 8px; padding: 9px 12px; border-radius: 8px; font-size: 12.5px; }
 .notice svg { flex: none; }
 .notice-info { background: var(--accent-soft); color: var(--accent); }
@@ -108,7 +106,7 @@ textarea.input { resize: vertical; line-height: 1.45; }
 .kv-inline { grid-template-columns: max-content 1fr max-content 1fr; }
 .badge { display: inline-block; padding: 1px 8px; border-radius: 10px; font-size: 11px; font-weight: 600; }
 .badge-live { background: #eaf6ee; color: var(--green); }
-.badge-mock { background: #fff4e5; color: #9a4a00; vertical-align: middle; }
+.badge-pending { background: #fff4e5; color: #9a4a00; vertical-align: middle; }
 .table { width: 100%; border-collapse: collapse; }
 .table th { text-align: left; font-size: 11px; font-weight: 600; color: var(--muted); padding: 6px 8px; border-bottom: 1px solid var(--line); }
 .table td { padding: 8px; border-bottom: 1px solid #f0f0f3; vertical-align: middle; }
@@ -176,20 +174,14 @@ textarea.input { resize: vertical; line-height: 1.45; }
 .flow-list { list-style: none; position: relative; display: flex; flex-direction: column; gap: 12px; }
 .flow-list::before { content: ""; position: absolute; left: 15px; top: 16px; bottom: 16px; width: 2px; background: var(--line); }
 .flow-step { position: relative; display: grid; grid-template-columns: 32px minmax(0, 1fr); gap: 12px; align-items: start; }
-.flow-num { position: relative; z-index: 1; display: grid; place-items: center; width: 32px; height: 32px; border-radius: 50%; background: var(--accent); color: #fff; font-weight: 700; }
-.flow-num:not(.is-add) { cursor: pointer; }
-.flow-num.is-add { background: #fff; color: var(--muted); border: 2px dashed var(--line-strong); }
+.flow-num { position: relative; z-index: 1; display: grid; place-items: center; width: 32px; height: 32px; border-radius: 50%; background: var(--accent); color: #fff; font-weight: 700; cursor: pointer; }
 .flow-card { border: 1px solid var(--line); border-radius: var(--radius); background: #fff; }
 .flow-step.is-open .flow-card { border-color: var(--line-strong); box-shadow: 0 2px 10px rgba(0,0,0,.05); }
 .flow-card-head { display: flex; align-items: center; gap: 8px; padding: 6px 8px 6px 4px; }
 .flow-title { flex: 1; display: flex; flex-direction: column; align-items: flex-start; gap: 2px; padding: 6px 10px; border: none; background: transparent; text-align: left; cursor: pointer; border-radius: 6px; min-width: 0; }
 .flow-title:hover { background: #f7f7f9; }
 .flow-desc { color: var(--muted); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
-.flow-tools { display: flex; gap: 4px; }
-.flow-tools .icon-btn { width: 32px; height: 32px; }
 .flow-editor { padding: 4px 16px 16px; border-top: 1px solid var(--line); padding-top: 14px; }
-.flow-add { align-items: center; }
-.flow-add .btn { justify-self: start; }
 .flow-editor-foot { display: flex; justify-content: flex-end; border-top: 1px solid var(--line); padding-top: 10px; }
 .inline-controls { display: flex; gap: 24px; align-items: center; flex-wrap: wrap; }
 .doc-checks { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 10px; padding-top: 4px; }
@@ -220,8 +212,6 @@ textarea.input { resize: vertical; line-height: 1.45; }
 .fb-meta { display: flex; gap: 10px; color: var(--muted); font-size: 12px; }
 .fb-version { padding: 0 7px; border-radius: 9px; background: #f0f0f3; }
 .fb-comment.is-empty { color: #b0b0b8; font-style: italic; }
-.fb-answer summary { cursor: pointer; color: var(--select); font-size: 12px; }
-.fb-answer p { margin-top: 6px; padding: 10px 12px; border-left: 3px solid var(--line-strong); background: #f7f7f9; border-radius: 0 6px 6px 0; color: #3a3a3c; line-height: 1.5; }
 
 /* ── Dialog and toasts ────────────────────────────── */
 .dialog { margin: auto; border: none; border-radius: 12px; padding: 20px; width: min(440px, 92vw); box-shadow: 0 20px 60px rgba(0,0,0,.3); }
