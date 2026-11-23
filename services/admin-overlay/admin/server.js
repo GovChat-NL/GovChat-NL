@@ -2753,6 +2753,7 @@ if (require.main === module) {
   beleidskompas.start(app, {
     resolveUser: resolveUserFromVerifiedRefreshToken,
     getLive: liveBeleidskompasTemplate,
+    getRetentionDays: async () => (await templateStore.getState()).settings.retention_days,
     onReady(pool) {
       templateStore = createTemplateStore(pool, defaultBeleidskompasState().settings);
       ensureLiveBeleidskompasTemplate().catch((err) => console.error("[govchat-admin] Could not publish deployed template:", err));
