@@ -109,6 +109,14 @@ test('the agent of a step gets the reports up to and including the substep of a 
   assert.equal(question.findings, `${report11}\n\n${report12}\n\nRapport 2.1`);
 });
 
+test('a report of a substep that is no longer in the template reaches no model', () => {
+  const withOld = { ...state, reports: { '1.1': { version: 1, text: 'Oud rapport' }, ...state.reports } };
+  for (const message of ['', 'Waarom?']) {
+    const context = buildContext({ request: prepare({ currentMessage: pageMessage({ substep_id: idOf('1.2'), message }) }), state: withOld, live, stepIds });
+    assert.ok(!context.findings.includes('Oud rapport') && !context.prompt.includes('Oud rapport'));
+  }
+});
+
 test('a typed message says where the user is', () => {
   const request = prepare({ currentMessage: 'Waarom beperkt?' });
   const context = buildContext({ request, state, live, stepIds });

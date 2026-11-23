@@ -204,7 +204,10 @@ function buildContext({ request, state, live, stepIds }) {
   }
 
   const reports = state.reports;
-  const ids = Object.keys(reports).sort((a, b) => order.indexOf(a) - order.indexOf(b));
+  // Only reports of substeps in the template: the page hides the others too.
+  const ids = Object.keys(reports)
+    .filter((id) => order.includes(id))
+    .sort((a, b) => order.indexOf(a) - order.indexOf(b));
   const reportTexts = (reportIds) =>
     reportIds
       .map((id) => String(reports[id].text || '').trim())
