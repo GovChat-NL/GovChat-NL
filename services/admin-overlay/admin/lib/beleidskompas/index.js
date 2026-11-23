@@ -77,6 +77,7 @@ async function sweep(store, getRetentionDays, log) {
   try {
     const days = Number(typeof getRetentionDays === "function" ? await getRetentionDays() : 0);
     if (!Number.isInteger(days) || days <= 0) return;
+    log.log(`[govchat-admin] Beleidskompas retention: keeping cases ${days} days`);
     const deleted = await store.deleteCasesOlderThan(days);
     if (deleted) log.log(`[govchat-admin] Beleidskompas retention: deleted ${deleted} cases older than ${days} days`);
   } catch (err) {
