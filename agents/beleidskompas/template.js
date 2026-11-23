@@ -80,6 +80,8 @@ function stepFromTemplate(template, stepId) {
     role: String(step.prompt || ''),
     // The label is the number a person sees: the step number and the place in the step.
     // The id stays the same when a substep moves, so the stored reports keep their substep.
+    // Same rule in overlay/src/apps/beleidskompas/config.js and the admin Flow builder
+    // (services/admin-overlay/admin/views/beleidskompas-admin/pages/flow.js): change all three.
     substeps: (Array.isArray(step.substeps) ? step.substeps : []).map((substep, position) => ({
       id: substep.id,
       label: `${nr}.${position + 1}`,

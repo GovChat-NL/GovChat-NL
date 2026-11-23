@@ -132,6 +132,7 @@ function stepEditor(step, { store, markDirty, render }) {
       h(
         "div",
         { class: "substep" },
+        // Same label rule as stepFromTemplate in agents/beleidskompas/template.js.
         h("span", { class: "substep-id" }, `${store.flow.steps.indexOf(step) + 1}.${i + 1}`),
         h(
           "div",
