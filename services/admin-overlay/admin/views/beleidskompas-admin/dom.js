@@ -144,9 +144,15 @@ export function askText({ title, label, placeholder = "", value = "", confirm = 
   });
 }
 
+const toastTimers = new WeakMap();
+
+/** Shows a message for 4 s. The same message of the same kind is not
+ *  stacked: the one showing stays and its 4 s start again. */
 export function toast(message, kind = "info") {
   const box = document.getElementById("toasts");
-  const el = h("div", { class: `toast toast-${kind}`, role: "status" }, message);
-  box.append(el);
-  setTimeout(() => el.remove(), 4000);
+  const className = `toast toast-${kind}`;
+  const el = [...box.children].find((t) => t.className === className && t.textContent === message)
+    ?? box.appendChild(h("div", { class: className, role: "status" }, message));
+  clearTimeout(toastTimers.get(el));
+  toastTimers.set(el, setTimeout(() => el.remove(), 4000));
 }
