@@ -144,14 +144,11 @@ export function askText({ title, label, placeholder = "", value = "", confirm = 
   });
 }
 
-const toastTimers = new WeakMap();
-
-/** Shows a message for 4 seconds, does not stack duplicate messages */
+/** Shows a message for 4 seconds; a repeated message replaces the one showing */
 export function toast(message, kind = "info") {
   const box = document.getElementById("toasts");
-  const className = `toast toast-${kind}`;
-  const el = [...box.children].find((t) => t.className === className && t.textContent === message)
-    ?? box.appendChild(h("div", { class: className, role: "status" }, message));
-  clearTimeout(toastTimers.get(el));
-  toastTimers.set(el, setTimeout(() => el.remove(), 4000));
+  const el = h("div", { class: `toast toast-${kind}`, role: "status" }, message);
+  [...box.children].find((t) => t.className === el.className && t.textContent === message)?.remove();
+  box.append(el);
+  setTimeout(() => el.remove(), 4000);
 }
