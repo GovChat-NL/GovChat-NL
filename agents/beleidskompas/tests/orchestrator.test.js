@@ -168,6 +168,7 @@ test('the models read the number of a substep in the list, while the page sends 
   assert.equal(report.substep_id, idOf('1.2'));
   assert.ok(report.prompt.endsWith('Verzoek: werk deelstap 1.1 uit.'));
   assert.ok(report.system_prompt.includes('(1.1 Overheidsinterventie, 1.2 Probleemdefinitie, '));
+  assert.ok(report.findings.includes('**Stap 1 · Publiek en provinciaal belang · 1.1 Overheidsinterventie**\n\n### Overheidsinterventie'));
 
   const question = buildContext({ request: prepare({ currentMessage: pageMessage({ substep_id: 'sub_k3x9q2m7', message: 'Klopt dit?' }) }), state, live: moved, stepIds });
   assert.equal(question.substep_id, 'sub_k3x9q2m7');

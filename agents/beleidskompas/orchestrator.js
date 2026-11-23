@@ -208,9 +208,13 @@ function buildContext({ request, state, live, stepIds }) {
   const ids = Object.keys(reports)
     .filter((id) => order.includes(id))
     .sort((a, b) => order.indexOf(a) - order.indexOf(b));
+  // A report keeps the heading it was saved with; the models read it with the substep's current number.
+  const headings = Object.fromEntries(
+    steps.flatMap((step) => step.substeps.map((substep) => [substep.id, `**Stap ${step.nr} · ${step.title} · ${substep.label} ${substep.title}**`])),
+  );
   const reportTexts = (reportIds) =>
     reportIds
-      .map((id) => String(reports[id].text || '').trim())
+      .map((id) => String(reports[id].text || '').trim().replace(/^\*\*Stap [^\n]*\*\*/, headings[id]))
       .filter(Boolean)
       .join('\n\n');
 
