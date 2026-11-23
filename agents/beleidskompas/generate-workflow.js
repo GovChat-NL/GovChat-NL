@@ -607,9 +607,8 @@ function buildOrchestratorWorkflow(steps) {
 
   nodes.push(
     codeNode('Opslagfout melden', at(11, 1), {
-      constants: { MESSAGES: orchestrator.MESSAGES },
       functions: ['nodeError', 'failure', 'userTurnFailure'],
-      run: 'return [{ json: userTurnFailure({ saved: $json }) }];',
+      run: `return [{ json: userTurnFailure({ saved: $json, context: ${context} }) }];`,
     }),
   );
 
@@ -645,7 +644,6 @@ function buildOrchestratorWorkflow(steps) {
 
   nodes.push(
     codeNode('Antwoord opbouwen', at(toolColumn, 3), {
-      constants: { MESSAGES: orchestrator.MESSAGES },
       functions: ['toolCalls', 'nodeError', 'failure', 'buildAnswer'],
       run: `return [{ json: buildAnswer({ context: ${context}, agent: $json, now: Date.now() }) }];`,
     }),
@@ -664,9 +662,8 @@ function buildOrchestratorWorkflow(steps) {
 
   nodes.push(
     codeNode('Antwoord afronden', at(toolColumn + 3, 2), {
-      constants: { MESSAGES: orchestrator.MESSAGES },
       functions: ['nodeError', 'finishAnswer'],
-      run: `return [{ json: finishAnswer({ answer: ${answer}, saveError: nodeError($json) }) }];`,
+      run: `return [{ json: finishAnswer({ answer: ${answer}, saveError: nodeError($json), context: ${context} }) }];`,
     }),
   );
 

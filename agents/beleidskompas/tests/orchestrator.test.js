@@ -133,7 +133,7 @@ test('a request for a report of a substep that does not exist is refused with a 
 });
 
 test('the context holds what the agents need from the template', () => {
-  const edited = { ...live, flow: { ...DEFAULT_TEMPLATE, rules: 'Een eigen regel.', orchestrator_prompt: 'Eigen instructie.\n{{steps}}' } };
+  const edited = { ...live, flow: { ...DEFAULT_TEMPLATE, rules: 'Een eigen regel.', orchestrator_prompt: 'Eigen instructie.\n{{steps}}', messages: { no_answer: 'Eigen tekst als er geen antwoord is.' } } };
   const context = buildContext({ request: prepare({ currentMessage: 'Vraag' }), state, live: edited, stepIds: ['stap1', 'stap2'] });
 
   assert.equal(context.model, 'een-model');
@@ -143,6 +143,8 @@ test('the context holds what the agents need from the template', () => {
   assert.ok(!context.system_prompt.includes('stap3_agent'));
   const forStep2 = JSON.parse(context.step_templates.stap2);
   assert.deepEqual([forStep2.model, forStep2.rules, forStep2.step], ['een-model', 'Een eigen regel.', STEPS[1]]);
+  assert.deepEqual(context.messages, { ...MESSAGES, no_answer: 'Eigen tekst als er geen antwoord is.' });
+  assert.equal(buildAnswer({ context, agent: { output: '' }, now: 1 }).text, 'Eigen tekst als er geen antwoord is.');
 });
 
 // --- The orchestrator's prompt ---
@@ -206,7 +208,7 @@ test('a failing or silent orchestrator gives a message for the chat, not an empt
 
 test('when storing the turn of the orchestrator failed, the answer goes back with a warning in front', () => {
   const answer = { ok: true, text: 'Antwoord.', answer: 'Antwoord.' };
-  assert.equal(finishAnswer({ answer, saveError: null }), answer);
-  const warned = finishAnswer({ answer, saveError: 'HTTP 500' });
-  assert.deepEqual([warned.ok, warned.text, warned.answer, warned.store_error], [true, `${MESSAGES.store_warning}\n\nAntwoord.`, `${MESSAGES.store_warning}\n\nAntwoord.`, 'assistant_turn: HTTP 500']);
+  assert.equal(finishAnswer({ answer, saveError: null, context }), answer);
+  const warned = finishAnswer({ answer, saveError: 'HTTP 500', context: { messages: { store_warning: 'Eigen waarschuwing bij opslaan.' } } });
+  assert.deepEqual([warned.ok, warned.text, warned.answer, warned.store_error], [true, 'Eigen waarschuwing bij opslaan.\n\nAntwoord.', 'Eigen waarschuwing bij opslaan.\n\nAntwoord.', 'assistant_turn: HTTP 500']);
 });

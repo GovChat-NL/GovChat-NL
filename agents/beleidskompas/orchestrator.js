@@ -176,14 +176,16 @@ function buildContext({ request, state, live, stepIds }) {
   const flow = live && live.flow;
   const templateError = nodeError(live) || (flow && Array.isArray(flow.steps) ? null : 'No template in the answer of the admin');
   if (templateError) return failure(request, `template: ${templateError}`, MESSAGES.store_failed);
+  // From here on the texts of the live template count.
+  const messages = { ...MESSAGES, ...flow.messages };
 
   const stateError = nodeError(state) || (state && state.reports !== null && typeof state.reports === 'object' ? null : 'No state in the answer of the store');
-  if (stateError) return failure(request, `state: ${stateError}`, MESSAGES.store_failed);
+  if (stateError) return failure(request, `state: ${stateError}`, messages.store_failed);
 
   const steps = flow.steps.filter((step) => step && Array.isArray(step.substeps) && stepIds.includes(step.id));
   const order = steps.flatMap((step) => step.substeps.map((substep) => substep.id));
   const substep_id = order.includes(request.substep_id) ? request.substep_id : '';
-  if (request.kind === 'report' && !substep_id) return failure(request, 'No substep recognised in the request', MESSAGES.unknown_step);
+  if (request.kind === 'report' && !substep_id) return failure(request, 'No substep recognised in the request', messages.unknown_step);
 
   const model = String((live.settings && live.settings.default_model) || '').trim() || 'govchat-default';
   const step_templates = {};
@@ -233,13 +235,14 @@ function buildContext({ request, state, live, stepIds }) {
     system_prompt: buildOrchestratorPrompt(steps, flow.orchestrator_prompt),
     model,
     step_templates,
+    messages,
   };
 }
 
 /** The result when the message the user typed could not be stored. `saved`
  *  is what the store answered. */
-function userTurnFailure({ saved }) {
-  return failure({}, `user_turn: ${nodeError(saved)}`, MESSAGES.store_failed);
+function userTurnFailure({ saved, context }) {
+  return failure({}, `user_turn: ${nodeError(saved)}`, context.messages.store_failed);
 }
 
 /** The title LibreChat asked for, from what the model replied. Never fails:
@@ -278,15 +281,15 @@ function buildAnswer({ context, agent, now }) {
     tools,
     duration_ms: now - context.started_at,
   };
-  if (!text) return failure(base, error || 'The orchestrator returned no text', MESSAGES.no_answer);
+  if (!text) return failure(base, error || 'The orchestrator returned no text', context.messages.no_answer);
   return { ...base, ok: true, text, answer: text };
 }
 
 /** The answer as it goes back, after the turn of the orchestrator was
  *  written to the store: with a warning in front when that failed. */
-function finishAnswer({ answer, saveError }) {
+function finishAnswer({ answer, saveError, context }) {
   if (!saveError) return answer;
-  const text = `${MESSAGES.store_warning}\n\n${answer.text}`;
+  const text = `${context.messages.store_warning}\n\n${answer.text}`;
   return { ...answer, text, answer: text, store_error: `assistant_turn: ${saveError}` };
 }
 

@@ -22,12 +22,8 @@ test('stepFromTemplate maps a template step back to the STEP shape', () => {
   assert.equal(stepFromTemplate(DEFAULT_TEMPLATE, 'stap9'), null);
 });
 
-test('the default messages equal the orchestrator constants', () => {
-  assert.deepEqual(DEFAULT_MESSAGES, {
-    unknown_step: orchestrator.UNKNOWN_STEP_TEXT,
-    store_missing: orchestrator.STORE_MISSING_TEXT,
-    store_failed: orchestrator.STORE_FAILED_TEXT,
-    store_warning: orchestrator.STORE_WARNING_TEXT,
-  });
+test('the default messages equal those of the orchestrator, without the one shown before the template is read', () => {
+  const { store_missing, ...editable } = orchestrator.MESSAGES;
+  assert.deepEqual(DEFAULT_MESSAGES, editable);
   assert.equal(DEFAULT_TEMPLATE.messages, DEFAULT_MESSAGES);
 });

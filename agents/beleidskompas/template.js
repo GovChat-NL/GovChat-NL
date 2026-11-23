@@ -20,17 +20,16 @@ const { STEP: step2 } = require('./steps/step2');
 const { STEP: step3 } = require('./steps/step3');
 const { STEP: step4 } = require('./steps/step4');
 
-// The user-facing orchestrator messages. Same strings as the constants in
-// orchestrator.js (kept there too, as its baked defaults; template.test.js
-// checks they are equal). Defined here to avoid a require cycle.
+// The orchestrator messages an admin can change. Same strings as MESSAGES in
+// orchestrator.js (kept there too, as its defaults; template.test.js checks
+// they are equal). Defined here to avoid a require cycle.
 const DEFAULT_MESSAGES = {
   unknown_step:
     'Beleidskompas kon niet bepalen voor welke stap dit bericht is en heeft het daarom niet beantwoord. ' +
     'Stel je vraag opnieuw vanaf de Beleidskompas-pagina, met een stap gekozen.',
-  store_missing:
-    'Beleidskompas kan zijn opslag niet gebruiken en heeft dit bericht daarom niet beantwoord. Meld dit bij de beheerder.',
   store_failed: 'De opslag van Beleidskompas gaf een fout. Dit bericht is daarom niet beantwoord; probeer het later opnieuw.',
   store_warning: 'Let op: de opslag van Beleidskompas gaf een fout. Dit antwoord is mogelijk niet bewaard.',
+  no_answer: 'Beleidskompas kon dit bericht niet beantwoorden. Probeer het later opnieuw.',
 };
 
 // The descriptions of the steps and substeps in the admin template, by id.

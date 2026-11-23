@@ -124,7 +124,7 @@ test('a request for a report passes through the Code nodes of the orchestrator a
   const answer = runCode(orchestrator, 'Antwoord opbouwen', orchestratorReply, { 'Gegevens voor de agents klaarzetten': context });
   assert.deepEqual([answer.ok, answer.mode, answer.step_id], [true, 'report', 'stap2']);
 
-  const finished = runCode(orchestrator, 'Antwoord afronden', { seq: 1 }, { 'Antwoord opbouwen': answer });
+  const finished = runCode(orchestrator, 'Antwoord afronden', { seq: 1 }, { 'Gegevens voor de agents klaarzetten': context, 'Antwoord opbouwen': answer });
   assert.deepEqual(finished, answer);
 });
 
@@ -140,7 +140,7 @@ test('a title request, and the message when the turn of the user cannot be store
   assert.equal(runCode(orchestrator, 'Titel opbouwen', { text: 'Dorpshuizen verduurzamen' }, { 'Verzoek voorbereiden': request }).text, 'Beleidskompas - Dorpshuizen verduurzamen');
   assert.equal(runCode(orchestrator, 'Titel opbouwen', { error: { message: 'x' } }, { 'Verzoek voorbereiden': request }).text, 'Beleidskompas - Een casus over dorpshuizen.');
 
-  const failed = runCode(orchestrator, 'Opslagfout melden', { error: { message: 'HTTP 500' } });
-  assert.deepEqual([failed.ok, failed.error], [false, 'user_turn: HTTP 500']);
-  assert.ok(failed.text.length > 0);
+  const context = { messages: { store_failed: 'Eigen tekst bij een opslagfout.' } };
+  const failed = runCode(orchestrator, 'Opslagfout melden', { error: { message: 'HTTP 500' } }, { 'Gegevens voor de agents klaarzetten': context });
+  assert.deepEqual([failed.ok, failed.error, failed.text], [false, 'user_turn: HTTP 500', 'Eigen tekst bij een opslagfout.']);
 });

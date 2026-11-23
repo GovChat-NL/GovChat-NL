@@ -59,12 +59,13 @@ export function renderFlow({ store, render, markDirty }) {
     text(flow, "report_disclaimer", 2, "Staat onder elk stapresultaat."),
   );
 
+  flow.messages = flow.messages || {}; // older versions lack it
   const messages = card(
     "Meldingen",
-    text(flow.messages, "unknown_step", 2, "Getoond als de assistent geen stap kan kiezen."),
-    text(flow.messages, "store_missing", 2, "Getoond als het gesprek of de gebruiker ontbreekt in de aanvraag."),
-    text(flow.messages, "store_failed", 2, "Getoond als de casus niet kan worden opgeslagen."),
-    text(flow.messages, "store_warning", 2, "Getoond boven het antwoord als opslaan tijdelijk mislukt."),
+    text(flow.messages, "unknown_step", 2, "Getoond als om de uitwerking van een onbekende deelstap wordt gevraagd."),
+    text(flow.messages, "store_failed", 2, "Getoond als de casus niet gelezen of het bericht niet opgeslagen kan worden."),
+    text(flow.messages, "store_warning", 2, "Staat boven een antwoord dat niet opgeslagen kon worden."),
+    text(flow.messages, "no_answer", 2, "Getoond als de assistent geen antwoord geeft."),
   );
 
   return { content: h("div", { class: "stack" }, notice, rules, prompts, messages, list) };
@@ -76,10 +77,10 @@ const LABELS = {
   conversation_prompt: "Conversation prompt",
   orchestrator_prompt: "Orchestrator prompt",
   report_disclaimer: "Disclaimer onder stapresultaat",
-  unknown_step: "Stap onbekend",
-  store_missing: "Casusopslag ontbreekt",
+  unknown_step: "Deelstap onbekend",
   store_failed: "Opslaan mislukt",
   store_warning: "Waarschuwing bij opslaan",
+  no_answer: "Geen antwoord",
 };
 
 function stepEditor(step, { store, markDirty, render }) {

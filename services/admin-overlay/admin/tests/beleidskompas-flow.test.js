@@ -55,6 +55,7 @@ test("an empty prompt-like field means the seed text; the four steps are fixed",
   assert.ok(seed.steps[0].substeps[0].answer_format.startsWith("###"));
   const flow = normalizeBeleidskompasFlow({
     rules: " ",
+    messages: { store_failed: "Eigen tekst bij een opslagfout." },
     webhook_token: "oud",
     steps: [
       { id: "stapX", title: "Vreemd" },
@@ -62,7 +63,7 @@ test("an empty prompt-like field means the seed text; the four steps are fixed",
     ],
   });
   assert.equal(flow.rules, seed.rules);
-  assert.deepEqual(flow.messages, { ...seed.messages, store_failed: "Eigen tekst" });
+  assert.deepEqual(flow.messages, { ...seed.messages, store_failed: "Eigen tekst bij een opslagfout." });
   assert.deepEqual(flow.steps.map((s) => s.id), ["stap1", "stap2", "stap3", "stap4"]);
   assert.equal(flow.steps[0].prompt, seed.steps[0].prompt);
   assert.equal(flow.steps[0].substeps[0].prompt, "eigen");
