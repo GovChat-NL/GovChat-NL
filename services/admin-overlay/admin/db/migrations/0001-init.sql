@@ -1,3 +1,5 @@
+CREATE EXTENSION IF NOT EXISTS vector;
+
 -- The state of a Beleidskompas case. A case is a LibreChat conversation
 -- (its id is the conversationId) that belongs to one user. Case texts and
 -- reports are versioned: a change is a new version and the newest counts;

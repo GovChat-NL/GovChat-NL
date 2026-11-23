@@ -401,7 +401,7 @@ services:
   #  De data staat in een Docker-volume, net als die van MongoDB en n8n.
   # ---------------------------------------------------------------------------
   beleidskompas-postgres:
-    image: postgres:16-alpine
+    image: pgvector/pgvector:0.8.0-pg16
     container_name: librechat-beleidskompas-postgres
     restart: unless-stopped
     environment:
