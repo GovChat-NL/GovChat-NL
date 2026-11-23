@@ -453,7 +453,8 @@ function normalizeBeleidskompasFlow(input) {
       // Documents picked in the Flow builder; nothing reads them yet. Missing = not picked yet.
       document_ids: Array.isArray(step.document_ids) ? [...new Set(step.document_ids.map(String))] : undefined,
       rag: normalizeStepRagSettings(step.rag || fb.rag || {}, step.id ? step : fb),
-      substeps: substepsRaw.map((sub, subIdx) => {
+      // A substep without an id is left out: reports are stored by id.
+      substeps: substepsRaw.filter((sub) => String(sub?.id || "").trim()).map((sub, subIdx) => {
         const id = String(sub?.id || "").trim();
         const sfb = fb.substeps.find((d) => d.id === id) || {};
         return {

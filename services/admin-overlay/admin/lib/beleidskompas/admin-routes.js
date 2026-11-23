@@ -18,7 +18,7 @@ function mount(app, { requireAuth, getStore, normalizeFlow, defaultFlow, publish
     const normalized = normalizeFlow(input);
     // Reports and feedback are stored by substep id. The editor gives every substep one, so a
     // substep without an id comes from a hand-edited import.
-    const ids = normalized.steps.flatMap((step) => (step.substeps || []).map((sub) => sub.id));
+    const ids = input.steps.flatMap((step) => (step?.substeps || []).map((sub) => String(sub?.id || "").trim()));
     if (ids.some((id) => !id)) throw new StoreError(400, "Every substep needs an id");
     const duplicate = ids.find((id, i) => ids.indexOf(id) !== i);
     if (duplicate) throw new StoreError(400, `Substep id ${duplicate} is used more than once`);

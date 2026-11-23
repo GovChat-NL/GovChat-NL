@@ -31,3 +31,9 @@ test('a moved substep keeps its id and gets the label of its new place', () => {
   assert.deepEqual(substeps.slice(0, 2), [[second.id, '1.1', 'Overheidsinterventie'], [first.id, '1.2', 'Probleemdefinitie']]);
   assert.deepEqual(substeps.at(-1), ['sub_k3x9q2m7', '1.6', 'Nieuw']);
 });
+
+test('the page numbers the substeps like stepFromTemplate', async () => {
+  const { buildConfig } = await import('../../../overlay/src/apps/beleidskompas/config.js');
+  const page = buildConfig({}, DEFAULT_TEMPLATE).steps.map((step) => step.substeps.map((substep) => substep.label));
+  assert.deepEqual(page, DEFAULT_TEMPLATE.steps.map((step) => stepFromTemplate(DEFAULT_TEMPLATE, step.id).substeps.map((substep) => substep.label)));
+});
