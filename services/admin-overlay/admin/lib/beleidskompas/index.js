@@ -72,12 +72,14 @@ async function connect(pool, { migrate, wait, log, delays }) {
 }
 
 /** Deletes the cases older than the admin's retention setting. A failure
- *  is logged; the next sweep tries again. */
-async function sweep(store, getRetentionDays, log) {
+ *  is logged; the next sweep tries again. The period is logged when it
+ *  differs from `seen.days`, the one logged last. */
+async function sweep(store, getRetentionDays, log, seen = {}) {
   try {
     const days = Number(typeof getRetentionDays === "function" ? await getRetentionDays() : 0);
     if (!Number.isInteger(days) || days <= 0) return;
-    log.log(`[govchat-admin] Beleidskompas retention: keeping cases ${days} days`);
+    if (days !== seen.days) log.log(`[govchat-admin] Beleidskompas retention: keeping cases ${days} days`);
+    seen.days = days;
     const deleted = await store.deleteCasesOlderThan(days);
     if (deleted) log.log(`[govchat-admin] Beleidskompas retention: deleted ${deleted} cases older than ${days} days`);
   } catch (err) {
@@ -102,8 +104,9 @@ function start(app, { resolveUser, getLive, getRetentionDays, onReady } = {}, en
   return connect(pool, { migrate, wait, log, delays }).then(async (ready) => {
     store = ready;
     if (onReady) onReady(pool);
-    await sweep(store, getRetentionDays, log);
-    setInterval(() => void sweep(store, getRetentionDays, log), sweepIntervalMs).unref();
+    const seen = {};
+    await sweep(store, getRetentionDays, log, seen);
+    setInterval(() => void sweep(store, getRetentionDays, log, seen), sweepIntervalMs).unref();
     return ready;
   });
 }
