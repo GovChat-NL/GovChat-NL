@@ -122,6 +122,7 @@ function shapeStep(step, idx, own) {
     id,
     nr,
     title: String(step.title || "").trim(),
+    // Same label rule as stepFromTemplate in agents/beleidskompas/template.js.
     substeps: substeps.map((s, i) => ({ id: String(s.id), label: `${nr}.${i + 1}`, title: String(s.title || "").trim() })),
     short: String(own.description || "").trim() || texts.short,
     info: String(own.description || "").trim() || texts.info,

@@ -14,13 +14,17 @@ const {
   finishAnswer,
 } = require('../orchestrator');
 const { STEPS } = require('../generate-workflow');
-const { DEFAULT_TEMPLATE } = require('../template');
+const { DEFAULT_TEMPLATE, stepFromTemplate } = require('../template');
 
 const env = { N8N_WEBHOOK_TOKEN: 'geheim', BELEIDSKOMPAS_STORE_URL: 'http://store', BELEIDSKOMPAS_STORE_TOKEN: 'store-token' };
 const headers = { authorization: 'Bearer geheim' };
 // What the admin answers: the published template and its settings.
 const live = { version_id: 'v1', flow: DEFAULT_TEMPLATE, settings: { default_model: 'een-model' } };
 const stepIds = STEPS.map((step) => step.id);
+
+// The id of a default substep, by its number in the default template.
+const idOf = (label) =>
+  DEFAULT_TEMPLATE.steps.flatMap((step) => stepFromTemplate(DEFAULT_TEMPLATE, step.id).substeps).find((substep) => substep.label === label).id;
 
 function pageMessage(request, shown = 'Zichtbare tekst') {
   return `${shown}\n\n[${REQUEST_META_LABEL}]: data:application/json;base64,${Buffer.from(JSON.stringify(request), 'utf8').toString('base64')}`;
@@ -34,7 +38,7 @@ const report11 = '**Stap 1 · Publiek en provinciaal belang · 1.1 Probleemdefin
 const report12 = '**Stap 1 · Publiek en provinciaal belang · 1.2 Overheidsinterventie**\n\n### Overheidsinterventie\n**Oordeel:** beperkt\n\n---\nDisclaimer';
 const state = {
   id: 'c1',
-  reports: { '1.1': { version: 2, text: report11 }, '1.2': { version: 1, text: report12 } },
+  reports: { [idOf('1.1')]: { version: 2, text: report11 }, [idOf('1.2')]: { version: 1, text: report12 } },
   turns: [
     { role: 'user', text: 'hallo' },
     { role: 'assistant', text: 'dag' },
@@ -82,7 +86,7 @@ test('a title request is recognised in the message and in the system prompt, and
 // --- buildContext ---
 
 test('the context holds every report in full, the conversation and the request', () => {
-  const request = prepare({ currentMessage: pageMessage({ substep_id: '1.3', message: '' }) });
+  const request = prepare({ currentMessage: pageMessage({ substep_id: idOf('1.3'), message: '' }) });
   const context = buildContext({ request, state, live, stepIds });
 
   assert.equal(context.ok, true);
@@ -95,14 +99,22 @@ test('the context holds every report in full, the conversation and the request',
 });
 
 test('the agent of a step gets the reports up to and including the substep of a report, and all of them for a question', () => {
-  const later = { ...state, reports: { '2.1': { version: 1, text: 'Rapport 2.1' }, ...state.reports } };
+  const later = { ...state, reports: { [idOf('2.1')]: { version: 1, text: 'Rapport 2.1' }, ...state.reports } };
 
-  const report = buildContext({ request: prepare({ currentMessage: pageMessage({ substep_id: '1.2', message: '' }) }), state: later, live, stepIds });
+  const report = buildContext({ request: prepare({ currentMessage: pageMessage({ substep_id: idOf('1.2'), message: '' }) }), state: later, live, stepIds });
   assert.equal(report.findings, `${report11}\n\n${report12}`);
   assert.ok(report.prompt.includes('Rapport 2.1'), 'the orchestrator reads every report');
 
-  const question = buildContext({ request: prepare({ currentMessage: pageMessage({ substep_id: '1.2', message: 'Waarom?' }) }), state: later, live, stepIds });
+  const question = buildContext({ request: prepare({ currentMessage: pageMessage({ substep_id: idOf('1.2'), message: 'Waarom?' }) }), state: later, live, stepIds });
   assert.equal(question.findings, `${report11}\n\n${report12}\n\nRapport 2.1`);
+});
+
+test('a report of a substep that is no longer in the template reaches no model', () => {
+  const withOld = { ...state, reports: { '1.1': { version: 1, text: 'Oud rapport' }, ...state.reports } };
+  for (const message of ['', 'Waarom?']) {
+    const context = buildContext({ request: prepare({ currentMessage: pageMessage({ substep_id: idOf('1.2'), message }) }), state: withOld, live, stepIds });
+    assert.ok(!context.findings.includes('Oud rapport') && !context.prompt.includes('Oud rapport'));
+  }
 });
 
 test('a typed message says where the user is', () => {
@@ -112,7 +124,7 @@ test('a typed message says where the user is', () => {
 });
 
 test('a new case has no reports and no conversation yet', () => {
-  const request = prepare({ currentMessage: pageMessage({ substep_id: '1.1', message: '' }) });
+  const request = prepare({ currentMessage: pageMessage({ substep_id: idOf('1.1'), message: '' }) });
   const context = buildContext({ request, state: { id: 'c1', reports: {}, turns: [] }, live, stepIds });
   assert.equal(context.prompt, 'Bevindingen tot nu toe: (nog geen deelstap uitgewerkt)\n\nVerzoek: werk deelstap 1.1 uit.');
   assert.equal(context.findings, '');
@@ -142,13 +154,31 @@ test('the context holds what the agents need from the template', () => {
   assert.deepEqual(Object.keys(context.step_templates), ['stap1', 'stap2']);
   assert.ok(!context.system_prompt.includes('stap3_agent'));
   const forStep2 = JSON.parse(context.step_templates.stap2);
-  assert.deepEqual([forStep2.model, forStep2.rules, forStep2.step], ['een-model', 'Een eigen regel.', STEPS[1]]);
+  assert.deepEqual([forStep2.model, forStep2.rules, forStep2.step], ['een-model', 'Een eigen regel.', stepFromTemplate(DEFAULT_TEMPLATE, 'stap2')]);
+});
+
+test('the models read the number of a substep in the list, while the page sends its id', () => {
+  // Overheidsinterventie is moved to the top, and a substep is added.
+  const [first, second, ...rest] = DEFAULT_TEMPLATE.steps[0].substeps;
+  const added = { ...first, id: 'sub_k3x9q2m7', title: 'Nieuw' };
+  const flow = { ...DEFAULT_TEMPLATE, steps: [{ ...DEFAULT_TEMPLATE.steps[0], substeps: [second, first, ...rest, added] }, ...DEFAULT_TEMPLATE.steps.slice(1)] };
+  const moved = { ...live, flow };
+
+  const report = buildContext({ request: prepare({ currentMessage: pageMessage({ substep_id: idOf('1.2'), message: '' }) }), state, live: moved, stepIds });
+  assert.equal(report.substep_id, idOf('1.2'));
+  assert.ok(report.prompt.endsWith('Verzoek: werk deelstap 1.1 uit.'));
+  assert.ok(report.system_prompt.includes('(1.1 Overheidsinterventie, 1.2 Probleemdefinitie, '));
+
+  const question = buildContext({ request: prepare({ currentMessage: pageMessage({ substep_id: 'sub_k3x9q2m7', message: 'Klopt dit?' }) }), state, live: moved, stepIds });
+  assert.equal(question.substep_id, 'sub_k3x9q2m7');
+  assert.ok(question.prompt.endsWith('Bericht van de gebruiker (de gebruiker zit in deelstap 1.6):\nKlopt dit?'));
 });
 
 // --- The orchestrator's prompt ---
 
 test('the system prompt of the orchestrator lists the agent of every step with its substeps', () => {
-  const prompt = buildOrchestratorPrompt(DEFAULT_TEMPLATE.steps, DEFAULT_TEMPLATE.orchestrator_prompt);
+  const steps = DEFAULT_TEMPLATE.steps.map((step) => stepFromTemplate(DEFAULT_TEMPLATE, step.id));
+  const prompt = buildOrchestratorPrompt(steps, DEFAULT_TEMPLATE.orchestrator_prompt);
   assert.ok(!prompt.includes('{{'));
   assert.ok(prompt.includes('- stap1_agent: stap 1, Publiek en provinciaal belang (1.1 Probleemdefinitie, '));
   for (const step of STEPS) assert.ok(prompt.includes(`- stap${step.nr}_agent: stap ${step.nr}, ${step.title} (`));
@@ -170,10 +200,10 @@ test('without a usable reply the title is made from the first words of the case'
 
 // --- buildAnswer ---
 
-const context = buildContext({ request: prepare({ currentMessage: pageMessage({ substep_id: '1.2', message: '' }) }), state, live, stepIds });
+const context = buildContext({ request: prepare({ currentMessage: pageMessage({ substep_id: idOf('1.2'), message: '' }) }), state, live, stepIds });
 
 test('the answer after a report: the message of the orchestrator and the step it called', () => {
-  const agent = { output: ' Deelstap 1.2 is uitgewerkt. Het budget ontbreekt nog. ', intermediateSteps: [{ action: { tool: 'stap1_agent', toolInput: { substep_id: '1.2', assignment: 'uitwerken' } } }] };
+  const agent = { output: ' Deelstap 1.2 is uitgewerkt. Het budget ontbreekt nog. ', intermediateSteps: [{ action: { tool: 'stap1_agent', toolInput: { substep_label: '1.2', assignment: 'uitwerken' } } }] };
   const answer = buildAnswer({ context, agent, now: 18500 });
 
   assert.deepEqual(answer, {
@@ -181,8 +211,8 @@ test('the answer after a report: the message of the orchestrator and the step it
     user_id: 'u1',
     mode: 'report',
     step_id: 'stap1',
-    asked_from: '1.2',
-    tools: [{ tool: 'stap1_agent', input: { substep_id: '1.2', assignment: 'uitwerken' } }],
+    asked_from: idOf('1.2'),
+    tools: [{ tool: 'stap1_agent', input: { substep_label: '1.2', assignment: 'uitwerken' } }],
     duration_ms: 17500,
     ok: true,
     text: 'Deelstap 1.2 is uitgewerkt. Het budget ontbreekt nog.',
