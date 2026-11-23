@@ -562,7 +562,7 @@ function defaultBeleidskompasState() {
     ],
     documents: [],
     settings: {
-      retention_days: 40,
+      retention_days: 30,
       enforce_source_citation: true,
       require_human_validation: true,
       default_model: "govchat-default",
@@ -2668,7 +2668,7 @@ app.post("/api/beleidskompas/settings", requireAuth, (req, res) => {
     const nextSettings = {
       ...state.settings,
       ...incoming,
-      retention_days: Math.max(1, Number.parseInt(String(incoming.retention_days ?? state.settings?.retention_days ?? 40), 10) || 40),
+      retention_days: Math.max(1, Number.parseInt(String(incoming.retention_days ?? state.settings?.retention_days ?? 30), 10) || 30),
       enforce_source_citation: Boolean(
         Object.prototype.hasOwnProperty.call(incoming, "enforce_source_citation")
           ? incoming.enforce_source_citation
