@@ -52,7 +52,10 @@ function mount(app, { requireAuth, getStore, normalizeFlow, defaultFlow, publish
       }
     }
     if (Object.hasOwn(input, "default_model")) settings.default_model = String(input.default_model).trim() || "govchat-default";
-    res.json({ ok: true, settings: await store.saveSettings(settings) });
+    const before = (await store.getState()).settings.retention_days;
+    const saved = await store.saveSettings(settings);
+    if (saved.retention_days !== before) console.log(`[govchat-admin] Beleidskompas retention: Bewaartermijn set to ${saved.retention_days} days (applies at the next sweep)`);
+    res.json({ ok: true, settings: saved });
   });
   route("get", "/api/beleidskompas/templates/:templateId/export", async (store, req, res) => {
     res.json(await store.exportTemplate(req.params.templateId));
