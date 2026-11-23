@@ -146,8 +146,7 @@ export function askText({ title, label, placeholder = "", value = "", confirm = 
 
 const toastTimers = new WeakMap();
 
-/** Shows a message for 4 s. The same message of the same kind is not
- *  stacked: the one showing stays and its 4 s start again. */
+/** Shows a message for 4 seconds, does not stack duplicate messages */
 export function toast(message, kind = "info") {
   const box = document.getElementById("toasts");
   const className = `toast toast-${kind}`;
