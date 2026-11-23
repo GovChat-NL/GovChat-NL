@@ -89,11 +89,11 @@ function stepToolName(step) {
 
 /** The system prompt of the orchestrator agent: `promptText` with the list
  *  of step agents filled in. `steps` are the steps of the template that
- *  have an agent, as stepFromTemplate gives them. */
+ *  have an agent. */
 function buildOrchestratorPrompt(steps, promptText) {
   const list = steps
     .map((step, index) => {
-      const substeps = step.substeps.map((substep) => `${substep.label} ${substep.title}`).join(', ');
+      const substeps = step.substeps.map((substep) => `${substep.id} ${substep.title}`).join(', ');
       return `- ${stepToolName(step)}: stap ${step.nr || index + 1}, ${step.title} (${substeps})`;
     })
     .join('\n');
@@ -180,14 +180,9 @@ function buildContext({ request, state, live, stepIds }) {
   const stateError = nodeError(state) || (state && state.reports !== null && typeof state.reports === 'object' ? null : 'No state in the answer of the store');
   if (stateError) return failure(request, `state: ${stateError}`, MESSAGES.store_failed);
 
-  const steps = flow.steps
-    .filter((step) => step && Array.isArray(step.substeps) && stepIds.includes(step.id))
-    .map((step) => stepFromTemplate(flow, step.id));
-  const substeps = steps.flatMap((step) => step.substeps);
-  const order = substeps.map((substep) => substep.id);
+  const steps = flow.steps.filter((step) => step && Array.isArray(step.substeps) && stepIds.includes(step.id));
+  const order = steps.flatMap((step) => step.substeps.map((substep) => substep.id));
   const substep_id = order.includes(request.substep_id) ? request.substep_id : '';
-  // The models read the number a person sees, not the id.
-  const label = substep_id ? substeps.find((substep) => substep.id === substep_id).label : '';
   if (request.kind === 'report' && !substep_id) return failure(request, 'No substep recognised in the request', MESSAGES.unknown_step);
 
   const model = String((live.settings && live.settings.default_model) || '').trim() || 'govchat-default';
@@ -199,15 +194,12 @@ function buildContext({ request, state, live, stepIds }) {
       report_prompt: String(flow.report_prompt || ''),
       conversation_prompt: String(flow.conversation_prompt || ''),
       report_disclaimer: String(flow.report_disclaimer || ''),
-      step,
+      step: stepFromTemplate(flow, step.id),
     });
   }
 
   const reports = state.reports;
-  // Only reports of substeps in the template: the page hides the others too.
-  const ids = Object.keys(reports)
-    .filter((id) => order.includes(id))
-    .sort((a, b) => order.indexOf(a) - order.indexOf(b));
+  const ids = Object.keys(reports).sort((a, b) => order.indexOf(a) - order.indexOf(b));
   const reportTexts = (reportIds) =>
     reportIds
       .map((id) => String(reports[id].text || '').trim())
@@ -221,8 +213,8 @@ function buildContext({ request, state, live, stepIds }) {
   const conversation = turns.map((t) => `${t.role === 'user' ? 'Gebruiker' : 'Beleidskompas'}: ${String(t.text || '').trim()}`).join('\n');
   const asked =
     request.kind === 'message'
-      ? `Bericht van de gebruiker (de gebruiker zit in deelstap ${label || 'onbekend'}):\n${request.message}`
-      : `Verzoek: werk deelstap ${label} uit.`;
+      ? `Bericht van de gebruiker (de gebruiker zit in deelstap ${substep_id || 'onbekend'}):\n${request.message}`
+      : `Verzoek: werk deelstap ${substep_id} uit.`;
 
   const prompt = [
     allReports ? `Bevindingen tot nu toe:\n${allReports}` : 'Bevindingen tot nu toe: (nog geen deelstap uitgewerkt)',

@@ -14,19 +14,13 @@ const SEARCH_METHODS = [
 // The step's <li> in the rendered list (index in store.flow.steps).
 const stepEl = (idx) => document.querySelectorAll(".flow-list > .flow-step")[idx];
 
-// A substep is looked up by its id, and its position in the step can change. So a new
-// substep gets a random code that says nothing about its position, like sub_k3x9q2m7.
-export function newSubstepId() {
-  return `sub_${randomCode()}`;
-}
-
-// Not crypto.randomUUID: that only works over HTTPS or on localhost.
-function randomCode() {
-  const characters = "abcdefghijklmnopqrstuvwxyz0123456789";
-  const randomNumbers = crypto.getRandomValues(new Uint8Array(8));
-  let code = "";
-  for (const number of randomNumbers) code += characters[number % characters.length];
-  return code;
+// The id of a new substep: one past the highest number the step has or had in
+// `earlierFlows` (the saved versions). An id that comes back after a delete would
+// take over the deleted substep's default prompt and stored reports.
+export function nextSubstepId(stepNr, step, earlierFlows = []) {
+  const steps = [step, ...earlierFlows.map((flow) => flow?.steps?.find((s) => s.id === step.id))];
+  const highest = Math.max(0, ...steps.flatMap((s) => s?.substeps || []).map((s) => Number(String(s.id).split(".")[1]) || 0));
+  return `${stepNr}.${highest + 1}`;
 }
 
 export function renderFlow({ store, render, markDirty }) {
@@ -132,7 +126,6 @@ function stepEditor(step, { store, markDirty, render }) {
       h(
         "div",
         { class: "substep" },
-        // Same label rule as stepFromTemplate in agents/beleidskompas/template.js.
         h("span", { class: "substep-id" }, `${store.flow.steps.indexOf(step) + 1}.${i + 1}`),
         h(
           "div",
@@ -155,7 +148,9 @@ function stepEditor(step, { store, markDirty, render }) {
       {
         class: "btn btn-small btn-secondary",
         onClick: () => {
-          step.substeps = [...(step.substeps || []), { id: newSubstepId(), title: "", prompt: "", answer_format: "" }];
+          const versions = store.templates.find((t) => t.id === store.templateId)?.versions || [];
+          const id = nextSubstepId(store.flow.steps.indexOf(step) + 1, step, [store.state?.live, ...versions.map((v) => v.snapshot)]);
+          step.substeps = [...(step.substeps || []), { id, title: "", prompt: "", answer_format: "" }];
           markDirty();
           render();
           const row = document.querySelector(".flow-step.is-open .substep:last-of-type");

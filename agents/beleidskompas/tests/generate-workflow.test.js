@@ -6,11 +6,7 @@ const fs = require('node:fs');
 
 const { REQUEST_META_LABEL, TITLE_REQUEST_MARKER } = require('../shared');
 const { STEPS, STEP_AGENT_INPUTS, buildOrchestratorWorkflow, buildStepAgentWorkflow, buildAll } = require('../generate-workflow');
-const { DEFAULT_TEMPLATE, stepFromTemplate } = require('../template');
-// The id of a default substep, by its number in the default template.
-const idOf = (label) =>
-  DEFAULT_TEMPLATE.steps.flatMap((step) => stepFromTemplate(DEFAULT_TEMPLATE, step.id).substeps).find((substep) => substep.label === label).id;
-
+const { DEFAULT_TEMPLATE } = require('../template');
 
 const orchestrator = buildOrchestratorWorkflow(STEPS)[0];
 const agents = STEPS.map((step) => buildStepAgentWorkflow(step)[0]);
@@ -79,7 +75,7 @@ test('a tool passes exactly the inputs the called workflow declares, and the mod
     assert.deepEqual(Object.keys(inputs.value), STEP_AGENT_INPUTS);
     assert.deepEqual(inputs.schema.map((s) => s.id), STEP_AGENT_INPUTS);
     const filledByModel = Object.entries(inputs.value).filter(([, value]) => value.includes('$fromAI')).map(([name]) => name);
-    assert.deepEqual(filledByModel, ['substep_label', 'assignment']);
+    assert.deepEqual(filledByModel, ['substep_id', 'assignment']);
   }
 });
 
@@ -101,22 +97,22 @@ const pageMessage = (request) => `Zichtbaar\n\n[${REQUEST_META_LABEL}]: data:app
 const webhook = (body) => ({ headers: { authorization: 'Bearer geheim' }, body: { sessionId: 'c1', userId: 'u1', ...body } });
 // What the admin answers: the published template and its settings.
 const live = { version_id: 'v1', flow: DEFAULT_TEMPLATE, settings: { default_model: 'een-model' } };
-const state = { id: 'c1', reports: { [idOf('1.1')]: { version: 1, text: '### Probleemdefinitie\n**Probleem:** x\n\n---\nDisclaimer' } }, turns: [] };
+const state = { id: 'c1', reports: { '1.1': { version: 1, text: '### Probleemdefinitie\n**Probleem:** x\n\n---\nDisclaimer' } }, turns: [] };
 
 test('a request for a report passes through the Code nodes of the orchestrator and a step agent', () => {
-  const request = runCode(orchestrator, 'Verzoek voorbereiden', webhook({ currentMessage: pageMessage({ substep_id: idOf('2.1'), message: '' }) }), {}, env);
-  assert.deepEqual([request.kind, request.substep_id], ['report', idOf('2.1')]);
+  const request = runCode(orchestrator, 'Verzoek voorbereiden', webhook({ currentMessage: pageMessage({ substep_id: '2.1', message: '' }) }), {}, env);
+  assert.deepEqual([request.kind, request.substep_id], ['report', '2.1']);
 
   const context = runCode(orchestrator, 'Gegevens voor de agents klaarzetten', state, { 'Verzoek voorbereiden': request, 'Template ophalen': live });
   assert.equal(context.ok, true);
   assert.ok(context.prompt.endsWith('Verzoek: werk deelstap 2.1 uit.'));
-  assert.equal(context.findings, state.reports[idOf('1.1')].text);
+  assert.equal(context.findings, state.reports['1.1'].text);
 
   // What the orchestrator's tool call hands the agent of step 2.
-  const toolInput = { substep_label: '2.1', assignment: 'uitwerken', case_id: context.case_id, user_id: context.user_id, findings: context.findings, conversation: context.conversation, template: context.step_templates.stap2 };
+  const toolInput = { substep_id: '2.1', assignment: 'uitwerken', case_id: context.case_id, user_id: context.user_id, findings: context.findings, conversation: context.conversation, template: context.step_templates.stap2 };
   const assignment = runCode(agents[1], 'Opdracht opbouwen', toolInput);
   assert.deepEqual([assignment.mode, assignment.step_id, assignment.model], ['report', 'stap2', 'een-model']);
-  assert.ok(assignment.user_prompt.includes(`Bevindingen tot nu toe:\n${state.reports[idOf('1.1')].text}`));
+  assert.ok(assignment.user_prompt.includes(`Bevindingen tot nu toe:\n${state.reports['1.1'].text}`));
 
   const agentReply = { output: '### Rolbepaling\n**Oordeel:** regisserend\n\n### Aannames en ontbrekende informatie\n- budget onbekend' };
   const reply = runCode(agents[1], 'Antwoord verwerken', agentReply, { 'Opdracht opbouwen': assignment });
@@ -124,7 +120,7 @@ test('a request for a report passes through the Code nodes of the orchestrator a
   const result = runCode(agents[1], 'Resultaat voor de orchestrator', { version: 1 }, { 'Opdracht opbouwen': assignment, 'Antwoord verwerken': reply });
   assert.deepEqual([result.kind, result.saved, result.report], ['report', true, reply.report_text]);
 
-  const orchestratorReply = { output: 'Deelstap 2.1 is uitgewerkt. Het budget ontbreekt nog.', intermediateSteps: [{ action: { tool: 'stap2_agent', toolInput: { substep_label: '2.1', assignment: 'uitwerken' } } }] };
+  const orchestratorReply = { output: 'Deelstap 2.1 is uitgewerkt. Het budget ontbreekt nog.', intermediateSteps: [{ action: { tool: 'stap2_agent', toolInput: { substep_id: '2.1', assignment: 'uitwerken' } } }] };
   const answer = runCode(orchestrator, 'Antwoord opbouwen', orchestratorReply, { 'Gegevens voor de agents klaarzetten': context });
   assert.deepEqual([answer.ok, answer.mode, answer.step_id], [true, 'report', 'stap2']);
 
@@ -133,7 +129,7 @@ test('a request for a report passes through the Code nodes of the orchestrator a
 });
 
 test('an invalid assignment skips the agent and still gives the orchestrator a result', () => {
-  const assignment = runCode(agents[0], 'Opdracht opbouwen', { substep_label: '3.1', assignment: 'uitwerken', case_id: 'c1', user_id: 'u1', findings: '', conversation: '', template: JSON.stringify({ step: STEPS[0] }) });
+  const assignment = runCode(agents[0], 'Opdracht opbouwen', { substep_id: '3.1', assignment: 'uitwerken', case_id: 'c1', user_id: 'u1', findings: '', conversation: '', template: JSON.stringify({ step: STEPS[0] }) });
   assert.equal(assignment.valid, false);
   assert.equal(runCode(agents[0], 'Resultaat voor de orchestrator', assignment, { 'Opdracht opbouwen': assignment }).kind, 'error');
 });

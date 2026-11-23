@@ -6,23 +6,23 @@
       "title": "Publiek en provinciaal belang",
       "substeps": [
         {
-          "id": "sub_qklcsmmg",
+          "id": "1.1",
           "title": "Probleemdefinitie"
         },
         {
-          "id": "sub_44xmfrqq",
+          "id": "1.2",
           "title": "Overheidsinterventie"
         },
         {
-          "id": "sub_rno733xd",
+          "id": "1.3",
           "title": "Stakeholderanalyse"
         },
         {
-          "id": "sub_5awqht5w",
+          "id": "1.4",
           "title": "Provinciaal doel"
         },
         {
-          "id": "sub_ipcjfnt7",
+          "id": "1.5",
           "title": "Integrale afweging"
         }
       ]
@@ -33,7 +33,7 @@
       "title": "Rolbepaling provincie",
       "substeps": [
         {
-          "id": "sub_maats7cr",
+          "id": "2.1",
           "title": "Rolbepaling"
         }
       ]
@@ -44,19 +44,19 @@
       "title": "Instrumentkeuze",
       "substeps": [
         {
-          "id": "sub_ye4ug2sn",
+          "id": "3.1",
           "title": "Sturingsbepaling"
         },
         {
-          "id": "sub_jqwhro6k",
+          "id": "3.2",
           "title": "Instrumentarium"
         },
         {
-          "id": "sub_eo3y9ffj",
+          "id": "3.3",
           "title": "Afwegingskader"
         },
         {
-          "id": "sub_f9he28ll",
+          "id": "3.4",
           "title": "Gevolgenanalyse"
         }
       ]
@@ -67,15 +67,15 @@
       "title": "Governance-inrichting",
       "substeps": [
         {
-          "id": "sub_79tvogur",
+          "id": "4.1",
           "title": "Good governance-principes"
         },
         {
-          "id": "sub_ychd11mr",
+          "id": "4.2",
           "title": "Organisatorische governance"
         },
         {
-          "id": "sub_t1723lbi",
+          "id": "4.3",
           "title": "Governance-richtlijnen"
         }
       ]

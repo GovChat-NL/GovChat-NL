@@ -21,13 +21,11 @@ function pageMessage(request, shown = 'Zichtbare tekst') {
 
 test('parsePageMessage reads the substep and the message from the block of the page', () => {
   const parts = parsePageMessage(pageMessage({ substep_id: '3.2', message: ' Waarom mét accenten? ' }));
-  assert.deepEqual(parts, { fromPage: true, substepId: '3.2', message: 'Waarom mét accenten?', shown: 'Zichtbare tekst' });
-  // An id is passed on as it is, also when it is not a number.
-  assert.equal(parsePageMessage(pageMessage({ substep_id: ' sub_k3x9q2m7 ', message: '' })).substepId, 'sub_k3x9q2m7');
+  assert.deepEqual(parts, { fromPage: true, stepId: 'stap3', substepId: '3.2', message: 'Waarom mét accenten?', shown: 'Zichtbare tekst' });
 });
 
 test('parsePageMessage: text without the block was typed in the chat of LibreChat and is all message', () => {
-  assert.deepEqual(parsePageMessage('  Hoe werkt dit?  '), { fromPage: false, substepId: '', message: 'Hoe werkt dit?', shown: 'Hoe werkt dit?' });
+  assert.deepEqual(parsePageMessage('  Hoe werkt dit?  '), { fromPage: false, stepId: '', substepId: '', message: 'Hoe werkt dit?', shown: 'Hoe werkt dit?' });
 });
 
 test('parsePageMessage: an unreadable block leaves the text as the message', () => {

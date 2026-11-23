@@ -17,10 +17,10 @@ const STEP = {
   title: 'Instrumentkeuze',
   role: readPrompt('step3/role.md'),
   substeps: [
-    { id: 'sub_ye4ug2sn', title: 'Sturingsbepaling', ...readSubstepPrompt('step3/3.1-sturingsbepaling.md') },
-    { id: 'sub_jqwhro6k', title: 'Instrumentarium', ...readSubstepPrompt('step3/3.2-instrumentarium.md') },
-    { id: 'sub_eo3y9ffj', title: 'Afwegingskader', ...readSubstepPrompt('step3/3.3-afwegingskader.md') },
-    { id: 'sub_f9he28ll', title: 'Gevolgenanalyse', ...readSubstepPrompt('step3/3.4-gevolgenanalyse.md') },
+    { id: '3.1', title: 'Sturingsbepaling', ...readSubstepPrompt('step3/3.1-sturingsbepaling.md') },
+    { id: '3.2', title: 'Instrumentarium', ...readSubstepPrompt('step3/3.2-instrumentarium.md') },
+    { id: '3.3', title: 'Afwegingskader', ...readSubstepPrompt('step3/3.3-afwegingskader.md') },
+    { id: '3.4', title: 'Gevolgenanalyse', ...readSubstepPrompt('step3/3.4-gevolgenanalyse.md') },
   ],
 };
 

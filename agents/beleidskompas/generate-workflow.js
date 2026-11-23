@@ -377,7 +377,7 @@ function makeWorkflow({ id, name, active, nodes, connections }) {
 
 // What the orchestrator passes to the agent of a step. The first two are
 // filled in by the orchestrator's model, the rest by its workflow.
-const STEP_AGENT_INPUTS = ['substep_label', 'assignment', 'case_id', 'user_id', 'findings', 'conversation', 'template'];
+const STEP_AGENT_INPUTS = ['substep_id', 'assignment', 'case_id', 'user_id', 'findings', 'conversation', 'template'];
 
 function stepAgentWorkflowId(step) {
   return `govchat-beleidskompas-agent-${step.id}`;
@@ -470,7 +470,7 @@ function stepAgentToolNode(step, position) {
     workflowId: stepAgentWorkflowId(step),
     workflowName: stepAgentWorkflowName(step),
     filledByModel: [
-      { name: 'substep_label', description: `Het nummer van de deelstap zoals in de lijst, bijvoorbeeld ${step.nr}.1. Leeg bij een vraag over de hele stap.`, optional: true },
+      { name: 'substep_id', description: `De deelstap, bijvoorbeeld ${step.nr}.1. Leeg bij een vraag over de hele stap.`, optional: true },
       { name: 'assignment', description: 'Het woord uitwerken, of de vraag van de gebruiker, letterlijk.' },
     ],
     filledByWorkflow: [
