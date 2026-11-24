@@ -12,6 +12,20 @@
 
 const PURGE_SQL = "DELETE FROM general_feedback WHERE created_at < now() - make_interval(days => $1)";
 
+/** The sender of a request: LibreChat says whose access token it carries
+ *  (the refresh-token cookie only holds the user id). Returns `{ email }`,
+ *  or null without a valid token. Throws when LibreChat itself fails, so the
+ *  failure is logged instead of looking like a login problem. */
+async function librechatUserFromBearer(req, { baseUrl, fetchImpl = fetch }) {
+  const authorization = String((req.headers && req.headers.authorization) || "").trim();
+  if (!authorization.toLowerCase().startsWith("bearer ")) return null;
+  const resp = await fetchImpl(`${baseUrl}/api/user`, { headers: { authorization, accept: "application/json" } });
+  if (resp.status === 401 || resp.status === 403) return null;
+  if (!resp.ok) throw new Error(`LibreChat /api/user answered ${resp.status}`);
+  const user = await resp.json();
+  return { email: String((user && user.email) || "").trim() };
+}
+
 function createGeneralFeedbackHandlers({ getQuery, retentionDays = 365 }) {
   const unavailable = { status: 503, body: { error: "Feedback kan nu niet worden opgeslagen" } };
 
@@ -49,4 +63,4 @@ function createGeneralFeedbackHandlers({ getQuery, retentionDays = 365 }) {
   return { submit, list };
 }
 
-module.exports = { createGeneralFeedbackHandlers };
+module.exports = { createGeneralFeedbackHandlers, librechatUserFromBearer };
