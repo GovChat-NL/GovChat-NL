@@ -14,6 +14,11 @@ webapp in en staat los van de logo's en favicons. De modus bepaalt de afbeelding
 afzonderlijk instellen als je bijvoorbeeld de oorspronkelijke LibreChat-logo's
 met een andere applicatietitel wilt gebruiken.
 
+De beschrijving en optionele afbeelding voor gedeelde links zijn ook instelbaar
+via env-variabelen, onafhankelijk van de logo-modus. Zie
+[Linkpreviews configureren](LINK_PREVIEWS.md) voor defaults, voorbeelden,
+veiligheid en het verversen van externe previewcaches.
+
 ## Eigen logo's gebruiken
 
 De standaard GovChat-NL-logo's en favicons staan samen in `./branding`. Plaats
@@ -60,8 +65,8 @@ onbekende modus stoppen de container met een duidelijke foutmelding.
    `docker compose up -d --force-recreate librechat`.
 
 De branding wordt bij iedere containerstart vóór `npm run backend` toegepast.
-De metadata-wrapper werkt ook de HTML-titel, het webmanifest en de bijbehorende
-serviceworker-revisies bij. De proxy laat brandingbestanden opnieuw valideren,
+De metadata-wrapper werkt ook de HTML-titel, linkpreview-metadata, het webmanifest
+en de bijbehorende serviceworker-revisies bij. De proxy laat brandingbestanden opnieuw valideren,
 zodat een oude HTTP-cache niet de vorige huisstijl blijft tonen.
 De brandingassets zelf worden niet persistent in `client/dist/assets` gemount:
 zo blijven de originele imagebestanden intact en herstelt modus `librechat` de
