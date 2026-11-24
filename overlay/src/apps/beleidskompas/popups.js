@@ -102,7 +102,10 @@ export function openGeneralFeedback({ stepId, versionId }) {
       </form>
     </div>`;
   document.body.appendChild(modal);
-  wireModal(modal);
+  // Closing (✕, Annuleren, Escape, a click next to the dialog) asks first while there is unsent text.
+  wireModal(modal, {
+    canClose: () => !modal.querySelector("textarea")?.value.trim() || confirm("Je feedback is nog niet verstuurd. Toch sluiten?"),
+  });
 
   const form = modal.querySelector("form");
   const textarea = form.querySelector("textarea");
@@ -143,9 +146,10 @@ export function openGeneralFeedback({ stepId, versionId }) {
 
 /** A modal closes with Escape, takes the focus when it opens and gives it
  *  back to the element that opened it. */
-function wireModal(modal) {
+function wireModal(modal, { canClose = () => true } = {}) {
   const previousFocus = document.activeElement;
   const close = () => {
+    if (!canClose()) return;
     document.removeEventListener("keydown", onKeyDown);
     modal.remove();
     if (previousFocus && typeof previousFocus.focus === "function") previousFocus.focus();
