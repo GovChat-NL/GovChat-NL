@@ -12,6 +12,7 @@ const { StoreError } = require("./lib/beleidskompas/store");
 const templateRoutes = require("./lib/beleidskompas/admin-routes");
 const { createGeneralFeedbackHandlers } = require("./lib/beleidskompas/general-feedback");
 let templateStore = null;
+let beleidskompasPool = null;
 
 const app = express();
 const PORT = process.env.PORT || 3002;
@@ -75,7 +76,6 @@ const TRANSCRIPT_SESSIONS_FILE = "transcript-sessions.json";
 const BELEIDSKOMPAS_LIVE_FILE = "beleidskompas-config.json";
 const BELEIDSKOMPAS_FEEDBACK_FILE = "beleidskompas-feedback.json";
 const BELEIDSKOMPAS_FEEDBACK_MAX = 500;
-const BELEIDSKOMPAS_GENERAL_FEEDBACK_FILE = "beleidskompas-general-feedback.json";
 const BELEIDSKOMPAS_GENERAL_FEEDBACK_RETENTION_DAYS = 365;
 const TRANSCRIPT_AUTH_DEBUG = String(process.env.TRANSCRIPT_AUTH_DEBUG || "false").toLowerCase() === "true";
 const LIBRECHAT_JWT_REFRESH_SECRET = String(process.env.JWT_REFRESH_SECRET || process.env.JWT_SECRET || "").trim();
@@ -2331,23 +2331,23 @@ async function librechatUserFromBearer(req) {
 }
 
 const generalFeedback = createGeneralFeedbackHandlers({
-  read: () => {
-    const stored = readPrivateJSON(BELEIDSKOMPAS_GENERAL_FEEDBACK_FILE);
-    return stored && Array.isArray(stored.items) ? stored.items : [];
-  },
-  write: (items) => writePrivateJSON(BELEIDSKOMPAS_GENERAL_FEEDBACK_FILE, { items }),
+  getQuery: () => (beleidskompasPool ? (sql, params) => beleidskompasPool.query(sql, params) : null),
   retentionDays: BELEIDSKOMPAS_GENERAL_FEEDBACK_RETENTION_DAYS,
 });
 
-app.post("/api/beleidskompas-general-feedback", async (req, res) => {
-  const out = generalFeedback.submit({ user: await librechatUserFromBearer(req), body: req.body });
-  return res.status(out.status).json(out.body);
-});
+const sendFeedbackResult = (work) => async (req, res) => {
+  try {
+    const out = await work(req);
+    return res.status(out.status).json(out.body);
+  } catch (err) {
+    console.error("[govchat-admin] General feedback failed:", err.message);
+    return res.status(500).json({ error: "Feedback kon niet worden verwerkt" });
+  }
+};
 
-app.get("/api/beleidskompas-general-feedback", requireAuth, (req, res) => {
-  const out = generalFeedback.list();
-  return res.status(out.status).json(out.body);
-});
+app.post("/api/beleidskompas-general-feedback", sendFeedbackResult(async (req) => generalFeedback.submit({ user: await librechatUserFromBearer(req), body: req.body })));
+
+app.get("/api/beleidskompas-general-feedback", requireAuth, sendFeedbackResult(() => generalFeedback.list()));
 
 app.get("/api/transcript-sessions", requireLibreChatUser, (req, res) => {
   const userId = String(req.librechatUser?.id || "").trim();
@@ -2783,6 +2783,7 @@ if (require.main === module) {
     resolveUser: resolveUserFromVerifiedRefreshToken,
     getLive: liveBeleidskompasTemplate,
     onReady(pool) {
+      beleidskompasPool = pool;
       templateStore = createTemplateStore(pool, defaultBeleidskompasState().settings);
       ensureLiveBeleidskompasTemplate().catch((err) => console.error("[govchat-admin] Could not publish deployed template:", err));
     },
