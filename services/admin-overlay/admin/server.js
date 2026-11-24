@@ -8,6 +8,7 @@ const sharp = require("sharp");
 const { WebSocket, WebSocketServer } = require("ws");
 const beleidskompas = require("./lib/beleidskompas");
 const { createTemplateStore } = require("./lib/beleidskompas/template-store");
+const { createDocumentIndexer } = require("./lib/beleidskompas/documents/index-documents");
 const { StoreError } = require("./lib/beleidskompas/store");
 const templateRoutes = require("./lib/beleidskompas/admin-routes");
 let templateStore = null;
@@ -2755,6 +2756,7 @@ if (require.main === module) {
     getLive: liveBeleidskompasTemplate,
     onReady(pool) {
       templateStore = createTemplateStore(pool, defaultBeleidskompasState().settings);
+      createDocumentIndexer(pool).start();
       ensureLiveBeleidskompasTemplate().catch((err) => console.error("[govchat-admin] Could not publish deployed template:", err));
     },
   });

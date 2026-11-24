@@ -7,6 +7,7 @@ const path = require("node:path");
 const { once } = require("node:events");
 const { connectionSettings, applyMigrations } = require("../db/connection");
 const { createTemplateStore } = require("../lib/beleidskompas/template-store");
+const { createDocumentIndexer } = require("../lib/beleidskompas/documents/index-documents");
 const { mount } = require("../lib/beleidskompas/admin-routes");
 
 const enabled = process.env.BELEIDSKOMPAS_DB_TEST === "true" && connectionSettings().host;
@@ -143,5 +144,36 @@ test("admin template API persists UI actions in PostgreSQL", { skip: !enabled &&
       assert.equal(response.status, 500);
       assert.deepEqual(await response.json(), { error: "Template request failed" });
     } finally { store = current; console.error = errorLog; }
+  });
+
+  await t.test("an uploaded document is stored in chunks, and keeps them when indexing it again fails", async () => {
+    const text = "# Doel\n\nEerste alinea.\n\n# Aanpak\n\nTweede alinea.";
+    const uploaded = await global.fetch("/api/beleidskompas/documents", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ filename: "kader.md", mime_type: "text/markdown", content_base64: Buffer.from(text).toString("base64") }),
+    });
+    const kader = (await uploaded.json()).document;
+    assert.equal(kader.index_status, "pending");
+    const listed = async () => (await api.listDocuments()).find((d) => d.id === kader.id);
+    const chunks = async () => (await pool.query(
+      "SELECT chunk_number, heading, text, embedding_model FROM document_chunks WHERE document_id = $1 ORDER BY chunk_number", [kader.id],
+    )).rows;
+    const silent = { log() {}, error() {} };
+
+    // Stands in for the embedding model.
+    const embed = async (list) => list.map((chunk) => ({ ...chunk, embedding: Array(3072).fill(0.5), embeddingModel: "test-model" }));
+    await createDocumentIndexer(pool, { embed, log: silent }).indexPending();
+    assert.equal((await listed()).index_status, "ready");
+    const stored = [
+      { chunk_number: 1, heading: "Doel", text: "Eerste alinea.", embedding_model: "test-model" },
+      { chunk_number: 2, heading: "Aanpak", text: "Tweede alinea.", embedding_model: "test-model" },
+    ];
+    assert.deepEqual(await chunks(), stored);
+
+    await pool.query("UPDATE documents SET index_status = 'pending' WHERE id = $1", [kader.id]);
+    const failing = async () => { throw new Error("model unavailable"); };
+    await createDocumentIndexer(pool, { embed: failing, log: silent }).indexPending();
+    assert.deepEqual(await listed().then((d) => [d.index_status, d.index_error]), ["failed", "model unavailable"]);
+    assert.deepEqual(await chunks(), stored);
   });
 });

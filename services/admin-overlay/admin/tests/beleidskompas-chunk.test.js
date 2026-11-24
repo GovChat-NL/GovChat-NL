@@ -3,7 +3,7 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 
-const { chunkBlocks } = require("../lib/beleidskompas/rag/chunk");
+const { chunkBlocks } = require("../lib/beleidskompas/documents/chunk");
 
 const heading = (text) => ({ heading: true, text, location: "", page: null });
 const text = (text, page = null) => ({ heading: false, text, location: page ? `pagina ${page}` : "", page });

@@ -3,7 +3,7 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 
-const { extractText } = require("../lib/beleidskompas/rag/extract");
+const { extractText } = require("../lib/beleidskompas/documents/extract");
 
 const file = (filename, text = "") => ({ filename, content: Buffer.from(text, "utf8") });
 

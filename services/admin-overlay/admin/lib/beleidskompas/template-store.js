@@ -13,7 +13,7 @@ const versionView = (v) => ({
   id: String(v.id), version: v.version, note: v.note, snapshot: v.snapshot,
   published_at: new Date(v.created_at).toISOString(), published_by: v.created_by,
 });
-const documentColumns = "id::text, filename, content_type AS mime_type, size AS size_bytes, preview_text, created_at AS uploaded_at";
+const documentColumns = "id::text, filename, content_type AS mime_type, size AS size_bytes, preview_text, index_status, index_error, created_at AS uploaded_at";
 
 function createTemplateStore(pool, defaultSettings = {}) {
   async function transaction(run) {

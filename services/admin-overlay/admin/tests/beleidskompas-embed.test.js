@@ -3,7 +3,7 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 
-const { embedChunks } = require("../lib/beleidskompas/rag/embed");
+const { embedChunks } = require("../lib/beleidskompas/documents/embed");
 
 test("the chunks go to the model in groups, with their heading, and each gets its own embedding back", async () => {
   const requests = [];
