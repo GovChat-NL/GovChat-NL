@@ -103,6 +103,7 @@ CREATE TABLE IF NOT EXISTS document_chunks (
   chunk_number integer NOT NULL,
   text text NOT NULL,
   location text NOT NULL DEFAULT '',
+  page integer,
   heading text NOT NULL DEFAULT '',
   embedding halfvec(3072) NOT NULL,
   embedding_model text NOT NULL,

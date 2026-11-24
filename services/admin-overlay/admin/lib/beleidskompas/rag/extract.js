@@ -4,10 +4,11 @@
  * Reads the text of an uploaded document.
  *
  * extractText returns the text as blocks in reading order. A block is a
- * heading or a piece of text: `{ heading, text, location }`. `location` is
- * the page of a PDF, the slide of a presentation or the sheet of a
- * spreadsheet. The other formats do not tell where a block stands, so
- * there it is empty.
+ * heading or a piece of text: `{ heading, text, location, page }`.
+ * `location` says where the block stands, for a person to read: the page
+ * of a PDF, the slide of a presentation or the sheet of a spreadsheet.
+ * `page` is the number of that page or slide. The other formats do not
+ * tell where a block stands, so there `location` is empty and `page` null.
  *
  * Text and markdown files are read here. The office formats and PDF go
  * through officeparser. A scanned PDF holds pictures of pages and no text,
@@ -19,6 +20,9 @@ const { parseOffice } = require("officeparser");
 
 const OFFICE_FORMATS = new Set(["pdf", "docx", "pptx", "xlsx", "odt", "odp", "ods", "rtf"]);
 const TEXT_FORMATS = new Set(["txt", "md"]);
+
+// Where a block stands when the format does not tell.
+const NOWHERE = { location: "", page: null };
 
 class ExtractError extends Error {
   constructor(code, message) {
@@ -39,7 +43,7 @@ function blocksFromText(text, markdown) {
   let paragraph = [];
 
   const endParagraph = () => {
-    if (paragraph.length) blocks.push({ heading: false, text: paragraph.join("\n"), location: "" });
+    if (paragraph.length) blocks.push({ heading: false, text: paragraph.join("\n"), ...NOWHERE });
     paragraph = [];
   };
 
@@ -47,7 +51,7 @@ function blocksFromText(text, markdown) {
     const title = markdown ? MARKDOWN_HEADING.exec(line.trim()) : null;
     if (title) {
       endParagraph();
-      blocks.push({ heading: true, text: title[1].trim(), location: "" });
+      blocks.push({ heading: true, text: title[1].trim(), ...NOWHERE });
     } else if (line.trim() === "") {
       endParagraph();
     } else {
@@ -70,23 +74,25 @@ function nodeText(node, separator = " ") {
   return (node.children || []).map((child) => nodeText(child, separator)).filter(Boolean).join(separator);
 }
 
-function locationOf(node, current) {
+/** Where the content of a page, slide or sheet stands. A table stands
+ *  where the page or slide around it does. */
+function placeOf(node, current) {
   const meta = node.metadata || {};
-  if (node.type === "page" && meta.pageNumber) return `pagina ${meta.pageNumber}`;
-  if (node.type === "slide" && meta.slideNumber) return `dia ${meta.slideNumber}`;
-  if (node.type === "sheet" && meta.sheetName) return `werkblad ${meta.sheetName}`;
+  if (node.type === "page" && meta.pageNumber) return { location: `pagina ${meta.pageNumber}`, page: meta.pageNumber };
+  if (node.type === "slide" && meta.slideNumber) return { location: `dia ${meta.slideNumber}`, page: meta.slideNumber };
+  if (node.type === "sheet" && meta.sheetName) return { location: `werkblad ${meta.sheetName}`, page: null };
   return current;
 }
 
 /** A block per node. The row of a table is one block, so a spreadsheet
  *  keeps one block per row. */
-function blocksFromNodes(nodes, location = "", blocks = []) {
+function blocksFromNodes(nodes, place = NOWHERE, blocks = []) {
   for (const node of nodes || []) {
     if (CONTAINERS.includes(node.type)) {
-      blocksFromNodes(node.children, locationOf(node, location), blocks);
+      blocksFromNodes(node.children, placeOf(node, place), blocks);
     } else if (!PICTURES.includes(node.type)) {
       const text = nodeText(node, node.type === "row" ? " | " : " ");
-      if (text) blocks.push({ heading: node.type === "heading", text, location });
+      if (text) blocks.push({ heading: node.type === "heading", text, ...place });
     }
   }
   return blocks;
