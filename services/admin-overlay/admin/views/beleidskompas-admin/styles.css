@@ -212,6 +212,8 @@ textarea.input { resize: vertical; line-height: 1.45; }
 .fb-meta { display: flex; gap: 10px; color: var(--muted); font-size: 12px; }
 .fb-version { padding: 0 7px; border-radius: 9px; background: #f0f0f3; }
 .fb-comment.is-empty { color: #b0b0b8; font-style: italic; }
+.fb-row.is-general { grid-template-columns: 1fr; }
+.fb-row.is-general .fb-comment { white-space: pre-wrap; overflow-wrap: anywhere; }
 
 /* ── Dialog and toasts ────────────────────────────── */
 .dialog { margin: auto; border: none; border-radius: 12px; padding: 20px; width: min(440px, 92vw); box-shadow: 0 20px 60px rgba(0,0,0,.3); }
