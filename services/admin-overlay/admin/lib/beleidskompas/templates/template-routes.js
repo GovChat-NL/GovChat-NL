@@ -1,11 +1,14 @@
 "use strict";
 
+/** The endpoints of the template editor: templates, their versions, the live
+ *  version and the settings. */
+
 const { HttpError } = require("../shared/errors");
 const { createAdminRoute } = require("../shared/admin-route");
 
 function mount(app, { requireAuth, getRepository, getService, normalizeFlow, defaultFlow, publishLive }) {
   const failure = "Template request failed";
-  const route = createAdminRoute(app, { requireAuth, get: getRepository, failure });
+  const repositoryRoute = createAdminRoute(app, { requireAuth, get: getRepository, failure });
   const serviceRoute = createAdminRoute(app, { requireAuth, get: getService, failure });
   const flow = (input) => {
     if (!input || typeof input !== "object" || !Array.isArray(input.steps)) throw new HttpError(400, "A template flow with steps is required");
@@ -16,22 +19,22 @@ function mount(app, { requireAuth, getRepository, getService, normalizeFlow, def
     return normalized;
   };
 
-  route("get", "/api/beleidskompas/state", async (repository, req, res) => {
+  repositoryRoute("get", "/api/beleidskompas/state", async (repository, req, res) => {
     res.json({ ok: true, state: { ...await repository.getState(), default_flow: defaultFlow() } });
   });
-  route("post", "/api/beleidskompas/templates", async (repository, req, res) => {
+  repositoryRoute("post", "/api/beleidskompas/templates", async (repository, req, res) => {
     const template = await repository.createTemplate(req.body?.name, flow(req.body?.flow ?? defaultFlow()));
     res.status(201).json({ ok: true, template });
   });
-  route("post", "/api/beleidskompas/templates/:templateId/versions", async (repository, req, res) => {
+  repositoryRoute("post", "/api/beleidskompas/templates/:templateId/versions", async (repository, req, res) => {
     const version = await repository.saveVersion(req.params.templateId, flow(req.body?.flow), req.body?.note);
     res.status(201).json({ ok: true, version });
   });
-  route("post", "/api/beleidskompas/templates/:templateId/versions/:versionId/deploy", async (repository, req, res) => {
+  repositoryRoute("post", "/api/beleidskompas/templates/:templateId/versions/:versionId/deploy", async (repository, req, res) => {
     const live = await repository.deployVersion(req.params.templateId, req.params.versionId, publishLive);
     res.json({ ok: true, live });
   });
-  route("post", "/api/beleidskompas/settings", async (repository, req, res) => {
+  repositoryRoute("post", "/api/beleidskompas/settings", async (repository, req, res) => {
     const input = req.body || {};
     const settings = {};
     if (Object.hasOwn(input, "retention_days")) {
