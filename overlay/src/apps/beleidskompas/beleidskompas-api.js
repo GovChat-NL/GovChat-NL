@@ -34,19 +34,12 @@ function extractMessageText(message) {
  *  no user or conversation id, only the rating, an optional comment, the
  *  step and substep it is about and the template version the page loaded. */
 export async function sendBeleidskompasFeedback({ rating, comment, stepId, substepId, versionId }) {
-  let resp;
-  try {
-    resp = await fetch("/govchat-api/beleidskompas-feedback", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ rating, comment: String(comment || ""), step_id: stepId, substep_id: substepId || null, version_id: versionId || null }),
-    });
-  } catch {
-    throw new Error("Versturen is niet gelukt. Controleer je verbinding en probeer het opnieuw.");
-  }
-  // A message the user can read: what went wrong and what to do, no codes.
-  if (resp.status === 503) throw new Error("Feedback kan op dit moment niet worden opgeslagen. Probeer het later opnieuw.");
-  if (!resp.ok) throw new Error("Er ging iets mis bij het versturen. Probeer het later opnieuw.");
+  const resp = await fetch("/govchat-api/beleidskompas-feedback", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ rating, comment: String(comment || ""), step_id: stepId, substep_id: substepId || null, version_id: versionId || null }),
+  });
+  if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
 }
 
 const REQUEST_META_LABEL = "beleidskompas-request";

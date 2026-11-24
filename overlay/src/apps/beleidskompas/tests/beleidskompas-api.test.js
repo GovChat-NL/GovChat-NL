@@ -59,19 +59,6 @@ test("readCaseState copes with a case that has nothing yet", () => {
   assert.deepEqual(readCaseState({ reports: {}, turns: [] }), { results: {}, messages: [], lastReportSubstepId: "" });
 });
 
-test("sendBeleidskompasFeedback turns a failure into a message for the user", async () => {
-  const realFetch = globalThis.fetch;
-  try {
-    globalThis.fetch = async () => ({ ok: false, status: 503 });
-    await assert.rejects(sendBeleidskompasFeedback({ rating: "up", stepId: "stap1" }), /later opnieuw/);
-    globalThis.fetch = async () => { throw new TypeError("Failed to fetch"); };
-    await assert.rejects(sendBeleidskompasFeedback({ rating: "up", stepId: "stap1" }), /verbinding/);
-  } finally {
-    globalThis.fetch = realFetch;
-  }
-});
-
-
 test("sendBeleidskompasFeedback posts the rating with step, substep and template version", async () => {
   const calls = [];
   const realFetch = globalThis.fetch;
