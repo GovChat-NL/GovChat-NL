@@ -42,6 +42,29 @@ export async function sendBeleidskompasFeedback({ rating, comment, stepId, subst
   if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
 }
 
+/** The e-mail address LibreChat has for the logged-in user ("" when it has none). */
+export async function fetchOwnEmail() {
+  const resp = await librechatFetch("/api/user");
+  if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+  const user = await resp.json().catch(() => ({}));
+  return String(user?.email || "").trim();
+}
+
+/** Sends general feedback (free text about Beleidskompas as a whole) to the
+ *  admin. Not anonymous: the admin looks up the sender's e-mail address from
+ *  the access token, so an admin can reply. */
+export async function sendBeleidskompasGeneralFeedback({ text, stepId, versionId }) {
+  const resp = await librechatFetch("/govchat-api/beleidskompas-general-feedback", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ text, step_id: stepId || null, version_id: versionId || null }),
+  });
+  if (!resp.ok) {
+    const data = await resp.json().catch(() => ({}));
+    throw new Error(data.error || `HTTP ${resp.status}`);
+  }
+}
+
 const REQUEST_META_LABEL = "beleidskompas-request";
 
 /** The only channel to the orchestrator is the chat message, so what the
