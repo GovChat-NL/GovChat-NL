@@ -23,7 +23,7 @@
  * anything else is a 500 with a generic message.
  */
 
-const { StoreError } = require("./case-repository");
+const { HttpError } = require("../errors");
 
 function suppliedToken(headers) {
   const auth = String((headers && headers.authorization) || "").trim();
@@ -58,7 +58,7 @@ function createBeleidskompasHandlers({ store, internalToken, resolveUser, getLiv
     try {
       return { status: 200, body: await work() };
     } catch (err) {
-      if (err instanceof StoreError) return { status: err.status, body: { error: err.message } };
+      if (err instanceof HttpError) return { status: err.status, body: { error: err.message } };
       console.error("[beleidskompas-store]", err);
       return { status: 500, body: { error: "Beleidskompas store error" } };
     }
@@ -93,7 +93,7 @@ function createBeleidskompasHandlers({ store, internalToken, resolveUser, getLiv
     myCase: (req) =>
       handleMine(req, async (userId) => {
         const state = await store.getState({ caseId: p(req).id, userId, maxTurns: q(req).max_turns });
-        if (!state) throw new StoreError(404, "Unknown case");
+        if (!state) throw new HttpError(404, "Unknown case");
         return state;
       }),
 

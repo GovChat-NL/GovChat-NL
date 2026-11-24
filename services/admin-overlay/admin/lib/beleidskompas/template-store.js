@@ -1,11 +1,11 @@
 "use strict";
 
 const crypto = require("crypto");
-const { StoreError } = require("./cases/case-repository");
+const { HttpError } = require("./errors");
 
 function id(value) {
   const text = String(value ?? "");
-  if (!/^[1-9]\d*$/.test(text) || !Number.isSafeInteger(Number(text))) throw new StoreError(400, "Invalid id");
+  if (!/^[1-9]\d*$/.test(text) || !Number.isSafeInteger(Number(text))) throw new HttpError(400, "Invalid id");
   return text;
 }
 
@@ -33,7 +33,7 @@ function createTemplateStore(pool, defaultSettings = {}) {
 
   async function requireTemplate(db, templateId, lock = false) {
     const { rows } = await db.query(`SELECT * FROM templates WHERE id = $1${lock ? " FOR UPDATE" : ""}`, [id(templateId)]);
-    if (!rows[0]) throw new StoreError(404, "Template not found");
+    if (!rows[0]) throw new HttpError(404, "Template not found");
     return rows[0];
   }
 
@@ -41,7 +41,7 @@ function createTemplateStore(pool, defaultSettings = {}) {
     const docIds = [...new Set((flow.steps || []).flatMap((s) => s.document_ids || []).map(id))];
     if (docIds.length) {
       const { rows } = await db.query("SELECT id FROM documents WHERE id = ANY($1::int[])", [docIds]);
-      if (rows.length !== docIds.length) throw new StoreError(400, "A selected document no longer exists");
+      if (rows.length !== docIds.length) throw new HttpError(400, "A selected document no longer exists");
     }
     const { rows } = await db.query(
       `INSERT INTO template_versions (template_id, version, note, snapshot)
@@ -54,7 +54,7 @@ function createTemplateStore(pool, defaultSettings = {}) {
 
   async function insertTemplate(db, name, flow) {
     const title = String(name || "").trim();
-    if (!title) throw new StoreError(400, "Template name is required");
+    if (!title) throw new HttpError(400, "Template name is required");
     const { rows } = await db.query("INSERT INTO templates (name) VALUES ($1) RETURNING id", [title]);
     await insertVersion(db, rows[0].id, flow, "Eerste versie");
     return String(rows[0].id);
@@ -96,7 +96,7 @@ function createTemplateStore(pool, defaultSettings = {}) {
       // Serialize deployments, including the first deployment when live has no row yet.
       await db.query("LOCK TABLE live IN EXCLUSIVE MODE");
       const { rows } = await db.query("SELECT snapshot FROM template_versions WHERE id = $1 AND template_id = $2", [id(versionId), id(templateId)]);
-      if (!rows[0]) throw new StoreError(404, "Version not found for this template");
+      if (!rows[0]) throw new HttpError(404, "Version not found for this template");
       await db.query("INSERT INTO live (template_id, version_id) VALUES ($1, $2) ON CONFLICT (key) DO UPDATE SET template_id = EXCLUDED.template_id, version_id = EXCLUDED.version_id", [templateId, versionId]);
       const documents = (await db.query(`SELECT ${documentColumns} FROM documents`)).rows;
       await publish(rows[0].snapshot, documents, String(versionId));
@@ -115,7 +115,7 @@ function createTemplateStore(pool, defaultSettings = {}) {
 
   async function insertDocument(db, doc) {
     const filename = String(doc.filename || "").trim();
-    if (!filename) throw new StoreError(400, "Filename is required");
+    if (!filename) throw new HttpError(400, "Filename is required");
     const content = Buffer.from(String(doc.content_base64 || ""), "base64");
     const mime = String(doc.mime_type || "application/octet-stream");
     const preview = mime.startsWith("text/") || /\.(md|txt)$/i.test(filename) ? content.toString("utf8").slice(0, 4000) : "";
@@ -127,31 +127,31 @@ function createTemplateStore(pool, defaultSettings = {}) {
   }
 
   async function updateDocument(documentId, filename) {
-    if (!String(filename || "").trim()) throw new StoreError(400, "Filename is required");
+    if (!String(filename || "").trim()) throw new HttpError(400, "Filename is required");
     const { rows } = await pool.query(`UPDATE documents SET filename = $2 WHERE id = $1 RETURNING ${documentColumns}`, [id(documentId), filename.trim()]);
-    if (!rows[0]) throw new StoreError(404, "Document not found");
+    if (!rows[0]) throw new HttpError(404, "Document not found");
     return rows[0];
   }
 
   async function getDocument(documentId) {
     const { rows } = await pool.query(`SELECT ${documentColumns}, content FROM documents WHERE id = $1`, [id(documentId)]);
-    if (!rows[0]) throw new StoreError(404, "Document not found");
+    if (!rows[0]) throw new HttpError(404, "Document not found");
     return rows[0];
   }
 
   async function deleteDocument(documentId) {
     try {
       const result = await pool.query("DELETE FROM documents WHERE id = $1 RETURNING id", [id(documentId)]);
-      if (!result.rows[0]) throw new StoreError(404, "Document not found");
+      if (!result.rows[0]) throw new HttpError(404, "Document not found");
     } catch (err) {
-      if (err.code === "23503") throw new StoreError(409, "Document belongs to a saved version and cannot be deleted");
+      if (err.code === "23503") throw new HttpError(409, "Document belongs to a saved version and cannot be deleted");
       throw err;
     }
   }
 
   async function exportTemplate(templateId) {
     const template = (await getState()).templates.find((t) => t.id === id(templateId));
-    if (!template) throw new StoreError(404, "Template not found");
+    if (!template) throw new HttpError(404, "Template not found");
     const flow = template.versions[0].snapshot;
     const docIds = [...new Set((flow.steps || []).flatMap((s) => s.document_ids || []))];
     const documents = await Promise.all(docIds.map(async (docId) => {
@@ -162,7 +162,7 @@ function createTemplateStore(pool, defaultSettings = {}) {
   }
 
   async function importTemplate({ name, flow, documents = [] }) {
-    if (!Array.isArray(documents)) throw new StoreError(400, "Documents must be an array");
+    if (!Array.isArray(documents)) throw new HttpError(400, "Documents must be an array");
     const templateId = await transaction(async (db) => {
       const mapping = new Map();
       for (const doc of documents) mapping.set(String(doc.id), (await insertDocument(db, doc)).id);

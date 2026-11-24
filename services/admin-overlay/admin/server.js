@@ -11,7 +11,7 @@ const { createTemplateStore } = require("./lib/beleidskompas/template-store");
 const { createDocumentStore } = require("./lib/beleidskompas/documents/document-store");
 const { createDocumentIndexer } = require("./lib/beleidskompas/documents/index-documents");
 const documentRoutes = require("./lib/beleidskompas/documents/document-routes");
-const { StoreError } = require("./lib/beleidskompas/cases/case-repository");
+const { HttpError } = require("./lib/beleidskompas/errors");
 const templateRoutes = require("./lib/beleidskompas/admin-routes");
 let templateStore = null;
 let documentStore = null;
@@ -616,7 +616,7 @@ function publishBeleidskompasLiveConfig(flow, versionId) {
 
 /** The live template as the orchestrator reads it (GET /api/beleidskompas/live). */
 async function liveBeleidskompasTemplate() {
-  if (!templateStore) throw new StoreError(503, "Beleidskompas database is not available");
+  if (!templateStore) throw new HttpError(503, "Beleidskompas database is not available");
   const state = await templateStore.getState();
   const versionId = state.templates.find((t) => t.live_version_id)?.live_version_id || "";
   return { version_id: versionId, flow: state.live && normalizeBeleidskompasFlow(state.live), settings: { default_model: state.settings.default_model } };

@@ -25,7 +25,8 @@
  */
 
 const db = require("../../db/connection");
-const { createStore, StoreError } = require("./cases/case-repository");
+const { createStore } = require("./cases/case-repository");
+const { HttpError } = require("./errors");
 const routes = require("./cases/case-routes");
 
 // How long to wait before the next attempt to reach the database: after the
@@ -45,7 +46,7 @@ function waitingStore(current) {
       name,
       (...args) => {
         const store = current();
-        if (!store) throw new StoreError(503, "Beleidskompas store is not available");
+        if (!store) throw new HttpError(503, "Beleidskompas store is not available");
         return store[name](...args);
       },
     ]),

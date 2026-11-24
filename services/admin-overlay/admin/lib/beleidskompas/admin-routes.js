@@ -1,24 +1,24 @@
 "use strict";
 
-const { StoreError } = require("./cases/case-repository");
+const { HttpError } = require("./errors");
 
 function mount(app, { requireAuth, getStore, normalizeFlow, defaultFlow, publishLive }) {
   const route = (method, path, run) => app[method](path, requireAuth, async (req, res) => {
     try {
       const store = getStore();
-      if (!store) throw new StoreError(503, "Beleidskompas database is not available");
+      if (!store) throw new HttpError(503, "Beleidskompas database is not available");
       await run(store, req, res);
     } catch (err) {
-      if (!(err instanceof StoreError)) console.error("[govchat-admin] Template request failed:", err);
-      res.status(err instanceof StoreError ? err.status : 500).json({ error: err instanceof StoreError ? err.message : "Template request failed" });
+      if (!(err instanceof HttpError)) console.error("[govchat-admin] Template request failed:", err);
+      res.status(err instanceof HttpError ? err.status : 500).json({ error: err instanceof HttpError ? err.message : "Template request failed" });
     }
   });
   const flow = (input) => {
-    if (!input || typeof input !== "object" || !Array.isArray(input.steps)) throw new StoreError(400, "A template flow with steps is required");
+    if (!input || typeof input !== "object" || !Array.isArray(input.steps)) throw new HttpError(400, "A template flow with steps is required");
     const normalized = normalizeFlow(input);
     const ids = normalized.steps.flatMap((step) => (step.substeps || []).map((sub) => sub.id));
     const duplicate = ids.find((id, i) => ids.indexOf(id) !== i);
-    if (duplicate) throw new StoreError(400, `Substep id ${duplicate} is used more than once`);
+    if (duplicate) throw new HttpError(400, `Substep id ${duplicate} is used more than once`);
     return normalized;
   };
 
@@ -42,12 +42,12 @@ function mount(app, { requireAuth, getStore, normalizeFlow, defaultFlow, publish
     const settings = {};
     if (Object.hasOwn(input, "retention_days")) {
       const days = Number(input.retention_days);
-      if (!Number.isInteger(days) || days < 1) throw new StoreError(400, "Retention days must be a positive integer");
+      if (!Number.isInteger(days) || days < 1) throw new HttpError(400, "Retention days must be a positive integer");
       settings.retention_days = days;
     }
     for (const key of ["enforce_source_citation", "require_human_validation"]) {
       if (Object.hasOwn(input, key)) {
-        if (typeof input[key] !== "boolean") throw new StoreError(400, `${key} must be a boolean`);
+        if (typeof input[key] !== "boolean") throw new HttpError(400, `${key} must be a boolean`);
         settings[key] = input[key];
       }
     }

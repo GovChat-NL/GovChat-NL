@@ -2,7 +2,7 @@
 
 /** The endpoints of the document library. */
 
-const { StoreError } = require("../cases/case-repository");
+const { HttpError } = require("../errors");
 
 function mount(app, { requireAuth, getStore }) {
   // Puts a document back in the queue, so it is indexed once more.
@@ -10,16 +10,16 @@ function mount(app, { requireAuth, getStore }) {
   app.post("/api/beleidskompas/documents/:docId/reindex", requireAuth, async (req, res) => {
     try {
       const store = getStore();
-      if (!store) throw new StoreError(503, "Beleidskompas database is not available");
+      if (!store) throw new HttpError(503, "Beleidskompas database is not available");
 
       // A document id is a whole number above zero, written without a leading zero.
       const isId = /^[1-9]\d*$/.test(req.params.docId);
       const found = isId && (await store.requeue(req.params.docId));
-      if (!found) throw new StoreError(404, "Document not found");
+      if (!found) throw new HttpError(404, "Document not found");
 
       res.json({ ok: true });
     } catch (err) {
-      if (err instanceof StoreError) return res.status(err.status).json({ error: err.message });
+      if (err instanceof HttpError) return res.status(err.status).json({ error: err.message });
       console.error("[govchat-admin] Document request failed:", err);
       res.status(500).json({ error: "Document request failed" });
     }

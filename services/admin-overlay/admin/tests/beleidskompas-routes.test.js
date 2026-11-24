@@ -4,7 +4,7 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 
 const { createBeleidskompasHandlers } = require("../lib/beleidskompas/cases/case-routes");
-const { StoreError } = require("../lib/beleidskompas/cases/case-repository");
+const { HttpError } = require("../lib/beleidskompas/errors");
 
 /** A store that records what it was asked and answers what the test says. */
 function fakeStore(answers = {}) {
@@ -72,9 +72,9 @@ test("the writes take the user and the fields from the body", async () => {
   assert.deepEqual(await handlers.setTitle(withToken({ params: { id: "conv-1" }, body: { user_id: "user-a", title: "Laadpalen" } })), { status: 200, body: { ok: true } });
 });
 
-test("a StoreError becomes its status, any other error a 500 without details", async () => {
+test("an HttpError becomes its status, any other error a 500 without details", async () => {
   const handlers = createBeleidskompasHandlers({
-    store: fakeStore({ addReport: new StoreError(400, "report text is required"), addTurn: new Error("connection refused: secret host") }),
+    store: fakeStore({ addReport: new HttpError(400, "report text is required"), addTurn: new Error("connection refused: secret host") }),
     internalToken: TOKEN,
   });
   assert.deepEqual(await handlers.addReport(withToken({ params: { id: "conv-1" }, body: { user_id: "u" } })), { status: 400, body: { error: "report text is required" } });

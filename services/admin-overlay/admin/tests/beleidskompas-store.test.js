@@ -3,7 +3,8 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 
-const { StoreError, createStore } = require("../lib/beleidskompas/cases/case-repository");
+const { createStore } = require("../lib/beleidskompas/cases/case-repository");
+const { HttpError } = require("../lib/beleidskompas/errors");
 
 /** A stand-in for the database: answers each query from `answers`, keyed by
  *  a fragment of the SQL, and records every call. Whether the SQL itself is
@@ -38,7 +39,7 @@ test("ensureCase creates the case once and returns it", async () => {
 test("a case id taken by another user cannot be written to, and reads as unknown", async () => {
   const db = fakeDatabase({ "FROM cases WHERE id": ownedBy(CASE) });
   const store = createStore(db.query);
-  await assert.rejects(store.ensureCase({ id: "conv-1", userId: "user-b" }), (err) => err instanceof StoreError && err.status === 403);
+  await assert.rejects(store.ensureCase({ id: "conv-1", userId: "user-b" }), (err) => err instanceof HttpError && err.status === 403);
   await assert.rejects(store.addReport({ caseId: "conv-1", userId: "user-b", substepId: "1.1", text: "x" }), (err) => err.status === 403);
   await assert.rejects(store.addTurn({ caseId: "conv-1", userId: "user-b", role: "user", text: "hoi" }), (err) => err.status === 403);
   await assert.rejects(store.setTitle({ caseId: "conv-1", userId: "user-b", title: "x" }), (err) => err.status === 404);
