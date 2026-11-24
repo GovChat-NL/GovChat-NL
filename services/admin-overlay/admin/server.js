@@ -2265,57 +2265,38 @@ templateRoutes.mount(app, {
   publishLive: publishTemplateLive,
 });
 
-// ── Beleidskompas answer feedback ────────────────────────────────
+// ── Beleidskompas feedback ───────────────────────────────────────
 //
-// Deliberately anonymous; stored in the Beleidskompas database (see
-// lib/beleidskompas/answer-feedback.js).
-const answerFeedback = createAnswerFeedbackHandlers({
-  getQuery: () => (beleidskompasPool ? (sql, params) => beleidskompasPool.query(sql, params) : null),
-  max: BELEIDSKOMPAS_FEEDBACK_MAX,
-});
-
-app.post("/api/beleidskompas-feedback", async (req, res) => {
-  try {
-    const out = await answerFeedback.submit({ body: req.body });
-    return res.status(out.status).json(out.body);
-  } catch (err) {
-    console.error("[govchat-admin] Answer feedback failed:", err.message);
-    return res.status(500).json({ error: "Feedback kon niet worden verwerkt" });
-  }
-});
-
-app.get("/api/beleidskompas-feedback", requireAuth, async (req, res) => {
-  try {
-    const out = await answerFeedback.list();
-    return res.status(out.status).json(out.body);
-  } catch (err) {
-    console.error("[govchat-admin] Answer feedback failed:", err.message);
-    return res.status(500).json({ error: "Feedback kon niet worden geladen" });
-  }
-});
-
-// ── Beleidskompas general feedback ───────────────────────────────
-//
-// Unlike the answer feedback above, this is stored with the sender's e-mail
-// address (see lib/beleidskompas/general-feedback.js).
+// Both kinds live in the Beleidskompas database, in their own tables. Answer
+// feedback is anonymous (lib/beleidskompas/answer-feedback.js); general
+// feedback is stored with the sender's e-mail address
+// (lib/beleidskompas/general-feedback.js).
+const feedbackQuery = () => (beleidskompasPool ? (sql, params) => beleidskompasPool.query(sql, params) : null);
+const answerFeedback = createAnswerFeedbackHandlers({ getQuery: feedbackQuery, max: BELEIDSKOMPAS_FEEDBACK_MAX });
 const generalFeedback = createGeneralFeedbackHandlers({
-  getQuery: () => (beleidskompasPool ? (sql, params) => beleidskompasPool.query(sql, params) : null),
+  getQuery: feedbackQuery,
   retentionDays: BELEIDSKOMPAS_GENERAL_FEEDBACK_RETENTION_DAYS,
 });
 
-const sendFeedbackResult = (work) => async (req, res) => {
+const sendFeedbackResult = (label, work) => async (req, res) => {
   try {
     const out = await work(req);
     return res.status(out.status).json(out.body);
   } catch (err) {
-    console.error("[govchat-admin] General feedback failed:", err.message);
+    console.error(`[govchat-admin] ${label} failed:`, err.message);
     return res.status(500).json({ error: "Feedback kon niet worden verwerkt" });
   }
 };
 
-app.post("/api/beleidskompas-general-feedback", sendFeedbackResult(async (req) => generalFeedback.submit({ user: await librechatUserFromBearer(req, { baseUrl: LIBRECHAT_INTERNAL_URL }), body: req.body })));
-
-app.get("/api/beleidskompas-general-feedback", requireAuth, sendFeedbackResult(() => generalFeedback.list()));
+app.post("/api/beleidskompas-feedback", sendFeedbackResult("Answer feedback", (req) => answerFeedback.submit({ body: req.body })));
+app.get("/api/beleidskompas-feedback", requireAuth, sendFeedbackResult("Answer feedback", () => answerFeedback.list()));
+app.post(
+  "/api/beleidskompas-general-feedback",
+  sendFeedbackResult("General feedback", async (req) =>
+    generalFeedback.submit({ user: await librechatUserFromBearer(req, { baseUrl: LIBRECHAT_INTERNAL_URL }), body: req.body }),
+  ),
+);
+app.get("/api/beleidskompas-general-feedback", requireAuth, sendFeedbackResult("General feedback", () => generalFeedback.list()));
 
 app.get("/api/transcript-sessions", requireLibreChatUser, (req, res) => {
   const userId = String(req.librechatUser?.id || "").trim();

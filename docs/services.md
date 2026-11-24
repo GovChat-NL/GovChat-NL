@@ -18,7 +18,7 @@ De hoofdconfiguratie staat in [`docker-compose.yml`](../docker-compose.yml). Zon
 | `n8n-postgres` | Slaat n8n-gegevens en -instellingen op. |
 | `mongodb` | Slaat de gegevens van LibreChat op. |
 | `redis` | Levert sessie- en cacheopslag voor LibreChat. |
-| `beleidskompas-postgres` | Slaat de gegevens van Beleidskompas op: de casussen (de casustekst, de uitwerkingen en het gesprek), de templates en hun versies, en de algemene feedback met het e-mailadres van de afzender. Alleen de beheeromgeving praat ermee. |
+| `beleidskompas-postgres` | Slaat de gegevens van Beleidskompas op: de casussen (de casustekst, de uitwerkingen en het gesprek), de templates en hun versies, de anonieme antwoordfeedback (👍/👎), en de algemene feedback met het e-mailadres van de afzender. Alleen de beheeromgeving praat ermee. |
 | `meilisearch` | Ondersteunt het zoeken binnen LibreChat. |
 | `qdrant` | Interne vectoropslag voor de daarvoor ingerichte workflows. De container heeft geen gepubliceerde hostpoort. |
 | `govchat-retention` | Ruimt gegevens op volgens het ingestelde bewaarbeleid; zie [`retention-policy.md`](retention-policy.md). |
