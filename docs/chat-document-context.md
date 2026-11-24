@@ -1,5 +1,11 @@
 # Documentbijlagen in de n8n-chatagent
 
+> The sections below describe the existing native-attachment compatibility path.
+> This branch also contains an **unfinished, opt-in**
+> [Tika-only upload experiment](tika-upload-processing.md). It is not a validated
+> replacement for this path and must not be assumed active. The experiment does
+> not modify workflows or introduce per-turn Tika parsing for persisted text.
+
 ## Oorzaak en oplossing
 
 LibreChat verstuurt een PDF naar een OpenAI-compatible custom endpoint als een

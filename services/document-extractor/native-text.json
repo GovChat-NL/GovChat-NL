@@ -1,0 +1,14 @@
+{
+  "txt": ["text/plain"], "log": ["text/plain"],
+  "md": ["text/markdown", "text/x-markdown", "text/md", "application/markdown", "application/x-markdown"],
+  "markdown": ["text/markdown"], "csv": ["text/csv", "application/csv"],
+  "tsv": ["text/tab-separated-values"], "json": ["application/json"],
+  "xml": ["application/xml", "text/xml"], "yaml": ["application/yaml", "text/yaml"],
+  "yml": ["application/yaml", "text/yaml"], "html": ["text/html"], "htm": ["text/html"],
+  "css": ["text/css"], "js": ["text/javascript", "application/javascript"],
+  "ts": ["application/typescript"], "sql": ["application/sql"], "sh": ["application/x-sh"],
+  "py": ["text/x-python", "text/x-script.python"], "java": ["text/x-java"],
+  "c": ["text/x-c"], "cpp": ["text/x-c++"], "cs": ["text/x-csharp"], "h": ["text/x-h"],
+  "php": ["text/x-php"], "rb": ["text/x-ruby"], "tex": ["text/x-tex"],
+  "vtt": ["text/vtt"], "ics": ["text/calendar"], "coffee": ["application/vnd.coffeescript"]
+}
