@@ -77,7 +77,17 @@ function createDocumentStore(pool) {
     await pool.query("UPDATE documents SET index_status = 'failed', index_error = $2 WHERE id = $1", [documentId, reason]);
   }
 
-  return { requeueInterrupted, takePending, getFile, saveChunks, markFailed };
+  /** Lets a document wait again, so it is indexed once more. Returns
+   *  whether the document exists. */
+  async function requeue(documentId) {
+    const { rows } = await pool.query(
+      "UPDATE documents SET index_status = 'pending', index_error = '' WHERE id = $1 RETURNING id",
+      [documentId],
+    );
+    return rows.length > 0;
+  }
+
+  return { requeueInterrupted, takePending, getFile, saveChunks, markFailed, requeue };
 }
 
 module.exports = { createDocumentStore };

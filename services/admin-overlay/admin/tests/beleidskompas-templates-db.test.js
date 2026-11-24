@@ -7,7 +7,9 @@ const path = require("node:path");
 const { once } = require("node:events");
 const { connectionSettings, applyMigrations } = require("../db/connection");
 const { createTemplateStore } = require("../lib/beleidskompas/template-store");
+const { createDocumentStore } = require("../lib/beleidskompas/documents/document-store");
 const { createDocumentIndexer } = require("../lib/beleidskompas/documents/index-documents");
+const documentRoutes = require("../lib/beleidskompas/documents/document-routes");
 const { mount } = require("../lib/beleidskompas/admin-routes");
 
 const enabled = process.env.BELEIDSKOMPAS_DB_TEST === "true" && connectionSettings().host;
@@ -33,8 +35,11 @@ test("admin template API persists UI actions in PostgreSQL", { skip: !enabled &&
   const app = express();
   app.use(express.json());
   const defaultFlow = () => ({ title: "Default", steps: [] });
+  const requireAuth = (req, res, next) => req.headers["x-test-admin"] === "yes" ? next() : res.sendStatus(401);
+  const documentStore = createDocumentStore(pool);
+  documentRoutes.mount(app, { requireAuth, getStore: () => documentStore });
   mount(app, {
-    requireAuth: (req, res, next) => req.headers["x-test-admin"] === "yes" ? next() : res.sendStatus(401),
+    requireAuth,
     getStore: () => store,
     normalizeFlow: (flow) => structuredClone(flow), defaultFlow,
     publishLive: async (flow) => {
@@ -162,7 +167,7 @@ test("admin template API persists UI actions in PostgreSQL", { skip: !enabled &&
 
     // Stands in for the embedding model.
     const embed = async (list) => list.map((chunk) => ({ ...chunk, embedding: Array(3072).fill(0.5), embeddingModel: "test-model" }));
-    await createDocumentIndexer(pool, { embed, log: silent }).indexPending();
+    await createDocumentIndexer(documentStore, { embed, log: silent }).indexPending();
     assert.equal((await listed()).index_status, "ready");
     const stored = [
       { chunk_number: 1, heading: "Doel", text: "Eerste alinea.", embedding_model: "test-model" },
@@ -170,9 +175,10 @@ test("admin template API persists UI actions in PostgreSQL", { skip: !enabled &&
     ];
     assert.deepEqual(await chunks(), stored);
 
-    await pool.query("UPDATE documents SET index_status = 'pending' WHERE id = $1", [kader.id]);
+    await api.reindexDocument(kader.id);
+    assert.equal((await listed()).index_status, "pending");
     const failing = async () => { throw new Error("model unavailable"); };
-    await createDocumentIndexer(pool, { embed: failing, log: silent }).indexPending();
+    await createDocumentIndexer(documentStore, { embed: failing, log: silent }).indexPending();
     assert.deepEqual(await listed().then((d) => [d.index_status, d.index_error]), ["failed", "model unavailable"]);
     assert.deepEqual(await chunks(), stored);
   });

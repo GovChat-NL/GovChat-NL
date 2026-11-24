@@ -3,6 +3,41 @@ import * as api from "../api.js";
 import { h, icon, toast, askText, formatDate, formatBytes } from "../dom.js";
 import { finder } from "../components/finder.js";
 
+// How the index_status of a document shows: the text and the look of its badge.
+const INDEX_STATUS = {
+  pending: { label: "In de wachtrij", look: "badge-waiting" },
+  indexing: { label: "Wordt ingelezen", look: "badge-waiting" },
+  ready: { label: "Klaar voor gebruik", look: "badge-live" },
+  failed: { label: "Inlezen mislukt", look: "badge-failed" },
+};
+
+const REFRESH_EVERY_MS = 3000;
+let refreshTimer = null;
+
+const isBusy = (doc) => doc.index_status === "pending" || doc.index_status === "indexing";
+const statusesOf = (docs) => docs.map((doc) => `${doc.id}:${doc.index_status}`).join();
+const onThisPage = () => location.hash.includes("editor/documents");
+
+function statusBadge(doc) {
+  const status = INDEX_STATUS[doc.index_status];
+  return status ? h("span", { class: `badge ${status.look}` }, status.label) : null;
+}
+
+/** While a document waits or is being indexed, asks every few seconds for
+ *  the statuses and redraws the page when one changed. */
+function watchIndexing(store, render) {
+  clearTimeout(refreshTimer);
+  if (!store.documents.some(isBusy)) return;
+
+  refreshTimer = setTimeout(async () => {
+    if (!onThisPage()) return;
+    const before = statusesOf(store.documents);
+    store.documents = await api.listDocuments().catch(() => store.documents);
+    if (statusesOf(store.documents) !== before) render();
+    else watchIndexing(store, render);
+  }, REFRESH_EVERY_MS);
+}
+
 export function renderDocuments({ store, render }) {
   const docs = store.documents;
   const ui = store.ui;
@@ -13,7 +48,8 @@ export function renderDocuments({ store, render }) {
     render();
   };
 
-  const files = docs.map((d) => ({ id: d.id, name: d.filename }));
+  // A document that is ready needs no badge in the list.
+  const files = docs.map((d) => ({ id: d.id, name: d.filename, badge: d.index_status === "ready" ? null : statusBadge(d) }));
 
   const preview = selected ? docPreview(selected, { store, reloadDocs }) : emptyPreview();
 
@@ -52,11 +88,32 @@ export function renderDocuments({ store, render }) {
     preview,
   });
 
+  watchIndexing(store, render);
+
   return { controls, content };
 }
 
 function emptyPreview() {
   return h("div", { class: "preview-empty" }, icon("file", 40), h("p", {}, "Selecteer een document om het te bekijken."));
+}
+
+/** Why indexing the document failed, with a button to try again. */
+function indexFailure(doc, reloadDocs) {
+  const tryAgain = async () => {
+    try {
+      await api.reindexDocument(doc.id);
+      await reloadDocs();
+    } catch (err) {
+      toast(`Opnieuw inlezen mislukt: ${err.message}`, "error");
+    }
+  };
+
+  return h(
+    "div",
+    { class: "notice notice-error" },
+    h("span", {}, `Inlezen is mislukt: ${doc.index_error}`),
+    h("button", { class: "btn btn-small btn-secondary", onClick: tryAgain }, "Opnieuw inlezen"),
+  );
 }
 
 function docPreview(doc, { store, reloadDocs }) {
@@ -114,7 +171,9 @@ function docPreview(doc, { store, reloadDocs }) {
       h("dt", {}, "Grootte"), h("dd", {}, formatBytes(doc.size_bytes)),
       h("dt", {}, "Geüpload"), h("dd", {}, formatDate(doc.uploaded_at)),
       h("dt", {}, "Gebruikt in"), h("dd", {}, usedIn.length ? usedIn.map((s) => s.title).join(", ") : "geen stappen"),
+      h("dt", {}, "Status"), h("dd", {}, statusBadge(doc)),
     ),
+    doc.index_status === "failed" ? indexFailure(doc, reloadDocs) : null,
     h("pre", { class: "preview-text" }, doc.preview_text || "Geen voorbeeld beschikbaar."),
   );
 }

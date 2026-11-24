@@ -17,15 +17,13 @@
 const { extractText } = require("./extract");
 const { chunkBlocks } = require("./chunk");
 const { embedChunks } = require("./embed");
-const { createDocumentStore } = require("./document-store");
 
 const LOOK_EVERY_MS = 5000;
 
-/** `pool` is the pg pool of the Beleidskompas database. `deps` replaces the
- *  embedding model and the log in the tests. */
-function createDocumentIndexer(pool, deps = {}) {
+/** `store` is the document store. `deps` replaces the embedding model and
+ *  the log in the tests. */
+function createDocumentIndexer(store, deps = {}) {
   const { embed = embedChunks, log = console } = deps;
-  const store = createDocumentStore(pool);
 
   async function indexDocument(documentId) {
     try {
