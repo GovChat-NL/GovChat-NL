@@ -26,14 +26,14 @@ const LOOK_EVERY_MS = 5000;
 // documents have to be indexed again.
 const INDEX_VERSION = 1;
 
-/** `store` is the document store. `deps` replaces the embedding model and
+/** `repository` is the document repository. `deps` replaces the embedding model and
  *  the log in the tests. */
-function createDocumentIndexer(store, deps = {}) {
+function createDocumentIndexer(repository, deps = {}) {
   const { embed = embedChunks, log = console } = deps;
 
   async function indexDocument(documentId) {
     try {
-      const file = await store.getFile(documentId);
+      const file = await repository.getFile(documentId);
       // Deleted since it was taken.
       if (!file) return;
 
@@ -42,10 +42,10 @@ function createDocumentIndexer(store, deps = {}) {
       // A document of headings only has text, but nothing to search in.
       if (!chunks.length) throw new Error("No text found in this document");
 
-      await store.saveChunks(documentId, chunks, INDEX_VERSION);
+      await repository.saveChunks(documentId, chunks, INDEX_VERSION);
       log.log(`[govchat-admin] Beleidskompas document ${documentId} indexed (${chunks.length} chunks)`);
     } catch (err) {
-      await store.markFailed(documentId, err.message);
+      await repository.markFailed(documentId, err.message);
       log.error(`[govchat-admin] Beleidskompas document ${documentId} could not be indexed: ${err.message}`);
     }
   }
@@ -57,10 +57,10 @@ function createDocumentIndexer(store, deps = {}) {
     if (running) return;
     running = true;
     try {
-      let documentId = await store.takePending();
+      let documentId = await repository.takePending();
       while (documentId !== null) {
         await indexDocument(documentId);
-        documentId = await store.takePending();
+        documentId = await repository.takePending();
       }
     } catch (err) {
       log.error(`[govchat-admin] Beleidskompas documents could not be indexed: ${err.message}`);
@@ -72,7 +72,7 @@ function createDocumentIndexer(store, deps = {}) {
   /** Starts looking for waiting documents, now and every few seconds. */
   async function start() {
     try {
-      await store.requeueInterrupted();
+      await repository.requeueInterrupted();
     } catch (err) {
       log.error(`[govchat-admin] Beleidskompas documents could not be indexed: ${err.message}`);
     }

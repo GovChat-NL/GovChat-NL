@@ -4,17 +4,17 @@
 
 const { HttpError } = require("../errors");
 
-function mount(app, { requireAuth, getStore }) {
+function mount(app, { requireAuth, getRepository }) {
   // Puts a document back in the queue, so it is indexed once more.
   // Answers 404 when the document does not exist.
   app.post("/api/beleidskompas/documents/:docId/reindex", requireAuth, async (req, res) => {
     try {
-      const store = getStore();
-      if (!store) throw new HttpError(503, "Beleidskompas database is not available");
+      const repository = getRepository();
+      if (!repository) throw new HttpError(503, "Beleidskompas database is not available");
 
       // A document id is a whole number above zero, written without a leading zero.
       const isId = /^[1-9]\d*$/.test(req.params.docId);
-      const found = isId && (await store.requeue(req.params.docId));
+      const found = isId && (await repository.requeue(req.params.docId));
       if (!found) throw new HttpError(404, "Document not found");
 
       res.json({ ok: true });

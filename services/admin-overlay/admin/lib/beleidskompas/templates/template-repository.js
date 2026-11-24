@@ -15,7 +15,7 @@ const versionView = (v) => ({
 });
 const documentColumns = "id::text, filename, content_type AS mime_type, size AS size_bytes, preview_text, index_status, index_error, created_at AS uploaded_at";
 
-function createTemplateStore(pool, defaultSettings = {}) {
+function createTemplateRepository(pool, defaultSettings = {}) {
   async function transaction(run) {
     const client = await pool.connect();
     try {
@@ -179,4 +179,4 @@ function createTemplateStore(pool, defaultSettings = {}) {
     uploadDocument: (doc) => insertDocument(pool, doc), updateDocument, getDocument, deleteDocument, exportTemplate, importTemplate };
 }
 
-module.exports = { createTemplateStore };
+module.exports = { createTemplateRepository };

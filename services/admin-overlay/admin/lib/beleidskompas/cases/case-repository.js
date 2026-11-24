@@ -1,10 +1,10 @@
 "use strict";
 
 /**
- * The Beleidskompas store: reading and writing the state of a case. The
+ * The repository for cases: reading and writing the state of a case. The
  * tables are described in db/migrations (at the root of the service).
  *
- * createStore takes a `query(sql, params)` function that resolves to
+ * createCaseRepository takes a `query(sql, params)` function that resolves to
  * `{ rows }`, the shape of pg's Pool.query, so server.js passes a real pool
  * and the unit tests pass a stand-in.
  *
@@ -39,8 +39,8 @@ async function withOneRetry(insert) {
   }
 }
 
-function createStore(query) {
-  if (typeof query !== "function") throw new Error("createStore needs a query function");
+function createCaseRepository(query) {
+  if (typeof query !== "function") throw new Error("createCaseRepository needs a query function");
 
   /** The case row when it exists and belongs to `userId`, otherwise null. */
   async function ownedCase(caseId, userId) {
@@ -188,4 +188,4 @@ function createStore(query) {
   return { ensureCase, setCaseText, addReport, addTurn, setTitle, getState, listCases };
 }
 
-module.exports = { createStore };
+module.exports = { createCaseRepository };

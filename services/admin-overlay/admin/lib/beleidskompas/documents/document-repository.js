@@ -4,7 +4,7 @@
  * The documents in the database, as far as indexing them goes: which
  * document waits, its file, its chunks and its index_status.
  *
- * createDocumentStore takes the pg pool of the Beleidskompas database.
+ * createDocumentRepository takes the pg pool of the Beleidskompas database.
  */
 
 /** An embedding as pgvector reads it: "[0.1,0.2]". */
@@ -17,7 +17,7 @@ function withoutNul(text) {
   return text.replaceAll("\u0000", "");
 }
 
-function createDocumentStore(pool) {
+function createDocumentRepository(pool) {
   /** A document that was being indexed when the service stopped waits again. */
   async function requeueInterrupted() {
     await pool.query("UPDATE documents SET index_status = 'pending' WHERE index_status = 'indexing'");
@@ -92,4 +92,4 @@ function createDocumentStore(pool) {
   return { requeueInterrupted, takePending, getFile, saveChunks, markFailed, requeue };
 }
 
-module.exports = { createDocumentStore };
+module.exports = { createDocumentRepository };

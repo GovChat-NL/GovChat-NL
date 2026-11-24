@@ -6,8 +6,8 @@ const fs = require("node:fs");
 const path = require("node:path");
 const { once } = require("node:events");
 const { connectionSettings, applyMigrations } = require("../db/connection");
-const { createTemplateStore } = require("../lib/beleidskompas/templates/template-repository");
-const { createDocumentStore } = require("../lib/beleidskompas/documents/document-store");
+const { createTemplateRepository } = require("../lib/beleidskompas/templates/template-repository");
+const { createDocumentRepository } = require("../lib/beleidskompas/documents/document-repository");
 const { createDocumentIndexer, INDEX_VERSION } = require("../lib/beleidskompas/documents/index-documents");
 const documentRoutes = require("../lib/beleidskompas/documents/document-routes");
 const { mount } = require("../lib/beleidskompas/templates/template-routes");
@@ -29,18 +29,18 @@ test("admin template API persists UI actions in PostgreSQL", { skip: !enabled &&
   const client = await pool.connect();
   try { await applyMigrations((sql, params) => client.query(sql, params)); } finally { client.release(); }
 
-  let store = createTemplateStore(pool, { retention_days: 365 });
+  let repository = createTemplateRepository(pool, { retention_days: 365 });
   let failPublication = false;
   let published = null;
   const app = express();
   app.use(express.json());
   const defaultFlow = () => ({ title: "Default", steps: [] });
   const requireAuth = (req, res, next) => req.headers["x-test-admin"] === "yes" ? next() : res.sendStatus(401);
-  const documentStore = createDocumentStore(pool);
-  documentRoutes.mount(app, { requireAuth, getStore: () => documentStore });
+  const documentRepository = createDocumentRepository(pool);
+  documentRoutes.mount(app, { requireAuth, getRepository: () => documentRepository });
   mount(app, {
     requireAuth,
-    getStore: () => store,
+    getRepository: () => repository,
     normalizeFlow: (flow) => structuredClone(flow), defaultFlow,
     publishLive: async (flow) => {
       if (failPublication) throw new Error("publication unavailable");
@@ -62,10 +62,10 @@ test("admin template API persists UI actions in PostgreSQL", { skip: !enabled &&
 
   await t.test("admin authentication and database availability are enforced", async () => {
     assert.equal((await originalFetch(`${base}/api/beleidskompas/state`)).status, 401);
-    const ready = store;
-    store = null;
+    const ready = repository;
+    repository = null;
     await assert.rejects(api.getState(), /database is not available/);
-    store = ready;
+    repository = ready;
   });
 
   let first, second, document, saved;
@@ -94,7 +94,7 @@ test("admin template API persists UI actions in PostgreSQL", { skip: !enabled &&
     saved = (await api.saveVersion(first.id, flow, "An edit")).version;
     assert.equal(saved.version, 2);
     second = await api.saveAsNewTemplate("Second template", flow);
-    store = createTemplateStore(pool, { retention_days: 365 }); // Fresh instance, no browser/in-memory state.
+    repository = createTemplateRepository(pool, { retention_days: 365 }); // Fresh instance, no browser/in-memory state.
     const state = (await api.getState()).state;
     assert.equal(state.templates.length, 2);
     assert.equal(state.templates.find((tpl) => tpl.id === first.id).versions[0].snapshot.title, "Edited");
@@ -138,17 +138,17 @@ test("admin template API persists UI actions in PostgreSQL", { skip: !enabled &&
     assert.equal(imported.live_version_id, null);
     assert.equal(imported.versions[0].snapshot.steps[0].document_ids[0], document.id);
     await api.saveSettings({ retention_days: 30 });
-    store = createTemplateStore(pool, { retention_days: 365 });
+    repository = createTemplateRepository(pool, { retention_days: 365 });
     assert.equal((await api.getState()).state.settings.retention_days, 30);
-    const current = store;
-    store = { getState: async () => { throw new Error("private database password"); } };
+    const current = repository;
+    repository = { getState: async () => { throw new Error("private database password"); } };
     const errorLog = console.error;
     console.error = () => {};
     try {
       const response = await global.fetch("/api/beleidskompas/state");
       assert.equal(response.status, 500);
       assert.deepEqual(await response.json(), { error: "Template request failed" });
-    } finally { store = current; console.error = errorLog; }
+    } finally { repository = current; console.error = errorLog; }
   });
 
   await t.test("an uploaded document is stored in chunks, and keeps them when indexing it again fails", async () => {
@@ -167,7 +167,7 @@ test("admin template API persists UI actions in PostgreSQL", { skip: !enabled &&
 
     // Stands in for the embedding model.
     const embed = async (list) => list.map((chunk) => ({ ...chunk, embedding: Array(3072).fill(0.5), embeddingModel: "test-model" }));
-    await createDocumentIndexer(documentStore, { embed, log: silent }).indexPending();
+    await createDocumentIndexer(documentRepository, { embed, log: silent }).indexPending();
     assert.equal((await listed()).index_status, "ready");
     const stored = [
       { chunk_number: 1, heading: "Doel", text: "Eerste alinea.", embedding_model: "test-model", index_version: INDEX_VERSION },
@@ -178,7 +178,7 @@ test("admin template API persists UI actions in PostgreSQL", { skip: !enabled &&
     await api.reindexDocument(kader.id);
     assert.equal((await listed()).index_status, "pending");
     const failing = async () => { throw new Error("model unavailable"); };
-    await createDocumentIndexer(documentStore, { embed: failing, log: silent }).indexPending();
+    await createDocumentIndexer(documentRepository, { embed: failing, log: silent }).indexPending();
     assert.deepEqual(await listed().then((d) => [d.index_status, d.index_error]), ["failed", "model unavailable"]);
     assert.deepEqual(await chunks(), stored);
   });
