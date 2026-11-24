@@ -1,0 +1,7 @@
+fastapi==0.165.0
+httpx==0.28.1
+PyJWT==2.15.1
+python-multipart==0.0.34
+uvicorn==0.54.0
+pypdf==7.1.1
+olefile==0.47

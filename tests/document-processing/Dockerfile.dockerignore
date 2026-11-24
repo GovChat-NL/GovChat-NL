@@ -1,0 +1,13 @@
+# Never copy local credentials, retained runtime evidence or browser caches.
+.git
+**/.git
+.tika-upload-local
+.docling-local
+**/.env
+**/.env.*
+!.env.example
+!.env.tika-upload.example
+**/.venv
+**/*-venv
+**/__pycache__
+**/.pytest_cache

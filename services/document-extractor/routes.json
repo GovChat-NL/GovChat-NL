@@ -1,0 +1,60 @@
+{
+  "pdf": {
+    "parser": "tika",
+    "mimes": [
+      "application/pdf",
+      "application/x-pdf"
+    ]
+  },
+  "docx": {
+    "parser": "tika",
+    "mimes": [
+      "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+    ]
+  },
+  "pptx": {
+    "parser": "tika",
+    "mimes": [
+      "application/vnd.openxmlformats-officedocument.presentationml.presentation"
+    ]
+  },
+  "xlsx": {
+    "parser": "tika",
+    "mimes": [
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    ]
+  },
+  "eml": {
+    "parser": "tika",
+    "mimes": [
+      "message/rfc822"
+    ]
+  },
+  "msg": {
+    "parser": "tika",
+    "mimes": [
+      "application/vnd.ms-outlook"
+    ]
+  },
+  "odt": {
+    "parser": "tika",
+    "mimes": [
+      "application/vnd.oasis.opendocument.text"
+    ]
+  },
+  "doc": {
+    "parser": "tika",
+    "mimes": [
+      "application/msword",
+      "application/vnd.ms-word"
+    ]
+  },
+  "rtf": {
+    "parser": "tika",
+    "mimes": [
+      "application/rtf",
+      "text/rtf",
+      "application/x-rtf"
+    ]
+  }
+}

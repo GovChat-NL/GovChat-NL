@@ -1,5 +1,10 @@
 # Deploymentconfiguratie zonder lokale broncodepatches
 
+The [Tika upload-processing overlay](tika-upload-processing.md) is opt-in, not a
+deployment default. It adds a dedicated upload parser without replacing the shared
+ingestion parser. Keep generated configurations and operational overlays private;
+authenticated deployment acceptance is separate from isolated contract tests.
+
 Instellingen horen in een private `.env` of `docker-compose.local.yml`, niet in
 de gedeelde broncode. `.env`, `*.local.yml` en `nginx/*.local.conf`/`*.local.geo`
 worden genegeerd door Git. Reeds getrackte bestanden worden door een ignore-regel

@@ -1,0 +1,101 @@
+# Disposable synthetic validation only. No public ports, production DB or keys.
+name: govchat-tika-validation
+services:
+  tika:
+    image: govchat-tika-nl:3.2.3
+    environment:
+      JAVA_TOOL_OPTIONS: -Xms32m -Xmx512m -XX:ActiveProcessorCount=1
+      OMP_THREAD_LIMIT: "1"
+    networks:
+      parser:
+        aliases: [govchat-upload-tika]
+    read_only: true
+    tmpfs: ["/tmp:rw,noexec,nosuid,size=100663296"]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    mem_limit: 1536m
+    memswap_limit: 1536m
+    cpus: 1
+    pids_limit: 128
+  extractor:
+    image: govchat-tika-upload-adapter:local
+    environment:
+      JWT_SECRET: synthetic-contract-test-secret-000000000000
+    networks:
+      parser:
+        aliases: [govchat-upload-extractor]
+    read_only: true
+    tmpfs: ["/scratch:rw,noexec,nosuid,size=67108864,uid=10001,gid=10001,mode=700"]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    mem_limit: 384m
+    memswap_limit: 384m
+    cpus: 0.5
+    pids_limit: 64
+    depends_on: [tika]
+    healthcheck:
+      test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=8)"]
+      interval: 5s
+      timeout: 10s
+      retries: 20
+  fixtures:
+    image: govchat-tika-contract-tests
+    command: [python, tests/document-processing/fixtures.py, --output, /fixtures, --benchmark]
+    volumes: ["fixtures:/fixtures"]
+    network_mode: none
+  contracts:
+    image: govchat-tika-contract-tests
+    network_mode: none
+  configuration:
+    image: govchat-tika-contract-tests
+    command: [python, /source/scripts/render-document-processing-config.py, --source, /source/librechat.yaml, --output, /configuration/librechat.generated.yaml, --stt-configured, "false"]
+    volumes: ["../..:/source:ro", "configuration:/configuration"]
+    network_mode: none
+  installed-contracts:
+    image: registry.librechat.ai/librechat-ai/librechat:v0.8.8
+    entrypoint: [sh, -c]
+    command:
+      - >-
+        node /source/tests/document-processing/live-config.test.cjs &&
+        node /source/tests/document-processing/fallback-quality.test.cjs &&
+        node --test /source/tests/document-processing/tika-upload-guard.test.cjs &&
+        node --test /source/tests/document-context.test.js
+    environment:
+      # Mounted source scripts must resolve the installed image's dependencies.
+      NODE_PATH: /app/node_modules
+      CANDIDATE_CONFIG_PATH: /configuration/librechat.generated.yaml
+    volumes: ["../..:/source:ro", "../../librechat.yaml:/before.yaml:ro", "configuration:/configuration:ro"]
+    network_mode: none
+    depends_on:
+      configuration:
+        condition: service_completed_successfully
+  client: &client
+    image: registry.librechat.ai/librechat-ai/librechat:v0.8.8
+    entrypoint: [node]
+    command: [/candidate/tests/document-processing/client-extraction.test.cjs]
+    environment:
+      RAG_API_URL: http://govchat-upload-extractor:8000
+      JWT_SECRET: synthetic-contract-test-secret-000000000000
+      SYNTHETIC_SCAN_REPEATS: "10"
+      SYNTHETIC_BENCHMARK: "true"
+      SYNTHETIC_HIGH_RES: "true"
+    volumes: ["../..:/candidate:ro", "fixtures:/fixtures:ro"]
+    networks: [parser]
+    depends_on:
+      extractor:
+        condition: service_healthy
+      fixtures:
+        condition: service_completed_successfully
+  upload-handler:
+    <<: *client
+    command: [--test, /candidate/tests/document-processing/tika-upload-guard.test.cjs, /candidate/tests/document-processing/upload-handler.test.cjs]
+    environment:
+      RAG_API_URL: http://govchat-upload-extractor:8000
+      JWT_SECRET: synthetic-contract-test-secret-000000000000
+      LIVE_UPLOAD_HANDLER: "true"
+networks:
+  parser:
+    internal: true
+volumes:
+  fixtures:
+  configuration:

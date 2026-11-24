@@ -1,5 +1,11 @@
 # Documentbijlagen in de n8n-chatagent
 
+> The sections below describe the existing native-attachment compatibility path.
+> This branch also provides [opt-in Tika upload processing](tika-upload-processing.md).
+> When explicitly enabled, documents are extracted and stored once at upload time;
+> subsequent chat turns reuse text rather than sending native document bytes.
+> The existing shared parser/workflows below are not replaced or restarted.
+
 ## Oorzaak en oplossing
 
 LibreChat verstuurt een PDF naar een OpenAI-compatible custom endpoint als een

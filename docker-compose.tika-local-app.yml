@@ -1,0 +1,140 @@
+# Standalone retained local UI. NEVER combine with the regular stack Compose.
+# Only the app joins the operator-approved existing bridge network.
+name: govchat-tika-local-app
+services:
+  upload-tika:
+    image: govchat-tika-nl:3.2.3
+    environment:
+      JAVA_TOOL_OPTIONS: -Xms32m -Xmx512m -XX:ActiveProcessorCount=1
+      OMP_THREAD_LIMIT: "1"
+    networks:
+      parser:
+        aliases: [govchat-upload-tika]
+    read_only: true
+    tmpfs: ["/tmp:rw,noexec,nosuid,size=100663296"]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    mem_limit: 1536m
+    memswap_limit: 1536m
+    cpus: 1
+    pids_limit: 128
+    logging: {driver: none}
+  extractor:
+    image: govchat-tika-upload-adapter:local
+    environment:
+      JWT_SECRET: ${JWT_SECRET:?Owned local app key required}
+    networks:
+      parser:
+        aliases: [govchat-upload-extractor]
+    read_only: true
+    tmpfs: ["/scratch:rw,noexec,nosuid,size=67108864,uid=10001,gid=10001,mode=700"]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    mem_limit: 384m
+    memswap_limit: 384m
+    cpus: 0.5
+    pids_limit: 64
+    depends_on: [upload-tika]
+    healthcheck:
+      test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=8)"]
+      interval: 5s
+      timeout: 10s
+      retries: 20
+  mongo:
+    image: mongo:8.0.20@sha256:098862b1339f031900ca66cf8fef799e616d6324fa41b9a263f2ec899552c1ef
+    user: "999:999"
+    command: [mongod, --bind_ip_all, --wiredTigerCacheSizeGB, "0.25", --quiet]
+    volumes: ["mongo-data:/data/db", "mongo-config:/data/configdb"]
+    networks: [app-data]
+    read_only: true
+    tmpfs: ["/tmp:rw,noexec,nosuid,size=16777216,mode=1777"]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    mem_limit: 768m
+    memswap_limit: 768m
+    cpus: 0.5
+    pids_limit: 128
+    healthcheck:
+      test: [CMD, mongosh, --quiet, --eval, "quit(db.adminCommand({ping:1}).ok ? 0 : 1)"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+    logging: {driver: none}
+  app:
+    image: registry.librechat.ai/librechat-ai/librechat@sha256:5b706bcee1ca154a1e2987303aaeca0eb27f97919cccee4bb604226c2f8abf61
+    environment:
+      APP_TITLE: GovChat-NL - Tika lokaal
+      HOST: 0.0.0.0
+      PORT: "3080"
+      NODE_ENV: production
+      NODE_OPTIONS: --require=/app/govchat-overlay/librechat-tool-event-preload.js --require=/app/govchat-overlay/librechat-orchestrator-name-preload.js --require=/app/govchat-overlay/librechat-tika-upload-preload.js
+      ENDPOINTS: custom
+      MONGO_URI: mongodb://mongo:27017/TikaLocalLibreChat
+      RAG_API_URL: http://govchat-upload-extractor:8000
+      GOVCHAT_TIKA_UPLOAD_ENABLED: "true"
+      JWT_SECRET: ${JWT_SECRET:?Owned local app key required}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:?Owned local refresh key required}
+      CREDS_KEY: ${CREDS_KEY:?Owned local encryption key required}
+      CREDS_IV: ${CREDS_IV:?Owned local encryption IV required}
+      SESSION_SECRET: ${SESSION_SECRET:?Owned local session key required}
+      N8N_OPENAI_BRIDGE_BEARER_TOKEN: ${N8N_OPENAI_BRIDGE_BEARER_TOKEN:?Approved local bridge key required}
+      ALLOW_REGISTRATION: "true"
+      ALLOW_EMAIL_LOGIN: "true"
+      ALLOW_UNVERIFIED_EMAIL_LOGIN: "true"
+      ALLOW_SOCIAL_LOGIN: "false"
+      ALLOW_SOCIAL_REGISTRATION: "false"
+      SEARCH: "false"
+      USE_REDIS: "false"
+      DEBUG_LOGGING: "false"
+      DEBUG_CONSOLE: "false"
+      DOMAIN_CLIENT: http://127.0.0.1:${TIKA_LOCAL_PORT:-3099}
+      DOMAIN_SERVER: http://127.0.0.1:${TIKA_LOCAL_PORT:-3099}
+    volumes:
+      - ./.tika-upload-local/app/librechat.generated.yaml:/app/librechat.yaml:ro
+      - uploads:/app/uploads
+      - images:/app/client/public/images
+      - ./scripts/librechat-tool-event-overlay.js:/app/govchat-overlay/librechat-tool-event-overlay.js:ro
+      - ./scripts/librechat-tool-event-protocol.js:/app/govchat-overlay/librechat-tool-event-protocol.js:ro
+      - ./scripts/librechat-tool-event-preload.js:/app/govchat-overlay/librechat-tool-event-preload.js:ro
+      - ./scripts/librechat-tika-upload-preload.js:/app/govchat-overlay/librechat-tika-upload-preload.js:ro
+      - ./services/document-extractor/routes.json:/app/govchat-overlay/document-extractor-routes.json:ro
+      - ./scripts/librechat-orchestrator-name.js:/app/govchat-overlay/librechat-orchestrator-name.js:ro
+      - ./scripts/librechat-orchestrator-name-preload.js:/app/govchat-overlay/librechat-orchestrator-name-preload.js:ro
+      - ./services/admin-overlay/admin/lib/orchestrator-name.js:/app/govchat-overlay/orchestrator-name.js:ro
+    read_only: true
+    tmpfs:
+      - /app/api/logs:rw,nosuid,size=16777216,mode=1777
+      - /app/logs:rw,nosuid,size=16777216,mode=1777
+      - /tmp:rw,noexec,nosuid,size=33554432,mode=1777
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    mem_limit: 1024m
+    memswap_limit: 1024m
+    cpus: 1
+    pids_limit: 128
+    ports: ["127.0.0.1:${TIKA_LOCAL_PORT:-3099}:3080"]
+    networks: [parser, app-data, ui, existing-bridge]
+    depends_on:
+      extractor: {condition: service_healthy}
+      mongo: {condition: service_healthy}
+    healthcheck:
+      test: [CMD, node, -e, "fetch('http://127.0.0.1:3080/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      start_period: 60s
+      retries: 6
+    logging: {driver: none}
+networks:
+  parser:
+    internal: true
+  app-data:
+    internal: true
+  ui:
+  existing-bridge:
+    external: true
+    name: ${TIKA_BRIDGE_NETWORK:?Approved bridge network required}
+volumes:
+  mongo-data:
+  mongo-config:
+  uploads:
+  images:
