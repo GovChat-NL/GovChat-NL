@@ -29,21 +29,28 @@ export function renderGeneralFeedback({ store, render }) {
   };
 }
 
-// "<template> v<n>" for the template version the user had open, or null when it is unknown.
-function versionOf(item, store) {
-  const tpl = store.templates.find((t) => t.versions.some((v) => v.id === String(item.version_id)));
-  return tpl ? `${tpl.name} ${versionLabel(tpl, String(item.version_id))}` : null;
+// The template version the user had open ("<template> v<n>") and the step in it
+// ("Stap N · title", as on the answer feedback page); the raw step id when the version is unknown.
+function contextOf(item, store) {
+  const versionId = String(item.version_id);
+  const tpl = store.templates.find((t) => t.versions.some((v) => v.id === versionId));
+  const steps = tpl?.versions.find((v) => v.id === versionId)?.snapshot?.steps || [];
+  const idx = steps.findIndex((st) => st.id === item.step_id);
+  return {
+    version: tpl ? `${tpl.name} ${versionLabel(tpl, versionId)}` : null,
+    step: idx >= 0 ? `Stap ${idx + 1} · ${steps[idx].title}` : item.step_id || null,
+  };
 }
 
 function row(item, store) {
-  const version = versionOf(item, store);
+  const { version, step } = contextOf(item, store);
   return h(
     "article",
     { class: "fb-row is-general" },
     h(
       "div",
       { class: "fb-main" },
-      h("div", { class: "fb-meta" }, h("time", { datetime: item.created_at }, formatDate(item.created_at)), h("span", {}, item.email), item.step_id ? h("span", { class: "fb-version" }, item.step_id) : null, version ? h("span", { class: "fb-version" }, version) : null),
+      h("div", { class: "fb-meta" }, h("time", { datetime: item.created_at }, formatDate(item.created_at)), h("span", {}, item.email), step ? h("span", { class: "fb-version" }, step) : null, version ? h("span", { class: "fb-version" }, version) : null),
       h("p", { class: "fb-comment" }, item.text),
     ),
   );
