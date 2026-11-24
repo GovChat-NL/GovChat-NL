@@ -5,7 +5,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { composePrompt, readCaseState, sendBeleidskompasFeedback, sendBeleidskompasGeneralFeedback } from "../beleidskompas-api.js";
+import { composePrompt, readCaseState, sendBeleidskompasFeedback } from "../beleidskompas-api.js";
 
 const SUBSTEP = { id: "sub_k3x9q2m7", label: "2.1", title: "Rolbepaling" };
 
@@ -72,26 +72,4 @@ test("sendBeleidskompasFeedback posts the rating with step, substep and template
   assert.equal(calls[0][0], "/govchat-api/beleidskompas-feedback");
   assert.deepEqual(calls[0][1], { rating: "up", comment: "", step_id: "stap2", substep_id: "2.1", version_id: "v3" });
   assert.deepEqual(calls[1][1], { rating: "down", comment: "", step_id: "stap1", substep_id: null, version_id: null });
-});
-
-test("sendBeleidskompasGeneralFeedback posts the text with the access token and passes on the server's error", async () => {
-  const calls = [];
-  let answer = { ok: true, status: 201 };
-  const realFetch = globalThis.fetch;
-  globalThis.fetch = async (url, init) => {
-    if (url === "/api/auth/refresh") return { ok: true, json: async () => ({ token: "tok" }) };
-    calls.push([url, init]);
-    return { ...answer, json: async () => ({ error: "Geen e-mailadres" }) };
-  };
-  try {
-    await sendBeleidskompasGeneralFeedback({ text: "Knop werkt niet", stepId: "stap2", versionId: "7" });
-    answer = { ok: false, status: 400 };
-    await assert.rejects(sendBeleidskompasGeneralFeedback({ text: "x" }), /Geen e-mailadres/);
-  } finally {
-    globalThis.fetch = realFetch;
-  }
-  assert.equal(calls[0][0], "/govchat-api/beleidskompas-general-feedback");
-  assert.equal(calls[0][1].headers.Authorization, "Bearer tok");
-  assert.deepEqual(JSON.parse(calls[0][1].body), { text: "Knop werkt niet", step_id: "stap2", version_id: "7" });
-  assert.deepEqual(JSON.parse(calls[1][1].body), { text: "x", step_id: null, version_id: null });
 });

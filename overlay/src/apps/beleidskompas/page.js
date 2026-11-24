@@ -85,7 +85,7 @@ function openBeleidskompas(config, help) {
   });
 
   requireElement("gc-bk-general-feedback").addEventListener("click", () => {
-    openGeneralFeedback({ stepId: store.activeStep().id, versionId: config.versionId });
+    openGeneralFeedback();
   });
 
   const { resumeConversation, refreshState } = setupCases(store);

@@ -74,9 +74,8 @@ export function openStepInfo(step) {
 }
 
 /** The general feedback form: free text about Beleidskompas as a whole,
- *  sent with the user's e-mail address (which the form says). The open step
- *  and the template version go along as context. */
-export function openGeneralFeedback({ stepId, versionId }) {
+ *  sent with the user's e-mail address (which the form says). */
+export function openGeneralFeedback() {
   document.getElementById("gc-bk-doc-preview")?.remove();
 
   const modal = document.createElement("div");
@@ -102,10 +101,7 @@ export function openGeneralFeedback({ stepId, versionId }) {
       </form>
     </div>`;
   document.body.appendChild(modal);
-  // Closing (✕, Annuleren, Escape, a click next to the dialog) asks first while there is unsent text.
-  wireModal(modal, {
-    canClose: () => !modal.querySelector("textarea")?.value.trim() || confirm("Je feedback is nog niet verstuurd. Toch sluiten?"),
-  });
+  wireModal(modal);
 
   const form = modal.querySelector("form");
   const textarea = form.querySelector("textarea");
@@ -134,7 +130,7 @@ export function openGeneralFeedback({ stepId, versionId }) {
     send.disabled = true;
     status.hidden = true;
     try {
-      await sendBeleidskompasGeneralFeedback({ text, stepId, versionId });
+      await sendBeleidskompasGeneralFeedback(text);
       form.innerHTML = "<p>Bedankt, je feedback is verstuurd.</p>";
     } catch (err) {
       status.textContent = `Versturen mislukt (${String(err?.message || err)}), probeer opnieuw.`;
@@ -146,10 +142,9 @@ export function openGeneralFeedback({ stepId, versionId }) {
 
 /** A modal closes with Escape, takes the focus when it opens and gives it
  *  back to the element that opened it. */
-function wireModal(modal, { canClose = () => true } = {}) {
+function wireModal(modal) {
   const previousFocus = document.activeElement;
   const close = () => {
-    if (!canClose()) return;
     document.removeEventListener("keydown", onKeyDown);
     modal.remove();
     if (previousFocus && typeof previousFocus.focus === "function") previousFocus.focus();

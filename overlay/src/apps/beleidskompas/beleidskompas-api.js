@@ -53,11 +53,11 @@ export async function fetchOwnEmail() {
 /** Sends general feedback (free text about Beleidskompas as a whole) to the
  *  admin. Not anonymous: the admin looks up the sender's e-mail address from
  *  the access token, so an admin can reply. */
-export async function sendBeleidskompasGeneralFeedback({ text, stepId, versionId }) {
+export async function sendBeleidskompasGeneralFeedback(text) {
   const resp = await librechatFetch("/govchat-api/beleidskompas-general-feedback", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ text, step_id: stepId || null, version_id: versionId || null }),
+    body: JSON.stringify({ text }),
   });
   if (!resp.ok) {
     const data = await resp.json().catch(() => ({}));
