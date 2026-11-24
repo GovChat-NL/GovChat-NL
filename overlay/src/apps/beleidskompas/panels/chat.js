@@ -20,7 +20,7 @@ function feedbackHTML(message, index) {
   }
   return `
     <div class="gc-bk-feedback" data-feedback-for="${index}">
-      ${message.feedbackError ? `<span class="gc-bk-feedback-label">Versturen mislukt (${escapeHTML(message.feedbackError)}), probeer opnieuw.</span>` : ""}
+      ${message.feedbackError ? `<span class="gc-bk-feedback-label">${escapeHTML(message.feedbackError)}</span>` : ""}
       <span class="gc-bk-feedback-label">Was dit bruikbaar?</span>
       <button type="button" class="gc-bk-feedback-btn ${message.feedbackRating === "up" ? "is-chosen" : ""}" data-feedback-rating="up" aria-label="Wel bruikbaar">👍</button>
       <button type="button" class="gc-bk-feedback-btn ${message.feedbackRating === "down" ? "is-chosen" : ""}" data-feedback-rating="down" aria-label="Niet bruikbaar">👎</button>
