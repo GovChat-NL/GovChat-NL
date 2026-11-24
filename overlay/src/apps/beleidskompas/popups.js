@@ -134,7 +134,7 @@ export function openGeneralFeedback({ stepId, versionId }) {
       await sendBeleidskompasGeneralFeedback({ text, stepId, versionId });
       form.innerHTML = "<p>Bedankt, je feedback is verstuurd.</p>";
     } catch (err) {
-      status.textContent = String(err?.message || err);
+      status.textContent = `Versturen mislukt (${String(err?.message || err)}), probeer opnieuw.`;
       status.hidden = false;
       send.disabled = false;
     }

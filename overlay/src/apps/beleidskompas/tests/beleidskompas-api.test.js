@@ -74,21 +74,19 @@ test("sendBeleidskompasFeedback posts the rating with step, substep and template
   assert.deepEqual(calls[1][1], { rating: "down", comment: "", step_id: "stap1", substep_id: null, version_id: null });
 });
 
-test("sendBeleidskompasGeneralFeedback posts the text with the access token and turns a failure into a message for the user", async () => {
+test("sendBeleidskompasGeneralFeedback posts the text with the access token and passes on the server's error", async () => {
   const calls = [];
   let answer = { ok: true, status: 201 };
   const realFetch = globalThis.fetch;
   globalThis.fetch = async (url, init) => {
     if (url === "/api/auth/refresh") return { ok: true, json: async () => ({ token: "tok" }) };
     calls.push([url, init]);
-    return answer;
+    return { ...answer, json: async () => ({ error: "Geen e-mailadres" }) };
   };
   try {
     await sendBeleidskompasGeneralFeedback({ text: "Knop werkt niet", stepId: "stap2", versionId: "7" });
     answer = { ok: false, status: 400 };
-    await assert.rejects(sendBeleidskompasGeneralFeedback({ text: "x" }), /geen e-mailadres/);
-    answer = { ok: false, status: 503 };
-    await assert.rejects(sendBeleidskompasGeneralFeedback({ text: "x" }), /later opnieuw/);
+    await assert.rejects(sendBeleidskompasGeneralFeedback({ text: "x" }), /Geen e-mailadres/);
   } finally {
     globalThis.fetch = realFetch;
   }

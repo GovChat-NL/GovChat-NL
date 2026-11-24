@@ -52,26 +52,17 @@ export async function fetchOwnEmail() {
 
 /** Sends general feedback (free text about Beleidskompas as a whole) to the
  *  admin. Not anonymous: the admin looks up the sender's e-mail address from
- *  the access token, so an admin can reply. A failure throws an error whose
- *  message the user can read: what went wrong and what to do, no codes. */
+ *  the access token, so an admin can reply. */
 export async function sendBeleidskompasGeneralFeedback({ text, stepId, versionId }) {
-  const messages = {
-    400: "Je account heeft geen e-mailadres, daarom kun je geen feedback versturen.",
-    401: "Je bent niet meer ingelogd. Vernieuw de pagina en probeer het opnieuw.",
-    503: "Feedback kan op dit moment niet worden opgeslagen. Probeer het later opnieuw.",
-  };
-  let resp;
-  try {
-    resp = await librechatFetch("/govchat-api/beleidskompas-general-feedback", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ text, step_id: stepId || null, version_id: versionId || null }),
-    });
-  } catch {
-    // No connection, or no LibreChat session to get a token from.
-    throw new Error("Versturen is niet gelukt. Controleer je verbinding en probeer het opnieuw.");
+  const resp = await librechatFetch("/govchat-api/beleidskompas-general-feedback", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ text, step_id: stepId || null, version_id: versionId || null }),
+  });
+  if (!resp.ok) {
+    const data = await resp.json().catch(() => ({}));
+    throw new Error(data.error || `HTTP ${resp.status}`);
   }
-  if (!resp.ok) throw new Error(messages[resp.status] || "Er ging iets mis bij het versturen. Probeer het later opnieuw.");
 }
 
 const REQUEST_META_LABEL = "beleidskompas-request";
