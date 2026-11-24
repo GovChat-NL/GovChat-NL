@@ -38,6 +38,8 @@ services:
       - ./scripts/librechat-tool-event-overlay.js:/app/govchat-overlay/librechat-tool-event-overlay.js:ro
       - ./scripts/librechat-tool-event-protocol.js:/app/govchat-overlay/librechat-tool-event-protocol.js:ro
       - ./scripts/librechat-tool-event-preload.js:/app/govchat-overlay/librechat-tool-event-preload.js:ro
+      - ./scripts/librechat-tika-upload-preload.js:/app/govchat-overlay/librechat-tika-upload-preload.js:ro
+      - ./services/document-extractor/routes.json:/app/govchat-overlay/document-extractor-routes.json:ro
       - ./scripts/librechat-orchestrator-name.js:/app/govchat-overlay/librechat-orchestrator-name.js:ro
       - ./scripts/librechat-orchestrator-name-preload.js:/app/govchat-overlay/librechat-orchestrator-name-preload.js:ro
       - ./services/admin-overlay/admin/lib/orchestrator-name.js:/app/govchat-overlay/orchestrator-name.js:ro
@@ -52,7 +54,7 @@ services:
       HOST: 0.0.0.0
       PORT: "3080"
       NODE_ENV: production
-      NODE_OPTIONS: --require=/app/govchat-overlay/librechat-tool-event-preload.js --require=/app/govchat-overlay/librechat-orchestrator-name-preload.js
+      NODE_OPTIONS: --require=/app/govchat-overlay/librechat-tool-event-preload.js --require=/app/govchat-overlay/librechat-orchestrator-name-preload.js --require=/app/govchat-overlay/librechat-tika-upload-preload.js
       N8N_ORCHESTRATOR_DISPLAY_NAME: ${N8N_ORCHESTRATOR_DISPLAY_NAME:-}
       TEMP_CHAT_RETENTION_HOURS: ${GOVCHAT_CHAT_RETENTION_HOURS:-720}
       # Include Agents endpoint by default so the Agents UI is visible in LibreChat.

@@ -1,10 +1,11 @@
 
-> **Unfinished experimental feature — not production-ready:** Tika-only extraction
-> at upload time, using standard LibreChat text persistence. Repeated OCR can
-> exhaust parser memory and invoke unreadable built-in fallback text. See
-> [feature overview](docs/tika-upload-processing.md) and
-> [failure and continuation notes](docs/tika-upload-handoff.md). Do not activate
-> this branch as a validated upload solution.
+> **Opt-in Tika upload processing:** extract documents once on upload and reuse
+> LibreChat's stored text as chat context, without embeddings or RAG. The repair
+> includes bounded OCR resources and selective fail-closed upload handling. See
+> [activation, tests and acceptance boundaries](docs/tika-upload-processing.md).
+> **Repair candidate, not accepted:** full warm-workload verification is still
+> incomplete; see [current repair status](docs/tika-upload-repair-status.md).
+> Authenticated browser/production deployment acceptance remains separate.
 
 <p align="center">
   <a href="https://govchat-nl.github.io/">

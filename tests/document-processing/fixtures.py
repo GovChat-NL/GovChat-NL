@@ -56,7 +56,7 @@ def broken_text_layer_pdf():
     return output.getvalue()
 
 
-def pdf(mode='digital', pages=2, large=False):
+def pdf(mode='digital', pages=2, large=False, raster_scale=1):
     output = io.BytesIO()
     doc = canvas.Canvas(output, pagesize=(595, 842), invariant=1)
     rng = random.Random(2026)
@@ -74,12 +74,12 @@ def pdf(mode='digital', pages=2, large=False):
             doc.drawString(35, 620, '2026     12345,67')
             doc.drawString(35, 600, '2027     23456,78')
         else:
-            image = Image.new('RGB', (1200, 1700), 'white')
-            font = ImageFont.truetype(str(pathlib.Path(reportlab.__file__).parent / 'fonts/Vera.ttf'), 25)
+            image = Image.new('RGB', (1200 * raster_scale, 1700 * raster_scale), 'white')
+            font = ImageFont.truetype(str(pathlib.Path(reportlab.__file__).parent / 'fonts/Vera.ttf'), 25 * raster_scale)
             draw = ImageDraw.Draw(image)
-            draw.text((70, 70), f'Synthetische pagina {n:02d}', fill='black', font=font)
-            draw.multiline_text((70, 140), '\n'.join(textwrap.wrap(TEXT, width=65)), fill='black', font=font, spacing=15)
-            draw.text((70, 280), 'Jaar       Bedrag EUR\n2026       12345,67\n2027       23456,78', fill='black', font=font)
+            draw.text((70 * raster_scale, 70 * raster_scale), f'Synthetische pagina {n:02d}', fill='black', font=font)
+            draw.multiline_text((70 * raster_scale, 140 * raster_scale), '\n'.join(textwrap.wrap(TEXT, width=65)), fill='black', font=font, spacing=15 * raster_scale)
+            draw.text((70 * raster_scale, 280 * raster_scale), 'Jaar       Bedrag EUR\n2026       12345,67\n2027       23456,78', fill='black', font=font)
             if large:
                 # Unique low-amplitude scanner noise, no invisible text layer.
                 pixels = image.load()
@@ -103,7 +103,9 @@ def generate(directory, benchmark=False, legacy=False):
     directory.mkdir(parents=True, exist_ok=True)
     for mode in ('digital', 'scan', 'mixed'):
         (directory / f'{mode}.pdf').write_bytes(pdf(mode))
+    (directory / 'broken-layer.pdf').write_bytes(broken_text_layer_pdf())
     (directory / 'scan-one.pdf').write_bytes(pdf('scan', pages=1))
+    (directory / 'scan-high-resolution.pdf').write_bytes(pdf('scan', raster_scale=3))
     document = Document()
     document.add_heading('Synthetisch gemeentelijk beleid', 0)
     document.add_paragraph(TEXT)

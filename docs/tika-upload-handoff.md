@@ -1,5 +1,9 @@
 # Unfinished upload-extraction feature: failure and continuation notes
 
+> Historical handoff from the original experiment. The subsequent repair and
+> current activation instructions are in [Tika upload processing](tika-upload-processing.md).
+> Statements about missing fixes below describe the original branch, not the repair.
+
 ## Status
 
 This branch is a development handoff, **not a fixed upload pipeline**. The

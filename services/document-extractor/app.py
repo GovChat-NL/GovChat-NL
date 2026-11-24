@@ -240,15 +240,20 @@ class ParserClient:
             raise HTTPException(503, 'parser_work_termination_unproven') from None
 
 
-async def preflight(path, extension, pages):
+async def preflight(path, extension, pages, deadline=None):
+    budget = 30 if deadline is None else min(30, deadline - time.monotonic())
+    if budget <= 0:
+        raise HTTPException(503, 'document_validation_timeout')
     proc = await asyncio.create_subprocess_exec(sys.executable, str(HERE / 'preflight.py'),
         str(path), extension, str(pages), stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL)
     try:
-        async with asyncio.timeout(10):
+        async with asyncio.timeout(budget):
             stdout, _ = await proc.communicate()
         if proc.returncode or len(stdout) > 1024:
             raise HTTPException(422, 'invalid_or_unsupported_document')
         return json.loads(stdout)['pages']
+    except TimeoutError:
+        raise HTTPException(503, 'document_validation_timeout') from None
     finally:
         if proc.returncode is None:
             proc.kill()
@@ -265,6 +270,7 @@ class Admission:
             return await self.app(scope, receive, send)
         headers = dict(scope['headers'])
         admitted = False
+        waiting = False
         total = 0
 
         async def bounded_receive():
@@ -279,17 +285,27 @@ class Admission:
             authenticate(headers.get(b'authorization', b'').decode('latin1'), self.s.secret)
             if self.state['fault']:
                 raise HTTPException(503, self.state['fault'])
-            if self.state['active']:
+            if self.state['waiting'] >= 3:
                 raise HTTPException(429, 'extractor_busy')
             length = headers.get(b'content-length', b'')
             if not length.isdigit():
                 raise HTTPException(411, 'content_length_required')
             if int(length) > self.s.max_input + 64 * 1024:
                 raise HTTPException(413, 'upload_limit')
-            self.state['active'] = admitted = True
-            scope.setdefault('state', {})['extraction_deadline'] = time.monotonic() + self.s.deadline
+            scope.setdefault('state', {}).update(
+                extraction_deadline=time.monotonic() + self.s.deadline, parser_started=False)
             try:
                 async with asyncio.timeout(self.s.deadline):
+                    # Queue at most three callers without reading/spooling their bodies.
+                    # Waiting uses the original deadline, not a renewed parser budget.
+                    self.state['waiting'] += 1
+                    waiting = True
+                    await self.state['lock'].acquire()
+                    self.state['waiting'] -= 1
+                    waiting = False
+                    self.state['active'] = admitted = True
+                    if self.state['fault']:
+                        raise HTTPException(503, self.state['fault'])
                     # Bound the transport before the multipart library can open
                     # spool files. Memory is bounded by input + framing cap.
                     body = bytearray()
@@ -309,20 +325,24 @@ class Admission:
                         return {'type': 'http.request', 'body': bytes(body), 'more_body': False}
                     await self.app(scope, buffered_receive, send)
             except TimeoutError:
-                self.state['fault'] = 'timeout_work_termination_unproven'
-                raise HTTPException(503, self.state['fault']) from None
+                if scope['state']['parser_started']:
+                    self.state['fault'] = 'timeout_work_termination_unproven'
+                raise HTTPException(503, self.state['fault'] or 'extraction_deadline_exhausted') from None
         except HTTPException as error:
             response = JSONResponse({'detail': error.detail}, status_code=error.status_code)
             await response(scope, receive, send)
         finally:
+            if waiting:
+                self.state['waiting'] -= 1
             if admitted:
                 self.state['active'] = False
+                self.state['lock'].release()
 
 
 def create_app(settings=None, transport=None):
     s = settings or Settings.from_env()
     routes = load_routes()
-    state = {'active': False, 'fault': None}
+    state = {'active': False, 'fault': None, 'waiting': 0, 'lock': asyncio.Lock()}
     metrics = {'quality_rejections': 0, 'ocr_recovery_attempts': 0,
                'ocr_recovery_successes': 0, 'ocr_recovery_failures': 0}
 
@@ -383,8 +403,9 @@ def create_app(settings=None, transport=None):
                         if content.startswith(('%PDF-', 'PK\x03\x04')):
                             raise HTTPException(415, 'binary_text_mismatch')
                         return {'text': checked_text(content, s.max_output, s)}
-                    pages = await preflight(path, ext, s.max_pages)
+                    pages = await preflight(path, ext, s.max_pages, request.state.extraction_deadline)
                     try:
+                        request.state.parser_started = True
                         result = await app.state.parser.convert(path, ext, parser, pages,
                                                                 request.state.extraction_deadline)
                     except (httpx.HTTPError, TimeoutError, asyncio.CancelledError):

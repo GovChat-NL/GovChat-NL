@@ -1,9 +1,9 @@
 # Deploymentconfiguratie zonder lokale broncodepatches
 
-The [unfinished Tika-only upload experiment](tika-upload-processing.md) is opt-in,
-not a deployment default. Read its [blocking failure notes](tika-upload-handoff.md)
-before further development. Keep generated configurations and operational
-overlays private; the experiment does not replace the configuration below.
+The [Tika upload-processing overlay](tika-upload-processing.md) is opt-in, not a
+deployment default. It adds a dedicated upload parser without replacing the shared
+ingestion parser. Keep generated configurations and operational overlays private;
+authenticated deployment acceptance is separate from isolated contract tests.
 
 Instellingen horen in een private `.env` of `docker-compose.local.yml`, niet in
 de gedeelde broncode. `.env`, `*.local.yml` en `nginx/*.local.conf`/`*.local.geo`

@@ -6,7 +6,8 @@ const installed = createRequire('/app/package.json');
 const yaml = installed('js-yaml');
 const lc = installed('librechat-data-provider');
 const before = yaml.load(fs.readFileSync('/before.yaml', 'utf8'));
-const candidate = yaml.load(fs.readFileSync('/candidate.yaml', 'utf8'));
+const candidatePath = process.env.CANDIDATE_CONFIG_PATH || '/candidate.yaml';
+const candidate = yaml.load(fs.readFileSync(candidatePath, 'utf8'));
 const { minimalConfig, render } = require('/source/scripts/apply-minimal-ui.js');
 const routes = JSON.parse(fs.readFileSync('/source/services/document-extractor/routes.json'));
 for (const config of [candidate, minimalConfig(candidate)]) {
@@ -23,6 +24,7 @@ for (const config of [candidate, minimalConfig(candidate)]) {
 }
 const stripped = structuredClone(candidate);
 delete stripped.fileConfig;
+if (before.fileConfig !== undefined) stripped.fileConfig = before.fileConfig;
 for (const e of stripped.endpoints.custom) if (e.name === 'govchat-orchestrator') {
   const original = before.endpoints.custom.find(x => x.name === e.name);
   if ('resendFiles' in original) e.resendFiles = original.resendFiles; else delete e.resendFiles;
@@ -35,7 +37,7 @@ for (const mimeType of ['image/png', 'audio/wav', 'video/mp4', 'text/plain', 'ap
     endpointConfig: lc.getEndpointFileConfig({ fileConfig, endpoint: 'govchat-orchestrator', endpointType: 'custom' }) });
   assert.equal(resolve(mergedBefore), resolve(mergedAfter), mimeType);
 }
-const output = render({ GOVCHAT_MINIMAL_UI: 'true', CONFIG_PATH: '/candidate.yaml' });
+const output = render({ GOVCHAT_MINIMAL_UI: 'true', CONFIG_PATH: candidatePath });
 assert.deepEqual(yaml.load(fs.readFileSync(output, 'utf8')).fileConfig, minimalConfig(candidate).fileConfig);
 assert.ok(fs.readFileSync(output, 'utf8').includes('${'), 'secret placeholders preserved');
 console.log('Installed LibreChat schema, upload routing, UID readability, branding renderer, settings/media preservation: PASS');

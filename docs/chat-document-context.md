@@ -1,10 +1,10 @@
 # Documentbijlagen in de n8n-chatagent
 
 > The sections below describe the existing native-attachment compatibility path.
-> This branch also contains an **unfinished, opt-in**
-> [Tika-only upload experiment](tika-upload-processing.md). It is not a validated
-> replacement for this path and must not be assumed active. The experiment does
-> not modify workflows or introduce per-turn Tika parsing for persisted text.
+> This branch also provides [opt-in Tika upload processing](tika-upload-processing.md).
+> When explicitly enabled, documents are extracted and stored once at upload time;
+> subsequent chat turns reuse text rather than sending native document bytes.
+> The existing shared parser/workflows below are not replaced or restarted.
 
 ## Oorzaak en oplossing
 

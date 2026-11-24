@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate Tika-only global TEST upload settings from the CURRENT mounted source."""
+"""Generate opt-in Tika document upload settings without changing the source."""
 import argparse
 import copy
 import json
@@ -35,6 +35,9 @@ def document_config(source, routes, stt_configured=False):
     inherited = endpoints.get(target, endpoints.get('agents', endpoints.get('default', {})))
     target_config = endpoints.setdefault(target, copy.deepcopy(inherited))
     target_config['legacyFileUploadUX'] = False
+    # LibreChat config uses MiB here; reject oversized files in the UI/handler too.
+    limit = target_config.get('fileSizeLimit', endpoints.get('default', {}).get('fileSizeLimit', 12))
+    target_config['fileSizeLimit'] = min(limit, 12)
     # Making supportedMimeTypes explicit would otherwise opt a custom endpoint
     # into native media bytes. Preserve implicit audio/video delivery using the
     # deployment's explicitly declared speech-provider state, not guessed secrets.

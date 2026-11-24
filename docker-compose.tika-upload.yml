@@ -1,32 +1,41 @@
-# Only task-owned TEST parser services. No public ports or document mounts.
-name: govchat-tika-upload
+# Opt-in overlay: docker compose -f docker-compose.yml -f docker-compose.tika-upload.yml
+# Render LIBRECHAT_CONFIG_PATH first; no embedding/RAG routes are provided.
 services:
-  tika:
+  librechat:
+    environment:
+      RAG_API_URL: http://govchat-upload-extractor:8000
+      GOVCHAT_TIKA_UPLOAD_ENABLED: "true"
+    depends_on:
+      document-extractor:
+        condition: service_healthy
+  upload-tika:
     build: ./services/tika
-    image: govchat-tika-nl:3.2.3-test
+    image: govchat-tika-nl:3.2.3
     container_name: govchat-upload-tika
     environment:
-      JAVA_TOOL_OPTIONS: -Xms32m -Xmx160m -XX:ActiveProcessorCount=1
+      # Applies to BOTH watchdog and fork JVMs. Leave room for native OCR and tmpfs.
+      JAVA_TOOL_OPTIONS: -Xms32m -Xmx512m -XX:ActiveProcessorCount=1
       OMP_THREAD_LIMIT: "1"
     networks: [parser]
     read_only: true
     tmpfs: ["/tmp:rw,noexec,nosuid,size=100663296"]
     cap_drop: [ALL]
     security_opt: [no-new-privileges:true]
-    mem_limit: 512m
-    memswap_limit: 512m
+    mem_limit: 1536m
+    memswap_limit: 1536m
     cpus: 1
     pids_limit: 128
     restart: unless-stopped
   document-extractor:
     build: ./services/document-extractor
-    image: govchat-tika-upload-adapter:test
+    image: govchat-tika-upload-adapter:local
     container_name: govchat-upload-extractor
     environment:
-      JWT_SECRET: ${DOCUMENT_EXTRACTOR_JWT_SECRET:?private LibreChat JWT secret required}
+      # Must match LibreChat's signing key; a separate key would reject every upload.
+      JWT_SECRET: ${JWT_SECRET:?LibreChat JWT secret required}
     networks:
       parser: {}
-      librechat:
+      librechat-net:
         aliases: [govchat-upload-extractor]
     read_only: true
     tmpfs: ["/scratch:rw,noexec,nosuid,size=67108864,uid=10001,gid=10001,mode=700"]
@@ -37,7 +46,7 @@ services:
     cpus: 0.5
     pids_limit: 64
     restart: unless-stopped
-    depends_on: [tika]
+    depends_on: [upload-tika]
     healthcheck:
       test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=8)"]
       interval: 30s
@@ -47,6 +56,3 @@ services:
 networks:
   parser:
     internal: true
-  librechat:
-    external: true
-    name: librechat-net

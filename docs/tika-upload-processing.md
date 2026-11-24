@@ -1,101 +1,136 @@
-# Experimental Tika-only upload processing
+# Tika document uploads: upload → extract → chat context
 
-**Status: unfinished; not production-ready.** Repeated OCR requests can exhaust
-the dedicated parser's memory budget. LibreChat can then persist unreadable
-built-in fallback text. Direct-adapter contract success is not proof that browser
-uploads, persistence and model delivery work reliably. Read the
-[failure and continuation notes](tika-upload-handoff.md) before development.
+**Status: repair candidate, not an accepted release.** Contract tests and targeted
+client/upload-handler checks pass, but the complete warm-workload run has not
+passed. Read the [current repair status](tika-upload-repair-status.md) before
+activation. Commands below describe the intended integration, not a deployment
+already performed or approved by acceptance tests.
 
-## Intended boundary
+## Direction and ownership
 
-The independently owned [adapter](../services/document-extractor/app.py) implements
-LibreChat's extraction protocol: an authenticated multipart upload with exactly
-one file and one file identifier, returning a text object on successful extraction.
-LibreChat remains responsible for file authorization, persistence, retention,
-attachment resolution and subsequent text delivery. There is no document cache,
-URL fetching, embedding, user database access or per-turn parsing in the adapter.
+Use the [opt-in Compose overlay](../docker-compose.tika-upload.yml) with the
+regular stack. Documents go to the private [extraction adapter](../services/document-extractor/app.py)
+and standard Apache Tika 3.2.3 with Dutch/English OCR. The adapter returns extracted
+text. LibreChat v0.8.8 stores it with the authenticated file owner and text-delivery
+metadata, then reuses the stored text on subsequent turns. No embedding service,
+vector store, retrieval, per-turn extraction, document cache or database access
+is needed in the adapter. The upstream environment variable is named RAG_API_URL,
+but this adapter implements extraction only, not RAG endpoints.
 
-The experiment uses standard Apache Tika with bundled Dutch OCR data, not Docling.
-The [format manifest](../services/document-extractor/routes.json) covers PDF, DOCX,
-PPTX, XLSX, MSG, EML, ODT, DOC and RTF. Native text is handled separately. A declared
-extension and MIME route must agree with bounded binary preflight; unsupported,
-encrypted, malformed and oversized documents are rejected.
+The [format manifest](../services/document-extractor/routes.json) covers PDF,
+DOCX, PPTX, XLSX, MSG, EML, ODT, DOC and RTF. Native UTF-8 text and existing media
+routes are preserved. PDF parsing uses normal auto OCR first; only a completed
+unreadable result gets one bounded OCR-only recovery attempt.
 
-Normal Tika parsing runs first. Only an eligible PDF whose completed extraction
-fails Unicode quality screening can receive one bounded OCR-only retry. This
-avoids retaining a broken native text layer in the recovered result. It does not
-guarantee exact transcription, layout fidelity or complete OCR coverage.
+## What was broken and what changed
 
-## Limits and known boundaries
+- The original standalone experimental Compose did not activate the LibreChat
+  extraction route. The overlay now sets the private origin, shares the regular
+  JWT signing key, and waits for extractor health. Do not create a second key.
+- A high-resolution generated scan reproduced Java heap exhaustion in PDFBox's
+  image decoding through the real client. Increasing container memory while
+  keeping a 256 MiB heap did **not** fix it. The tested configuration uses a
+  512 MiB maximum heap and 1536 MiB container cap, accounting for both JVMs,
+  native OCR and scratch. OCR remains at the standard 300 DPI. Sandbox controls,
+  CPU/process limits and swap prohibition remain intact.
+- LibreChat catches configured extraction errors and otherwise invokes its own
+  document parser, which can store nonempty replacement-character garbage.
+  The [selective upload preload](../scripts/librechat-tika-upload-preload.js)
+  throws before that fallback for manifest document MIME types only, when this
+  feature is explicitly enabled. It does not add content-security filters or
+  traverse ordinary chat. Its exact source anchor is checked against v0.8.8;
+  incompatible upstream code fails startup instead of silently dropping the guard.
+- One parser remains active at a time. Up to three additional authenticated
+  requests can wait without their bodies being read/spooled. Waiting counts
+  against the original deadline; excess callers receive a busy response. A
+  waiting timeout does not poison a parser that was never called.
+- Uploads are limited to 12 MiB, 60 PDF pages and 15 MiB extracted UTF-8 text.
+  Binary preflight has up to 30 seconds within the same 270-second request
+  deadline; an overloaded/timed-out validator returns a temporary service error
+  and is killed/reaped, not classified as an invalid document or a parser fault.
+  The renderer also caps the endpoint upload-size setting at 12 MiB. Actual model
+  context/token limits are inherited, not increased or bypassed.
 
-The current adapter limits input size, page count, output size, concurrent work
-and total processing time. Temporary files are request-scoped. Unknown parser
-termination sets a fault latch; health then rejects future extraction. This latch
-must not be removed or automatically cleared without evidence of native cleanup.
+## Activation
 
-The experimental [Compose template](../docker-compose.tika-upload.yml) contains
-dedicated parser/adapter services with private networking, no public ports,
-read-only filesystems, bounded scratch, dropped capabilities and memory/process
-limits. **These limits have not established reliable warm-process OCR behavior.**
-Do not increase resource limits, disable security controls or force OCR globally
-as an unverified workaround.
+Render from the **current configuration used by the deployment**, not an old
+example. Python with PyYAML is needed for the [renderer](../scripts/render-document-processing-config.py).
+From the repository root on a Linux deployment:
 
-LibreChat's installed document-upload path may catch extraction failures and use
-its built-in document parser. That fallback can produce nonempty but unreadable
-text. The adapter itself never represents failure as successful empty text.
-There is no supported selective fallback-disable switch implemented here.
+```sh
+python3 scripts/render-document-processing-config.py --source librechat.yaml --output .tika-upload-local/librechat.generated.yaml --stt-configured false
+```
 
-Do not reintroduce a broad document-quality policy as a fallback workaround: an
-earlier approach activated model-bound context traversal and broke ordinary
-pasted-text chat. The [compatibility renderer](../scripts/add-extraction-quality-policy.py)
-therefore preserves input policies without adding or removing any rule.
+Replace the source path with the deployment's actual current configuration and
+declare whether upload transcription is configured. The renderer refuses to
+overwrite its source and rejects overlapping configured OCR routes. It preserves
+media delivery, tool settings, security policies and existing context limits.
+Regenerate the opt-in output after changing the source configuration.
 
-## Configuration and development
+Copy the [feature environment example](../.env.tika-upload.example) to a private
+feature environment file. Keep the existing regular private environment file;
+it provides LibreChat's JWT_SECRET. Start only the task's parsers, wait for health,
+and then recreate only LibreChat:
 
-The [configuration renderer](../scripts/render-document-processing-config.py)
-generates an experimental configuration from the current caller-supplied source,
-without overwriting it. It narrows supported document routes to text, preserves
-media/tool configuration and leaves existing security policies intact. The
-template targets the project's example orchestrator endpoint; verify the actual
-endpoint and installed schema in an isolated test deployment.
+```sh
+docker compose --env-file .env --env-file .env.tika-upload -f docker-compose.yml -f docker-compose.tika-upload.yml up -d --build upload-tika document-extractor
+docker compose --env-file .env --env-file .env.tika-upload -f docker-compose.yml -f docker-compose.tika-upload.yml ps document-extractor
+docker compose --env-file .env --env-file .env.tika-upload -f docker-compose.yml -f docker-compose.tika-upload.yml up -d --no-deps --force-recreate librechat
+```
 
-Keep generated configurations, operational overlays and all authentication values
-outside Git. The [environment template](../.env.tika-upload.example) contains only
-a placeholder. Extraction tokens must follow the installed LibreChat helper's
-claim contract; do not relax signature or owner validation for testing.
+Do not point an embedding/file-search feature at this extraction-only adapter.
+If a deployment needs both, a separately reviewed split of upstream origins is
+required. This change does not deploy itself or modify a production database.
 
-Use independent synthetic credentials and disposable services disconnected from
-production databases. Generate fixtures with the
-[synthetic generator](../tests/document-processing/fixtures.py); never commit
-uploaded documents, exported requests, runtime logs or database records.
+## Reproducible isolated tests
 
-## Validation scope
+Build the images in dependency order; no host Node/Python installation is needed:
 
-[Adapter contracts](../tests/document-processing/test_adapter.py) cover protocol,
-authentication, routing, preflight, text screening, one bounded PDF recovery,
-deadlines, parser failures and scratch cleanup. They do not prove native resource
-cleanup or application persistence.
+```sh
+docker build -t govchat-tika-upload-adapter:local services/document-extractor
+docker build -t govchat-tika-nl:3.2.3 services/tika
+docker build -t govchat-tika-contract-tests -f tests/document-processing/Dockerfile .
+docker compose -f tests/document-processing/compose.yml run --rm contracts
+docker compose -f tests/document-processing/compose.yml run --rm client
+docker compose -f tests/document-processing/compose.yml run --rm upload-handler
+```
 
-The [installed-client test](../tests/document-processing/client-extraction.test.cjs)
-calls LibreChat's actual extraction client using temporary streams and independent
-synthetic fixtures. It reports counts only and fails on unreadable output or
-unhealthy extraction. It requires a disposable parser pair and installed
-LibreChat dependencies; it is not a browser upload or a database test.
+The [test Compose](../tests/document-processing/compose.yml) has no public ports,
+production databases or credentials. It generates synthetic documents into its
+own volume. The [client workload](../tests/document-processing/client-extraction.test.cjs)
+reuses a warm parser for office documents, plain text, ten repeated scan/broken-layer/
+mixed/native cycles, a 30-page noisy scan, and four high-resolution scans.
+The [upload-handler tests](../tests/document-processing/upload-handler.test.cjs)
+execute the actual installed handler/client with captured storage/DB calls and
+actual stored-text context formatting. They prove the failing-before/passing-after
+fallback boundary, text-delivery metadata, owner assignment, multiple attachments,
+follow-up reuse and persistence-error behavior. Storage and DB are test doubles:
+this is **not** an authenticated browser or production MongoDB/model test.
 
-The [configuration contract](../tests/document-processing/live-config.test.cjs)
-and [policy regression contract](../tests/document-processing/fallback-quality.test.cjs)
-check schema/routing preservation and ordinary-text behavior with synthetic inputs.
-They are not substitutes for authenticated upload-handler and model-flow checks.
+Remove only these disposable test services and their synthetic volume afterwards:
 
-## Rollback principle
+```sh
+docker compose -f tests/document-processing/compose.yml down -v
+```
 
-Restore only the experiment's extraction-origin override and generated-config
-mount against a verified pre-experiment baseline. Recreate only the affected
-application service without dependencies, verify application/authentication
-health, then retire the dedicated experiment parser services. Preserve user data,
-later unrelated settings and legacy attachments. Never perform global shutdown,
-orphan removal, shared-parser restart or database repair as a feature rollback.
+## Failure handling, acceptance and rollback
 
-Previously persisted bad extraction is not repaired by changing parser code or
-rolling back deployment. New-upload verification remains a separate acceptance
-step after a confirmed correction.
+Malformed, encrypted, unreadable, oversized and partially extracted documents
+produce errors, never fake successful text. Unknown parser termination still
+latches an unhealthy adapter. Do not clear it automatically just because the
+watchdog's replacement JVM responds; native cleanup is not established by that.
+Recover deliberately by stopping the dedicated adapter and parser, then starting
+the parser and adapter afresh. Do not restart any shared parser or unrelated stack.
+
+OCR is not exact transcription. Extremely large raster images can still exceed
+the bounded resource envelope; those uploads fail rather than persisting junk.
+Legacy DOC/MSG/RTF fidelity and arbitrary scans are not guaranteed by the generated
+PDF/DOCX/PPTX/XLSX/ODT/EML fixtures. Model limits can truncate context independently
+of extraction/storage. Historical bad file records are not rewritten: upload the
+document afresh after activation.
+
+After deployment, acceptance still requires an authenticated new browser upload,
+owner-scoped attachment resolution, subsequent-turn reuse and actual final bridge/
+model delivery. For rollback, restore the pre-feature config/origin and recreate
+only LibreChat without the feature overlay, then retire only these dedicated
+parser services. Preserve user files, later unrelated settings and security rules.

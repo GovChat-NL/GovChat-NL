@@ -1,4 +1,5 @@
-FROM govchat-tika-upload-adapter:test
+ARG ADAPTER_IMAGE=govchat-tika-upload-adapter:local
+FROM ${ADAPTER_IMAGE}
 USER root
 COPY services/document-extractor/requirements-test.txt /test-requirements.txt
 COPY services/document-extractor/requirements.txt /requirements.txt

@@ -95,9 +95,9 @@ def test_invalid_input(client, data, filename, mime, status):
 
 def test_limits_busy_and_contract(client):
     assert client.post('/text', headers={'Authorization': token(), 'Content-Length': str(13 * e.MiB)}, content=b'x').status_code == 413
-    client.app.state.safety['active'] = True
+    client.app.state.safety['waiting'] = 3
     assert upload(client).status_code == 429
-    client.app.state.safety['active'] = False
+    client.app.state.safety['waiting'] = 0
     assert client.post('/text', headers={'Authorization': token()}, data={'url': 'http://invalid'}).status_code == 400
     assert upload(client, pdf(pages=61)).status_code == 422
 
@@ -336,3 +336,92 @@ def test_quality_policy_preserves_source_and_is_idempotent():
     for existing in [{'action': 'audit'}, {'fields': ['filename']}]:
         configured = {'filters': {'files': {'pii': existing}}}
         assert policy.with_quality_policy(configured) == configured
+
+
+@pytest.mark.asyncio
+async def test_concurrent_attachments_queue_with_one_parser(tmp_path, fast_preflight):
+    import asyncio
+    active = peak = 0
+
+    async def fake(request):
+        nonlocal active, peak
+        active += 1
+        peak = max(peak, active)
+        await asyncio.sleep(0.1)
+        active -= 1
+        return httpx.Response(200, json=[{'X-TIKA:content': 'Gemeente 2026', 'xmpTPg:NPages': '2'}])
+
+    app = e.create_app(e.Settings(secret=SECRET, scratch=str(tmp_path)), httpx.MockTransport(fake))
+    async with app.router.lifespan_context(app):
+        async with httpx.AsyncClient(transport=httpx.ASGITransport(app), base_url='http://test') as c:
+            async def send(index):
+                return await c.post('/text', headers={'Authorization': token()},
+                    data={'file_id': 'synthetic-' + str(index)}, files={'file': ('x.pdf', pdf(), 'application/pdf')})
+            results = await asyncio.gather(*(send(index) for index in range(4)))
+    assert all(result.status_code == 200 for result in results)
+    assert peak == 1 and active == 0
+    assert app.state.safety['waiting'] == 0 and not app.state.safety['active']
+    assert not list(tmp_path.iterdir())
+
+
+@pytest.mark.asyncio
+async def test_waiting_timeout_does_not_poison_parser(tmp_path):
+    app = e.create_app(e.Settings(secret=SECRET, scratch=str(tmp_path), deadline=1))
+    async with app.router.lifespan_context(app):
+        await app.state.safety['lock'].acquire()
+        async with httpx.AsyncClient(transport=httpx.ASGITransport(app), base_url='http://test') as c:
+            async def send():
+                return await c.post('/text', headers={'Authorization': token()},
+                    data={'file_id': 'synthetic'}, files={'file': ('x.txt', b'Gemeente 2026', 'text/plain')})
+            try:
+                assert (await send()).status_code == 503
+                assert app.state.safety['fault'] is None
+                assert app.state.safety['waiting'] == 0
+            finally:
+                app.state.safety['lock'].release()
+            assert (await send()).status_code == 200
+
+
+@pytest.mark.asyncio
+async def test_cancelled_waiter_releases_queue_slot(tmp_path):
+    import asyncio
+    app = e.create_app(e.Settings(secret=SECRET, scratch=str(tmp_path)))
+    async with app.router.lifespan_context(app):
+        await app.state.safety['lock'].acquire()
+        async with httpx.AsyncClient(transport=httpx.ASGITransport(app), base_url='http://test') as c:
+            task = asyncio.create_task(c.post('/text', headers={'Authorization': token()},
+                data={'file_id': 'synthetic'}, files={'file': ('x.txt', b'Gemeente 2026', 'text/plain')}))
+            await asyncio.sleep(0.01)
+            assert app.state.safety['waiting'] == 1
+            task.cancel()
+            with pytest.raises(asyncio.CancelledError):
+                await task
+            app.state.safety['lock'].release()
+            assert app.state.safety['waiting'] == 0
+            assert app.state.safety['fault'] is None
+
+
+@pytest.mark.asyncio
+async def test_preflight_timeout_is_temporary_and_reaps_process(tmp_path, monkeypatch):
+    import asyncio
+    real_timeout = asyncio.timeout
+    class Process:
+        returncode = None
+        killed = waited = False
+        async def communicate(self):
+            await asyncio.sleep(1)
+        def kill(self):
+            self.killed = True
+            self.returncode = -9
+        async def wait(self):
+            self.waited = True
+    process = Process()
+    async def spawn(*args, **kwargs):
+        return process
+    monkeypatch.setattr(e.asyncio, 'create_subprocess_exec', spawn)
+    monkeypatch.setattr(e.asyncio, 'timeout', lambda _: real_timeout(0.01))
+    with pytest.raises(e.HTTPException) as error:
+        await e.preflight(tmp_path / 'synthetic.pdf', 'pdf', 60)
+    assert error.value.status_code == 503
+    assert error.value.detail == 'document_validation_timeout'
+    assert process.killed and process.waited
