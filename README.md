@@ -101,6 +101,11 @@ Lees daarna de [omgevingsvariabelen](https://govchat-nl.github.io/docs/handleidi
 
 De drie configureerbare huisstijlopties en het plaatsen van eigen logo's staan in [Branding configureren](docs/BRANDING.md).
 
+De titel, beschrijving en optionele previewafbeelding voor gedeelde links zijn
+instelbaar via [`APP_TITLE`](.env.example:36), [`APP_DESCRIPTION`](.env.example:39)
+en [`APP_IMAGE_URL`](.env.example:42). Zie [Linkpreviews configureren](docs/LINK_PREVIEWS.md)
+voor defaults, configuratievoorbeelden en het verversen van externe previewcaches.
+
 De LibreChat-overrides en de instelbare Nederlandse vertalingen staan in het [overzicht van overrides](docs/OVERRIDES.md) en [Nederlandse vertalingen](docs/TRANSLATIONS.md). De vertaaloverride staat standaard aan en kan met [`LIBRECHAT_NL_TRANSLATIONS_ENABLED`](.env.example:11) op `false` worden uitgezet.
 
 ### Eigen deployment zonder broncode-afwijkingen
