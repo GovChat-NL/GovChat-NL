@@ -68,7 +68,6 @@ export async function reload() {
   store.flow = flowOf(template());
   store.dirty = false;
   store.feedback = null;
-  store.generalFeedback = null;
   await loadDocuments();
 }
 

@@ -5,8 +5,6 @@ CREATE TABLE IF NOT EXISTS general_feedback (
   id bigserial PRIMARY KEY,
   email text NOT NULL,
   text text NOT NULL,
-  step_id text NOT NULL DEFAULT '',
-  version_id text NOT NULL DEFAULT '',
   created_at timestamptz NOT NULL DEFAULT now()
 );
 

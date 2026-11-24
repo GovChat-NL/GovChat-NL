@@ -40,12 +40,7 @@ function createGeneralFeedbackHandlers({ getQuery, retentionDays = 365 }) {
     if (!query) return unavailable;
 
     await query(PURGE_SQL, [retentionDays]);
-    await query("INSERT INTO general_feedback (email, text, step_id, version_id) VALUES ($1, $2, $3, $4)", [
-      email,
-      text,
-      String((body && body.step_id) || "").trim().slice(0, 64),
-      String((body && body.version_id) || "").trim().slice(0, 64),
-    ]);
+    await query("INSERT INTO general_feedback (email, text) VALUES ($1, $2)", [email, text]);
     return { status: 201, body: { ok: true } };
   }
 
@@ -54,7 +49,7 @@ function createGeneralFeedbackHandlers({ getQuery, retentionDays = 365 }) {
     if (!query) return unavailable;
     await query(PURGE_SQL, [retentionDays]);
     const { rows } = await query(
-      "SELECT id::text, email, text, step_id, version_id, created_at FROM general_feedback ORDER BY created_at DESC, id DESC",
+      "SELECT id::text, email, text, created_at FROM general_feedback ORDER BY created_at DESC, id DESC",
       [],
     );
     return { status: 200, body: { items: rows.map((r) => ({ ...r, created_at: new Date(r.created_at).toISOString() })) } };

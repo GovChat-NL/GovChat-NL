@@ -291,14 +291,6 @@ app.use("/api/beleidskompas-feedback", (req, res, next) => {
   next();
 });
 
-app.use("/api/beleidskompas-general-feedback", (req, res, next) => {
-  res.set("Access-Control-Allow-Origin", CORS_ORIGIN);
-  res.set("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
-  res.set("Access-Control-Allow-Headers", "Content-Type, Authorization");
-  if (req.method === "OPTIONS") return res.sendStatus(204);
-  next();
-});
-
 app.get("/api/realtime-stt", (req, res) => {
   return res.json({
     ok: true,
