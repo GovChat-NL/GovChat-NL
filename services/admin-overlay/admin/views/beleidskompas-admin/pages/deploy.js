@@ -2,6 +2,7 @@
 import * as api from "../api.js";
 import { h, icon, card, toast, formatDate } from "../dom.js";
 import { dropdown } from "../components/dropdown.js";
+import { templateSelector } from "../components/template-selector.js";
 import { versionLabel, newestVersion, versionOptions } from "../app.js";
 
 export function renderDeploy({ store, render, reload }) {
@@ -9,26 +10,27 @@ export function renderDeploy({ store, render, reload }) {
   const tpl = store.templates.find((t) => t.id === ui.depTemplate) || store.templates.find((t) => t.id === store.templateId) || store.templates[0];
   if (!tpl) return { content: h("p", { class: "empty" }, "Maak eerst een template aan in de Editor.") };
   const version = tpl.versions.find((v) => v.id === ui.depVersion) || newestVersion(tpl);
-  const live = tpl.versions.find((v) => v.id === tpl.live_version_id);
+  // One version of one template is live at a time.
+  const liveTpl = store.templates.find((t) => t.live_version_id);
+  const live = liveTpl?.versions.find((v) => v.id === liveTpl.live_version_id);
 
   const filters = h(
     "div",
     { class: "filter-bar" },
-    dropdown({
-      label: "Template",
-      value: tpl.id,
-      options: store.templates.map((t) => ({ value: t.id, label: t.name })),
-      onChange: (v) => { ui.depTemplate = v; ui.depVersion = null; render(); },
+    templateSelector({
+      templates: store.templates,
+      currentId: tpl.id,
+      onSelect: (v) => { ui.depTemplate = v; ui.depVersion = null; render(); },
     }),
     dropdown({ label: "Versie", value: version.id, options: versionOptions(tpl), onChange: (v) => { ui.depVersion = v; render(); } }),
   );
 
-  const describe = (v) => (v ? `${versionLabel(tpl, v.id)} · opgeslagen ${formatDate(v.published_at)}${v.note ? ` · ${v.note}` : ""}` : "—");
+  const describe = (t, v) => (v ? `${t.name} ${versionLabel(t, v.id)} · opgeslagen ${formatDate(v.published_at)}${v.note ? ` · ${v.note}` : ""}` : "—");
   const isLive = version.id === tpl.live_version_id;
 
   const deployCard = card(
     "Live zetten",
-    h("dl", { class: "kv" }, h("dt", {}, "Nu live"), h("dd", {}, describe(live)), h("dt", {}, "Gekozen"), h("dd", {}, describe(version))),
+    h("dl", { class: "kv" }, h("dt", {}, "Nu live"), h("dd", {}, describe(liveTpl, live)), h("dt", {}, "Gekozen"), h("dd", {}, describe(tpl, version))),
     h(
       "div",
       { class: "card-actions" },
