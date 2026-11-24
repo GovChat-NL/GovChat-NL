@@ -15,7 +15,7 @@
  * the case theirs.
  */
 
-const { HttpError } = require("../errors");
+const { HttpError } = require("../shared/errors");
 
 // Postgres raises this code when an insert hits an existing primary key.
 const UNIQUE_VIOLATION = "23505";

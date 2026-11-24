@@ -1,57 +1,39 @@
 "use strict";
 
-const crypto = require("crypto");
-const { HttpError } = require("../errors");
-
-function id(value) {
-  const text = String(value ?? "");
-  if (!/^[1-9]\d*$/.test(text) || !Number.isSafeInteger(Number(text))) throw new HttpError(400, "Invalid id");
-  return text;
-}
+const { HttpError, FOREIGN_KEY_VIOLATION } = require("../shared/errors");
+const { requireId } = require("../shared/ids");
+const { inTransaction } = require("../shared/transaction");
 
 const versionView = (v) => ({
   id: String(v.id), version: v.version, note: v.note, snapshot: v.snapshot,
   published_at: new Date(v.created_at).toISOString(), published_by: v.created_by,
 });
-const documentColumns = "id::text, filename, content_type AS mime_type, size AS size_bytes, preview_text, index_status, index_error, created_at AS uploaded_at";
 
 function createTemplateRepository(pool, defaultSettings = {}) {
-  async function transaction(run) {
-    const client = await pool.connect();
-    try {
-      await client.query("BEGIN");
-      const result = await run(client);
-      await client.query("COMMIT");
-      return result;
-    } catch (err) {
-      await client.query("ROLLBACK");
-      throw err;
-    } finally {
-      client.release();
-    }
-  }
-
   async function requireTemplate(db, templateId, lock = false) {
-    const { rows } = await db.query(`SELECT * FROM templates WHERE id = $1${lock ? " FOR UPDATE" : ""}`, [id(templateId)]);
+    const { rows } = await db.query(`SELECT * FROM templates WHERE id = $1${lock ? " FOR UPDATE" : ""}`, [requireId(templateId)]);
     if (!rows[0]) throw new HttpError(404, "Template not found");
     return rows[0];
   }
 
   async function insertVersion(db, templateId, flow, note = "") {
-    const docIds = [...new Set((flow.steps || []).flatMap((s) => s.document_ids || []).map(id))];
-    if (docIds.length) {
-      const { rows } = await db.query("SELECT id FROM documents WHERE id = ANY($1::int[])", [docIds]);
-      if (rows.length !== docIds.length) throw new HttpError(400, "A selected document no longer exists");
-    }
+    const docIds = [...new Set((flow.steps || []).flatMap((s) => s.document_ids || []).map(requireId))];
     const { rows } = await db.query(
       `INSERT INTO template_versions (template_id, version, note, snapshot)
        SELECT $1, COALESCE(MAX(version), 0) + 1, $2, $3::jsonb FROM template_versions WHERE template_id = $1 RETURNING *`,
       [templateId, String(note).trim(), JSON.stringify(flow)],
     );
-    if (docIds.length) await db.query("INSERT INTO version_documents (version_id, document_id) SELECT $1, unnest($2::int[])", [rows[0].id, docIds]);
+    try {
+      if (docIds.length) await db.query("INSERT INTO version_documents (version_id, document_id) SELECT $1, unnest($2::int[])", [rows[0].id, docIds]);
+    } catch (err) {
+      if (err.code === FOREIGN_KEY_VIOLATION) throw new HttpError(400, "A selected document no longer exists");
+      throw err;
+    }
     return versionView(rows[0]);
   }
 
+  /** Stores a template with its first version and returns the id of the
+   *  template. `db` is a client inside a transaction. */
   async function insertTemplate(db, name, flow) {
     const title = String(name || "").trim();
     if (!title) throw new HttpError(400, "Template name is required");
@@ -79,27 +61,33 @@ function createTemplateRepository(pool, defaultSettings = {}) {
     };
   }
 
+  async function getTemplate(templateId) {
+    const id = requireId(templateId);
+    const template = (await getState()).templates.find((t) => t.id === id);
+    if (!template) throw new HttpError(404, "Template not found");
+    return template;
+  }
+
   async function createTemplate(name, flow) {
-    const templateId = await transaction((db) => insertTemplate(db, name, flow));
-    return (await getState()).templates.find((t) => t.id === templateId);
+    const templateId = await inTransaction(pool, (db) => insertTemplate(db, name, flow));
+    return getTemplate(templateId);
   }
 
   async function saveVersion(templateId, flow, note) {
-    return transaction(async (db) => {
+    return inTransaction(pool, async (db) => {
       await requireTemplate(db, templateId, true); // Serialize numbering for concurrent saves.
       return insertVersion(db, templateId, flow, note);
     });
   }
 
   async function deployVersion(templateId, versionId, publish) {
-    return transaction(async (db) => {
+    return inTransaction(pool, async (db) => {
       // Serialize deployments, including the first deployment when live has no row yet.
       await db.query("LOCK TABLE live IN EXCLUSIVE MODE");
-      const { rows } = await db.query("SELECT snapshot FROM template_versions WHERE id = $1 AND template_id = $2", [id(versionId), id(templateId)]);
+      const { rows } = await db.query("SELECT snapshot FROM template_versions WHERE id = $1 AND template_id = $2", [requireId(versionId), requireId(templateId)]);
       if (!rows[0]) throw new HttpError(404, "Version not found for this template");
       await db.query("INSERT INTO live (template_id, version_id) VALUES ($1, $2) ON CONFLICT (key) DO UPDATE SET template_id = EXCLUDED.template_id, version_id = EXCLUDED.version_id", [templateId, versionId]);
-      const documents = (await db.query(`SELECT ${documentColumns} FROM documents`)).rows;
-      await publish(rows[0].snapshot, documents, String(versionId));
+      await publish(rows[0].snapshot, String(versionId));
       return rows[0].snapshot;
     });
   }
@@ -109,74 +97,7 @@ function createTemplateRepository(pool, defaultSettings = {}) {
     return { ...defaultSettings, ...rows[0].data };
   }
 
-  async function listDocuments() {
-    return (await pool.query(`SELECT ${documentColumns} FROM documents ORDER BY created_at DESC, id DESC`)).rows;
-  }
-
-  async function insertDocument(db, doc) {
-    const filename = String(doc.filename || "").trim();
-    if (!filename) throw new HttpError(400, "Filename is required");
-    const content = Buffer.from(String(doc.content_base64 || ""), "base64");
-    const mime = String(doc.mime_type || "application/octet-stream");
-    const preview = mime.startsWith("text/") || /\.(md|txt)$/i.test(filename) ? content.toString("utf8").slice(0, 4000) : "";
-    return (await db.query(
-      `INSERT INTO documents (sha256, filename, content_type, size, preview_text, content) VALUES ($1,$2,$3,$4,$5,$6)
-       ON CONFLICT (sha256) DO UPDATE SET sha256 = EXCLUDED.sha256 RETURNING ${documentColumns}`,
-      [crypto.createHash("sha256").update(content).digest("hex"), filename, mime, content.length, preview, content],
-    )).rows[0];
-  }
-
-  async function updateDocument(documentId, filename) {
-    if (!String(filename || "").trim()) throw new HttpError(400, "Filename is required");
-    const { rows } = await pool.query(`UPDATE documents SET filename = $2 WHERE id = $1 RETURNING ${documentColumns}`, [id(documentId), filename.trim()]);
-    if (!rows[0]) throw new HttpError(404, "Document not found");
-    return rows[0];
-  }
-
-  async function getDocument(documentId) {
-    const { rows } = await pool.query(`SELECT ${documentColumns}, content FROM documents WHERE id = $1`, [id(documentId)]);
-    if (!rows[0]) throw new HttpError(404, "Document not found");
-    return rows[0];
-  }
-
-  async function deleteDocument(documentId) {
-    try {
-      const result = await pool.query("DELETE FROM documents WHERE id = $1 RETURNING id", [id(documentId)]);
-      if (!result.rows[0]) throw new HttpError(404, "Document not found");
-    } catch (err) {
-      if (err.code === "23503") throw new HttpError(409, "Document belongs to a saved version and cannot be deleted");
-      throw err;
-    }
-  }
-
-  async function exportTemplate(templateId) {
-    const template = (await getState()).templates.find((t) => t.id === id(templateId));
-    if (!template) throw new HttpError(404, "Template not found");
-    const flow = template.versions[0].snapshot;
-    const docIds = [...new Set((flow.steps || []).flatMap((s) => s.document_ids || []))];
-    const documents = await Promise.all(docIds.map(async (docId) => {
-      const { content, ...doc } = await getDocument(docId);
-      return { ...doc, content_base64: content.toString("base64") };
-    }));
-    return { name: template.name, flow, documents };
-  }
-
-  async function importTemplate({ name, flow, documents = [] }) {
-    if (!Array.isArray(documents)) throw new HttpError(400, "Documents must be an array");
-    const templateId = await transaction(async (db) => {
-      const mapping = new Map();
-      for (const doc of documents) mapping.set(String(doc.id), (await insertDocument(db, doc)).id);
-      const snapshot = structuredClone(flow);
-      for (const step of snapshot.steps || []) {
-        step.document_ids = (step.document_ids || []).map((docId) => mapping.get(String(docId)) || String(docId));
-      }
-      return insertTemplate(db, name, snapshot);
-    });
-    return (await getState()).templates.find((t) => t.id === templateId);
-  }
-
-  return { getState, createTemplate, saveVersion, deployVersion, saveSettings, listDocuments,
-    uploadDocument: (doc) => insertDocument(pool, doc), updateDocument, getDocument, deleteDocument, exportTemplate, importTemplate };
+  return { getState, getTemplate, createTemplate, insertTemplate, saveVersion, deployVersion, saveSettings };
 }
 
 module.exports = { createTemplateRepository };

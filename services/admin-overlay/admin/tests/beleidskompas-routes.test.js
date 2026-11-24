@@ -4,7 +4,7 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 
 const { createBeleidskompasHandlers } = require("../lib/beleidskompas/cases/case-routes");
-const { HttpError } = require("../lib/beleidskompas/errors");
+const { HttpError } = require("../lib/beleidskompas/shared/errors");
 
 /** A repository that records what it was asked and answers what the test says. */
 function fakeRepository(answers = {}) {

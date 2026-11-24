@@ -26,7 +26,7 @@
 
 const db = require("../../db/connection");
 const { createCaseRepository } = require("./cases/case-repository");
-const { HttpError } = require("./errors");
+const { HttpError } = require("./shared/errors");
 const routes = require("./cases/case-routes");
 
 // How long to wait before the next attempt to reach the database: after the

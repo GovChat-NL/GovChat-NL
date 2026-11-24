@@ -7,6 +7,7 @@ const path = require("node:path");
 const { once } = require("node:events");
 const { connectionSettings, applyMigrations } = require("../db/connection");
 const { createTemplateRepository } = require("../lib/beleidskompas/templates/template-repository");
+const { createTemplateService } = require("../lib/beleidskompas/templates/template-service");
 const { createDocumentRepository } = require("../lib/beleidskompas/documents/document-repository");
 const { createDocumentIndexer, INDEX_VERSION } = require("../lib/beleidskompas/documents/index-documents");
 const documentRoutes = require("../lib/beleidskompas/documents/document-routes");
@@ -41,6 +42,7 @@ test("admin template API persists UI actions in PostgreSQL", { skip: !enabled &&
   mount(app, {
     requireAuth,
     getRepository: () => repository,
+    getService: () => createTemplateService({ pool, templates: repository, documents: documentRepository }),
     normalizeFlow: (flow) => structuredClone(flow), defaultFlow,
     publishLive: async (flow) => {
       if (failPublication) throw new Error("publication unavailable");

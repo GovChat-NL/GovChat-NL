@@ -23,7 +23,7 @@
  * anything else is a 500 with a generic message.
  */
 
-const { HttpError } = require("../errors");
+const { HttpError } = require("../shared/errors");
 
 function suppliedToken(headers) {
   const auth = String((headers && headers.authorization) || "").trim();
