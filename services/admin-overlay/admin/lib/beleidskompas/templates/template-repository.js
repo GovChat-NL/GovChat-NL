@@ -1,7 +1,7 @@
 "use strict";
 
 const crypto = require("crypto");
-const { HttpError } = require("./errors");
+const { HttpError } = require("../errors");
 
 function id(value) {
   const text = String(value ?? "");

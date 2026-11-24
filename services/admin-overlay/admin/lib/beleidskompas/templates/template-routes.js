@@ -1,6 +1,6 @@
 "use strict";
 
-const { HttpError } = require("./errors");
+const { HttpError } = require("../errors");
 
 function mount(app, { requireAuth, getStore, normalizeFlow, defaultFlow, publishLive }) {
   const route = (method, path, run) => app[method](path, requireAuth, async (req, res) => {

@@ -6,11 +6,11 @@ const fs = require("node:fs");
 const path = require("node:path");
 const { once } = require("node:events");
 const { connectionSettings, applyMigrations } = require("../db/connection");
-const { createTemplateStore } = require("../lib/beleidskompas/template-store");
+const { createTemplateStore } = require("../lib/beleidskompas/templates/template-repository");
 const { createDocumentStore } = require("../lib/beleidskompas/documents/document-store");
 const { createDocumentIndexer, INDEX_VERSION } = require("../lib/beleidskompas/documents/index-documents");
 const documentRoutes = require("../lib/beleidskompas/documents/document-routes");
-const { mount } = require("../lib/beleidskompas/admin-routes");
+const { mount } = require("../lib/beleidskompas/templates/template-routes");
 
 const enabled = process.env.BELEIDSKOMPAS_DB_TEST === "true" && connectionSettings().host;
 

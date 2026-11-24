@@ -7,12 +7,12 @@ const path = require("path");
 const sharp = require("sharp");
 const { WebSocket, WebSocketServer } = require("ws");
 const beleidskompas = require("./lib/beleidskompas");
-const { createTemplateStore } = require("./lib/beleidskompas/template-store");
+const { createTemplateStore } = require("./lib/beleidskompas/templates/template-repository");
 const { createDocumentStore } = require("./lib/beleidskompas/documents/document-store");
 const { createDocumentIndexer } = require("./lib/beleidskompas/documents/index-documents");
 const documentRoutes = require("./lib/beleidskompas/documents/document-routes");
 const { HttpError } = require("./lib/beleidskompas/errors");
-const templateRoutes = require("./lib/beleidskompas/admin-routes");
+const templateRoutes = require("./lib/beleidskompas/templates/template-routes");
 let templateStore = null;
 let documentStore = null;
 
