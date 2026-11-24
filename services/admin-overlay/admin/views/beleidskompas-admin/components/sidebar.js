@@ -9,7 +9,7 @@ const PAGES = [
   { route: "deploy", label: "Deploy", icon: "upload" },
   { label: "Feedback", icon: "lightbulb" }, // a heading for the two feedback pages, not a page itself
   { route: "feedback", label: "Antwoordfeedback", icon: "thumbUp", child: true },
-  { route: "general-feedback", label: "Algemene feedback", icon: "mail", child: true },
+  { route: "general-feedback", label: "Algemene feedback", icon: "chat", child: true },
 ];
 
 // locked: no template selected yet, so the gated pages are shown but not clickable.
