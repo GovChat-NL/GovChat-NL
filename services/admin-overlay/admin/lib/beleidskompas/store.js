@@ -25,6 +25,10 @@ class StoreError extends Error {
 // Postgres raises this code when an insert hits an existing primary key.
 const UNIQUE_VIOLATION = "23505";
 
+// The text of all documents of one case together, in characters: the
+// agents read all of it with every message.
+const MAX_DOCUMENT_CHARS = 200000;
+
 function requireText(value, name) {
   const text = String(value || "").trim();
   if (!text) throw new StoreError(400, `${name} is required`);
@@ -134,19 +138,50 @@ function createStore(query) {
     return { seq: rows[0].seq };
   }
 
+  /** Adds a document the user uploaded to their case. The case must exist:
+   *  an upload never starts one. Refused when the text of all documents of
+   *  the case together would pass MAX_DOCUMENT_CHARS. */
+  async function addDocument({ caseId, userId, filename, mime, size, text }) {
+    const { id } = await requireOwnedCase(requireText(caseId, "case id"), requireText(userId, "user id"));
+    const content = requireText(text, "document text");
+    const { rows: used } = await query("SELECT COALESCE(SUM(length(text)), 0)::int AS chars FROM case_documents WHERE case_id = $1", [id]);
+    if (used[0].chars + content.length > MAX_DOCUMENT_CHARS) {
+      throw new StoreError(
+        413,
+        used[0].chars ? "De documenten van deze chat bevatten samen te veel tekst. Verwijder eerst een document." : "Dit document bevat te veel tekst voor de chat.",
+      );
+    }
+    const { rows } = await query(
+      "INSERT INTO case_documents (case_id, filename, mime, size, text) VALUES ($1, $2, $3, $4, $5) RETURNING id, filename, size, created_at",
+      [id, requireText(filename, "filename"), String(mime || "").trim() || null, Number(size) || 0, content],
+    );
+    await touch(id);
+    return rows[0];
+  }
+
+  async function removeDocument({ caseId, userId, documentId }) {
+    const { id } = await requireOwnedCase(requireText(caseId, "case id"), requireText(userId, "user id"));
+    const docId = String(documentId || "").trim();
+    const { rows } = /^\d+$/.test(docId) ? await query("DELETE FROM case_documents WHERE id = $1 AND case_id = $2 RETURNING id", [docId, id]) : { rows: [] };
+    if (!rows.length) throw new StoreError(404, "Unknown document");
+    await touch(id);
+    return { ok: true };
+  }
+
   async function setTitle({ caseId, userId, title }) {
     const { id } = await requireOwnedCase(requireText(caseId, "case id"), requireText(userId, "user id"));
     await query("UPDATE cases SET title = $2 WHERE id = $1", [id, String(title || "").trim() || null]);
   }
 
   /** The state of a case: the case row, the newest case text, the newest
-   *  report per substep and the conversation (the last `maxTurns` turns, in
-   *  order). Null when there is no such case for this user. */
+   *  report per substep, the conversation (the last `maxTurns` turns, in
+   *  order) and the uploaded documents. Null when there is no such case for
+   *  this user. */
   async function getState({ caseId, userId, maxTurns }) {
     const row = await ownedCase(requireText(caseId, "case id"), requireText(userId, "user id"));
     if (!row) return null;
     const limit = Math.max(1, Number.parseInt(String(maxTurns || 200), 10) || 200);
-    const [texts, reports, turns] = await Promise.all([
+    const [texts, reports, turns, documents] = await Promise.all([
       query("SELECT version, text, created_at FROM case_texts WHERE case_id = $1 ORDER BY version DESC LIMIT 1", [row.id]),
       query(
         `SELECT DISTINCT ON (substep_id) substep_id, version, text, citations, retrieval_trace, created_at
@@ -159,6 +194,7 @@ function createStore(query) {
          ) latest ORDER BY seq ASC`,
         [row.id, limit],
       ),
+      query("SELECT id, filename, size, text, created_at FROM case_documents WHERE case_id = $1 ORDER BY id", [row.id]),
     ]);
     const byId = {};
     for (const r of reports.rows) {
@@ -179,6 +215,7 @@ function createStore(query) {
       case_text: texts.rows[0] ? { version: texts.rows[0].version, text: texts.rows[0].text, created_at: texts.rows[0].created_at } : null,
       reports: byId,
       turns: turns.rows.map((t) => ({ seq: t.seq, role: t.role, step_id: t.step_id, asked_from: t.asked_from, text: t.text, created_at: t.created_at })),
+      documents: documents.rows,
     };
   }
 
@@ -190,7 +227,7 @@ function createStore(query) {
     return rows.map((r) => ({ id: r.id, title: r.title || null, created_at: r.created_at, updated_at: r.updated_at }));
   }
 
-  return { ensureCase, setCaseText, addReport, addTurn, setTitle, getState, listCases };
+  return { ensureCase, setCaseText, addReport, addTurn, addDocument, removeDocument, setTitle, getState, listCases };
 }
 
 module.exports = { StoreError, createStore };

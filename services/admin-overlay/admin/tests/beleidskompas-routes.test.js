@@ -5,6 +5,8 @@ const assert = require("node:assert/strict");
 
 const { createBeleidskompasHandlers } = require("../lib/beleidskompas/routes");
 const { StoreError } = require("../lib/beleidskompas/store");
+const { readChatDocument } = require("../lib/beleidskompas/chat-documents");
+const adminRoutes = require("../lib/beleidskompas/admin-routes");
 
 /** A store that records what it was asked and answers what the test says. */
 function fakeStore(answers = {}) {
@@ -15,7 +17,7 @@ function fakeStore(answers = {}) {
     if (answer instanceof Error) throw answer;
     return typeof answer === "function" ? answer(args) : answer;
   };
-  return { calls, listCases: make("listCases"), getState: make("getState"), setCaseText: make("setCaseText"), setTitle: make("setTitle"), addReport: make("addReport"), addTurn: make("addTurn") };
+  return { calls, listCases: make("listCases"), getState: make("getState"), setCaseText: make("setCaseText"), setTitle: make("setTitle"), addReport: make("addReport"), addTurn: make("addTurn"), addDocument: make("addDocument"), removeDocument: make("removeDocument") };
 }
 
 const TOKEN = "store-secret";
@@ -99,11 +101,67 @@ test("the page's endpoints take the user from the LibreChat login, never from th
   assert.deepEqual(await handlers.myCases(logged), { status: 200, body: [{ id: "conv-1" }] });
   assert.equal(store.calls[0].args.userId, "user-a", "the user comes from the login, not from the query");
 
-  assert.deepEqual(await handlers.myCase({ ...logged, params: { id: "conv-1" } }), { status: 200, body: { id: "conv-1" } });
+  assert.deepEqual(await handlers.myCase({ ...logged, params: { id: "conv-1" } }), { status: 200, body: { id: "conv-1", documents: [] } });
   assert.deepEqual(await handlers.myCase({ ...logged, params: { id: "conv-9" } }), { status: 404, body: { error: "Unknown case" } });
 });
 
 test("the page's endpoints answer 503 without a store", async () => {
   const handlers = createBeleidskompasHandlers({ store: null, internalToken: TOKEN, resolveUser: () => ({ id: "user-a" }) });
   assert.equal((await handlers.myCases({ headers: {}, cookies: {} })).status, 503);
+});
+
+test("an upload is checked against the settings, read and stored for the logged-in user; the page gets the documents without their text", async () => {
+  const store = fakeStore({ addDocument: (args) => ({ id: "8", filename: args.filename }), removeDocument: { ok: true }, getState: { id: "conv-1", documents: [{ id: "8", filename: "nota.txt", size: 4, text: "Kort" }] } });
+  const getLive = async () => ({ settings: { upload_max_mb: 1, upload_allowed_types: ["txt", "md"] } });
+  const resolveUser = (req) => (req.cookies && req.cookies.refreshToken === "good" ? { id: "user-a" } : null);
+  const handlers = createBeleidskompasHandlers({ store, internalToken: TOKEN, resolveUser, getLive });
+  const upload = (body, cookies = { refreshToken: "good" }) => handlers.addMyDocument({ headers: {}, cookies, params: { id: "conv-1" }, query: {}, body });
+  const base64 = (text) => Buffer.from(text).toString("base64");
+
+  assert.deepEqual(await upload({ filename: "nota.txt", mime: "text/plain", content_base64: base64("Eerste alinea.\n\nTweede.") }), { status: 200, body: { id: "8", filename: "nota.txt" } });
+  assert.deepEqual(store.calls[0].args, { caseId: "conv-1", userId: "user-a", mime: "text/plain", filename: "nota.txt", size: 23, text: "Eerste alinea.\n\nTweede." });
+
+  assert.equal((await upload({ filename: "nota.txt", content_base64: base64("x") }, {})).status, 401);
+  assert.equal((await upload({ filename: "nota.pdf", content_base64: base64("x") })).status, 415, "pdf is supported but not allowed here");
+  assert.equal((await upload({ filename: "groot.txt", content_base64: Buffer.alloc(1024 * 1024 + 1, 97).toString("base64") })).status, 413);
+  const empty = await upload({ filename: "leeg.md", content_base64: base64("\n\n") });
+  assert.equal(empty.status, 422);
+  assert.match(empty.body.error, /geen leesbare tekst/);
+  assert.equal(store.calls.length, 1, "a refused file is not stored");
+
+  assert.deepEqual((await handlers.myCase({ headers: {}, cookies: { refreshToken: "good" }, params: { id: "conv-1" }, query: {} })).body.documents, [{ id: "8", filename: "nota.txt", size: 4 }]);
+  assert.equal((await handlers.removeMyDocument({ headers: {}, cookies: { refreshToken: "good" }, params: { id: "conv-1", documentId: "8" } })).status, 200);
+  assert.deepEqual(store.calls.at(-1), { name: "removeDocument", args: { caseId: "conv-1", userId: "user-a", documentId: "8" } });
+});
+
+test("a file the parser cannot read is a 422, and NUL characters never reach the database", async () => {
+  const pdf = { filename: "kapot.pdf", content_base64: Buffer.from("x").toString("base64") };
+  const failing = { parseOffice: async () => { throw new Error("bad xref"); } };
+  await assert.rejects(readChatDocument(pdf, {}, failing), (err) => err.status === 422 && err.message === "Dit document kan niet worden gelezen.");
+  const doc = await readChatDocument({ filename: "utf16.txt", content_base64: Buffer.from("H\u0000o\u0000i\u0000", "utf8").toString("base64") });
+  assert.equal(doc.text, "Hoi");
+});
+
+test("the upload settings are checked before they are saved, and saving them republishes the public config", async () => {
+  const routes = {};
+  const app = { get() {}, patch() {}, delete() {}, post: (path, _auth, handler) => (routes[path] = handler) };
+  const saved = [];
+  let republished = 0;
+  const store = { saveSettings: async (s) => (saved.push(s), s) };
+  adminRoutes.mount(app, { requireAuth: null, getStore: () => store, normalizeFlow: (f) => f, defaultFlow: () => ({}), publishLive: null, republish: async () => republished++ });
+  const save = async (body) => {
+    let status = 200;
+    let json = null;
+    const res = { status: (code) => ((status = code), res), json: (data) => ((json = data), res) };
+    await routes["/api/beleidskompas/settings"]({ body }, res);
+    return { status, json };
+  };
+
+  assert.equal((await save({ upload_max_mb: 5, upload_allowed_types: " PDF, .docx,pdf " })).status, 200);
+  assert.deepEqual(saved[0], { upload_max_mb: 5, upload_allowed_types: ["pdf", "docx"] });
+  assert.equal(republished, 1);
+  for (const body of [{ upload_max_mb: 15 }, { upload_max_mb: 2.5 }, { upload_allowed_types: "exe" }, { upload_allowed_types: [] }]) {
+    assert.equal((await save(body)).status, 400, JSON.stringify(body));
+  }
+  assert.equal(saved.length, 1, "a refused setting is not saved");
 });

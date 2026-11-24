@@ -13,6 +13,8 @@ export function renderGeneral({ store }) {
       { class: "form-grid" },
       field("Bewaartermijn casussen (dagen)", bound(settings, "retention_days", { type: "number" })),
       field("Standaardmodel", bound(settings, "default_model"), "Moet een chatmodel van LiteLLM zijn (standaard govchat-default)."),
+      field("Maximale grootte upload in de chat (MB)", bound(settings, "upload_max_mb", { type: "number" }), "Van 1 tot 14 MB."),
+      field("Toegestane bestandstypen upload", bound(settings, "upload_allowed_types"), "Met komma's ertussen, bijvoorbeeld pdf, docx, txt."),
     ),
     h(
       "div",

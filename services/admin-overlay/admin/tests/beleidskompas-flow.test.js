@@ -38,7 +38,10 @@ test("the public config holds only what the Beleidskompas page reads", () => {
     steps: [{ id: "stap1", title: "T", description: "D", prompt: "P", document_ids: ["d1"], substeps: [{ id: "1.1", title: "S", prompt: "p", answer_format: "a" }] }],
   });
   const pub = publicBeleidskompasConfig(flow, "v7");
-  assert.deepEqual(Object.keys(pub), ["version_id", "title", "disclaimer", "specialist_team", "steps"]);
+  assert.deepEqual(Object.keys(pub), ["version_id", "title", "disclaimer", "specialist_team", "steps", "upload"]);
+  assert.equal(pub.upload.max_mb, 10);
+  assert.ok(pub.upload.allowed_types.includes("pdf"));
+  assert.deepEqual(publicBeleidskompasConfig(flow, "v7", { upload_max_mb: 3, upload_allowed_types: ["txt"] }).upload, { max_mb: 3, allowed_types: ["txt"] });
   assert.equal(pub.version_id, "v7");
   assert.deepEqual(pub.steps[0], { id: "stap1", nr: 1, title: "T", description: "D", substeps: [{ id: "1.1", title: "S" }] });
   assert.equal(pub.steps.length, 4);

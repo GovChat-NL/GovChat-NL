@@ -117,6 +117,7 @@ test("getState puts the newest case text, the newest report per substep and the 
       { seq: 1, role: "user", step_id: null, asked_from: "1.1", text: "Vraag", created_at: "t4" },
       { seq: 2, role: "assistant", step_id: "stap3", asked_from: "1.1", text: "Antwoord", created_at: "t5" },
     ],
+    "FROM case_documents": [{ id: "7", filename: "nota.pdf", size: 1200, text: "Inhoud", created_at: "t6" }],
   });
   const state = await createStore(db.query).getState({ caseId: "conv-1", userId: "user-a", maxTurns: 50 });
   assert.equal(state.title, "Beleidskompas - Laadpalen");
@@ -125,6 +126,7 @@ test("getState puts the newest case text, the newest report per substep and the 
   assert.equal(state.reports["1.1"].version, 3);
   assert.deepEqual(state.reports["1.2"].citations, [{ id: "d" }]);
   assert.deepEqual(state.turns.map((t) => [t.seq, t.role, t.step_id]), [[1, "user", null], [2, "assistant", "stap3"]]);
+  assert.deepEqual(state.documents, [{ id: "7", filename: "nota.pdf", size: 1200, text: "Inhoud", created_at: "t6" }]);
   const turnsQuery = db.calls.find((c) => c.sql.includes("FROM conversation_turns"));
   assert.deepEqual(turnsQuery.params, ["conv-1", 50]);
 });
@@ -134,4 +136,31 @@ test("listCases returns the cases of one user, newest first, with a capped limit
   const cases = await createStore(db.query).listCases({ userId: "user-a", limit: 1000 });
   assert.deepEqual(cases, [{ id: "conv-2", title: null, created_at: "t", updated_at: "t" }]);
   assert.deepEqual(db.calls[0].params, ["user-a", 200]);
+});
+
+test("addDocument only adds to an existing case of the user, and refuses text past the cap of the case", async () => {
+  const db = fakeDatabase({
+    "FROM cases WHERE id": ownedBy(CASE),
+    "SUM(length(text))": [{ chars: 199990 }],
+    "INSERT INTO case_documents": (params) => [{ id: "8", filename: params[1], size: params[3], created_at: "t7" }],
+  });
+  const store = createStore(db.query);
+  const doc = { caseId: "conv-1", userId: "user-a", filename: "nota.txt", mime: "text/plain", size: 5, text: "Kort" };
+  assert.deepEqual(await store.addDocument(doc), { id: "8", filename: "nota.txt", size: 5, created_at: "t7" });
+  assert.ok(!db.calls.some((c) => c.sql.startsWith("INSERT INTO cases")), "an upload never creates a case");
+
+  await assert.rejects(store.addDocument({ ...doc, text: "x".repeat(11) }), (err) => err instanceof StoreError && err.status === 413 && /Verwijder eerst/.test(err.message));
+  const emptyCase = createStore(fakeDatabase({ "FROM cases WHERE id": ownedBy(CASE), "SUM(length(text))": [{ chars: 0 }] }).query);
+  await assert.rejects(emptyCase.addDocument({ ...doc, text: "x".repeat(200001) }), (err) => err.status === 413 && err.message === "Dit document bevat te veel tekst voor de chat.");
+  await assert.rejects(store.addDocument({ ...doc, userId: "user-b" }), (err) => err.status === 404);
+});
+
+test("removeDocument deletes a document of the user's own case, and answers 404 for any other", async () => {
+  const db = fakeDatabase({ "FROM cases WHERE id": ownedBy(CASE), "DELETE FROM case_documents": (params) => (params[0] === "8" ? [{ id: "8" }] : []) });
+  const store = createStore(db.query);
+  assert.deepEqual(await store.removeDocument({ caseId: "conv-1", userId: "user-a", documentId: "8" }), { ok: true });
+  assert.deepEqual(db.calls.find((c) => c.sql.startsWith("DELETE")).params, ["8", "conv-1"]);
+  await assert.rejects(store.removeDocument({ caseId: "conv-1", userId: "user-a", documentId: "9" }), (err) => err.status === 404);
+  await assert.rejects(store.removeDocument({ caseId: "conv-1", userId: "user-a", documentId: "abc" }), (err) => err.status === 404);
+  await assert.rejects(store.removeDocument({ caseId: "conv-1", userId: "user-b", documentId: "8" }), (err) => err.status === 404);
 });

@@ -19,7 +19,7 @@ function fakeApp() {
     await routes[`${method} ${path}`]({ headers: {}, params: {}, query: {}, body: {}, ...req }, res);
     return { status, body };
   }
-  return { get: add("GET"), put: add("PUT"), post: add("POST"), call };
+  return { get: add("GET"), put: add("PUT"), post: add("POST"), delete: add("DELETE"), call };
 }
 
 const silent = { log: () => {}, error: () => {} };

@@ -56,6 +56,11 @@ test('the assignment for a report holds only the asked substep, with its answer 
   );
 });
 
+test('the documents of the chat come first in the user prompt', () => {
+  const a = buildAssignment({ input: { ...input, documents: 'Documenten van de gebruiker:\n\n### nota.pdf\nInhoud' } });
+  assert.ok(a.user_prompt.startsWith('Documenten van de gebruiker:\n\n### nota.pdf\nInhoud\n\nBevindingen tot nu toe:'));
+});
+
 test('every substep of every step gets a complete assignment', () => {
   for (const step of STEPS) {
     for (const substep of step.substeps) {

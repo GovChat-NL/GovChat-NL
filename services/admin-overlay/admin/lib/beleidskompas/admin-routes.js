@@ -1,8 +1,9 @@
 "use strict";
 
 const { StoreError } = require("./store");
+const { SUPPORTED_TYPES } = require("./chat-documents");
 
-function mount(app, { requireAuth, getStore, normalizeFlow, defaultFlow, publishLive }) {
+function mount(app, { requireAuth, getStore, normalizeFlow, defaultFlow, publishLive, republish }) {
   const route = (method, path, run) => app[method](path, requireAuth, async (req, res) => {
     try {
       const store = getStore();
@@ -55,7 +56,23 @@ function mount(app, { requireAuth, getStore, normalizeFlow, defaultFlow, publish
       }
     }
     if (Object.hasOwn(input, "default_model")) settings.default_model = String(input.default_model).trim() || "govchat-default";
-    res.json({ ok: true, settings: await store.saveSettings(settings) });
+    if (Object.hasOwn(input, "upload_max_mb")) {
+      const mb = Number(input.upload_max_mb);
+      // The page sends the file as base64 JSON, and express takes at most 20 MB of JSON.
+      if (!Number.isInteger(mb) || mb < 1 || mb > 14) throw new StoreError(400, "Maximum upload size must be a whole number of MB from 1 to 14");
+      settings.upload_max_mb = mb;
+    }
+    if (Object.hasOwn(input, "upload_allowed_types")) {
+      const list = Array.isArray(input.upload_allowed_types) ? input.upload_allowed_types : String(input.upload_allowed_types).split(",");
+      const types = [...new Set(list.map((t) => String(t).trim().replace(/^\./, "").toLowerCase()).filter(Boolean))];
+      const unknown = types.filter((t) => !SUPPORTED_TYPES.includes(t));
+      if (!types.length || unknown.length) throw new StoreError(400, `Allowed file types must be some of: ${SUPPORTED_TYPES.join(", ")}`);
+      settings.upload_allowed_types = types;
+    }
+    const saved = await store.saveSettings(settings);
+    // The page reads the upload limits from the public config.
+    if (republish) await republish();
+    res.json({ ok: true, settings: saved });
   });
   route("get", "/api/beleidskompas/templates/:templateId/export", async (store, req, res) => {
     res.json(await store.exportTemplate(req.params.templateId));

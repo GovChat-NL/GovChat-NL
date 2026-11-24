@@ -117,6 +117,17 @@ test('a report of a substep that is no longer in the template reaches no model',
   }
 });
 
+test('the documents of the chat reach the orchestrator and the step agents, for a report and for a question', () => {
+  const withDocs = { ...state, documents: [{ id: '1', filename: 'nota.pdf', text: 'Inhoud van de nota.' }, { id: '2', filename: 'brief.txt', text: 'Een brief.' }] };
+  const expected = 'Documenten van de gebruiker:\n\n### nota.pdf\nInhoud van de nota.\n\n### brief.txt\nEen brief.';
+  for (const message of ['', 'Waarom?']) {
+    const context = buildContext({ request: prepare({ currentMessage: pageMessage({ substep_id: idOf('2.1'), message }) }), state: withDocs, live, stepIds });
+    assert.equal(context.documents, expected);
+    assert.ok(context.prompt.startsWith(`${expected}\n\nBevindingen tot nu toe:`));
+  }
+  assert.equal(buildContext({ request: prepare({ currentMessage: 'Vraag' }), state, live, stepIds }).documents, '');
+});
+
 test('a typed message says where the user is', () => {
   const request = prepare({ currentMessage: 'Waarom beperkt?' });
   const context = buildContext({ request, state, live, stepIds });
