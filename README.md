@@ -3,9 +3,10 @@
 > LibreChat's stored text as chat context, without embeddings or RAG. The repair
 > includes bounded OCR resources and selective fail-closed upload handling. See
 > [activation, tests and acceptance boundaries](docs/tika-upload-processing.md).
-> **Repair candidate, not accepted:** full warm-workload verification is still
-> incomplete; see [current repair status](docs/tika-upload-repair-status.md).
-> Authenticated browser/production deployment acceptance remains separate.
+> **Repair candidate, not accepted:** three complete warm client/upload-handler
+> cycles now pass; see [current repair status](docs/tika-upload-repair-status.md).
+> The [retained local UI](docs/tika-local-app.md) proves document browser/storage/model
+> delivery, image analysis and a scan/OCR probe; broader release acceptance remains open.
 
 <p align="center">
   <a href="https://govchat-nl.github.io/">

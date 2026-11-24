@@ -1,8 +1,11 @@
 # Tika document uploads: upload → extract → chat context
 
-**Status: repair candidate, not an accepted release.** Contract tests and targeted
-client/upload-handler checks pass, but the complete warm-workload run has not
-passed. Read the [current repair status](tika-upload-repair-status.md) before
+**Status: repair candidate, not an accepted release.** Contract tests and three
+complete warm client/upload-handler cycles pass. Authenticated browser, real
+persistence, actual document bridge/model delivery and native image analysis now pass in
+the [retained local UI](tika-local-app.md). Broad corpus/lifecycle and production acceptance
+remain open. Read the
+[current repair status](tika-upload-repair-status.md) before
 activation. Commands below describe the intended integration, not a deployment
 already performed or approved by acceptance tests.
 
@@ -90,10 +93,34 @@ Build the images in dependency order; no host Node/Python installation is needed
 docker build -t govchat-tika-upload-adapter:local services/document-extractor
 docker build -t govchat-tika-nl:3.2.3 services/tika
 docker build -t govchat-tika-contract-tests -f tests/document-processing/Dockerfile .
-docker compose -f tests/document-processing/compose.yml run --rm contracts
-docker compose -f tests/document-processing/compose.yml run --rm client
-docker compose -f tests/document-processing/compose.yml run --rm upload-handler
+docker compose -p govchat-tika-validation -f tests/document-processing/compose.yml config --quiet
+docker compose -p govchat-tika-validation -f tests/document-processing/compose.yml run --rm contracts
+docker compose -p govchat-tika-validation -f tests/document-processing/compose.yml run installed-contracts
+docker compose -p govchat-tika-validation -f tests/document-processing/compose.yml run client
+docker compose -p govchat-tika-validation -f tests/document-processing/compose.yml run --no-deps upload-handler
+docker compose -p govchat-tika-validation -f tests/document-processing/compose.yml run --no-deps client
+docker compose -p govchat-tika-validation -f tests/document-processing/compose.yml run --no-deps upload-handler
 ```
+
+Run each command only after the preceding command succeeds. These commands also
+work in Windows Command Prompt from the repository root. Do not run heavy builds
+alongside OCR workloads. Use this project name only for an exclusively owned,
+disposable test project; choose another explicit name consistently if it is already
+in use. Do not add existing private environment files or the regular stack Compose.
+
+The network-free installed-contract service renders the tracked public configuration
+into an owned volume, preserving secret placeholders. It runs the installed
+schema/routing/branding checks, ordinary Unicode/chat-filter checks, three selective
+preload tests and existing document-context regressions. Its dependency lookup uses
+the installed LibreChat image, not host modules. The optional external document-context
+live test is skipped in this network-free service; it is not a browser acceptance test.
+
+Keep client and upload-handler containers after failure: inspect their exit status
+and safe test output before cleanup. There are no test retries. Subsequent runs use
+the same warm adapter/parser; the no-dependency option prevents accidental restarts
+or fixture regeneration after the first successful startup. Each complete client run
+must finish with 53 passed cases, and each upload-handler run with eight passed tests
+(three preload and five handler tests), including the live-handler case with no skip.
 
 The [test Compose](../tests/document-processing/compose.yml) has no public ports,
 production databases or credentials. It generates synthetic documents into its
@@ -110,8 +137,12 @@ this is **not** an authenticated browser or production MongoDB/model test.
 Remove only these disposable test services and their synthetic volume afterwards:
 
 ```sh
-docker compose -f tests/document-processing/compose.yml down -v
+docker compose -p govchat-tika-validation -f tests/document-processing/compose.yml down --remove-orphans -v
 ```
+
+This removes only the explicitly named disposable project, its retained test
+containers and owned fixture/configuration volumes. Never use this cleanup command
+for a retained UI/database project or prune shared images, caches or volumes.
 
 ## Failure handling, acceptance and rollback
 

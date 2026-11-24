@@ -46,6 +46,29 @@ services:
   contracts:
     image: govchat-tika-contract-tests
     network_mode: none
+  configuration:
+    image: govchat-tika-contract-tests
+    command: [python, /source/scripts/render-document-processing-config.py, --source, /source/librechat.yaml, --output, /configuration/librechat.generated.yaml, --stt-configured, "false"]
+    volumes: ["../..:/source:ro", "configuration:/configuration"]
+    network_mode: none
+  installed-contracts:
+    image: registry.librechat.ai/librechat-ai/librechat:v0.8.8
+    entrypoint: [sh, -c]
+    command:
+      - >-
+        node /source/tests/document-processing/live-config.test.cjs &&
+        node /source/tests/document-processing/fallback-quality.test.cjs &&
+        node --test /source/tests/document-processing/tika-upload-guard.test.cjs &&
+        node --test /source/tests/document-context.test.js
+    environment:
+      # Mounted source scripts must resolve the installed image's dependencies.
+      NODE_PATH: /app/node_modules
+      CANDIDATE_CONFIG_PATH: /configuration/librechat.generated.yaml
+    volumes: ["../..:/source:ro", "../../librechat.yaml:/before.yaml:ro", "configuration:/configuration:ro"]
+    network_mode: none
+    depends_on:
+      configuration:
+        condition: service_completed_successfully
   client: &client
     image: registry.librechat.ai/librechat-ai/librechat:v0.8.8
     entrypoint: [node]
@@ -75,3 +98,4 @@ networks:
     internal: true
 volumes:
   fixtures:
+  configuration:
