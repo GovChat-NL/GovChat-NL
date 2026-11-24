@@ -10,7 +10,7 @@ const beleidskompas = require("./lib/beleidskompas");
 const { createTemplateStore } = require("./lib/beleidskompas/template-store");
 const { StoreError } = require("./lib/beleidskompas/store");
 const templateRoutes = require("./lib/beleidskompas/admin-routes");
-const { createGeneralFeedbackHandlers } = require("./lib/beleidskompas/general-feedback");
+const { createGeneralFeedbackHandlers, librechatUserFromBearer } = require("./lib/beleidskompas/general-feedback");
 let templateStore = null;
 let beleidskompasPool = null;
 
@@ -2315,21 +2315,7 @@ app.get("/api/beleidskompas-feedback", requireAuth, (req, res) => {
 // ── Beleidskompas general feedback ───────────────────────────────
 //
 // Unlike the answer feedback above, this is stored with the sender's e-mail
-// address. The refresh-token cookie only holds the user id, so the page sends
-// its LibreChat access token and LibreChat says whose it is.
-async function librechatUserFromBearer(req) {
-  const authorization = String(req.headers?.authorization || "").trim();
-  if (!authorization.toLowerCase().startsWith("bearer ")) return null;
-  try {
-    const resp = await fetch(`${LIBRECHAT_INTERNAL_URL}/api/user`, { headers: { authorization, accept: "application/json" } });
-    if (!resp.ok) return null;
-    const user = await resp.json();
-    return { email: String(user?.email || "").trim() };
-  } catch {
-    return null;
-  }
-}
-
+// address (see lib/beleidskompas/general-feedback.js).
 const generalFeedback = createGeneralFeedbackHandlers({
   getQuery: () => (beleidskompasPool ? (sql, params) => beleidskompasPool.query(sql, params) : null),
   retentionDays: BELEIDSKOMPAS_GENERAL_FEEDBACK_RETENTION_DAYS,
@@ -2345,7 +2331,7 @@ const sendFeedbackResult = (work) => async (req, res) => {
   }
 };
 
-app.post("/api/beleidskompas-general-feedback", sendFeedbackResult(async (req) => generalFeedback.submit({ user: await librechatUserFromBearer(req), body: req.body })));
+app.post("/api/beleidskompas-general-feedback", sendFeedbackResult(async (req) => generalFeedback.submit({ user: await librechatUserFromBearer(req, { baseUrl: LIBRECHAT_INTERNAL_URL }), body: req.body })));
 
 app.get("/api/beleidskompas-general-feedback", requireAuth, sendFeedbackResult(() => generalFeedback.list()));
 

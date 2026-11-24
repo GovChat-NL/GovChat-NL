@@ -3,7 +3,18 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 
-const { createGeneralFeedbackHandlers } = require("../lib/beleidskompas/general-feedback");
+const { createGeneralFeedbackHandlers, librechatUserFromBearer } = require("../lib/beleidskompas/general-feedback");
+
+test("the sender's e-mail comes from LibreChat; no valid token is no user, a LibreChat failure throws", async () => {
+  const calls = [];
+  const answering = (status, body = {}) => async (url, init) => (calls.push([url, init.headers.authorization]), { status, ok: status < 300, json: async () => body });
+  const req = { headers: { authorization: "Bearer tok" } };
+  assert.deepEqual(await librechatUserFromBearer(req, { baseUrl: "http://lc", fetchImpl: answering(200, { email: " a@example.nl " }) }), { email: "a@example.nl" });
+  assert.deepEqual(calls[0], ["http://lc/api/user", "Bearer tok"]);
+  assert.equal(await librechatUserFromBearer(req, { baseUrl: "http://lc", fetchImpl: answering(401) }), null);
+  assert.equal(await librechatUserFromBearer({ headers: {} }, { baseUrl: "http://lc", fetchImpl: answering(200) }), null);
+  await assert.rejects(librechatUserFromBearer(req, { baseUrl: "http://lc", fetchImpl: answering(502) }), /502/);
+});
 
 /** A query function that records every call and answers `rows`. */
 function fakeQuery(rows = []) {

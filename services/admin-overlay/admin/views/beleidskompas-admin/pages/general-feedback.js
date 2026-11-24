@@ -1,6 +1,7 @@
 // General feedback: free-text messages about Beleidskompas as a whole, newest first, with the sender's e-mail address.
 import * as api from "../api.js";
 import { h, formatDate } from "../dom.js";
+import { versionLabel } from "../app.js";
 
 export function renderGeneralFeedback({ store, render }) {
   if (!store.generalFeedback) {
@@ -13,7 +14,7 @@ export function renderGeneralFeedback({ store, render }) {
 
   const items = store.generalFeedback;
   const list = items.length
-    ? h("div", { class: "fb-group" }, items.map(row))
+    ? h("div", { class: "fb-group" }, items.map((item) => row(item, store)))
     : h("p", { class: "empty" }, "Nog geen algemene feedback.");
 
   return {
@@ -28,14 +29,21 @@ export function renderGeneralFeedback({ store, render }) {
   };
 }
 
-function row(item) {
+// "<template> v<n>" for the template version the user had open, or null when it is unknown.
+function versionOf(item, store) {
+  const tpl = store.templates.find((t) => t.versions.some((v) => v.id === String(item.version_id)));
+  return tpl ? `${tpl.name} ${versionLabel(tpl, String(item.version_id))}` : null;
+}
+
+function row(item, store) {
+  const version = versionOf(item, store);
   return h(
     "article",
     { class: "fb-row is-general" },
     h(
       "div",
       { class: "fb-main" },
-      h("div", { class: "fb-meta" }, h("time", { datetime: item.created_at }, formatDate(item.created_at)), h("span", {}, item.email), item.step_id ? h("span", { class: "fb-version" }, item.step_id) : null),
+      h("div", { class: "fb-meta" }, h("time", { datetime: item.created_at }, formatDate(item.created_at)), h("span", {}, item.email), item.step_id ? h("span", { class: "fb-version" }, item.step_id) : null, version ? h("span", { class: "fb-version" }, version) : null),
       h("p", { class: "fb-comment" }, item.text),
     ),
   );
