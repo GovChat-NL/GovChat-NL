@@ -7,7 +7,8 @@ const PAGES = [
   { route: "editor/documents", label: "Documentenbibliotheek", icon: "folder", child: true, gated: true },
   { route: "editor/flow", label: "Flow builder", icon: "flow", child: true, gated: true },
   { route: "deploy", label: "Deploy", icon: "upload" },
-  { route: "feedback", label: "Feedback", icon: "chat" },
+  { route: "feedback", label: "Antwoordfeedback", icon: "chat" },
+  { route: "general-feedback", label: "Algemene feedback", icon: "chat" },
 ];
 
 // locked: no template selected yet, so the gated pages are shown but not clickable.

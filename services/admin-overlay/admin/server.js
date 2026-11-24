@@ -10,6 +10,7 @@ const beleidskompas = require("./lib/beleidskompas");
 const { createTemplateStore } = require("./lib/beleidskompas/template-store");
 const { StoreError } = require("./lib/beleidskompas/store");
 const templateRoutes = require("./lib/beleidskompas/admin-routes");
+const { createGeneralFeedbackHandlers } = require("./lib/beleidskompas/general-feedback");
 let templateStore = null;
 
 const app = express();
@@ -74,6 +75,8 @@ const TRANSCRIPT_SESSIONS_FILE = "transcript-sessions.json";
 const BELEIDSKOMPAS_LIVE_FILE = "beleidskompas-config.json";
 const BELEIDSKOMPAS_FEEDBACK_FILE = "beleidskompas-feedback.json";
 const BELEIDSKOMPAS_FEEDBACK_MAX = 500;
+const BELEIDSKOMPAS_GENERAL_FEEDBACK_FILE = "beleidskompas-general-feedback.json";
+const BELEIDSKOMPAS_GENERAL_FEEDBACK_RETENTION_DAYS = 365;
 const TRANSCRIPT_AUTH_DEBUG = String(process.env.TRANSCRIPT_AUTH_DEBUG || "false").toLowerCase() === "true";
 const LIBRECHAT_JWT_REFRESH_SECRET = String(process.env.JWT_REFRESH_SECRET || process.env.JWT_SECRET || "").trim();
 
@@ -284,6 +287,14 @@ app.use("/api/beleidskompas-feedback", (req, res, next) => {
   res.set("Access-Control-Allow-Origin", CORS_ORIGIN);
   res.set("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
   res.set("Access-Control-Allow-Headers", "Content-Type");
+  if (req.method === "OPTIONS") return res.sendStatus(204);
+  next();
+});
+
+app.use("/api/beleidskompas-general-feedback", (req, res, next) => {
+  res.set("Access-Control-Allow-Origin", CORS_ORIGIN);
+  res.set("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+  res.set("Access-Control-Allow-Headers", "Content-Type, Authorization");
   if (req.method === "OPTIONS") return res.sendStatus(204);
   next();
 });
@@ -2299,6 +2310,43 @@ app.get("/api/beleidskompas-feedback", requireAuth, (req, res) => {
     items: items.slice().reverse(),
     totals: { total: items.length, up, down: items.length - up },
   });
+});
+
+// ── Beleidskompas general feedback ───────────────────────────────
+//
+// Unlike the answer feedback above, this is stored with the sender's e-mail
+// address. The refresh-token cookie only holds the user id, so the page sends
+// its LibreChat access token and LibreChat says whose it is.
+async function librechatUserFromBearer(req) {
+  const authorization = String(req.headers?.authorization || "").trim();
+  if (!authorization.toLowerCase().startsWith("bearer ")) return null;
+  try {
+    const resp = await fetch(`${LIBRECHAT_INTERNAL_URL}/api/user`, { headers: { authorization, accept: "application/json" } });
+    if (!resp.ok) return null;
+    const user = await resp.json();
+    return { email: String(user?.email || "").trim() };
+  } catch {
+    return null;
+  }
+}
+
+const generalFeedback = createGeneralFeedbackHandlers({
+  read: () => {
+    const stored = readPrivateJSON(BELEIDSKOMPAS_GENERAL_FEEDBACK_FILE);
+    return stored && Array.isArray(stored.items) ? stored.items : [];
+  },
+  write: (items) => writePrivateJSON(BELEIDSKOMPAS_GENERAL_FEEDBACK_FILE, { items }),
+  retentionDays: BELEIDSKOMPAS_GENERAL_FEEDBACK_RETENTION_DAYS,
+});
+
+app.post("/api/beleidskompas-general-feedback", async (req, res) => {
+  const out = generalFeedback.submit({ user: await librechatUserFromBearer(req), body: req.body });
+  return res.status(out.status).json(out.body);
+});
+
+app.get("/api/beleidskompas-general-feedback", requireAuth, (req, res) => {
+  const out = generalFeedback.list();
+  return res.status(out.status).json(out.body);
 });
 
 app.get("/api/transcript-sessions", requireLibreChatUser, (req, res) => {
