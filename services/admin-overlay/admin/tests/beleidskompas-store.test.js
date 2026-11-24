@@ -3,7 +3,7 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 
-const { StoreError, createStore } = require("../lib/beleidskompas/store");
+const { StoreError, createStore } = require("../lib/beleidskompas/cases/case-repository");
 
 /** A stand-in for the database: answers each query from `answers`, keyed by
  *  a fragment of the SQL, and records every call. Whether the SQL itself is

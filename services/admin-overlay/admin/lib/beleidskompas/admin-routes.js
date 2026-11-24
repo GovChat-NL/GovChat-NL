@@ -1,6 +1,6 @@
 "use strict";
 
-const { StoreError } = require("./store");
+const { StoreError } = require("./cases/case-repository");
 
 function mount(app, { requireAuth, getStore, normalizeFlow, defaultFlow, publishLive }) {
   const route = (method, path, run) => app[method](path, requireAuth, async (req, res) => {

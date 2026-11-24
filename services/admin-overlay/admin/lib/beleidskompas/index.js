@@ -25,8 +25,8 @@
  */
 
 const db = require("../../db/connection");
-const { createStore, StoreError } = require("./store");
-const routes = require("./routes");
+const { createStore, StoreError } = require("./cases/case-repository");
+const routes = require("./cases/case-routes");
 
 // How long to wait before the next attempt to reach the database: after the
 // first failure, the second, and so on. The last one repeats.

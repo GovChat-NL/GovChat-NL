@@ -1,7 +1,7 @@
 "use strict";
 
 const crypto = require("crypto");
-const { StoreError } = require("./store");
+const { StoreError } = require("./cases/case-repository");
 
 function id(value) {
   const text = String(value ?? "");

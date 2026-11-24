@@ -2,7 +2,7 @@
 
 /** The endpoints of the document library. */
 
-const { StoreError } = require("../store");
+const { StoreError } = require("../cases/case-repository");
 
 function mount(app, { requireAuth, getStore }) {
   // Puts a document back in the queue, so it is indexed once more.

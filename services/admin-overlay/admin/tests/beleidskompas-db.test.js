@@ -10,7 +10,7 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 
 const { connectionSettings, applyMigrations } = require("../db/connection");
-const { createStore } = require("../lib/beleidskompas/store");
+const { createStore } = require("../lib/beleidskompas/cases/case-repository");
 
 const enabled = String(process.env.BELEIDSKOMPAS_DB_TEST || "").toLowerCase() === "true" && connectionSettings().host;
 
