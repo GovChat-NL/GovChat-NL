@@ -2,6 +2,8 @@
 /.env
 /.env.*
 !/.env.example
+!/.env.tika-upload.example
+/.tika-upload-local/
 
 # Private deployment overrides and ingress trust lists.
 /*.local.yml

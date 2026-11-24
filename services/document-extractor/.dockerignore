@@ -1,0 +1,6 @@
+*
+!requirements.lock
+!app.py
+!preflight.py
+!routes.json
+!native-text.json

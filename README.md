@@ -1,4 +1,10 @@
-# GovChat-NL
+
+> **Unfinished experimental feature — not production-ready:** Tika-only extraction
+> at upload time, using standard LibreChat text persistence. Repeated OCR can
+> exhaust parser memory and invoke unreadable built-in fallback text. See
+> [feature overview](docs/tika-upload-processing.md) and
+> [failure and continuation notes](docs/tika-upload-handoff.md). Do not activate
+> this branch as a validated upload solution.
 
 <p align="center">
   <a href="https://govchat-nl.github.io/">

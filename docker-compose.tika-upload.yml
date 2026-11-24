@@ -1,0 +1,52 @@
+# Only task-owned TEST parser services. No public ports or document mounts.
+name: govchat-tika-upload
+services:
+  tika:
+    build: ./services/tika
+    image: govchat-tika-nl:3.2.3-test
+    container_name: govchat-upload-tika
+    environment:
+      JAVA_TOOL_OPTIONS: -Xms32m -Xmx160m -XX:ActiveProcessorCount=1
+      OMP_THREAD_LIMIT: "1"
+    networks: [parser]
+    read_only: true
+    tmpfs: ["/tmp:rw,noexec,nosuid,size=100663296"]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    mem_limit: 512m
+    memswap_limit: 512m
+    cpus: 1
+    pids_limit: 128
+    restart: unless-stopped
+  document-extractor:
+    build: ./services/document-extractor
+    image: govchat-tika-upload-adapter:test
+    container_name: govchat-upload-extractor
+    environment:
+      JWT_SECRET: ${DOCUMENT_EXTRACTOR_JWT_SECRET:?private LibreChat JWT secret required}
+    networks:
+      parser: {}
+      librechat:
+        aliases: [govchat-upload-extractor]
+    read_only: true
+    tmpfs: ["/scratch:rw,noexec,nosuid,size=67108864,uid=10001,gid=10001,mode=700"]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    mem_limit: 384m
+    memswap_limit: 384m
+    cpus: 0.5
+    pids_limit: 64
+    restart: unless-stopped
+    depends_on: [tika]
+    healthcheck:
+      test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=8)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+networks:
+  parser:
+    internal: true
+  librechat:
+    external: true
+    name: librechat-net

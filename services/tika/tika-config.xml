@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<properties>
+  <server>
+    <params>
+      <taskTimeoutMillis>240000</taskTimeoutMillis>
+      <minimumTimeoutMillis>1000</minimumTimeoutMillis>
+      <taskPulseMillis>1000</taskPulseMillis>
+    </params>
+  </server>
+  <parsers>
+    <parser class="org.apache.tika.parser.DefaultParser">
+      <parser-exclude class="org.apache.tika.parser.pdf.PDFParser"/>
+      <parser-exclude class="org.apache.tika.parser.ocr.TesseractOCRParser"/>
+    </parser>
+    <parser class="org.apache.tika.parser.pdf.PDFParser">
+      <params>
+        <param name="ocrStrategy" type="string">auto</param>
+        <param name="extractInlineImages" type="bool">false</param>
+      </params>
+    </parser>
+    <parser class="org.apache.tika.parser.ocr.TesseractOCRParser">
+      <params>
+        <param name="language" type="string">nld+eng</param>
+      </params>
+    </parser>
+  </parsers>
+</properties>
