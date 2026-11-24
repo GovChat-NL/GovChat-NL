@@ -6,7 +6,9 @@ import { requireElement } from "../../../shared/dom.js";
 
 const STORAGE_KEY = "gc_bk_layout";
 const SIDES = ["left", "right"];
-const MIN_WIDTH = { left: 160, right: 280 };
+// The right minimum matches the stylesheet's minimum for the default
+// (flexible) right column, so planning with it never overflows the grid.
+const MIN_WIDTH = { left: 160, right: 320 };
 const CHAT_MIN_WIDTH = 300;
 const COLLAPSED_WIDTH = 44;
 const KEY_STEP = 16;
@@ -34,6 +36,19 @@ export function clampWidth(width, min, max) {
   return Math.max(min, Math.min(width, max));
 }
 
+// Fits the wanted side widths into `room` (the space beside the chat): the
+// wider panel gives way first, and neither goes below its minimum.
+export function fitWidths(wanted, min, room) {
+  const fitted = { ...wanted };
+  let excess = fitted.left + fitted.right - room;
+  for (const side of wanted.left >= wanted.right ? ["left", "right"] : ["right", "left"]) {
+    const cut = Math.min(Math.max(excess, 0), Math.max(fitted[side] - min[side], 0));
+    fitted[side] -= cut;
+    excess -= cut;
+  }
+  return fitted;
+}
+
 export function setupLayout() {
   const grid = requireElement("gc-bk-workspace");
   const panels = { left: requireElement("gc-bk-stepper"), right: requireElement("gc-bk-step-card") };
@@ -58,33 +73,47 @@ export function setupLayout() {
     }
   }
 
-  // The widest a side panel can be while the chat keeps its minimum width.
-  function maxWidth(side) {
+  // The room for both side panels while the chat keeps its minimum width.
+  function room() {
     if (!grid.clientWidth) return Infinity; // hidden (overview open): nothing to measure yet
-    const other = side === "left" ? "right" : "left";
     const style = getComputedStyle(grid);
     const inner = grid.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight);
-    return inner - panels[other].offsetWidth - resizers.left.offsetWidth - resizers.right.offsetWidth - CHAT_MIN_WIDTH;
+    return inner - resizers.left.offsetWidth - resizers.right.offsetWidth - CHAT_MIN_WIDTH;
+  }
+
+  // While dragging, the other panel is already at its final width.
+  function maxWidth(side) {
+    return room() - panels[side === "left" ? "right" : "left"].offsetWidth;
   }
 
   function apply() {
-    // The wider panel is fitted first, so it is the one that gives way when
-    // the window is too small for both saved widths.
-    for (const side of [...SIDES].sort((a, b) => (layout[b] || 0) - (layout[a] || 0))) {
-      const prop = `--gc-bk-${side}`;
-      if (layout[`${side}Collapsed`]) grid.style.setProperty(prop, `${COLLAPSED_WIDTH}px`);
-      else if (layout[side]) grid.style.setProperty(prop, `${clampWidth(layout[side], MIN_WIDTH[side], maxWidth(side))}px`);
-      else grid.style.removeProperty(prop);
+    const collapsed = (side) => layout[`${side}Collapsed`];
+    for (const side of SIDES) {
+      if (collapsed(side)) grid.style.setProperty(`--gc-bk-${side}`, `${COLLAPSED_WIDTH}px`);
+      else if (!layout[side]) grid.style.removeProperty(`--gc-bk-${side}`);
+    }
+    // Planned from the wanted widths, not the ones on screen, so a panel that
+    // is being unfolded counts at its full width. Without a saved width, the
+    // left panel has the stylesheet's fixed width and the right one can
+    // shrink to its minimum.
+    const wanted = {
+      left: collapsed("left") ? COLLAPSED_WIDTH : layout.left || panels.left.offsetWidth,
+      right: collapsed("right") ? COLLAPSED_WIDTH : layout.right || MIN_WIDTH.right,
+    };
+    const min = { left: Math.min(MIN_WIDTH.left, wanted.left), right: Math.min(MIN_WIDTH.right, wanted.right) };
+    const fitted = fitWidths(wanted, min, room());
+    for (const side of SIDES) {
+      if (!collapsed(side) && layout[side]) grid.style.setProperty(`--gc-bk-${side}`, `${fitted[side]}px`);
     }
     for (const side of SIDES) {
-      const collapsed = layout[`${side}Collapsed`];
-      const label = `${collapsed ? "Toon" : "Verberg"} ${LABELS[side]}`;
-      panels[side].classList.toggle("is-collapsed", collapsed);
-      toggles[side].setAttribute("aria-expanded", String(!collapsed));
+      const folded = collapsed(side);
+      const label = `${folded ? "Toon" : "Verberg"} ${LABELS[side]}`;
+      panels[side].classList.toggle("is-collapsed", folded);
+      toggles[side].setAttribute("aria-expanded", String(!folded));
       toggles[side].setAttribute("aria-label", label);
       toggles[side].title = label;
-      resizers[side].classList.toggle("is-disabled", collapsed);
-      resizers[side].tabIndex = collapsed ? -1 : 0;
+      resizers[side].classList.toggle("is-disabled", folded);
+      resizers[side].tabIndex = folded ? -1 : 0;
       if (grid.clientWidth) {
         resizers[side].setAttribute("aria-valuenow", String(Math.round((100 * panels[side].offsetWidth) / grid.clientWidth)));
       }

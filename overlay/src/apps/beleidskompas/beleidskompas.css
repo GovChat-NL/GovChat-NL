@@ -96,9 +96,13 @@
 }
 
 .gc-bk-resizer:hover::after,
-.gc-bk-resizer:focus-visible::after,
 .gc-bk-grid.is-resizing .gc-bk-resizer::after {
   background: #93c5fd;
+}
+
+/* Focus uses the page's focus colour, so it stays visible (3:1) in light mode. */
+.gc-bk-resizer:focus-visible::after {
+  background: #2563eb;
 }
 
 .gc-bk-resizer:focus-visible {
