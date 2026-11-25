@@ -3,18 +3,25 @@
 
 import { escapeHTML } from "../../shared/html.js";
 
+/** The sources of a report as the page shows them: the documents the
+ *  assistant searched, each with the pages and the passages it got from
+ *  that document. */
 export function normalizeCitations(input) {
   if (!Array.isArray(input)) return [];
   return input
-    .map((c, idx) => ({
-      rank: Number(c?.rank || idx + 1),
-      id: String(c?.id || "").trim(),
-      filename: String(c?.filename || `Document ${idx + 1}`).trim() || `Document ${idx + 1}`,
-      score: Number(c?.score || 0),
-      tags: Array.isArray(c?.tags) ? c.tags.map((t) => String(t || "").trim()).filter(Boolean) : [],
-      preview: String(c?.preview || "").trim(),
+    .map((citation) => ({
+      id: String(citation?.id || "").trim(),
+      filename: String(citation?.filename || "").trim() || "Document",
+      pages: Array.isArray(citation?.pages) ? citation.pages.filter(Number.isInteger) : [],
+      passages: Array.isArray(citation?.passages)
+        ? citation.passages.map((passage) => ({
+            heading: String(passage?.heading || ""),
+            location: String(passage?.location || ""),
+            text: String(passage?.text || ""),
+          }))
+        : [],
     }))
-    .filter((c) => c.id || c.filename);
+    .filter((citation) => citation.id);
 }
 
 export function formatTime(ts) {
@@ -22,10 +29,17 @@ export function formatTime(ts) {
   return d.toLocaleTimeString("nl-NL", { hour: "2-digit", minute: "2-digit" });
 }
 
+// A source with more pages than this shows how many pages, not which ones.
+const MOST_PAGES_NAMED = 4;
+
+/** The pages of a source, for a person to read: "pagina 8" or
+ *  "pagina's 8, 36 en 39". Empty for a document without pages. */
 export function citationLabel(citation) {
-  const nr = Number(citation?.rank || 0) || 1;
-  const score = Number(citation?.score || 0);
-  return Number.isFinite(score) && score > 0 ? `#${nr} · score ${score.toFixed(3)}` : `#${nr}`;
+  const pages = citation.pages;
+  if (!pages.length) return "";
+  if (pages.length === 1) return `pagina ${pages[0]}`;
+  if (pages.length > MOST_PAGES_NAMED) return `${pages.length} pagina's`;
+  return `pagina's ${pages.slice(0, -1).join(", ")} en ${pages[pages.length - 1]}`;
 }
 
 // A line of a list: "- item", "* item", "• item" or "1. item", "1) item".

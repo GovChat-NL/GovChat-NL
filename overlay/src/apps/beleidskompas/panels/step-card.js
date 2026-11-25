@@ -130,7 +130,7 @@ export function setupStepCard(store, { specialistTeam, requestReport }) {
   }
 
   stepInfoBtn.addEventListener("click", () => openStepInfo(store.activeStep()));
-  reportSourcesEl.addEventListener("click", openCitationFromClick);
+  reportSourcesEl.addEventListener("click", (e) => openCitationFromClick(e, store.substepResult(store.activeSubstep().id).citations));
   prevBtn.addEventListener("click", () => store.setActiveSubstep(state.activeSubstep - 1));
   nextBtn.addEventListener("click", () => store.setActiveSubstep(state.activeSubstep + 1));
   reportBtn.addEventListener("click", requestReportForThisOrNext);

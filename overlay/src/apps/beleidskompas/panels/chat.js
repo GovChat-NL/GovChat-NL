@@ -62,7 +62,7 @@ function messageHTML(m, idx, stepLabel) {
               : formatRichText(m.text)
           }</div>
           ${Array.isArray(m.citations) && m.citations.length
-            ? `<div class="gc-bk-citations">${m.citations.map(citationButtonHTML).join("")}</div>`
+            ? `<div class="gc-bk-citations" data-citations-of="${idx}">${m.citations.map(citationButtonHTML).join("")}</div>`
             : ""}
           ${!isUser && !m.pending && !m.notice && m.text ? feedbackHTML(m, idx) : ""}
         </div>
@@ -232,7 +232,8 @@ export function setupChat(store, { refreshState, versionId }) {
   chatLogEl.addEventListener("click", (e) => {
     const feedbackRow = e.target.closest("[data-feedback-for]");
     if (!feedbackRow) {
-      openCitationFromClick(e);
+      const sources = e.target.closest("[data-citations-of]");
+      if (sources) openCitationFromClick(e, state.messages[Number(sources.getAttribute("data-citations-of"))].citations);
       return;
     }
     const message = state.messages[Number(feedbackRow.getAttribute("data-feedback-for"))];

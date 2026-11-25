@@ -156,13 +156,93 @@ function unwrapCodeBlock(text) {
   return wrapped ? wrapped[1].trim() : trimmed;
 }
 
+// --- The documents the agent searched ---
+//
+// The search tool answers with the chunks it found. n8n keeps what every
+// tool answered in `intermediateSteps`, one entry per call of a tool, with
+// the answer as text in `observation`. The name is n8n's: these are not the
+// steps of Beleidskompas.
+
+/** The chunks in the answer of one search, or none when `observation` is
+ *  not such an answer. */
+function chunksOfSearch(observation) {
+  let answer = observation;
+
+  if (typeof answer === 'string') {
+    try {
+      answer = JSON.parse(answer);
+    } catch (err) {
+      return [];
+    }
+  }
+  // n8n puts the answer of an HTTP call in a list.
+  if (Array.isArray(answer)) {
+    answer = answer[0];
+  }
+
+  if (!answer || !Array.isArray(answer.chunks)) {
+    return [];
+  }
+  return answer.chunks;
+}
+
+/** Every chunk the agent got from its searches. A chunk that more than one
+ *  search returned is in the list once. */
+function searchedChunks(agentOutput) {
+  const agentToolCalls = (agentOutput && agentOutput.intermediateSteps) || [];
+  const chunks = [];
+
+  for (const toolCall of agentToolCalls) {
+    for (const chunk of chunksOfSearch(toolCall.observation)) {
+      // Two searches can return the same chunk. A chunk is the same when it
+      // has the same number in the same document.
+      const alreadyListed = chunks.some((listed) => listed.document_id === chunk.document_id && listed.chunk_number === chunk.chunk_number);
+      if (!alreadyListed) {
+        chunks.push(chunk);
+      }
+    }
+  }
+  return chunks;
+}
+
+/** The documents the agent searched, as the store keeps them with a
+ *  report. Every document has the passages the agent got from it and the
+ *  pages those passages are on.
+ *
+ *  This is what the agent got to read. Whether it used a passage for its
+ *  reply cannot be told from here. */
+function citationsOf(agentOutput) {
+  const chunks = searchedChunks(agentOutput);
+
+  // Document after document, and within a document from front to back.
+  chunks.sort((a, b) => Number(a.document_id) - Number(b.document_id) || a.chunk_number - b.chunk_number);
+
+  const citations = [];
+  for (const chunk of chunks) {
+    let citation = citations.find((listed) => listed.id === chunk.document_id);
+    if (!citation) {
+      citation = { id: chunk.document_id, filename: chunk.filename, pages: [], passages: [] };
+      citations.push(citation);
+    }
+
+    citation.passages.push({ heading: chunk.heading, location: chunk.location, text: chunk.text });
+
+    // A row of a spreadsheet has no page.
+    if (chunk.page !== null && !citation.pages.includes(chunk.page)) {
+      citation.pages.push(chunk.page);
+    }
+  }
+  return citations;
+}
+
 /** Takes the agent's reply apart. `assignment` is what buildAssignment
  *  returned, `agent` the output of the AI Agent node.
  *
  *  For a report the result holds the text as the store keeps it and the
  *  page shows it (`report_text`: the step heading, the reply, and the
- *  disclaimer of the template when it has one). `save` says whether there
- *  is a report to store. */
+ *  disclaimer of the template when it has one), and the documents the
+ *  agent searched (`citations`). `save` says whether there is a report to
+ *  store. */
 function processReply({ assignment, agent }) {
   const text = unwrapCodeBlock(agent && agent.output);
 
@@ -181,6 +261,7 @@ function processReply({ assignment, agent }) {
     save: assignment.mode === 'report' && !error,
     report_text: [heading, text, footer].filter(Boolean).join('\n\n'),
     answer: text,
+    citations: citationsOf(agent),
     tools: toolCalls(agent),
     error,
   };
@@ -225,4 +306,4 @@ function buildResult({ assignment, reply, saved }) {
   };
 }
 
-module.exports = { asksForReport, buildSystemPrompt, buildUserPrompt, readStepTemplate, buildAssignment, unwrapCodeBlock, processReply, buildResult };
+module.exports = { asksForReport, buildSystemPrompt, buildUserPrompt, readStepTemplate, buildAssignment, unwrapCodeBlock, chunksOfSearch, searchedChunks, citationsOf, processReply, buildResult };

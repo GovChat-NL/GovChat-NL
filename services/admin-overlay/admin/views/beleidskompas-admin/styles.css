@@ -101,12 +101,16 @@ textarea.input { resize: vertical; line-height: 1.45; }
 .notice { display: flex; align-items: center; gap: 8px; padding: 9px 12px; border-radius: 8px; font-size: 12.5px; }
 .notice svg { flex: none; }
 .notice-info { background: var(--accent-soft); color: var(--accent); }
+.notice-error { background: #fdf1f0; color: var(--red); }
+.notice-error span { flex: 1; white-space: pre-wrap; overflow-wrap: anywhere; }
 .kv { display: grid; grid-template-columns: max-content 1fr; gap: 6px 16px; }
 .kv dt { color: var(--muted); }
 .kv-inline { grid-template-columns: max-content 1fr max-content 1fr; }
 .badge { display: inline-block; padding: 1px 8px; border-radius: 10px; font-size: 11px; font-weight: 600; }
 .badge-live { background: #eaf6ee; color: var(--green); }
-.badge-pending { background: #fff4e5; color: #9a4a00; vertical-align: middle; }
+.badge-waiting { background: var(--accent-soft); color: var(--accent); }
+.badge-failed { background: #fdf1f0; color: var(--red); }
+.finder-item .badge { flex: none; }
 .table { width: 100%; border-collapse: collapse; }
 .table th { text-align: left; font-size: 11px; font-weight: 600; color: var(--muted); padding: 6px 8px; border-bottom: 1px solid var(--line); }
 .table td { padding: 8px; border-bottom: 1px solid #f0f0f3; vertical-align: middle; }
@@ -183,7 +187,6 @@ textarea.input { resize: vertical; line-height: 1.45; }
 .flow-desc { color: var(--muted); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
 .flow-editor { padding: 4px 16px 16px; border-top: 1px solid var(--line); padding-top: 14px; }
 .flow-editor-foot { display: flex; justify-content: flex-end; border-top: 1px solid var(--line); padding-top: 10px; }
-.inline-controls { display: flex; gap: 24px; align-items: center; flex-wrap: wrap; }
 .doc-checks { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 10px; padding-top: 4px; }
 .substeps { display: flex; flex-direction: column; gap: 8px; align-items: flex-start; }
 .substep { display: grid; grid-template-columns: 40px 1fr 26px; gap: 8px; align-items: start; width: 100%; padding-bottom: 8px; border-bottom: 1px solid var(--line); }

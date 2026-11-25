@@ -1,10 +1,10 @@
 "use strict";
 
 /**
- * The Beleidskompas store: reading and writing the state of a case. The
+ * The repository for cases: reading and writing the state of a case. The
  * tables are described in db/migrations (at the root of the service).
  *
- * createStore takes a `query(sql, params)` function that resolves to
+ * createCaseRepository takes a `query(sql, params)` function that resolves to
  * `{ rows }`, the shape of pg's Pool.query, so server.js passes a real pool
  * and the unit tests pass a stand-in.
  *
@@ -15,19 +15,14 @@
  * the case theirs.
  */
 
-class StoreError extends Error {
-  constructor(status, message) {
-    super(message);
-    this.status = status;
-  }
-}
+const { HttpError } = require("../shared/errors");
 
 // Postgres raises this code when an insert hits an existing primary key.
 const UNIQUE_VIOLATION = "23505";
 
 function requireText(value, name) {
   const text = String(value || "").trim();
-  if (!text) throw new StoreError(400, `${name} is required`);
+  if (!text) throw new HttpError(400, `${name} is required`);
   return text;
 }
 
@@ -44,8 +39,8 @@ async function withOneRetry(insert) {
   }
 }
 
-function createStore(query) {
-  if (typeof query !== "function") throw new Error("createStore needs a query function");
+function createCaseRepository(query) {
+  if (typeof query !== "function") throw new Error("createCaseRepository needs a query function");
 
   /** The case row when it exists and belongs to `userId`, otherwise null. */
   async function ownedCase(caseId, userId) {
@@ -55,7 +50,7 @@ function createStore(query) {
 
   async function requireOwnedCase(caseId, userId) {
     const row = await ownedCase(caseId, userId);
-    if (!row) throw new StoreError(404, "Unknown case");
+    if (!row) throw new HttpError(404, "Unknown case");
     return row;
   }
 
@@ -69,7 +64,7 @@ function createStore(query) {
     const owner = requireText(userId, "user id");
     await query("INSERT INTO cases (id, user_id) VALUES ($1, $2) ON CONFLICT (id) DO NOTHING", [caseId, owner]);
     const row = await ownedCase(caseId, owner);
-    if (!row) throw new StoreError(403, "This case id belongs to another user");
+    if (!row) throw new HttpError(403, "This case id belongs to another user");
     return row;
   }
 
@@ -120,7 +115,7 @@ function createStore(query) {
   async function addTurn({ caseId, userId, role, stepId, askedFrom, text }) {
     const content = requireText(text, "turn text");
     const who = requireText(role, "role");
-    if (who !== "user" && who !== "assistant") throw new StoreError(400, 'role must be "user" or "assistant"');
+    if (who !== "user" && who !== "assistant") throw new HttpError(400, 'role must be "user" or "assistant"');
     const { id } = await ensureCase({ id: caseId, userId });
     const { rows } = await withOneRetry(() =>
       query(
@@ -193,4 +188,4 @@ function createStore(query) {
   return { ensureCase, setCaseText, addReport, addTurn, setTitle, getState, listCases };
 }
 
-module.exports = { StoreError, createStore };
+module.exports = { createCaseRepository };

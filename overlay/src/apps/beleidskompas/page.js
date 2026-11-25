@@ -75,6 +75,8 @@ function openBeleidskompas(config, help) {
   const disclaimerEl = requireElement("gc-bk-disclaimer");
   if (config.title) titleEl.textContent = config.title;
   if (config.disclaimer) disclaimerEl.textContent = config.disclaimer;
+  // Hidden until the page is opened again.
+  requireElement("gc-bk-note-close").addEventListener("click", () => { requireElement("gc-bk-note").hidden = true; });
 
   requireElement("gc-bk-back").addEventListener("click", () => {
     window.location.href = CHAT_URL;

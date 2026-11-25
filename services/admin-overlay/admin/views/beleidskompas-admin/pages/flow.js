@@ -1,15 +1,8 @@
-// Flow builder: the four fixed steps, each with its texts, role, substeps, search settings and documents; plus the rules and prompts for all steps.
+// Flow builder: the four fixed steps, each with its texts, role, substeps and documents; plus the rules and prompts for all steps.
 import * as api from "../api.js";
 import { h, icon, card, field, bound, reveal } from "../dom.js";
 import { flowList } from "../components/flow-list.js";
-import { dropdown } from "../components/dropdown.js";
 import { toggle } from "../components/toggle.js";
-
-const SEARCH_METHODS = [
-  { value: "hybrid", label: "Hybride (aanbevolen)" },
-  { value: "needle", label: "Needle: precieze passages" },
-  { value: "haystack", label: "Haystack: brede context" },
-];
 
 // The step's <li> in the rendered list (index in store.flow.steps).
 const stepEl = (idx) => document.querySelectorAll(".flow-list > .flow-step")[idx];
@@ -38,8 +31,8 @@ export function renderFlow({ store, render, markDirty }) {
     "p",
     { class: "notice notice-info" },
     icon("info", 14),
-    "Titel, beschrijving, deelstappen, instructies, regels en prompts gaan bij Deploy naar de pagina en de assistent. " +
-      "De vier stappen zelf staan vast (SiS 4.0). Documenten en zoekmethode leest de assistent nog niet.",
+    "Titel, beschrijving, deelstappen, documenten, instructies, regels en prompts gaan bij Deploy naar de pagina en de assistent. " +
+      "De vier stappen zelf staan vast (SiS 4.0).",
   );
 
   const list = flowList({
@@ -77,7 +70,6 @@ const LABELS = {
 };
 
 function stepEditor(step, { store, markDirty, render }) {
-  step.rag = step.rag || {};
   const docIds = api.stepDocumentIds(step);
 
   const texts = h(
@@ -86,17 +78,6 @@ function stepEditor(step, { store, markDirty, render }) {
     field("Titel", bound(step, "title", { onInput: markDirty })),
     field("Beschrijving", bound(step, "description", { multiline: true, rows: 2, onInput: markDirty }), "Getoond in het overzicht en de uitleg van de stap op de Beleidskompas-pagina."),
     field("Instructies", bound(step, "prompt", { multiline: true, rows: 6, onInput: markDirty }), "De rol van het model voor deze stap."),
-  );
-
-  const search = h(
-    "div",
-    { class: "inline-controls" },
-    dropdown({
-      label: "Zoekmethode",
-      value: step.rag.algorithm || "hybrid",
-      options: SEARCH_METHODS,
-      onChange: (v) => { step.rag.algorithm = v; markDirty(); },
-    }),
   );
 
   const docList = h(
@@ -168,16 +149,14 @@ function stepEditor(step, { store, markDirty, render }) {
     ),
   );
 
-  // Not shown: the step id (fixed, stap1..stap4). rag.top_k and rag.min_score stay in the template as they are.
+  // Not shown: the step id (fixed, stap1..stap4).
   return h(
     "div",
     { class: "stack" },
     texts,
-    // Saved with the version; assistant retrieval does not use these selections yet.
     card(
-      ["Documenten ", h("span", { class: "badge badge-pending", title: "Wordt opgeslagen, maar de assistent gebruikt dit nog niet" }, "Nog niet gebruikt")],
-      h("p", { class: "field-hint" }, "Zoekmethode en documentkeuze worden opgeslagen, maar de assistent gebruikt ze nog niet."),
-      search,
+      "Documenten",
+      h("p", { class: "field-hint" }, "De assistent van deze stap zoekt in de aangevinkte documenten."),
       docList,
     ),
     card("Substappen", substeps),

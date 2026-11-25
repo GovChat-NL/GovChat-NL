@@ -83,6 +83,19 @@ test('a tool passes exactly the inputs the called workflow declares, and the mod
   }
 });
 
+test('the agent of every step can search the documents of its own step, and the model fills only the question', () => {
+  for (const [i, agent] of agents.entries()) {
+    const tools = agent.nodes.filter((n) => n.type.endsWith('httpRequestTool'));
+    assert.equal(tools.length, 1, `${agent.name} has one search tool`);
+    const [tool] = tools;
+    assert.equal(agent.connections[tool.name].ai_tool[0][0].node, `AI Agent Stap ${STEPS[i].nr}`);
+    assert.ok(tool.parameters.url.endsWith('/api/beleidskompas/search'));
+    assert.ok(tool.parameters.jsonBody.includes(`step_id: "${STEPS[i].id}"`));
+    assert.equal(tool.parameters.jsonBody.match(/\$fromAI/g).length, 1);
+    assert.ok(tool.parameters.jsonBody.includes("question: $fromAI("));
+  }
+});
+
 test('every agent and chain has a model, and a failing model or store call does not stop its workflow', () => {
   for (const w of workflows) {
     for (const agent of w.nodes.filter((n) => /\.(agent|chainLlm)$/.test(n.type))) {

@@ -1,3 +1,5 @@
+CREATE EXTENSION IF NOT EXISTS vector;
+
 -- The state of a Beleidskompas case. A case is a LibreChat conversation
 -- (its id is the conversationId) that belongs to one user. Case texts and
 -- reports are versioned: a change is a new version and the newest counts;
@@ -75,6 +77,8 @@ CREATE TABLE IF NOT EXISTS documents (
   size integer NOT NULL,
   preview_text text NOT NULL DEFAULT '',
   content bytea NOT NULL,
+  index_status text NOT NULL DEFAULT 'pending' CHECK (index_status IN ('pending', 'indexing', 'ready', 'failed')),
+  index_error text NOT NULL DEFAULT '',
   created_at timestamptz NOT NULL DEFAULT now()
 );
 CREATE TABLE IF NOT EXISTS version_documents (
@@ -91,3 +95,21 @@ CREATE TABLE IF NOT EXISTS settings (
   key text PRIMARY KEY DEFAULT 'settings',
   data jsonb NOT NULL
 );
+
+-- halfvec, because an index on a vector column holds at most 2000 dimensions and the embedding has 3072.
+CREATE TABLE IF NOT EXISTS document_chunks (
+  id bigserial PRIMARY KEY,
+  document_id integer NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
+  chunk_number integer NOT NULL,
+  text text NOT NULL,
+  location text NOT NULL DEFAULT '',
+  page integer,
+  heading text NOT NULL DEFAULT '',
+  embedding halfvec(3072) NOT NULL,
+  embedding_model text NOT NULL,
+  index_version integer NOT NULL,
+  search_words tsvector GENERATED ALWAYS AS (to_tsvector('dutch', text)) STORED,
+  UNIQUE (document_id, chunk_number)
+);
+CREATE INDEX IF NOT EXISTS document_chunks_embedding_idx ON document_chunks USING hnsw (embedding halfvec_cosine_ops);
+CREATE INDEX IF NOT EXISTS document_chunks_search_words_idx ON document_chunks USING gin (search_words);

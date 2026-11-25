@@ -7,12 +7,21 @@ const path = require("path");
 const sharp = require("sharp");
 const { WebSocket, WebSocketServer } = require("ws");
 const beleidskompas = require("./lib/beleidskompas");
-const { createTemplateStore } = require("./lib/beleidskompas/template-store");
+const { createTemplateRepository } = require("./lib/beleidskompas/templates/template-repository");
+const { createTemplateService } = require("./lib/beleidskompas/templates/template-service");
+const { createDocumentRepository } = require("./lib/beleidskompas/documents/document-repository");
+const { createDocumentIndexer } = require("./lib/beleidskompas/documents/index-documents");
+const documentRoutes = require("./lib/beleidskompas/documents/document-routes");
+const { createDocumentSearch } = require("./lib/beleidskompas/documents/search");
+const searchRoutes = require("./lib/beleidskompas/documents/search-routes");
 const { createAnswerFeedbackHandlers } = require("./lib/beleidskompas/answer-feedback");
-const { StoreError } = require("./lib/beleidskompas/store");
-const templateRoutes = require("./lib/beleidskompas/admin-routes");
+const { HttpError } = require("./lib/beleidskompas/shared/errors");
+const templateRoutes = require("./lib/beleidskompas/templates/template-routes");
 const { createGeneralFeedbackHandlers, librechatEmailFromBearer } = require("./lib/beleidskompas/general-feedback");
-let templateStore = null;
+let templateRepository = null;
+let templateService = null;
+let documentRepository = null;
+let documentSearch = null;
 let beleidskompasPool = null;
 
 const app = express();
@@ -376,35 +385,6 @@ function normalizeTags(value) {
   return [...new Set(value.map((v) => String(v || "").trim()).filter(Boolean))];
 }
 
-function defaultStepRagSettings(step = {}) {
-  return {
-    algorithm: "hybrid",
-    top_k: 3,
-    min_score: 0.08,
-    tag_filter_mode: "any",
-    required_tags: normalizeTags(step?.doc_tags || []),
-  };
-}
-
-function normalizeStepRagSettings(input, fallbackStep = {}) {
-  const fallback = defaultStepRagSettings(fallbackStep);
-  const src = input && typeof input === "object" ? input : {};
-  const algorithmRaw = String(src.algorithm || fallback.algorithm || "hybrid").trim().toLowerCase();
-  const algorithm = ["needle", "haystack", "hybrid"].includes(algorithmRaw) ? algorithmRaw : "hybrid";
-  const topK = Math.max(1, Math.min(20, Number.parseInt(String(src.top_k ?? fallback.top_k ?? 3), 10) || 3));
-  const minScore = Math.max(0, Math.min(1, Number.parseFloat(String(src.min_score ?? fallback.min_score ?? 0.08)) || 0));
-  const modeRaw = String(src.tag_filter_mode || fallback.tag_filter_mode || "any").trim().toLowerCase();
-  const tagFilterMode = modeRaw === "all" ? "all" : "any";
-  const requiredTags = normalizeTags(src.required_tags || fallback.required_tags || []);
-  return {
-    algorithm,
-    top_k: topK,
-    min_score: minScore,
-    tag_filter_mode: tagFilterMode,
-    required_tags: requiredTags,
-  };
-}
-
 function normalizeBeleidskompasDocuments(input) {
   const documentsRaw = Array.isArray(input) ? input : [];
   return documentsRaw.map((d) => ({
@@ -426,8 +406,7 @@ const BELEIDSKOMPAS_DEFAULT_TEMPLATE = JSON.parse(
 );
 
 function defaultBeleidskompasFlow() {
-  const template = cloneJSON(BELEIDSKOMPAS_DEFAULT_TEMPLATE);
-  return { ...template, steps: template.steps.map((step) => ({ ...step, rag: defaultStepRagSettings(step) })) };
+  return cloneJSON(BELEIDSKOMPAS_DEFAULT_TEMPLATE);
 }
 
 /** The saved value, or the default when it is empty: a prompt-like field
@@ -453,9 +432,8 @@ function normalizeBeleidskompasFlow(input) {
       description: String(step.description ?? fb.description ?? "").trim(),
       prompt: textOrDefault(step.prompt, fb.prompt),
       doc_tags: normalizeTags(step.doc_tags || fb.doc_tags),
-      // Documents picked in the Flow builder; nothing reads them yet. Missing = not picked yet.
+      // Documents picked in the Flow builder, which the search for this step looks in. Missing = not picked yet.
       document_ids: Array.isArray(step.document_ids) ? [...new Set(step.document_ids.map(String))] : undefined,
-      rag: normalizeStepRagSettings(step.rag || fb.rag || {}, step.id ? step : fb),
       // A substep without an id is left out: reports are stored by id.
       substeps: substepsRaw.filter((sub) => String(sub?.id || "").trim()).map((sub, subIdx) => {
         const id = String(sub?.id || "").trim();
@@ -555,19 +533,19 @@ function normalizeBeleidskompasState(input) {
 // PostgreSQL is the source of template state. Public JSON and workflow files are
 // generated from the deployed version; saving a draft never changes them.
 async function publishStoredBeleidskompasLive() {
-  if (!templateStore) return;
-  const state = await templateStore.getState();
-  if (state.live) await publishTemplateLive(state.live, undefined, state.templates.find((t) => t.live_version_id).live_version_id);
+  if (!templateRepository) return;
+  const state = await templateRepository.getState();
+  if (state.live) await publishTemplateLive(state.live, state.templates.find((t) => t.live_version_id).live_version_id);
 }
 
 // At startup: when nothing is live yet, the default template goes live as "SiS 4.0".
 async function ensureLiveBeleidskompasTemplate() {
-  if ((await templateStore.getState()).live) return publishStoredBeleidskompasLive();
-  const template = await templateStore.createTemplate("SiS 4.0", normalizeBeleidskompasFlow(defaultBeleidskompasFlow()));
-  await templateStore.deployVersion(template.id, template.versions[0].id, publishTemplateLive);
+  if ((await templateRepository.getState()).live) return publishStoredBeleidskompasLive();
+  const template = await templateRepository.createTemplate("SiS 4.0", normalizeBeleidskompasFlow(defaultBeleidskompasFlow()));
+  await templateRepository.deployVersion(template.id, template.versions[0].id, publishTemplateLive);
 }
 
-async function publishTemplateLive(flow, _documents, versionId) {
+async function publishTemplateLive(flow, versionId) {
   publishBeleidskompasLiveConfig(flow, versionId);
 }
 
@@ -596,8 +574,8 @@ function publishBeleidskompasLiveConfig(flow, versionId) {
 
 /** The live template as the orchestrator reads it (GET /api/beleidskompas/live). */
 async function liveBeleidskompasTemplate() {
-  if (!templateStore) throw new StoreError(503, "Beleidskompas database is not available");
-  const state = await templateStore.getState();
+  if (!templateRepository) throw new HttpError(503, "Beleidskompas database is not available");
+  const state = await templateRepository.getState();
   const versionId = state.templates.find((t) => t.live_version_id)?.live_version_id || "";
   return { version_id: versionId, flow: state.live && normalizeBeleidskompasFlow(state.live), settings: { default_model: state.settings.default_model } };
 }
@@ -2160,10 +2138,10 @@ app.get("/dashboard", requireAuth, async (req, res) => {
   const orchestratorConfig = readOrchestratorConfig();
   let beleidskompasState = {};
   try {
-    if (templateStore) {
-      beleidskompasState = await templateStore.getState();
+    if (templateRepository) {
+      beleidskompasState = await templateRepository.getState();
       beleidskompasState.versions = beleidskompasState.templates.flatMap((t) => t.versions);
-      beleidskompasState.documents = await templateStore.listDocuments();
+      beleidskompasState.documents = await documentRepository.listDocuments();
     }
   } catch (err) {
     console.error("[govchat-admin] Could not load template counts:", err.message);
@@ -2251,11 +2229,14 @@ app.post("/api/config/apps", requireAuth, (req, res) => {
 
 templateRoutes.mount(app, {
   requireAuth,
-  getStore: () => templateStore,
+  getRepository: () => templateRepository,
+  getService: () => templateService,
   normalizeFlow: normalizeBeleidskompasFlow,
   defaultFlow: defaultBeleidskompasFlow,
   publishLive: publishTemplateLive,
 });
+documentRoutes.mount(app, { requireAuth, getRepository: () => documentRepository });
+searchRoutes.mount(app, { internalToken: process.env.BELEIDSKOMPAS_STORE_TOKEN, getSearch: () => documentSearch });
 
 // ── Beleidskompas feedback ───────────────────────────────────────
 //
@@ -2725,7 +2706,11 @@ if (require.main === module) {
     getLive: liveBeleidskompasTemplate,
     onReady(pool) {
       beleidskompasPool = pool;
-      templateStore = createTemplateStore(pool, defaultBeleidskompasState().settings);
+      templateRepository = createTemplateRepository(pool, defaultBeleidskompasState().settings);
+      documentRepository = createDocumentRepository(pool);
+      templateService = createTemplateService({ pool, templates: templateRepository, documents: documentRepository });
+      documentSearch = createDocumentSearch({ templates: templateRepository, documents: documentRepository });
+      createDocumentIndexer(documentRepository).start();
       ensureLiveBeleidskompasTemplate().catch((err) => console.error("[govchat-admin] Could not publish deployed template:", err));
     },
   });

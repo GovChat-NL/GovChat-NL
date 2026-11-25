@@ -19,6 +19,7 @@ export function finder({ files, selectedFile, onFile, preview }) {
             },
             icon("file", 15),
             h("span", { class: "finder-name", title: f.name }, f.name),
+            f.badge,
           ),
         )
       : h("li", { class: "finder-empty" }, "Nog geen documenten"),
