@@ -143,6 +143,8 @@ export function parseAdvice(text) {
   return {
     isDemo: introText.startsWith("⚠️"),
     disclaimer,
+    // "**Voortgang:** 75%" in the report: how far the substep is, shown as a pill next to the title.
+    progress: (/^\**Voortgang:?\**\s*(\d{1,3})\s*%/im.exec(body) || [])[1] || "",
     sections: sections.map((s) => {
       let sectionText = s.lines.join("\n").trim();
       const verdictMatch = /^\**Oordeel:?\**\s*(.+)$/im.exec(sectionText);

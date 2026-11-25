@@ -45,6 +45,7 @@ export function setupStepCard(store, { specialistTeam, requestReport }) {
   const { state, substeps } = store;
   const stepInfoBtn = requireElement("gc-bk-step-info");
   const formTitleEl = requireElement("gc-bk-form-title");
+  const progressEl = requireElement("gc-bk-progress");
   const prevBtn = requireElement("gc-bk-prev");
   const nextBtn = requireElement("gc-bk-next");
   const reportBtn = requireElement("gc-bk-request-report");
@@ -76,6 +77,10 @@ export function setupStepCard(store, { specialistTeam, requestReport }) {
 
     const hasReport = Boolean(String(data.report_text || "").trim());
     const advice = hasReport ? parseAdvice(data.report_text) : null;
+    const progress = advice ? advice.progress : "";
+    progressEl.hidden = !progress;
+    progressEl.textContent = `${progress}%`;
+    progressEl.className = `gc-bk-verdict ${progress === "100" ? "is-yes" : "is-unclear"}`;
     if (advice) reportBodyEl.innerHTML = adviceHTML(advice, specialistTeam);
     else if (hasReport) reportBodyEl.innerHTML = formatRichText(data.report_text);
     else if (busy) reportBodyEl.textContent = "";

@@ -66,6 +66,11 @@ test("parseAdvice splits the answer into sections, verdicts and disclaimer, and 
   assert.equal(parseAdvice("Er ging iets mis."), null);
 });
 
+test("parseAdvice reads the progress percentage, and gives none for a report without one", () => {
+  assert.equal(parseAdvice("### Voortgang\n**Voortgang:** 75%\n\n**Open vragen:**\n- Wat is de urgentie?").progress, "75");
+  assert.equal(parseAdvice(advice).progress, "");
+});
+
 test("needsSpecialistTeam flags a negative verdict or three open assumptions", () => {
   assert.equal(needsSpecialistTeam(parseAdvice(advice)), true);
 
