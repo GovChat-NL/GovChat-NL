@@ -53,8 +53,10 @@ replenish-beleidskompas-db: env ## Recreate versioning tables and load the demo 
 	sh scripts/replenish-beleidskompas-db.sh
 	$(COMPOSE) restart govchat-overlay-admin
 
+# Runs every test whose file name ends in -db.test.js. The shell in the
+# container expands the pattern, because node 20 does not.
 test-beleidskompas-db: ## Run the Beleidskompas store against the real database, inside the admin container (the stack must be running)
-	$(COMPOSE) run --rm --no-deps -e BELEIDSKOMPAS_DB_TEST=true -v ./services/admin-overlay/admin/tests:/app/tests:ro govchat-overlay-admin node --test tests/beleidskompas-db.test.js tests/beleidskompas-templates-db.test.js
+	$(COMPOSE) run --rm --no-deps -e BELEIDSKOMPAS_DB_TEST=true -v ./services/admin-overlay/admin/tests:/app/tests:ro govchat-overlay-admin sh -c 'node --test tests/*-db.test.js'
 
 generate-workflows: ## Regenerate the Beleidskompas workflows (orchestrator and the steps) from agents/beleidskompas
 	cd agents/beleidskompas && node generate-workflow.js
