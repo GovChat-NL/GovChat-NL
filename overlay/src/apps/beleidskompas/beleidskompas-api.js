@@ -223,8 +223,7 @@ export async function listBeleidskompasCases(limit) {
   const cases = await resp.json().catch(() => []);
   return (Array.isArray(cases) ? cases : []).map((c) => ({
     conversationId: c.id,
-    // The store keeps the "Beleidskompas - " prefix for LibreChat's sidebar; the page drops it.
-    title: String(c.title || "").trim().replace(/^Beleidskompas -\s*/, "") || "Naamloze casus",
+    title: String(c.title || "").trim() || "Naamloze casus",
     updatedAt: c.updated_at || c.created_at || null,
   }));
 }

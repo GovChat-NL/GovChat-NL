@@ -554,7 +554,7 @@ function buildOrchestratorWorkflow(steps) {
 
   nodes.push(
     codeNode('Titel opbouwen', at(7, 0), {
-      constants: { TITLE_REQUEST_MARKER: shared.TITLE_REQUEST_MARKER, TITLE_PREFIX: shared.TITLE_PREFIX },
+      constants: { TITLE_REQUEST_MARKER: shared.TITLE_REQUEST_MARKER },
       functions: ['nodeError', 'buildFallbackTitle', 'buildTitle'],
       run: `return [{ json: buildTitle({ request: ${request}, reply: $json }) }];`,
     }),

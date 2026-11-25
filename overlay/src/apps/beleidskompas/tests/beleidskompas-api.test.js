@@ -5,7 +5,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { composePrompt, listBeleidskompasCases, readCaseState, sendBeleidskompasFeedback } from "../beleidskompas-api.js";
+import { composePrompt, readCaseState, sendBeleidskompasFeedback } from "../beleidskompas-api.js";
 
 const SUBSTEP = { id: "sub_k3x9q2m7", label: "2.1", title: "Rolbepaling" };
 
@@ -72,14 +72,4 @@ test("sendBeleidskompasFeedback posts the rating with step, substep and template
   assert.equal(calls[0][0], "/govchat-api/beleidskompas-feedback");
   assert.deepEqual(calls[0][1], { rating: "up", comment: "", step_id: "stap2", substep_id: "2.1", version_id: "v3" });
   assert.deepEqual(calls[1][1], { rating: "down", comment: "", step_id: "stap1", substep_id: null, version_id: null });
-});
-
-test("listBeleidskompasCases drops the Beleidskompas prefix from the titles", async () => {
-  const realFetch = globalThis.fetch;
-  globalThis.fetch = async () => ({ ok: true, json: async () => [{ id: "a", title: "Beleidskompas - Zwembad" }, { id: "b", title: "Beleidskompas - " }] });
-  try {
-    assert.deepEqual((await listBeleidskompasCases(8)).map((c) => c.title), ["Zwembad", "Naamloze casus"]);
-  } finally {
-    globalThis.fetch = realFetch;
-  }
 });
