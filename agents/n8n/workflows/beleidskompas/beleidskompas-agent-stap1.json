@@ -144,6 +144,41 @@
       },
       {
         "parameters": {
+          "method": "POST",
+          "url": "={{ $env.BELEIDSKOMPAS_STORE_URL }}/api/beleidskompas/search",
+          "sendHeaders": true,
+          "headerParameters": {
+            "parameters": [
+              {
+                "name": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "name": "Authorization",
+                "value": "=Bearer {{ $env.BELEIDSKOMPAS_STORE_TOKEN }}"
+              }
+            ]
+          },
+          "options": {
+            "timeout": 10000
+          },
+          "sendBody": true,
+          "specifyBody": "json",
+          "jsonBody": "={{ JSON.stringify({\n  step_id: \"stap1\",\n  question: $fromAI('zoekvraag', 'Waar je naar zoekt, als vraag of als een paar trefwoorden', 'string'),\n}) }}",
+          "toolDescription": "Zoekt in de documenten die de beheerder aan deze stap heeft gekoppeld. Geeft de passages terug die het best bij de zoekvraag passen, de beste eerst, elk met het document, het kopje en de pagina. Zoek voordat je een deelstap uitwerkt, en bij een vraag waarop het antwoord in de documenten kan staan. Zoek opnieuw met een andere zoekvraag als je over meer dan één onderwerp iets nodig hebt. Is document_count 0, dan heeft deze stap geen documenten. Staat er in de passages niets over wat je zoekt, zeg dan dat de documenten er niets over zeggen."
+        },
+        "id": "Zoekenindocumenten",
+        "name": "Zoeken in documenten",
+        "type": "n8n-nodes-base.httpRequestTool",
+        "typeVersion": 4.2,
+        "position": [
+          880,
+          180
+        ],
+        "onError": "continueRegularOutput"
+      },
+      {
+        "parameters": {
           "jsCode": "function toolCalls(agentOutput) {\n  const steps = agentOutput && Array.isArray(agentOutput.intermediateSteps) ? agentOutput.intermediateSteps : [];\n  return steps.map((step) => ({\n    tool: (step && step.action && step.action.tool) || null,\n    input: step && step.action ? step.action.toolInput : null,\n  }));\n}\n\nfunction nodeError(output) {\n  const error = output && output.error;\n  if (!error) return null;\n  return String((typeof error === 'object' && error.message) || error);\n}\n\nfunction unwrapCodeBlock(text) {\n  const trimmed = String(text || '').trim();\n  const wrapped = /^```(?:markdown|md)?\\s*\\n([\\s\\S]*?)\\n```$/i.exec(trimmed);\n  return wrapped ? wrapped[1].trim() : trimmed;\n}\n\nfunction processReply({ assignment, agent }) {\n  const text = unwrapCodeBlock(agent && agent.output);\n\n  let error = nodeError(agent);\n  if (!error && !text) error = `De agent van stap ${assignment.step_nr} gaf geen antwoord.`;\n\n  const heading = `**Stap ${assignment.step_nr} · ${assignment.step_title} · ${assignment.substep_label} ${assignment.substep_title}**`;\n  const footer = assignment.report_disclaimer ? '---\\n' + assignment.report_disclaimer : '';\n\n  return {\n    mode: assignment.mode,\n    case_id: assignment.case_id,\n    user_id: assignment.user_id,\n    substep_id: assignment.substep_id,\n    substep_label: assignment.substep_label,\n    save: assignment.mode === 'report' && !error,\n    report_text: [heading, text, footer].filter(Boolean).join('\\n\\n'),\n    answer: text,\n    tools: toolCalls(agent),\n    error,\n  };\n}\n\nreturn [{ json: processReply({ assignment: $('Opdracht opbouwen').first().json, agent: $json }) }];"
         },
         "id": "Antwoordverwerken",
@@ -281,6 +316,17 @@
             {
               "node": "AI Agent Stap 1",
               "type": "ai_languageModel",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Zoeken in documenten": {
+        "ai_tool": [
+          [
+            {
+              "node": "AI Agent Stap 1",
+              "type": "ai_tool",
               "index": 0
             }
           ]
