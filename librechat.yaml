@@ -9,6 +9,20 @@ interface:
   contextUsage: false
   contextCost: false
 
+# The documents a user may add in the Beleidskompas chat: which types and
+# how large (in MB). LibreChat reads the text out of the file and sends it
+# along with the conversation.
+fileConfig:
+  endpoints:
+    govchat-beleidskompas:
+      fileSizeLimit: 15
+      supportedMimeTypes:
+        - "^application/pdf$"
+        - "^application/vnd\\.openxmlformats-officedocument\\.wordprocessingml\\.document$"
+        - "^application/vnd\\.openxmlformats-officedocument\\.spreadsheetml\\.sheet$"
+        - "^text/plain$"
+        - "^text/markdown$"
+
 endpoints:
   custom:
     - name: govchat-orchestrator

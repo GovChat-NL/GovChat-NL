@@ -29,6 +29,7 @@ const {
   TITLE_REQUEST_MARKER,
   extractSuppliedToken,
   parsePageMessage,
+  attachedDocuments,
   isTitleRequest,
   buildFallbackTitle,
   extractConvoUserText,
@@ -148,6 +149,7 @@ function prepareRequest({ body, headers, env, now }) {
     user_id,
     substep_id: parts.substepId,
     message: parts.message,
+    documents: attachedDocuments(b.messages),
     started_at,
   };
 }
@@ -155,8 +157,9 @@ function prepareRequest({ body, headers, env, now }) {
 /** What the agents get to read and work with, from the template the admin
  *  published and the state of the case in the store.
  *
- *  From the state: the reports so far, the last turns of the conversation
- *  and the request. The orchestrator reads `prompt`, with every report in
+ *  From the request: the documents the user attached in the chat. From the
+ *  state: the reports so far, the last turns of the conversation and the
+ *  request. The orchestrator reads `prompt`, with every report in
  *  it. The agent of a step gets the reports as `findings`. For a typed
  *  message that is every report too. For a request for a report it is
  *  every report up to and including the substep asked for, because a report
@@ -224,6 +227,7 @@ function buildContext({ request, state, live, stepIds }) {
       : `Verzoek: werk deelstap ${label} uit.`;
 
   const prompt = [
+    request.documents && `Documenten van de gebruiker:\n${request.documents}`,
     allReports ? `Bevindingen tot nu toe:\n${allReports}` : 'Bevindingen tot nu toe: (nog geen deelstap uitgewerkt)',
     conversation && `Laatste beurten van het gesprek:\n${conversation}`,
     asked,

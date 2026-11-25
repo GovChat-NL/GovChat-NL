@@ -7,7 +7,7 @@
 
 import { escapeHTML } from "../../../shared/html.js";
 import { requireElement } from "../../../shared/dom.js";
-import { composePrompt, sendBeleidskompasChatMessage, sendBeleidskompasFeedback } from "../beleidskompas-api.js";
+import { composePrompt, sendBeleidskompasChatMessage, sendBeleidskompasFeedback, uploadBeleidskompasDocument } from "../beleidskompas-api.js";
 import { formatRichText, formatTime } from "../format.js";
 import { citationButtonHTML, openCitationFromClick } from "../popups.js";
 
@@ -82,13 +82,46 @@ export function setupChat(store, { refreshState, versionId }) {
   const chatInputEl = requireElement("gc-bk-chat-input");
   const sendBtn = requireElement("gc-bk-send");
   const newChatBtn = requireElement("gc-bk-new-chat");
+  const attachBtn = requireElement("gc-bk-attach");
+  const fileInputEl = requireElement("gc-bk-file");
+  const documentsEl = requireElement("gc-bk-documents");
+  // The documents the user added in this session. `sent` says whether a
+  // document has gone along with a message; LibreChat keeps it with the
+  // conversation from then on.
+  let documents = [];
+  let documentsSession = state.session;
 
   function stepLabel(stepId) {
     const step = store.steps.find((s) => s.id === stepId);
     return step ? `Stap ${step.nr} · ${step.title}` : "";
   }
 
+  function renderDocuments() {
+    // Another case or a new session starts without documents.
+    if (documentsSession !== state.session) {
+      documents = [];
+      documentsSession = state.session;
+    }
+    documentsEl.innerHTML = documents.map((d) => `<span class="gc-bk-citation-btn" title="${escapeHTML(d.filename)}">${escapeHTML(d.filename)}</span>`).join("");
+  }
+
+  /** Adds files to the chat. Nothing is sent to Beleidskompas: a document
+   *  goes along with the next message or request for a report. A file
+   *  LibreChat refuses (wrong type, too large, no text to read) gives a
+   *  notice in the chat. */
+  async function addDocuments(files) {
+    for (const file of files) {
+      try {
+        documents.push({ ...(await uploadBeleidskompasDocument(file)), sent: false });
+      } catch (err) {
+        store.addMessage("assistant", `Het document "${file.name}" is niet toegevoegd: ${reasonOf(err)}.`, { notice: true });
+      }
+      renderDocuments();
+    }
+  }
+
   function renderChat() {
+    renderDocuments();
     chatLogEl.innerHTML = state.messages.map((m, idx) => messageHTML(m, idx, stepLabel)).join("");
     chatLogEl.scrollTop = chatLogEl.scrollHeight;
   }
@@ -114,13 +147,16 @@ export function setupChat(store, { refreshState, versionId }) {
   /** Sends one composed message to the orchestrator and waits for the
    *  answer. */
   async function requestOrchestrator(text) {
+    const unsent = documents.filter((d) => !d.sent);
     const result = await sendBeleidskompasChatMessage({
       text,
       conversationId: state.conversationId,
       parentMessageId: state.lastMessageId,
+      files: unsent.map(({ file_id, filepath, type }) => ({ file_id, filepath, type })),
     });
 
     if (!result.text) throw new Error("Beleidskompas gaf geen antwoord terug");
+    for (const d of unsent) d.sent = true;
     return result;
   }
 
@@ -221,6 +257,18 @@ export function setupChat(store, { refreshState, versionId }) {
 
   newChatBtn.addEventListener("click", () => store.startNewSession());
   sendBtn.addEventListener("click", sendUserMessage);
+  attachBtn.addEventListener("click", () => fileInputEl.click());
+  fileInputEl.addEventListener("change", () => {
+    addDocuments([...fileInputEl.files]);
+    fileInputEl.value = "";
+  });
+  // A file dropped anywhere on the chat is added too.
+  const chatEl = chatLogEl.closest(".gc-bk-chat");
+  chatEl.addEventListener("dragover", (e) => e.preventDefault());
+  chatEl.addEventListener("drop", (e) => {
+    e.preventDefault();
+    addDocuments([...e.dataTransfer.files]);
+  });
   chatInputEl.addEventListener("input", autoGrowInput);
   chatInputEl.addEventListener("keydown", (e) => {
     // Shift+Enter inserts a newline; Enter sends.

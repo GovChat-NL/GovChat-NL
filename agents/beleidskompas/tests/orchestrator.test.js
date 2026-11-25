@@ -54,7 +54,7 @@ test('a wrong token is refused without a text, so the caller learns nothing', ()
 
 test('a request for a report: the block of the page names the substep', () => {
   const request = prepare({ currentMessage: pageMessage({ substep_id: '3.2', message: '' }) });
-  assert.deepEqual(request, { kind: 'report', ok: true, case_id: 'c1', user_id: 'u1', substep_id: '3.2', message: '', started_at: 1000 });
+  assert.deepEqual(request, { kind: 'report', ok: true, case_id: 'c1', user_id: 'u1', substep_id: '3.2', message: '', documents: '', started_at: 1000 });
 });
 
 test('a typed message from the page keeps the substep the user is in', () => {
@@ -81,6 +81,31 @@ test('a title request is recognised in the message and in the system prompt, and
 
   const inSystem = prepareRequest({ body: { systemPrompt: `x ${TITLE_REQUEST_MARKER}`, currentMessage: 'User: Een casus.\nAI: antwoord' }, headers, env: { N8N_WEBHOOK_TOKEN: 'geheim' }, now: 1 });
   assert.deepEqual([inSystem.kind, inSystem.title_source], ['title', 'Een casus.']);
+});
+
+test('the documents the user attached in the chat come out of the messages LibreChat sends, and reach the orchestrator', () => {
+  // LibreChat puts the text of an attached file in front of the message it came with, on every request.
+  const attached = (name, text, message) => `Attached document(s):\n\`\`\`md# "${name}"\n${text}\n\n\`\`\`\n${message}`;
+  const first = attached('nota.pdf', 'Tekst van de nota.', pageMessage({ substep_id: idOf('1.1'), message: 'Zie de nota.' }));
+  const last = pageMessage({ substep_id: idOf('1.1'), message: 'En nu?' });
+  const messages = [
+    { role: 'user', content: first },
+    { role: 'assistant', content: 'Gelezen.' },
+    { role: 'user', content: [{ type: 'text', text: attached('bijlage.docx', 'Tekst van de bijlage.', 'Nog een.') }] },
+    { role: 'user', content: last },
+  ];
+
+  const request = prepare({ currentMessage: last, messages });
+  assert.equal(request.message, 'En nu?');
+  assert.equal(request.documents, '# "nota.pdf"\nTekst van de nota.\n\n---\n\n# "bijlage.docx"\nTekst van de bijlage.');
+
+  const context = buildContext({ request, state, live, stepIds });
+  assert.equal(context.documents, request.documents);
+  assert.ok(context.prompt.startsWith(`Documenten van de gebruiker:\n${request.documents}\n\nBevindingen tot nu toe:`));
+
+  // The message that carries the document is the message the user typed, without the document.
+  assert.equal(prepare({ currentMessage: first, messages: messages.slice(0, 1) }).message, 'Zie de nota.');
+  assert.equal(prepare({ currentMessage: last }).documents, '');
 });
 
 // --- buildContext ---

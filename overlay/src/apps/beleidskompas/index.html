@@ -60,6 +60,11 @@
           <textarea id="gc-bk-chat-input" rows="1" placeholder="Beschrijf je casus" aria-label="Je casus, of een aanvulling bij de deelstap"></textarea>
           <button id="gc-bk-send" type="button" title="Verzenden (Enter)" aria-label="Verzenden"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"/></svg></button>
         </div>
+        <div class="gc-bk-citations">
+          <button id="gc-bk-attach" class="gc-bk-head-btn" type="button" title="Document toevoegen" aria-label="Document toevoegen"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13"/></svg></button>
+          <input id="gc-bk-file" type="file" multiple hidden />
+          <span id="gc-bk-documents" class="gc-bk-citations"></span>
+        </div>
         <div id="gc-bk-note" class="gc-bk-note">
           <span id="gc-bk-disclaimer">Ondersteunend hulpmiddel, geen automatische besluitvorming.</span>
           <button id="gc-bk-note-close" class="gc-bk-head-btn" type="button" title="Verbergen" aria-label="Melding verbergen"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path stroke-linecap="round" d="M6 6l12 12M18 6L6 18"/></svg></button>

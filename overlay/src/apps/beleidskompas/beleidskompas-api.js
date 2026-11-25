@@ -17,6 +17,10 @@ const BELEIDSKOMPAS_ENDPOINT = "govchat-beleidskompas";
 // LibreChat cookie).
 const STORE_URL = "/govchat-api/beleidskompas";
 const NO_PARENT_MESSAGE_ID = "00000000-0000-0000-0000-000000000000";
+// How much text of attached documents LibreChat passes on with a message.
+// Its own default is 100000 tokens, and what is over the limit is left out
+// without a warning.
+const FILE_TOKEN_LIMIT = 200000;
 
 /** Extracts the assistant's text from a LibreChat message object. LibreChat
  *  puts the text in the content parts and leaves `.text` empty once it uses
@@ -90,9 +94,30 @@ function base64Utf8(text) {
   return btoa(binary);
 }
 
+/** Adds a document to LibreChat as text ("Upload as Text"). LibreChat checks
+ *  the type and the size (fileConfig in librechat.yaml), reads the text out
+ *  of the file and keeps it with the user. The result goes along with the
+ *  next message, as one of the `files` of sendBeleidskompasChatMessage; from
+ *  then on LibreChat sends the text with every message of that conversation. */
+export async function uploadBeleidskompasDocument(file) {
+  const form = new FormData();
+  form.append("endpoint", BELEIDSKOMPAS_ENDPOINT);
+  form.append("endpointType", "custom");
+  form.append("file_id", newClientMessageId());
+  form.append("tool_resource", "context");
+  form.append("message_file", "true");
+  form.append("file", file, file.name);
+  const resp = await librechatFetch("/api/files", { method: "POST", body: form });
+  const data = await resp.json().catch(() => ({}));
+  if (!resp.ok || !data.file_id) throw new Error(String(data?.message || data?.error || `HTTP ${resp.status}`));
+  return { file_id: data.file_id, filepath: data.filepath, type: data.type, filename: data.filename || file.name };
+}
+
 /** Sends one message to the Beleidskompas custom endpoint and waits for
- *  the full reply via SSE. Returns { conversationId, messageId, text }. */
-export async function sendBeleidskompasChatMessage({ text, conversationId, parentMessageId }) {
+ *  the full reply via SSE. `files` are documents added with
+ *  uploadBeleidskompasDocument that have not gone along with a message yet.
+ *  Returns { conversationId, messageId, text }. */
+export async function sendBeleidskompasChatMessage({ text, conversationId, parentMessageId, files }) {
   const messageId = newClientMessageId();
   const startResp = await librechatFetch("/api/agents/chat/" + BELEIDSKOMPAS_ENDPOINT, {
     method: "POST",
@@ -112,6 +137,8 @@ export async function sendBeleidskompasChatMessage({ text, conversationId, paren
       isTemporary: false,
       editedContent: null,
       addedConvo: null,
+      files: files || [],
+      fileTokenLimit: FILE_TOKEN_LIMIT,
     }),
   });
   const startData = await startResp.json().catch(() => ({}));

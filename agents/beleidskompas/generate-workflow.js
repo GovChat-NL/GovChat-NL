@@ -384,7 +384,7 @@ function makeWorkflow({ id, name, active, nodes, connections }) {
 
 // What the orchestrator passes to the agent of a step. The first two are
 // filled in by the orchestrator's model, the rest by its workflow.
-const STEP_AGENT_INPUTS = ['substep_label', 'assignment', 'case_id', 'user_id', 'findings', 'conversation', 'template'];
+const STEP_AGENT_INPUTS = ['substep_label', 'assignment', 'case_id', 'user_id', 'documents', 'findings', 'conversation', 'template'];
 
 function stepAgentWorkflowId(step) {
   return `govchat-beleidskompas-agent-${step.id}`;
@@ -509,6 +509,7 @@ function stepAgentToolNode(step, position) {
     filledByWorkflow: [
       { name: 'case_id', value: `${context}.case_id` },
       { name: 'user_id', value: `${context}.user_id` },
+      { name: 'documents', value: `${context}.documents`, optional: true },
       { name: 'findings', value: `${context}.findings`, optional: true },
       { name: 'conversation', value: `${context}.conversation`, optional: true },
       { name: 'template', value: `${context}.step_templates.${step.id}` },
@@ -546,9 +547,10 @@ function buildOrchestratorWorkflow(steps) {
       constants: {
         REQUEST_META_LABEL: shared.REQUEST_META_LABEL,
         TITLE_REQUEST_MARKER: shared.TITLE_REQUEST_MARKER,
+        ATTACHED_DOCUMENTS_START: shared.ATTACHED_DOCUMENTS_START,
         MESSAGES: orchestrator.MESSAGES,
       },
-      functions: ['extractSuppliedToken', 'parsePageMessage', 'isTitleRequest', 'extractConvoUserText', 'incomingMessage', 'failure', 'prepareRequest'],
+      functions: ['extractSuppliedToken', 'parsePageMessage', 'attachedDocuments', 'isTitleRequest', 'extractConvoUserText', 'incomingMessage', 'failure', 'prepareRequest'],
       run: [
         'return [{ json: prepareRequest({',
         '  body: $json.body,',

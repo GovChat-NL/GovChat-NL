@@ -50,6 +50,7 @@ function buildSystemPrompt({ template, step, substeps, rules }) {
 function buildUserPrompt({ input, task }) {
   const parts = [];
 
+  if (input.documents) parts.push(`Documenten van de gebruiker:\n${input.documents}`);
   if (input.findings) parts.push(`Bevindingen tot nu toe:\n${input.findings}`);
   if (input.conversation) parts.push(`Laatste beurten van het gesprek:\n${input.conversation}`);
   parts.push(task);
@@ -75,8 +76,9 @@ function readStepTemplate(text) {
  *  `input` is what the orchestrator's tool call passed:
  *  - substep_label, assignment: filled in by the orchestrator's model;
  *    substep_label is the number of the substep as a person sees it, like 1.2
- *  - case_id, user_id, findings, conversation, template: filled in by the
- *    orchestrator workflow; `findings` holds the earlier reports in full,
+ *  - case_id, user_id, documents, findings, conversation, template: filled
+ *    in by the orchestrator workflow; `documents` holds the text of the
+ *    documents the user attached, `findings` the earlier reports in full,
  *    `template` what readStepTemplate reads
  *
  *  The result has a `mode`:

@@ -111,6 +111,30 @@ function parsePageMessage(text) {
   return parts;
 }
 
+// --- Documents the user attached in the chat ---
+//
+// LibreChat reads the text out of a file the user attached ("Upload as
+// Text") and puts it in front of the message the file came with, again on
+// every later request of that conversation. The block starts with
+// ATTACHED_DOCUMENTS_START and ends with a line of three backticks.
+
+const ATTACHED_DOCUMENTS_START = 'Attached document(s):\n```md';
+
+/** The text of every document attached in the conversation, each under its
+ *  file name. `messages` are the messages of the conversation as the bridge
+ *  passes them on. */
+function attachedDocuments(messages) {
+  return (Array.isArray(messages) ? messages : [])
+    .map((message) => {
+      const content = message && message.content;
+      const text = String((Array.isArray(content) ? (content.find((part) => part && typeof part.text === 'string') || {}).text : content) || '');
+      const end = text.lastIndexOf('\n```\n');
+      return text.startsWith(ATTACHED_DOCUMENTS_START) && end !== -1 ? text.slice(ATTACHED_DOCUMENTS_START.length, end).trim() : '';
+    })
+    .filter(Boolean)
+    .join('\n\n---\n\n');
+}
+
 // --- LibreChat conversation-title requests ---
 //
 // LibreChat generates each conversation's title by sending an extra request
@@ -180,6 +204,8 @@ module.exports = {
   DISCLAIMER,
   TITLE_REQUEST_MARKER,
   REQUEST_META_LABEL,
+  ATTACHED_DOCUMENTS_START,
+  attachedDocuments,
   extractSuppliedToken,
   parsePageMessage,
   isTitleRequest,
