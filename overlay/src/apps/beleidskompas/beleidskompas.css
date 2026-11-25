@@ -128,11 +128,6 @@
   display: none;
 }
 
-.gc-bk-stepper.is-collapsed .gc-bk-panel-toggle svg,
-.gc-bk-step.is-collapsed .gc-bk-panel-toggle svg {
-  transform: rotate(180deg);
-}
-
 /* A folded-in panel is a narrow strip with only its toggle button. */
 .gc-bk-stepper.is-collapsed {
   align-items: center;
@@ -151,7 +146,7 @@
 }
 
 .gc-bk-step.is-collapsed .gc-bk-card-head > h2,
-.gc-bk-step.is-collapsed .gc-bk-step-nav > :not(.gc-bk-panel-toggle) {
+.gc-bk-step.is-collapsed .gc-bk-step-nav {
   display: none;
 }
 
@@ -559,6 +554,7 @@
 
 .gc-bk-step-nav {
   display: flex;
+  margin-left: auto;
   align-items: center;
   gap: 4px;
   flex-shrink: 0;
@@ -1531,17 +1527,6 @@
     display: inline;
     font-size: 13px;
     font-weight: 700;
-  }
-
-  /* The chevrons point up to fold a panel in and down to open it. */
-  .gc-bk-stepper .gc-bk-panel-toggle svg,
-  .gc-bk-step.is-collapsed .gc-bk-panel-toggle svg {
-    transform: rotate(90deg);
-  }
-
-  .gc-bk-step .gc-bk-panel-toggle svg,
-  .gc-bk-stepper.is-collapsed .gc-bk-panel-toggle svg {
-    transform: rotate(-90deg);
   }
 
   .gc-bk-stepper.is-collapsed {
