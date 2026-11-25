@@ -80,7 +80,7 @@ export function setupStepCard(store, { specialistTeam, requestReport }) {
     const progress = advice ? advice.progress : "";
     progressEl.hidden = !progress;
     progressEl.textContent = `${progress}%`;
-    progressEl.className = `gc-bk-verdict ${progress === "100" ? "is-yes" : "is-unclear"}`;
+    progressEl.className = `gc-bk-verdict ${Number(progress) >= 90 ? "is-yes" : "is-unclear"}`;
     if (advice) reportBodyEl.innerHTML = adviceHTML(advice, specialistTeam);
     else if (hasReport) reportBodyEl.innerHTML = formatRichText(data.report_text);
     else if (busy) reportBodyEl.textContent = "";

@@ -14,6 +14,12 @@ korte, feitelijke samenvatting van de casus
 
 {{substep_format}}
 
+### Voortgang
+**Voortgang:** 25%, 50%, 75%, 90% of 100%: hoeveel de gebruiker al heeft bijgedragen van wat hij aan deze deelstap kan bijdragen. Een punt waarop de gebruiker in het gesprek al heeft gereageerd, met welk antwoord dan ook, telt als bijgedragen. Zonder open vragen is het 100%
+
+**Open vragen:**
+- alleen vragen waarop de gebruiker in het gesprek nog niet heeft gereageerd en waarvan het antwoord deze uitwerking zou veranderen; zijn die er niet, dan "geen"
+
 ### Redenering
 de redenering, stap voor stap, genummerd
 
