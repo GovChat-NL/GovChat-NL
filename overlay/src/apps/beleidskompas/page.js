@@ -13,6 +13,7 @@ import { setupChat } from "./panels/chat.js";
 import { setupStepper } from "./panels/stepper.js";
 import { setupStepCard } from "./panels/step-card.js";
 import { setupOverview } from "./panels/overview.js";
+import { openGeneralFeedback } from "./popups.js";
 
 const APPS_URL = "/govchat-overlay/apps.json";
 const FLOW_CONFIG_URL = "/govchat-overlay/beleidskompas-config.json";
@@ -81,6 +82,10 @@ function openBeleidskompas(config, help) {
   // too; the overlay's floating help button is not shown here.
   requireElement("gc-bk-help").addEventListener("click", () => {
     openHelpModal(help.data, { appName: help.appName, storageKey: HELP_STORAGE_KEY });
+  });
+
+  requireElement("gc-bk-general-feedback").addEventListener("click", () => {
+    openGeneralFeedback();
   });
 
   const { resumeConversation, refreshState } = setupCases(store);
