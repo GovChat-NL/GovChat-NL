@@ -14,12 +14,15 @@ const { createDocumentIndexer } = require("./lib/beleidskompas/documents/index-d
 const documentRoutes = require("./lib/beleidskompas/documents/document-routes");
 const { createDocumentSearch } = require("./lib/beleidskompas/documents/search");
 const searchRoutes = require("./lib/beleidskompas/documents/search-routes");
+const { createAnswerFeedbackHandlers } = require("./lib/beleidskompas/answer-feedback");
 const { HttpError } = require("./lib/beleidskompas/shared/errors");
 const templateRoutes = require("./lib/beleidskompas/templates/template-routes");
+const { createGeneralFeedbackHandlers, librechatEmailFromBearer } = require("./lib/beleidskompas/general-feedback");
 let templateRepository = null;
 let templateService = null;
 let documentRepository = null;
 let documentSearch = null;
+let beleidskompasPool = null;
 
 const app = express();
 const PORT = process.env.PORT || 3002;
@@ -81,8 +84,8 @@ const ORCHESTRATOR_IMAGE_MAX_RESOLUTION_PX_DEFAULT = Math.max(
 const LIBRECHAT_INTERNAL_URL = String(process.env.LIBRECHAT_INTERNAL_URL || "http://librechat:3080").trim();
 const TRANSCRIPT_SESSIONS_FILE = "transcript-sessions.json";
 const BELEIDSKOMPAS_LIVE_FILE = "beleidskompas-config.json";
-const BELEIDSKOMPAS_FEEDBACK_FILE = "beleidskompas-feedback.json";
 const BELEIDSKOMPAS_FEEDBACK_MAX = 500;
+const BELEIDSKOMPAS_GENERAL_FEEDBACK_RETENTION_DAYS = 365;
 const TRANSCRIPT_AUTH_DEBUG = String(process.env.TRANSCRIPT_AUTH_DEBUG || "false").toLowerCase() === "true";
 const LIBRECHAT_JWT_REFRESH_SECRET = String(process.env.JWT_REFRESH_SECRET || process.env.JWT_SECRET || "").trim();
 
@@ -436,24 +439,6 @@ function defaultBeleidskompasFlow() {
   return { ...template, steps: template.steps.map((step) => ({ ...step, rag: defaultStepRagSettings(step) })) };
 }
 
-// The default substeps from before they followed steps.json. A saved step that still has exactly
-// these gets the current default substeps; any other substeps stay as the admin saved them.
-const OLD_DEFAULT_SUBSTEPS = {
-  stap1: "1.1 Casus context|1.2 Toetsing publiek|1.3 Toetsing provinciaal",
-  stap2: "2.1 Rolopties|2.2 Afweging",
-  stap3: "3.1 Selectie|3.2 Weging|3.3 Voorkeur",
-  stap4: "4.1 Sturing|4.2 Toezicht|4.3 KPI’s",
-};
-
-// The default step prompts from before the seed. A saved step that still has exactly this text
-// gets the seed's role, like an empty field.
-const OLD_DEFAULT_STEP_PROMPTS = {
-  stap1: "Toets publiek en provinciaal belang. Benoem doelgroep, maatschappelijke impact, legitimiteit en conflicterende belangen.",
-  stap2: "Onderbouw de provinciale rolkeuze met impact, uitvoerbaarheid, bestuurlijke haalbaarheid en risico’s.",
-  stap3: "Scoor instrumenten op effectiviteit, juridische robuustheid, financiën en uitvoerbaarheid. Geef voorkeursoptie met alternatieven.",
-  stap4: "Werk governance-advies uit conform SiS 4.0 hoofdstuk 10 en het uitvoeringskader. Neem ook alternatieven mee.",
-};
-
 /** The saved value, or the default when it is empty: a prompt-like field
  *  that is blank means "the seed text", so an older state gets the prompts. */
 function textOrDefault(value, fallback) {
@@ -468,22 +453,21 @@ function normalizeBeleidskompasFlow(input) {
   // The four steps are fixed (the SiS 4.0 pillars): a saved step is matched by id, the rest is dropped.
   const steps = fallback.steps.map((fb, idx) => {
     const step = stepsRaw.find((s) => s && String(s.id || "").trim() === fb.id) || {};
-    let substepsRaw = Array.isArray(step.substeps) ? step.substeps : fb.substeps;
-    const oldDefault = OLD_DEFAULT_SUBSTEPS[fb.id];
-    if (oldDefault === substepsRaw.map((s) => `${s?.id} ${s?.title}`).join("|")) substepsRaw = fb.substeps;
+    const substepsRaw = Array.isArray(step.substeps) ? step.substeps : fb.substeps;
     return {
       id: fb.id,
       nr: idx + 1,
       title: String(step.title || fb.title).trim() || fb.title,
       // An empty string is the admin's choice; defaults only fill fields that are missing.
       description: String(step.description ?? fb.description ?? "").trim(),
-      prompt: textOrDefault(String(step.prompt ?? "").trim() === OLD_DEFAULT_STEP_PROMPTS[fb.id] ? "" : step.prompt, fb.prompt),
+      prompt: textOrDefault(step.prompt, fb.prompt),
       doc_tags: normalizeTags(step.doc_tags || fb.doc_tags),
       // Documents picked in the Flow builder; nothing reads them yet. Missing = not picked yet.
       document_ids: Array.isArray(step.document_ids) ? [...new Set(step.document_ids.map(String))] : undefined,
       rag: normalizeStepRagSettings(step.rag || fb.rag || {}, step.id ? step : fb),
-      substeps: substepsRaw.map((sub, subIdx) => {
-        const id = String(sub?.id || `${idx + 1}.${subIdx + 1}`).trim() || `${idx + 1}.${subIdx + 1}`;
+      // A substep without an id is left out: reports are stored by id.
+      substeps: substepsRaw.filter((sub) => String(sub?.id || "").trim()).map((sub, subIdx) => {
+        const id = String(sub?.id || "").trim();
         const sfb = fb.substeps.find((d) => d.id === id) || {};
         return {
           id,
@@ -2285,52 +2269,38 @@ templateRoutes.mount(app, {
 documentRoutes.mount(app, { requireAuth, getRepository: () => documentRepository });
 searchRoutes.mount(app, { internalToken: process.env.BELEIDSKOMPAS_STORE_TOKEN, getSearch: () => documentSearch });
 
-// ── Beleidskompas user feedback ──────────────────────────────────
+// ── Beleidskompas feedback ───────────────────────────────────────
 //
-// Deliberately anonymous: only the rating, an optional comment, the step and
-// substep the feedback is about and the live template version. No user,
-// e-mail or conversation id, so the feedback cannot be traced back to a
-// person or a case.
-function readBeleidskompasFeedback() {
-  const stored = readPrivateJSON(BELEIDSKOMPAS_FEEDBACK_FILE);
-  const items = stored && Array.isArray(stored.items) ? stored.items : [];
-  return items;
-}
+// Both kinds live in the Beleidskompas database, in their own tables. Answer
+// feedback is anonymous (lib/beleidskompas/answer-feedback.js); general
+// feedback is stored with the sender's e-mail address
+// (lib/beleidskompas/general-feedback.js).
+const feedbackQuery = () => (beleidskompasPool ? (sql, params) => beleidskompasPool.query(sql, params) : null);
+const answerFeedback = createAnswerFeedbackHandlers({ getQuery: feedbackQuery, max: BELEIDSKOMPAS_FEEDBACK_MAX });
+const generalFeedback = createGeneralFeedbackHandlers({
+  getQuery: feedbackQuery,
+  retentionDays: BELEIDSKOMPAS_GENERAL_FEEDBACK_RETENTION_DAYS,
+});
 
-app.post("/api/beleidskompas-feedback", (req, res) => {
-  const rating = String(req.body?.rating || "").trim().toLowerCase();
-  if (rating !== "up" && rating !== "down") {
-    return res.status(400).json({ error: 'Veld "rating" moet "up" of "down" zijn' });
+const sendFeedbackResult = (label, work) => async (req, res) => {
+  try {
+    const out = await work(req);
+    return res.status(out.status).json(out.body);
+  } catch (err) {
+    console.error(`[govchat-admin] ${label} failed:`, err.message);
+    return res.status(500).json({ error: "Feedback kon niet worden verwerkt" });
   }
-  const comment = String(req.body?.comment || "").trim().slice(0, 2000);
-  const stepId = String(req.body?.step_id || "").trim().slice(0, 64);
-  const substepId = String(req.body?.substep_id || "").trim().slice(0, 32);
-  const versionId = String(req.body?.version_id || "").trim().slice(0, 64);
+};
 
-  const items = readBeleidskompasFeedback();
-  items.push({
-    id: crypto.randomUUID(),
-    rating,
-    comment,
-    step_id: stepId,
-    substep_id: substepId,
-    version_id: versionId,
-    created_at: new Date().toISOString(),
-  });
-  writePrivateJSON(BELEIDSKOMPAS_FEEDBACK_FILE, {
-    items: items.slice(-BELEIDSKOMPAS_FEEDBACK_MAX),
-  });
-  return res.status(201).json({ ok: true });
-});
-
-app.get("/api/beleidskompas-feedback", requireAuth, (req, res) => {
-  const items = readBeleidskompasFeedback();
-  const up = items.filter((i) => i.rating === "up").length;
-  return res.json({
-    items: items.slice().reverse(),
-    totals: { total: items.length, up, down: items.length - up },
-  });
-});
+app.post("/api/beleidskompas-feedback", sendFeedbackResult("Answer feedback", (req) => answerFeedback.submit({ body: req.body })));
+app.get("/api/beleidskompas-feedback", requireAuth, sendFeedbackResult("Answer feedback", () => answerFeedback.list()));
+app.post(
+  "/api/beleidskompas-general-feedback",
+  sendFeedbackResult("General feedback", async (req) =>
+    generalFeedback.submit({ email: await librechatEmailFromBearer(req, { baseUrl: LIBRECHAT_INTERNAL_URL }), body: req.body }),
+  ),
+);
+app.get("/api/beleidskompas-general-feedback", requireAuth, sendFeedbackResult("General feedback", () => generalFeedback.list()));
 
 app.get("/api/transcript-sessions", requireLibreChatUser, (req, res) => {
   const userId = String(req.librechatUser?.id || "").trim();
@@ -2766,6 +2736,7 @@ if (require.main === module) {
     resolveUser: resolveUserFromVerifiedRefreshToken,
     getLive: liveBeleidskompasTemplate,
     onReady(pool) {
+      beleidskompasPool = pool;
       templateRepository = createTemplateRepository(pool, defaultBeleidskompasState().settings);
       documentRepository = createDocumentRepository(pool);
       templateService = createTemplateService({ pool, templates: templateRepository, documents: documentRepository });

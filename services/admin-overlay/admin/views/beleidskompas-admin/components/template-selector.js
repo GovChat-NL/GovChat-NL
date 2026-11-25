@@ -41,7 +41,7 @@ export function templateSelector({ templates, currentId, meta, onSelect, onNew }
               onKeydown: (e) => { if (e.key === "Enter") e.currentTarget.click(); },
             },
             h("span", { class: "tpl-check" }, t.id === current?.id ? icon("check", 14) : null),
-            h("span", { class: "tpl-name" }, t.name),
+            h("span", { class: "tpl-name" }, t.name, t.live_version_id ? [" ", h("span", { class: "badge badge-live" }, "Live")] : null),
             h("span", { class: "tpl-meta" }, `${t.versions.length} versie${t.versions.length === 1 ? "" : "s"}`),
           ),
         ),
