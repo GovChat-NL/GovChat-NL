@@ -1,11 +1,15 @@
 "use strict";
 
 /**
- * Asks the embedding model for the embedding of chunks, through LiteLLM.
+ * Asks the embedding model for embeddings, through LiteLLM.
  *
  * embedChunks takes the chunks of chunk.js and returns them with two
  * fields added: `embedding`, the numbers the model gives for the chunk, and
  * `embeddingModel`, the name of the model that gave them.
+ *
+ * embedQuestion returns the embedding of a question, to search the chunks
+ * with. The same model has to embed the chunks and the question, because
+ * embeddings of different models cannot be compared.
  */
 
 // A large document goes to the model in several requests of this many chunks.
@@ -63,10 +67,17 @@ async function requestEmbeddings(texts, { fetch, settings }) {
   return [...data].sort((a, b) => a.index - b.index).map((item) => item.embedding);
 }
 
-/** `deps` replaces fetch and the settings in the tests. */
-async function embedChunks(chunks, deps = {}) {
-  const { fetch = global.fetch, settings = embeddingSettings(), chunksPerRequest = CHUNKS_PER_REQUEST } = deps;
+/** The fetch and the settings to reach the embedding model with. `deps`
+ *  replaces them in the tests. */
+function resolveDeps(deps) {
+  const { fetch = global.fetch, settings = embeddingSettings() } = deps;
   if (!settings.apiKey) throw new Error("LITELLM_API_KEY is not set");
+  return { fetch, settings };
+}
+
+async function embedChunks(chunks, deps = {}) {
+  const { chunksPerRequest = CHUNKS_PER_REQUEST } = deps;
+  const { fetch, settings } = resolveDeps(deps);
   const embedded = [];
 
   for (let start = 0; start < chunks.length; start += chunksPerRequest) {
@@ -78,4 +89,9 @@ async function embedChunks(chunks, deps = {}) {
   return embedded;
 }
 
-module.exports = { embedChunks };
+async function embedQuestion(question, deps = {}) {
+  const [embedding] = await requestEmbeddings([question], resolveDeps(deps));
+  return embedding;
+}
+
+module.exports = { embedChunks, embedQuestion };
