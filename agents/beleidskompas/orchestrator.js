@@ -27,7 +27,6 @@
 
 const {
   TITLE_REQUEST_MARKER,
-  TITLE_PREFIX,
   extractSuppliedToken,
   parsePageMessage,
   isTitleRequest,
@@ -260,9 +259,7 @@ function buildTitle({ request, reply }) {
   let end = raw.length;
   while (start < end && (wrapperChars.has(raw[start]) || /\s/.test(raw[start]))) start += 1;
   while (end > start && (wrapperChars.has(raw[end - 1]) || /\s/.test(raw[end - 1]))) end -= 1;
-  // Prefixed so Beleidskompas conversations are visually grouped in
-  // LibreChat's conversation-list sidebar, alongside other endpoints/agents.
-  const title = TITLE_PREFIX + (raw.slice(start, end) || buildFallbackTitle(request.title_source));
+  const title = raw.slice(start, end) || buildFallbackTitle(request.title_source);
   return { ok: true, step_id: null, mode: 'title', case_id: request.case_id, user_id: request.user_id, answer: title, text: title };
 }
 
