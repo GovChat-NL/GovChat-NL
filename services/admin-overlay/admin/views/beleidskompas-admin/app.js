@@ -29,7 +29,7 @@ export const store = {
   flow: null, // working copy of the selected template's newest version; saved as a whole
   dirty: false,
   documents: [],
-  feedback: null,
+  answerFeedback: null,
   generalFeedback: null,
   ui: { docId: null, stepId: null, fbTemplate: "all", fbVersion: "all", fbPeriod: "30", fbFrom: "", fbTo: "", depTemplate: null, depVersion: null },
 };
@@ -65,7 +65,7 @@ export async function reload() {
   if (!store.templates.some((t) => t.id === store.templateId)) store.templateId = null;
   store.flow = flowOf(template());
   store.dirty = false;
-  store.feedback = null;
+  store.answerFeedback = null;
   await loadDocuments();
 }
 

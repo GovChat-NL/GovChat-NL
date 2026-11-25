@@ -11,7 +11,7 @@ const { createTemplateStore } = require("./lib/beleidskompas/template-store");
 const { createAnswerFeedbackHandlers } = require("./lib/beleidskompas/answer-feedback");
 const { StoreError } = require("./lib/beleidskompas/store");
 const templateRoutes = require("./lib/beleidskompas/admin-routes");
-const { createGeneralFeedbackHandlers, librechatUserFromBearer } = require("./lib/beleidskompas/general-feedback");
+const { createGeneralFeedbackHandlers, librechatEmailFromBearer } = require("./lib/beleidskompas/general-feedback");
 let templateStore = null;
 let beleidskompasPool = null;
 
@@ -2285,7 +2285,7 @@ app.get("/api/beleidskompas-feedback", requireAuth, sendFeedbackResult("Answer f
 app.post(
   "/api/beleidskompas-general-feedback",
   sendFeedbackResult("General feedback", async (req) =>
-    generalFeedback.submit({ user: await librechatUserFromBearer(req, { baseUrl: LIBRECHAT_INTERNAL_URL }), body: req.body }),
+    generalFeedback.submit({ email: await librechatEmailFromBearer(req, { baseUrl: LIBRECHAT_INTERNAL_URL }), body: req.body }),
   ),
 );
 app.get("/api/beleidskompas-general-feedback", requireAuth, sendFeedbackResult("General feedback", () => generalFeedback.list()));

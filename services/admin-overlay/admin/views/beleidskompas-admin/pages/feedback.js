@@ -24,18 +24,18 @@ export function renderFeedback(ctx) {
 }
 
 function section(key, title, { subtitle, content }) {
-  const el = h("details", { class: "fb-section", open: !folded.has(key) }, h("summary", {}, icon("chevronDown", 16), h("h2", {}, title), h("span", { class: "muted" }, subtitle)), content);
+  const el = h("details", { class: "fb-section", open: !folded.has(key) }, h("summary", {}, h("h2", {}, title), " ", h("span", { class: "muted" }, subtitle)), content);
   el.addEventListener("toggle", () => (el.open ? folded.delete(key) : folded.add(key)));
   return el;
 }
 
 function renderAnswerFeedback({ store, render }) {
   const ui = store.ui;
-  if (!store.feedback) {
+  if (!store.answerFeedback) {
     api
-      .listFeedback(store.templates)
-      .then((items) => { store.feedback = items; store.feedbackError = null; render(); })
-      .catch((err) => { store.feedback = []; store.feedbackError = err.message; render(); });
+      .listAnswerFeedback(store.templates)
+      .then((items) => { store.answerFeedback = items; store.answerFeedbackError = null; render(); })
+      .catch((err) => { store.answerFeedback = []; store.answerFeedbackError = err.message; render(); });
     return { subtitle: "Alle templates", content: h("p", { class: "muted" }, "Feedback laden…") };
   }
 
@@ -56,10 +56,10 @@ function renderAnswerFeedback({ store, render }) {
           dateInput("Tot en met", ui.fbTo, (v) => { ui.fbTo = v; render(); }),
         ]
       : null,
-    h("button", { class: "btn btn-secondary filter-refresh", onClick: () => { store.feedback = null; render(); } }, "Vernieuwen"),
+    h("button", { class: "btn btn-secondary filter-refresh", onClick: () => { store.answerFeedback = null; render(); } }, "Vernieuwen"),
   );
 
-  const items = store.feedback.filter((i) => matchesTemplate(i, ui) && matchesPeriod(i, ui));
+  const items = store.answerFeedback.filter((i) => matchesTemplate(i, ui) && matchesPeriod(i, ui));
   const up = items.filter((i) => i.rating === "up").length;
   const stats = h(
     "div",
@@ -78,7 +78,7 @@ function renderAnswerFeedback({ store, render }) {
 
   return {
     subtitle: subtitleFor(ui, store),
-    content: h("div", { class: "stack" }, store.feedbackError ? h("p", { class: "error" }, `Feedback laden mislukt: ${store.feedbackError}`) : null, filters, stats, results),
+    content: h("div", { class: "stack" }, store.answerFeedbackError ? h("p", { class: "error" }, `Feedback laden mislukt: ${store.answerFeedbackError}`) : null, filters, stats, results),
   };
 }
 
