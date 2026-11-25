@@ -11,7 +11,9 @@
 const { HttpError } = require("../shared/errors");
 const { embedQuestion } = require("./embed");
 
-const CHUNKS_RETURNED = 8;
+// How many chunks a search returns, the best ones first. This number is
+// known as top k.
+const TOP_K = 8;
 
 function createDocumentSearch({ templates, documents }, deps = {}) {
   const { embed = embedQuestion } = deps;
@@ -28,7 +30,7 @@ function createDocumentSearch({ templates, documents }, deps = {}) {
     if (!documentIds.length) return { document_count: 0, chunks: [] };
 
     const embedding = await embed(text);
-    const chunks = await documents.searchChunks({ question: text, embedding, documentIds, limit: CHUNKS_RETURNED });
+    const chunks = await documents.searchChunks({ question: text, embedding, documentIds, limit: TOP_K });
     return { document_count: documentIds.length, chunks };
   }
 
