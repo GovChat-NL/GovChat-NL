@@ -40,19 +40,22 @@
 .gc-bk-note {
   display: flex;
   align-items: center;
-  gap: 8px;
-  flex-shrink: 0;
-  padding: 8px 12px;
-  font-size: 12px;
+  justify-content: center;
+  gap: 4px;
+  padding-top: 4px;
+  font-size: 11px;
+  text-align: center;
   color: #6b7280;
-  border-bottom: 1px solid #f1f5f9;
 }
 
-.gc-bk-note svg {
-  width: 15px;
-  height: 15px;
+.gc-bk-note .gc-bk-head-btn {
   flex-shrink: 0;
-  color: #2563eb;
+  padding: 2px;
+}
+
+.gc-bk-note .gc-bk-head-btn svg {
+  width: 12px;
+  height: 12px;
 }
 
 /* Steps on the left, then the chat, then the report: the same reading
@@ -119,12 +122,22 @@
   user-select: none;
 }
 
+/* The toggle doubles as the "Stappen" title of the left panel. */
 .gc-bk-stepper > .gc-bk-panel-toggle {
-  align-self: flex-end;
+  flex-direction: row-reverse;
+  justify-content: space-between;
+  align-items: center;
+  gap: 6px;
   flex-shrink: 0;
+  color: inherit;
 }
 
 .gc-bk-panel-toggle-label {
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.gc-bk-stepper.is-collapsed .gc-bk-panel-toggle-label {
   display: none;
 }
 
@@ -1347,7 +1360,6 @@
 
 .dark .gc-bk-note {
   color: #9ca3af;
-  border-bottom-color: #1f2937;
 }
 
 .dark .gc-bk-grid {
@@ -1544,18 +1556,8 @@
     display: none;
   }
 
-  .gc-bk-stepper > .gc-bk-panel-toggle {
-    flex-direction: row-reverse;
-    align-self: stretch;
-    justify-content: space-between;
-    align-items: center;
-    color: inherit;
-  }
-
-  .gc-bk-panel-toggle-label {
+  .gc-bk-stepper.is-collapsed .gc-bk-panel-toggle-label {
     display: inline;
-    font-size: 13px;
-    font-weight: 700;
   }
 
   .gc-bk-stepper.is-collapsed {
