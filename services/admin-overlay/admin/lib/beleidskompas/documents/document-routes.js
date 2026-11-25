@@ -2,10 +2,10 @@
 
 /** The endpoints of the document library. */
 
-const { createAdminRoute } = require("../shared/admin-route");
+const { createRoute } = require("../shared/route");
 
 function mount(app, { requireAuth, getRepository }) {
-  const route = createAdminRoute(app, { requireAuth, get: getRepository, failure: "Document request failed" });
+  const route = createRoute(app, { requireAuth, get: getRepository, failure: "Document request failed" });
 
   route("get", "/api/beleidskompas/documents", async (repository, req, res) => {
     res.json({ ok: true, documents: await repository.listDocuments() });

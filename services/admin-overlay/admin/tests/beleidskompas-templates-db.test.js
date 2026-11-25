@@ -126,6 +126,8 @@ test("admin template API persists UI actions in PostgreSQL", { skip: !enabled &&
     const state = (await api.getState()).state;
     assert.equal(state.templates.filter((tpl) => tpl.live_version_id).length, 1);
     assert.equal(state.templates.find((tpl) => tpl.id === first.id).live_version_id, null);
+    assert.deepEqual(await repository.getLiveDocumentIds("one"), [document.id]);
+    assert.equal(await repository.getLiveDocumentIds("two"), null);
     failPublication = true;
     const errorLog = console.error;
     console.error = () => {};

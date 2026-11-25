@@ -1,11 +1,13 @@
 "use strict";
 
 /**
- * The documents of the document library in the database. The first
- * functions are for the library itself: listing, uploading, renaming,
- * downloading and deleting a document. The functions after those are for
- * indexing: which document waits, its file, its chunks and its
- * index_status.
+ * The documents of the document library in the database. The functions
+ * come in three groups:
+ * - the library itself: listing, uploading, renaming, downloading and
+ *   deleting a document;
+ * - indexing: which document waits, its file, its chunks and its
+ *   index_status;
+ * - searching: the chunks of given documents that fit a question best.
  *
  * createDocumentRepository takes the pg pool of the Beleidskompas database.
  */
@@ -16,6 +18,16 @@ const { requireId } = require("../shared/ids");
 const { inTransaction } = require("../shared/transaction");
 
 const documentColumns = "id::text, filename, content_type AS mime_type, size AS size_bytes, preview_text, index_status, index_error, created_at AS uploaded_at";
+
+// How many chunks each of the two searches of searchChunks hands to the
+// ranking. A chunk outside both lists cannot be found.
+const CANDIDATES_PER_SEARCH = 20;
+
+// Decides how much a high place in a list counts when the two lists of
+// searchChunks are merged. With a low number the first places count far
+// more than the rest, with a high number all places count about the same.
+// 60 is the usual value.
+const RANK_CONSTANT = 60;
 
 /** An embedding as pgvector reads it: "[0.1,0.2]". */
 function toVector(embedding) {
@@ -136,9 +148,64 @@ function createDocumentRepository(pool) {
     if (!rows[0]) throw new HttpError(404, "Document not found");
   }
 
+  /**
+   * The `limit` chunks of `documentIds` that fit `question` best, the best
+   * one first. `embedding` is the embedding of the question.
+   *
+   * It searches twice: by meaning, on the distance between the embedding
+   * of the question and that of a chunk, and by words, on the Dutch words
+   * of the question that a chunk holds. A chunk scores 1 / (60 + its place)
+   * in each list it is in, and the sum is its `score` (reciprocal rank
+   * fusion), so a chunk that both searches find comes before a chunk that
+   * one of them finds.
+   *
+   * `similarity` says how close the chunk is to the question in meaning,
+   * from 1 (the same) down to -1.
+   */
+  async function searchChunks({ question, embedding, documentIds, limit }) {
+    if (!documentIds.length) return [];
+
+    return inTransaction(pool, async (db) => {
+      // Makes the index on the embeddings go on, nearest chunk first,
+      // until it has found enough chunks of documentIds. The index holds
+      // no document ids: without this setting it would stop after its 40
+      // nearest chunks of the whole table, whatever document they are of.
+      await db.query("SET LOCAL hnsw.iterative_scan = strict_order");
+      const { rows } = await db.query(
+        `WITH by_meaning AS (
+           SELECT id, row_number() OVER (ORDER BY embedding <=> $1::halfvec) AS place
+           FROM document_chunks
+           WHERE document_id = ANY($3::int[])
+           ORDER BY embedding <=> $1::halfvec
+           LIMIT $4
+         ),
+         by_words AS (
+           SELECT c.id, row_number() OVER (ORDER BY ts_rank_cd(c.search_words, q.words) DESC, c.id) AS place
+           FROM document_chunks c,
+                -- plainto_tsquery asks for every word; a question is a sentence, so one word is enough.
+                (SELECT replace(plainto_tsquery('dutch', $2)::text, '&', '|')::tsquery AS words) q
+           WHERE c.document_id = ANY($3::int[]) AND c.search_words @@ q.words
+           ORDER BY ts_rank_cd(c.search_words, q.words) DESC, c.id
+           LIMIT $4
+         )
+         SELECT c.document_id::text, d.filename, c.chunk_number, c.heading, c.text, c.location, c.page,
+                (1 - (c.embedding <=> $1::halfvec))::float8 AS similarity,
+                (COALESCE(1.0 / ($5::int + m.place), 0) + COALESCE(1.0 / ($5::int + w.place), 0))::float8 AS score
+         FROM by_meaning m
+         FULL JOIN by_words w USING (id)
+         JOIN document_chunks c USING (id)
+         JOIN documents d ON d.id = c.document_id
+         ORDER BY score DESC, c.id
+         LIMIT $6`,
+        [toVector(embedding), question, documentIds.map(requireId), CANDIDATES_PER_SEARCH, RANK_CONSTANT, limit],
+      );
+      return rows;
+    });
+  }
+
   return {
     listDocuments, uploadDocument, updateDocument, getDocument, deleteDocument,
-    requeueInterrupted, takePending, getFile, saveChunks, markFailed, requeue,
+    requeueInterrupted, takePending, getFile, saveChunks, markFailed, requeue, searchChunks,
   };
 }
 

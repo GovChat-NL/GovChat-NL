@@ -61,6 +61,20 @@ function createTemplateRepository(pool, defaultSettings = {}) {
     };
   }
 
+  /** The ids of the documents of a step in the live version, or null when
+   *  no version is live or the live version has no such step. */
+  async function getLiveDocumentIds(stepId) {
+    const { rows } = await pool.query(
+      `SELECT COALESCE(step->'document_ids', '[]'::jsonb) AS document_ids
+       FROM live
+       JOIN template_versions version ON version.id = live.version_id
+       CROSS JOIN jsonb_array_elements(version.snapshot->'steps') step
+       WHERE step->>'id' = $1`,
+      [String(stepId)],
+    );
+    return rows[0] ? rows[0].document_ids.map(String) : null;
+  }
+
   async function getTemplate(templateId) {
     const id = requireId(templateId);
     const template = (await getState()).templates.find((t) => t.id === id);
@@ -97,7 +111,7 @@ function createTemplateRepository(pool, defaultSettings = {}) {
     return { ...defaultSettings, ...rows[0].data };
   }
 
-  return { getState, getTemplate, createTemplate, insertTemplate, saveVersion, deployVersion, saveSettings };
+  return { getState, getLiveDocumentIds, getTemplate, createTemplate, insertTemplate, saveVersion, deployVersion, saveSettings };
 }
 
 module.exports = { createTemplateRepository };
