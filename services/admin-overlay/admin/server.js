@@ -385,35 +385,6 @@ function normalizeTags(value) {
   return [...new Set(value.map((v) => String(v || "").trim()).filter(Boolean))];
 }
 
-function defaultStepRagSettings(step = {}) {
-  return {
-    algorithm: "hybrid",
-    top_k: 3,
-    min_score: 0.08,
-    tag_filter_mode: "any",
-    required_tags: normalizeTags(step?.doc_tags || []),
-  };
-}
-
-function normalizeStepRagSettings(input, fallbackStep = {}) {
-  const fallback = defaultStepRagSettings(fallbackStep);
-  const src = input && typeof input === "object" ? input : {};
-  const algorithmRaw = String(src.algorithm || fallback.algorithm || "hybrid").trim().toLowerCase();
-  const algorithm = ["needle", "haystack", "hybrid"].includes(algorithmRaw) ? algorithmRaw : "hybrid";
-  const topK = Math.max(1, Math.min(20, Number.parseInt(String(src.top_k ?? fallback.top_k ?? 3), 10) || 3));
-  const minScore = Math.max(0, Math.min(1, Number.parseFloat(String(src.min_score ?? fallback.min_score ?? 0.08)) || 0));
-  const modeRaw = String(src.tag_filter_mode || fallback.tag_filter_mode || "any").trim().toLowerCase();
-  const tagFilterMode = modeRaw === "all" ? "all" : "any";
-  const requiredTags = normalizeTags(src.required_tags || fallback.required_tags || []);
-  return {
-    algorithm,
-    top_k: topK,
-    min_score: minScore,
-    tag_filter_mode: tagFilterMode,
-    required_tags: requiredTags,
-  };
-}
-
 function normalizeBeleidskompasDocuments(input) {
   const documentsRaw = Array.isArray(input) ? input : [];
   return documentsRaw.map((d) => ({
@@ -435,8 +406,7 @@ const BELEIDSKOMPAS_DEFAULT_TEMPLATE = JSON.parse(
 );
 
 function defaultBeleidskompasFlow() {
-  const template = cloneJSON(BELEIDSKOMPAS_DEFAULT_TEMPLATE);
-  return { ...template, steps: template.steps.map((step) => ({ ...step, rag: defaultStepRagSettings(step) })) };
+  return cloneJSON(BELEIDSKOMPAS_DEFAULT_TEMPLATE);
 }
 
 /** The saved value, or the default when it is empty: a prompt-like field
@@ -462,9 +432,8 @@ function normalizeBeleidskompasFlow(input) {
       description: String(step.description ?? fb.description ?? "").trim(),
       prompt: textOrDefault(step.prompt, fb.prompt),
       doc_tags: normalizeTags(step.doc_tags || fb.doc_tags),
-      // Documents picked in the Flow builder; nothing reads them yet. Missing = not picked yet.
+      // Documents picked in the Flow builder, which the search for this step looks in. Missing = not picked yet.
       document_ids: Array.isArray(step.document_ids) ? [...new Set(step.document_ids.map(String))] : undefined,
-      rag: normalizeStepRagSettings(step.rag || fb.rag || {}, step.id ? step : fb),
       // A substep without an id is left out: reports are stored by id.
       substeps: substepsRaw.filter((sub) => String(sub?.id || "").trim()).map((sub, subIdx) => {
         const id = String(sub?.id || "").trim();
