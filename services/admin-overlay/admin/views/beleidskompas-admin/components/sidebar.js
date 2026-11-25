@@ -7,17 +7,13 @@ const PAGES = [
   { route: "editor/documents", label: "Documentenbibliotheek", icon: "folder", child: true, gated: true },
   { route: "editor/flow", label: "Flow builder", icon: "flow", child: true, gated: true },
   { route: "deploy", label: "Deploy", icon: "upload" },
-  { label: "Feedback", icon: "lightbulb" }, // a heading for the two feedback pages, not a page itself
-  { route: "feedback", label: "Antwoordfeedback", icon: "thumbUp", child: true },
-  { route: "general-feedback", label: "Algemene feedback", icon: "chat", child: true },
+  { route: "feedback", label: "Feedback", icon: "thumbUp" },
 ];
 
 // locked: no template selected yet, so the gated pages are shown but not clickable.
 export function sidebar(currentRoute, { locked = false } = {}) {
   const item = (p) =>
-    !p.route
-      ? h("span", { class: "side-item is-heading" }, icon(p.icon), h("span", {}, p.label))
-      : p.gated && locked
+    p.gated && locked
       ? h("span", { class: "side-item is-child is-disabled", "aria-disabled": "true", title: "Kies eerst een template in de Editor" }, icon(p.icon), h("span", {}, p.label))
       : h(
       "a",
