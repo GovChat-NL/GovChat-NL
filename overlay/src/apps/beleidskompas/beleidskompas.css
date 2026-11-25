@@ -159,8 +159,15 @@
 }
 
 .gc-bk-step.is-collapsed .gc-bk-card-head > h2,
+.gc-bk-step.is-collapsed #gc-bk-progress,
 .gc-bk-step.is-collapsed .gc-bk-step-nav {
   display: none;
+}
+
+/* The progress pill sits right after the title; the free space goes behind it. */
+#gc-bk-progress {
+  flex-shrink: 0;
+  margin-right: auto;
 }
 
 /* --- Overview of the four steps ----------------------------------------- */
