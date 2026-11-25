@@ -56,11 +56,13 @@
 }
 
 /* Steps on the left, then the chat, then the report: the same reading
-   order as the previous Beleidskompas assistant. */
+   order as the previous Beleidskompas assistant. The side widths come from
+   panels/layout.js once the user resizes or folds in a panel; the 12px
+   columns between the panels are the drag handles. */
 .gc-bk-grid {
   display: grid;
-  grid-template-columns: 210px minmax(300px, 1fr) minmax(320px, 1.25fr);
-  gap: 12px;
+  grid-template-columns: var(--gc-bk-left, 210px) 12px minmax(300px, 1fr) 12px var(--gc-bk-right, minmax(320px, 1.25fr));
+  gap: 12px 0;
   flex: 1;
   min-height: 0;
   padding: 12px;
@@ -69,9 +71,83 @@
 
 @media (max-width: 1200px) {
   .gc-bk-grid {
-    grid-template-columns: 180px minmax(260px, 1fr) minmax(280px, 1.2fr);
-    gap: 10px;
+    grid-template-columns: var(--gc-bk-left, 180px) 10px minmax(260px, 1fr) 10px var(--gc-bk-right, minmax(280px, 1.2fr));
+    gap: 10px 0;
   }
+}
+
+/* --- Resizing and folding in the side panels ----------------------------- */
+
+.gc-bk-resizer {
+  position: relative;
+  cursor: col-resize;
+  touch-action: none;
+}
+
+.gc-bk-resizer::after {
+  content: "";
+  position: absolute;
+  top: 8px;
+  bottom: 8px;
+  left: 50%;
+  width: 2px;
+  transform: translateX(-50%);
+  border-radius: 2px;
+}
+
+.gc-bk-resizer:hover::after,
+.gc-bk-grid.is-resizing .gc-bk-resizer::after {
+  background: #93c5fd;
+}
+
+/* Focus uses the page's focus colour, so it stays visible (3:1) in light mode. */
+.gc-bk-resizer:focus-visible::after {
+  background: #2563eb;
+}
+
+.gc-bk-resizer:focus-visible {
+  outline: none;
+}
+
+.gc-bk-resizer.is-disabled {
+  cursor: default;
+  pointer-events: none;
+}
+
+.gc-bk-grid.is-resizing {
+  cursor: col-resize;
+  user-select: none;
+}
+
+.gc-bk-stepper > .gc-bk-panel-toggle {
+  align-self: flex-end;
+  flex-shrink: 0;
+}
+
+.gc-bk-panel-toggle-label {
+  display: none;
+}
+
+/* A folded-in panel is a narrow strip with only its toggle button. */
+.gc-bk-stepper.is-collapsed {
+  align-items: center;
+  padding: 8px 4px;
+}
+
+.gc-bk-stepper.is-collapsed > :not(.gc-bk-panel-toggle),
+.gc-bk-step.is-collapsed > :not(.gc-bk-card-head) {
+  display: none;
+}
+
+.gc-bk-step.is-collapsed .gc-bk-card-head {
+  justify-content: center;
+  padding: 8px 4px;
+  border-bottom: 0;
+}
+
+.gc-bk-step.is-collapsed .gc-bk-card-head > h2,
+.gc-bk-step.is-collapsed .gc-bk-step-nav {
+  display: none;
 }
 
 /* --- Overview of the four steps ----------------------------------------- */
@@ -478,6 +554,7 @@
 
 .gc-bk-step-nav {
   display: flex;
+  margin-left: auto;
   align-items: center;
   gap: 4px;
   flex-shrink: 0;
@@ -1410,9 +1487,69 @@
   color: #e5e7eb;
 }
 
+.dark .gc-bk-resizer:hover::after,
+.dark .gc-bk-resizer:focus-visible::after,
+.dark .gc-bk-grid.is-resizing .gc-bk-resizer::after {
+  background: #2563eb;
+}
+
+/* Phones: the panels stack and the page scrolls; folding a panel in keeps
+   its head, so it can be opened again. */
 @media (max-width: 768px) {
+  #gc-bk {
+    overflow-y: auto;
+  }
+
+  .gc-bk-head,
+  .gc-bk-head .gc-mini-head-left {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
   .gc-bk-grid {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
+    flex: none;
+  }
+
+  .gc-bk-resizer {
+    display: none;
+  }
+
+  .gc-bk-stepper > .gc-bk-panel-toggle {
+    flex-direction: row-reverse;
+    align-self: stretch;
+    justify-content: space-between;
+    align-items: center;
+    color: inherit;
+  }
+
+  .gc-bk-panel-toggle-label {
+    display: inline;
+    font-size: 13px;
+    font-weight: 700;
+  }
+
+  .gc-bk-stepper.is-collapsed {
+    align-items: stretch;
+    padding: 8px 10px;
+  }
+
+  .gc-bk-step.is-collapsed .gc-bk-card-head {
+    justify-content: space-between;
+    padding: 10px 12px;
+  }
+
+  .gc-bk-step.is-collapsed .gc-bk-card-head > h2 {
+    display: block;
+  }
+
+  .gc-bk-chat {
+    height: 70vh;
+    min-height: 360px;
+  }
+
+  .gc-bk-step:not(.is-collapsed) {
+    min-height: 50vh;
   }
 }
 

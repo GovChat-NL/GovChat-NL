@@ -13,6 +13,7 @@ import { setupChat } from "./panels/chat.js";
 import { setupStepper } from "./panels/stepper.js";
 import { setupStepCard } from "./panels/step-card.js";
 import { setupOverview } from "./panels/overview.js";
+import { setupLayout } from "./panels/layout.js";
 
 const APPS_URL = "/govchat-overlay/apps.json";
 const FLOW_CONFIG_URL = "/govchat-overlay/beleidskompas-config.json";
@@ -88,6 +89,7 @@ function openBeleidskompas(config, help) {
   setupStepper(store);
   setupStepCard(store, { specialistTeam: config.specialistTeam, requestReport });
   const { setView } = setupOverview(store);
+  setupLayout();
 
   store.changed("chat", "steps", "conversation");
   // A new session starts on the overview; a resumed case opens straight in

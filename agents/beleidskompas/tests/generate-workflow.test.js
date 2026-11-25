@@ -141,8 +141,8 @@ test('an invalid assignment skips the agent and still gives the orchestrator a r
 test('a title request, and the message when the turn of the user cannot be stored', () => {
   const request = runCode(orchestrator, 'Verzoek voorbereiden', webhook({ currentMessage: `${TITLE_REQUEST_MARKER} Geef een titel.\n\nUser: Een casus over dorpshuizen.\nAI: ...` }), {}, env);
   assert.equal(request.kind, 'title');
-  assert.equal(runCode(orchestrator, 'Titel opbouwen', { text: 'Dorpshuizen verduurzamen' }, { 'Verzoek voorbereiden': request }).text, 'Beleidskompas - Dorpshuizen verduurzamen');
-  assert.equal(runCode(orchestrator, 'Titel opbouwen', { error: { message: 'x' } }, { 'Verzoek voorbereiden': request }).text, 'Beleidskompas - Een casus over dorpshuizen.');
+  assert.equal(runCode(orchestrator, 'Titel opbouwen', { text: 'Dorpshuizen verduurzamen' }, { 'Verzoek voorbereiden': request }).text, 'Dorpshuizen verduurzamen');
+  assert.equal(runCode(orchestrator, 'Titel opbouwen', { error: { message: 'x' } }, { 'Verzoek voorbereiden': request }).text, 'Een casus over dorpshuizen.');
 
   const failed = runCode(orchestrator, 'Opslagfout melden', { error: { message: 'HTTP 500' } });
   assert.deepEqual([failed.ok, failed.error], [false, 'user_turn: HTTP 500']);
