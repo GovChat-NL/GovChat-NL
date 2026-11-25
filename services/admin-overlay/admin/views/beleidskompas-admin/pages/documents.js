@@ -11,6 +11,11 @@ const INDEX_STATUS = {
   failed: { label: "Inlezen mislukt", look: "badge-failed" },
 };
 
+// The formats an administrator can upload. The service can read more
+// formats than these.
+const UPLOAD_FORMATS = [".pdf", ".docx", ".xlsx", ".txt", ".md"];
+const canUpload = (file) => UPLOAD_FORMATS.some((format) => file.name.toLowerCase().endsWith(format));
+
 const REFRESH_EVERY_MS = 3000;
 let refreshTimer = null;
 
@@ -53,12 +58,17 @@ export function renderDocuments({ store, render }) {
 
   const preview = selected ? docPreview(selected, { store, reloadDocs }) : emptyPreview();
 
-  const uploadInput = h("input", { type: "file", multiple: true, hidden: true });
+  // `accept` only sets what the file picker shows, so the files are checked too.
+  const uploadInput = h("input", { type: "file", multiple: true, hidden: true, accept: UPLOAD_FORMATS.join(",") });
   uploadInput.addEventListener("change", async () => {
+    const chosen = [...(uploadInput.files || [])];
+    const refused = chosen.filter((file) => !canUpload(file));
+    if (refused.length) toast(`Niet geüpload: ${refused.map((file) => file.name).join(", ")}. Toegestaan zijn ${UPLOAD_FORMATS.join(", ")}.`, "error");
+
     try {
       const uploaded = [];
-      for (const file of uploadInput.files || []) uploaded.push((await api.uploadDocument(file)).document);
-      toast("Document(en) geüpload", "success");
+      for (const file of chosen.filter(canUpload)) uploaded.push((await api.uploadDocument(file)).document);
+      if (uploaded.length) toast("Document(en) geüpload", "success");
       // Select and preview the (first) uploaded document.
       if (uploaded[0]) ui.docId = uploaded[0].id;
       await reloadDocs();
@@ -71,7 +81,7 @@ export function renderDocuments({ store, render }) {
   });
 
   const controls = [
-    h("button", { class: "btn btn-secondary", onClick: () => uploadInput.click() }, icon("upload", 14), "Uploaden"),
+    h("button", { class: "btn btn-secondary", title: `Toegestaan: ${UPLOAD_FORMATS.join(", ")}`, onClick: () => uploadInput.click() }, icon("upload", 14), "Uploaden"),
     uploadInput,
   ];
 

@@ -18,6 +18,9 @@
 const path = require("path");
 const { parseOffice } = require("officeparser");
 
+// The formats this file can read. That a format is here does not mean an
+// administrator can upload it: the document library of the admin UI has
+// its own, shorter list of formats.
 const OFFICE_FORMATS = new Set(["pdf", "docx", "pptx", "xlsx", "odt", "odp", "ods", "rtf"]);
 const TEXT_FORMATS = new Set(["txt", "md"]);
 
