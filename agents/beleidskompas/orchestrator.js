@@ -218,12 +218,16 @@ function buildContext({ request, state, live, stepIds }) {
   const allReports = reportTexts(ids);
   const turns = Array.isArray(state.turns) ? state.turns : [];
   const conversation = turns.map((t) => `${t.role === 'user' ? 'Gebruiker' : 'Beleidskompas'}: ${String(t.text || '').trim()}`).join('\n');
+  // The documents the user uploaded in this chat, in full, for every step.
+  const uploaded = Array.isArray(state.documents) ? state.documents : [];
+  const documents = uploaded.length ? `Documenten van de gebruiker:\n\n${uploaded.map((d) => `### ${d.filename}\n${String(d.text || '').trim()}`).join('\n\n')}` : '';
   const asked =
     request.kind === 'message'
       ? `Bericht van de gebruiker (de gebruiker zit in deelstap ${label || 'onbekend'}):\n${request.message}`
       : `Verzoek: werk deelstap ${label} uit.`;
 
   const prompt = [
+    documents,
     allReports ? `Bevindingen tot nu toe:\n${allReports}` : 'Bevindingen tot nu toe: (nog geen deelstap uitgewerkt)',
     conversation && `Laatste beurten van het gesprek:\n${conversation}`,
     asked,
@@ -236,6 +240,7 @@ function buildContext({ request, state, live, stepIds }) {
     substep_id,
     findings,
     conversation,
+    documents,
     prompt,
     system_prompt: buildOrchestratorPrompt(steps, flow.orchestrator_prompt),
     model,

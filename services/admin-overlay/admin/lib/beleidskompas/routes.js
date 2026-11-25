@@ -11,7 +11,8 @@
  * bridge passes on). The page is not trusted: it sends no token and names
  * no user; the user is read from the LibreChat login (`resolveUser`, the
  * same check the service does for the transcript sessions). The page can
- * only read, under /my. The store checks every case against the user.
+ * only read, under /my, and add or remove the documents of its own chat.
+ * The store checks every case against the user.
  *
  * The handlers are plain functions: they take `{ headers, params, query,
  * body }` and return `{ status, body }`. That keeps them testable without
@@ -24,6 +25,7 @@
  */
 
 const { StoreError } = require("./store");
+const { readChatDocument } = require("./chat-documents");
 
 function suppliedToken(headers) {
   const auth = String((headers && headers.authorization) || "").trim();
@@ -94,8 +96,20 @@ function createBeleidskompasHandlers({ store, internalToken, resolveUser, getLiv
       handleMine(req, async (userId) => {
         const state = await store.getState({ caseId: p(req).id, userId, maxTurns: q(req).max_turns });
         if (!state) throw new StoreError(404, "Unknown case");
-        return state;
+        // The page lists the documents; their text is only for the agents.
+        return { ...state, documents: (state.documents || []).map(({ text, ...doc }) => doc) };
       }),
+
+    // An upload only stores the document. It sends no message, so it never
+    // starts a report.
+    addMyDocument: (req) =>
+      handleMine(req, async (userId) => {
+        const live = typeof getLive === "function" ? await getLive() : {};
+        const document = await readChatDocument(b(req), (live && live.settings) || {});
+        return store.addDocument({ caseId: p(req).id, userId, mime: b(req).mime, ...document });
+      }),
+
+    removeMyDocument: (req) => handleMine(req, (userId) => store.removeDocument({ caseId: p(req).id, userId, documentId: p(req).documentId })),
 
     listCases: (req) => handle(req, () => store.listCases({ userId: userOf(req), limit: q(req).limit })),
 
@@ -153,6 +167,8 @@ function mount(app, { store, internalToken, resolveUser, getLive }) {
   app.get("/api/beleidskompas/live", route(handlers.live));
   app.get("/api/beleidskompas/my/cases", route(handlers.myCases));
   app.get("/api/beleidskompas/my/cases/:id", route(handlers.myCase));
+  app.post("/api/beleidskompas/my/cases/:id/documents", route(handlers.addMyDocument));
+  app.delete("/api/beleidskompas/my/cases/:id/documents/:documentId", route(handlers.removeMyDocument));
   app.get("/api/beleidskompas/cases", route(handlers.listCases));
   app.get("/api/beleidskompas/cases/:id", route(handlers.getCase));
   app.put("/api/beleidskompas/cases/:id/text", route(handlers.setText));

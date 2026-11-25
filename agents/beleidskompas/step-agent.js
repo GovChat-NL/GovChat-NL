@@ -50,6 +50,7 @@ function buildSystemPrompt({ template, step, substeps, rules }) {
 function buildUserPrompt({ input, task }) {
   const parts = [];
 
+  if (input.documents) parts.push(input.documents);
   if (input.findings) parts.push(`Bevindingen tot nu toe:\n${input.findings}`);
   if (input.conversation) parts.push(`Laatste beurten van het gesprek:\n${input.conversation}`);
   parts.push(task);

@@ -32,7 +32,7 @@ const routes = require("./routes");
 // first failure, the second, and so on. The last one repeats.
 const RETRY_DELAYS_MS = [2000, 5000, 10000, 30000, 60000];
 
-const STORE_FUNCTIONS = ["ensureCase", "setCaseText", "addReport", "addTurn", "setTitle", "getState", "listCases"];
+const STORE_FUNCTIONS = ["ensureCase", "setCaseText", "addReport", "addTurn", "addDocument", "removeDocument", "setTitle", "getState", "listCases"];
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 

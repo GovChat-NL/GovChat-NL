@@ -10,6 +10,7 @@ const beleidskompas = require("./lib/beleidskompas");
 const { createTemplateStore } = require("./lib/beleidskompas/template-store");
 const { StoreError } = require("./lib/beleidskompas/store");
 const templateRoutes = require("./lib/beleidskompas/admin-routes");
+const { DEFAULT_UPLOAD } = require("./lib/beleidskompas/chat-documents");
 let templateStore = null;
 
 const app = express();
@@ -505,6 +506,7 @@ function defaultBeleidskompasState() {
       enforce_source_citation: true,
       require_human_validation: true,
       default_model: "govchat-default",
+      ...DEFAULT_UPLOAD,
     },
   };
 }
@@ -565,13 +567,14 @@ async function ensureLiveBeleidskompasTemplate() {
 }
 
 async function publishTemplateLive(flow, _documents, versionId) {
-  publishBeleidskompasLiveConfig(flow, versionId);
+  publishBeleidskompasLiveConfig(flow, versionId, (await templateStore.getState()).settings);
 }
 
 // beleidskompas-config.json is public (nginx serves it without auth), so it holds only what the
 // Beleidskompas page reads (buildConfig in overlay/src/apps/beleidskompas/config.js) plus the step titles.
-function publicBeleidskompasConfig(flow, versionId) {
+function publicBeleidskompasConfig(flow, versionId, settings = {}) {
   const { title, disclaimer, specialist_team, steps } = normalizeBeleidskompasFlow(flow);
+  const upload = { ...DEFAULT_UPLOAD, ...settings };
   return {
     version_id: String(versionId || "").trim(),
     title,
@@ -584,11 +587,12 @@ function publicBeleidskompasConfig(flow, versionId) {
       description,
       substeps: substeps.map((s) => ({ id: s.id, title: s.title })),
     })),
+    upload: { max_mb: upload.upload_max_mb, allowed_types: upload.upload_allowed_types },
   };
 }
 
-function publishBeleidskompasLiveConfig(flow, versionId) {
-  writeJSON(BELEIDSKOMPAS_LIVE_FILE, publicBeleidskompasConfig(flow, versionId));
+function publishBeleidskompasLiveConfig(flow, versionId, settings) {
+  writeJSON(BELEIDSKOMPAS_LIVE_FILE, publicBeleidskompasConfig(flow, versionId, settings));
 }
 
 /** The live template as the orchestrator reads it (GET /api/beleidskompas/live). */
@@ -596,7 +600,8 @@ async function liveBeleidskompasTemplate() {
   if (!templateStore) throw new StoreError(503, "Beleidskompas database is not available");
   const state = await templateStore.getState();
   const versionId = state.templates.find((t) => t.live_version_id)?.live_version_id || "";
-  return { version_id: versionId, flow: state.live && normalizeBeleidskompasFlow(state.live), settings: { default_model: state.settings.default_model } };
+  const { default_model, upload_max_mb, upload_allowed_types } = state.settings;
+  return { version_id: versionId, flow: state.live && normalizeBeleidskompasFlow(state.live), settings: { default_model, upload_max_mb, upload_allowed_types } };
 }
 
 function publishFile(filename, data) {
@@ -2252,6 +2257,7 @@ templateRoutes.mount(app, {
   normalizeFlow: normalizeBeleidskompasFlow,
   defaultFlow: defaultBeleidskompasFlow,
   publishLive: publishTemplateLive,
+  republish: publishStoredBeleidskompasLive,
 });
 
 // ── Beleidskompas user feedback ──────────────────────────────────
