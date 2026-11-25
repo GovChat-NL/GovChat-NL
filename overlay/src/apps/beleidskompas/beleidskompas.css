@@ -1111,6 +1111,35 @@
   cursor: pointer;
 }
 
+.gc-bk-general-feedback {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  white-space: normal;
+}
+
+.gc-bk-general-feedback p {
+  margin: 0;
+}
+
+.gc-bk-general-feedback textarea {
+  flex: none;
+  font-size: 13px;
+  font-family: inherit;
+  resize: vertical;
+}
+
+.gc-bk-general-feedback-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.gc-bk-general-feedback .gc-bk-feedback-send:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
 .dark .gc-bk-feedback {
   border-top-color: #374151;
   color: #9ca3af;

@@ -4,6 +4,7 @@ import { h, icon } from "../dom.js";
 import { dropdown } from "../components/dropdown.js";
 import { feedbackGroup } from "../components/feedback-row.js";
 import { versionLabel, versionOptions } from "../app.js";
+import { renderGeneralFeedback } from "./general-feedback.js";
 
 const PERIODS = [
   { value: "7", label: "Laatste 7 dagen" },
@@ -13,13 +14,28 @@ const PERIODS = [
   { value: "custom", label: "Aangepast…" },
 ];
 
-export function renderFeedback({ store, render }) {
+// The page: answer feedback, then general feedback, each in a foldable section.
+// Both start open; a folded section stays folded while the admin page is open.
+const folded = new Set();
+
+export function renderFeedback(ctx) {
+  const sections = [["answer", "Antwoordfeedback", renderAnswerFeedback(ctx)], ["general", "Algemene feedback", renderGeneralFeedback(ctx)]];
+  return { content: h("div", { class: "stack" }, sections.map(([key, title, part]) => section(key, title, part))) };
+}
+
+function section(key, title, { subtitle, content }) {
+  const el = h("details", { class: "fb-section", open: !folded.has(key) }, h("summary", {}, h("h2", {}, title), " ", h("span", { class: "muted" }, subtitle)), content);
+  el.addEventListener("toggle", () => (el.open ? folded.delete(key) : folded.add(key)));
+  return el;
+}
+
+function renderAnswerFeedback({ store, render }) {
   const ui = store.ui;
-  if (!store.feedback) {
+  if (!store.answerFeedback) {
     api
-      .listFeedback(store.templates)
-      .then((items) => { store.feedback = items; store.feedbackError = null; render(); })
-      .catch((err) => { store.feedback = []; store.feedbackError = err.message; render(); });
+      .listAnswerFeedback(store.templates)
+      .then((items) => { store.answerFeedback = items; store.answerFeedbackError = null; render(); })
+      .catch((err) => { store.answerFeedback = []; store.answerFeedbackError = err.message; render(); });
     return { subtitle: "Alle templates", content: h("p", { class: "muted" }, "Feedback laden…") };
   }
 
@@ -40,10 +56,10 @@ export function renderFeedback({ store, render }) {
           dateInput("Tot en met", ui.fbTo, (v) => { ui.fbTo = v; render(); }),
         ]
       : null,
-    h("button", { class: "btn btn-secondary filter-refresh", onClick: () => { store.feedback = null; render(); } }, "Vernieuwen"),
+    h("button", { class: "btn btn-secondary filter-refresh", onClick: () => { store.answerFeedback = null; render(); } }, "Vernieuwen"),
   );
 
-  const items = store.feedback.filter((i) => matchesTemplate(i, ui) && matchesPeriod(i, ui));
+  const items = store.answerFeedback.filter((i) => matchesTemplate(i, ui) && matchesPeriod(i, ui));
   const up = items.filter((i) => i.rating === "up").length;
   const stats = h(
     "div",
@@ -62,7 +78,7 @@ export function renderFeedback({ store, render }) {
 
   return {
     subtitle: subtitleFor(ui, store),
-    content: h("div", { class: "stack" }, store.feedbackError ? h("p", { class: "error" }, `Feedback laden mislukt: ${store.feedbackError}`) : null, filters, stats, results),
+    content: h("div", { class: "stack" }, store.answerFeedbackError ? h("p", { class: "error" }, `Feedback laden mislukt: ${store.answerFeedbackError}`) : null, filters, stats, results),
   };
 }
 

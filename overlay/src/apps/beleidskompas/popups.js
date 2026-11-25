@@ -1,9 +1,10 @@
-// The two pop-ups of the Beleidskompas screen: the preview of a source and
-// the explanation of a step, plus the source chip that opens the preview
+// The pop-ups of the Beleidskompas screen: the preview of a source, the
+// explanation of a step and the general feedback form, plus the source chip that opens the preview
 // (the chips appear under a chat message and in the step card).
 
 import { escapeAttr, escapeHTML } from "../../shared/html.js";
 import { citationLabel } from "./format.js";
+import { fetchOwnEmail, sendBeleidskompasGeneralFeedback } from "./beleidskompas-api.js";
 
 export function openCitationPreview(meta) {
   const docId = String(meta?.id || "").trim();
@@ -70,6 +71,68 @@ export function openStepInfo(step) {
     </div>`;
   document.body.appendChild(modal);
   wireModal(modal);
+}
+
+/** The general feedback form: free text about Beleidskompas as a whole,
+ *  sent with the user's e-mail address (which the form says). */
+export function openGeneralFeedback() {
+  document.getElementById("gc-bk-doc-preview")?.remove();
+
+  const modal = document.createElement("div");
+  modal.id = "gc-bk-doc-preview";
+  modal.className = "gc-bk-doc-modal";
+  modal.innerHTML = `
+    <div class="gc-bk-doc-dialog" role="dialog" aria-modal="true" aria-label="Feedback geven">
+      <div class="gc-bk-doc-head">
+        <div>
+          <div class="gc-bk-doc-title">Feedback over Beleidskompas</div>
+          <div class="gc-bk-doc-meta">Een fout gevonden of een idee om Beleidskompas te verbeteren? Laat het weten.</div>
+        </div>
+        <button type="button" class="gc-bk-doc-close" aria-label="Sluiten">✕</button>
+      </div>
+      <form class="gc-bk-doc-body gc-bk-general-feedback">
+        <textarea class="gc-bk-feedback-comment" rows="6" maxlength="2000" required aria-label="Je feedback" placeholder="Je feedback"></textarea>
+        <p data-note>Je e-mailadres wordt meegestuurd, zodat een beheerder per e-mail kan reageren.</p>
+        <p data-status role="status" hidden></p>
+        <div class="gc-bk-general-feedback-actions">
+          <button type="button" class="gc-mini-nav-btn" data-cancel>Annuleren</button>
+          <button type="submit" class="gc-bk-feedback-send">Versturen</button>
+        </div>
+      </form>
+    </div>`;
+  document.body.appendChild(modal);
+  wireModal(modal);
+
+  const form = modal.querySelector("form");
+  const textarea = form.querySelector("textarea");
+  const note = form.querySelector("[data-note]");
+  const status = form.querySelector("[data-status]");
+  const send = form.querySelector('[type="submit"]');
+  textarea.focus();
+
+  // If the address cannot be read, the form still works: the server decides.
+  fetchOwnEmail()
+    .then((email) => {
+      note.textContent = `Je e-mailadres (${email}) wordt meegestuurd, zodat een beheerder per e-mail kan reageren.`;
+    })
+    .catch(() => {});
+
+  form.querySelector("[data-cancel]").addEventListener("click", () => modal.querySelector(".gc-bk-doc-close").click());
+  form.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const text = textarea.value.trim();
+    if (!text) return;
+    send.disabled = true;
+    status.hidden = true;
+    try {
+      await sendBeleidskompasGeneralFeedback(text);
+      form.innerHTML = "<p>Bedankt, je feedback is verstuurd.</p>";
+    } catch (err) {
+      status.textContent = `Versturen mislukt (${String(err?.message || err)}), probeer opnieuw.`;
+      status.hidden = false;
+      send.disabled = false;
+    }
+  });
 }
 
 /** A modal closes with Escape, takes the focus when it opens and gives it
