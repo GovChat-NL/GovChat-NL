@@ -8,6 +8,7 @@ const assert = require("node:assert/strict");
 
 const { connectionSettings, applyMigrations } = require("../db/connection");
 const { createDocumentRepository } = require("../lib/beleidskompas/documents/document-repository");
+const { INDEX_VERSION } = require("../lib/beleidskompas/documents/index-documents");
 
 const enabled = String(process.env.BELEIDSKOMPAS_DB_TEST || "").toLowerCase() === "true" && connectionSettings().host;
 
@@ -51,8 +52,8 @@ test("searchChunks ranks by meaning and by words, within the given documents", {
     chunk(2, "Een verordening regelt het toezicht.", embeddingAlong(0, 0.5)),
     chunk(3, "Subsidie is een financieel instrument.", embeddingAlong(1)),
     chunk(4, "Het weer in Limburg is wisselend.", embeddingAlong(2)),
-  ]);
-  await repository.saveChunks(other.id, [chunk(1, "Subsidie voor laadpalen.", embeddingAlong(0))]);
+  ], INDEX_VERSION);
+  await repository.saveChunks(other.id, [chunk(1, "Subsidie voor laadpalen.", embeddingAlong(0))], INDEX_VERSION);
 
   const search = (documentIds) => repository.searchChunks({ question: "Welke subsidie past hierbij?", embedding: embeddingAlong(0), documentIds, limit: 3 });
   const found = await search([kader.id]);

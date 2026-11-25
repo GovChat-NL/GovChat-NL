@@ -6,31 +6,29 @@ import { escapeAttr, escapeHTML } from "../../shared/html.js";
 import { citationLabel } from "./format.js";
 import { fetchOwnEmail, sendBeleidskompasGeneralFeedback } from "./beleidskompas-api.js";
 
-export function openCitationPreview(meta) {
-  const docId = String(meta?.id || "").trim();
-  const filename = String(meta?.filename || "Document").trim() || "Document";
-  const scoreVal = Number(meta?.score || 0);
-  const score = Number.isFinite(scoreVal) ? scoreVal.toFixed(4) : "-";
-  const tags = Array.isArray(meta?.tags) ? meta.tags.filter(Boolean) : [];
-  const preview = String(meta?.preview || "").trim() || "Geen preview beschikbaar voor deze bron.";
-  const tagsLabel = tags.length ? tags.join(", ") : "geen tags";
-
+/** Shows what the assistant read in the document of a source. */
+export function openCitationPreview(citation) {
   const existing = document.getElementById("gc-bk-doc-preview");
   if (existing) existing.remove();
+
+  const passages = citation.passages.map((passage) => {
+    const place = [passage.heading, passage.location].filter(Boolean).join(" · ");
+    return `${place ? `<h5>${escapeHTML(place)}</h5>` : ""}<p class="gc-bk-doc-passage">${escapeHTML(passage.text)}</p>`;
+  });
 
   const modal = document.createElement("div");
   modal.id = "gc-bk-doc-preview";
   modal.className = "gc-bk-doc-modal";
   modal.innerHTML = `
-    <div class="gc-bk-doc-dialog" role="dialog" aria-modal="true" aria-label="Bronpreview">
+    <div class="gc-bk-doc-dialog" role="dialog" aria-modal="true" aria-label="Bron">
       <div class="gc-bk-doc-head">
         <div>
-          <div class="gc-bk-doc-title">${escapeHTML(filename)}</div>
-          <div class="gc-bk-doc-meta">ID: ${escapeHTML(docId || "-")} · score: ${escapeHTML(score)} · tags: ${escapeHTML(tagsLabel)}</div>
+          <div class="gc-bk-doc-title">${escapeHTML(citation.filename)}</div>
+          <div class="gc-bk-doc-meta">Wat de assistent voor deze uitwerking in dit document heeft gelezen</div>
         </div>
         <button type="button" class="gc-bk-doc-close" aria-label="Sluiten">✕</button>
       </div>
-      <pre class="gc-bk-doc-body">${escapeHTML(preview)}</pre>
+      <div class="gc-bk-doc-body is-rich">${passages.join("") || "<p>Geen passages bij deze bron.</p>"}</div>
     </div>`;
   document.body.appendChild(modal);
   wireModal(modal);
@@ -158,30 +156,20 @@ function wireModal(modal) {
   modal.querySelector(".gc-bk-doc-close")?.focus();
 }
 
-export function citationButtonHTML(c) {
-  return `<button type="button" class="gc-bk-citation-btn" data-doc-id="${escapeAttr(c.id)}" data-doc-filename="${escapeAttr(
-    c.filename,
-  )}" data-doc-score="${escapeAttr(String(c.score || 0))}" data-doc-tags="${escapeAttr(
-    (c.tags || []).join(", "),
-  )}" data-doc-preview="${escapeAttr(c.preview || "")}" title="${escapeAttr(
-    c.filename,
-  )}"><span class="gc-bk-citation-file">${escapeHTML(c.filename)}</span><span class="gc-bk-citation-meta">${escapeHTML(
-    citationLabel(c),
-  )}</span></button>`;
+export function citationButtonHTML(citation) {
+  const pages = citationLabel(citation);
+  return `<button type="button" class="gc-bk-citation-btn" data-doc-id="${escapeAttr(citation.id)}" title="${escapeAttr(
+    citation.filename,
+  )}"><span class="gc-bk-citation-file">${escapeHTML(citation.filename)}</span>${
+    pages ? `<span class="gc-bk-citation-meta">${escapeHTML(pages)}</span>` : ""
+  }</button>`;
 }
 
-/** Click listener for a list that contains source chips. */
-export function openCitationFromClick(e) {
+/** Click listener for a list of source chips. `citations` are the sources
+ *  the chips were made from. */
+export function openCitationFromClick(e, citations) {
   const btn = e.target.closest(".gc-bk-citation-btn");
   if (!btn) return;
-  openCitationPreview({
-    id: btn.getAttribute("data-doc-id") || "",
-    filename: btn.getAttribute("data-doc-filename") || "Document",
-    score: Number(btn.getAttribute("data-doc-score") || 0),
-    tags: String(btn.getAttribute("data-doc-tags") || "")
-      .split(",")
-      .map((s) => s.trim())
-      .filter(Boolean),
-    preview: btn.getAttribute("data-doc-preview") || "",
-  });
+  const citation = citations.find((candidate) => candidate.id === btn.getAttribute("data-doc-id"));
+  if (citation) openCitationPreview(citation);
 }

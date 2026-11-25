@@ -170,10 +170,13 @@ const STORE_TOKEN_HEADER = { name: 'Authorization', value: '=Bearer {{ $env.BELE
  *  - `query`: values for the query string, for reading
  *  - `body`: the fields to send, each with an expression for its value,
  *    for writing
+ *  - `toolDescription`: makes the node a tool of an agent. The model reads
+ *    the description to know what the tool is for.
  *
  *  A failed call does not stop the workflow. The node then returns the error
- *  as its output, and the Code node after it decides what to do. */
-function adminNode(name, position, { method, address, query, body }) {
+ *  as its output, and the Code node after it decides what to do. As a tool
+ *  it returns the error to the agent. */
+function adminNode(name, position, { method, address, query, body, toolDescription }) {
   const parameters = {
     method,
     url: address,
@@ -202,7 +205,11 @@ function adminNode(name, position, { method, address, query, body }) {
     parameters.jsonBody = expression(`JSON.stringify({\n${fields.join('\n')}\n})`);
   }
 
-  const node = makeNode(name, 'n8n-nodes-base.httpRequest', 4.2, position, parameters);
+  if (toolDescription) parameters.toolDescription = toolDescription;
+
+  // The HTTP Request Tool node is the HTTP Request node in the form an agent can call.
+  const type = toolDescription ? 'n8n-nodes-base.httpRequestTool' : 'n8n-nodes-base.httpRequest';
+  const node = makeNode(name, type, 4.2, position, parameters);
   node.onError = 'continueRegularOutput';
   return node;
 }
@@ -387,6 +394,30 @@ function stepAgentWorkflowName(step) {
   return `Beleidskompas - Agent stap ${step.nr}`;
 }
 
+const SEARCH_TOOL_NAME = 'Zoeken in documenten';
+
+/** The tool with which the agent of a step searches the documents the
+ *  admin linked to that step. The step is filled in here, so an agent can
+ *  only search the documents of its own step. The model writes the question. */
+function documentSearchToolNode(step, position) {
+  return adminNode(SEARCH_TOOL_NAME, position, {
+    method: 'POST',
+    address: `${ADMIN_ADDRESS}/search`,
+    body: {
+      step_id: JSON.stringify(step.id),
+      question: "$fromAI('zoekvraag', 'Waar je naar zoekt, als vraag of als een paar trefwoorden', 'string')",
+    },
+    toolDescription: [
+      'Zoekt in de documenten die de beheerder aan deze stap heeft gekoppeld.',
+      'Geeft de passages terug die het best bij de zoekvraag passen, de beste eerst, elk met het document, het kopje en de pagina.',
+      'Zoek voordat je een deelstap uitwerkt, en bij een vraag waarop het antwoord in de documenten kan staan.',
+      'Zoek opnieuw met een andere zoekvraag als je over meer dan één onderwerp iets nodig hebt.',
+      'Is document_count 0, dan heeft deze stap geen documenten.',
+      'Staat er in de passages niets over wat je zoekt, zeg dan dat de documenten er niets over zeggen.',
+    ].join(' '),
+  });
+}
+
 function buildStepAgentWorkflow(step) {
   const agentName = `AI Agent Stap ${step.nr}`;
   const modelName = `OpenAI Chat Model (Stap ${step.nr})`;
@@ -407,9 +438,10 @@ function buildStepAgentWorkflow(step) {
       maxIterations: 8,
     }),
     chatModelNode(modelName, at(3, 1), expression(`${outputOf('Opdracht opbouwen')}.model`)),
+    documentSearchToolNode(step, at(4, 1)),
 
     codeNode('Antwoord verwerken', at(5, 0), {
-      functions: ['toolCalls', 'nodeError', 'unwrapCodeBlock', 'processReply'],
+      functions: ['toolCalls', 'nodeError', 'unwrapCodeBlock', 'chunksOfSearch', 'searchedChunks', 'citationsOf', 'processReply'],
       run: `return [{ json: processReply({ assignment: ${outputOf('Opdracht opbouwen')}, agent: $json }) }];`,
     }),
 
@@ -419,7 +451,7 @@ function buildStepAgentWorkflow(step) {
       method: 'POST',
       caseId: '$json.case_id',
       casePath: '/reports',
-      body: { user_id: '$json.user_id', substep_id: '$json.substep_id', text: '$json.report_text', citations: '[]' },
+      body: { user_id: '$json.user_id', substep_id: '$json.substep_id', text: '$json.report_text', citations: '$json.citations' },
     }),
 
     codeNode('Resultaat voor de orchestrator', at(8, 1), {
@@ -443,6 +475,7 @@ function buildStepAgentWorkflow(step) {
   connect(connections, 'Opdracht opbouwen', 'Opdracht opgebouwd?');
   connectIf(connections, 'Opdracht opgebouwd?', { whenTrue: agentName, whenFalse: 'Resultaat voor de orchestrator' });
   attachToAgent(connections, 'ai_languageModel', modelName, agentName);
+  attachToAgent(connections, 'ai_tool', SEARCH_TOOL_NAME, agentName);
   connect(connections, agentName, 'Antwoord verwerken');
   connect(connections, 'Antwoord verwerken', 'Rapport gemaakt?');
   connectIf(connections, 'Rapport gemaakt?', { whenTrue: 'Rapport opslaan', whenFalse: 'Resultaat voor de orchestrator' });
