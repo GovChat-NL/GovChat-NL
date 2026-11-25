@@ -12,11 +12,14 @@ const { createTemplateService } = require("./lib/beleidskompas/templates/templat
 const { createDocumentRepository } = require("./lib/beleidskompas/documents/document-repository");
 const { createDocumentIndexer } = require("./lib/beleidskompas/documents/index-documents");
 const documentRoutes = require("./lib/beleidskompas/documents/document-routes");
+const { createDocumentSearch } = require("./lib/beleidskompas/documents/search");
+const searchRoutes = require("./lib/beleidskompas/documents/search-routes");
 const { HttpError } = require("./lib/beleidskompas/shared/errors");
 const templateRoutes = require("./lib/beleidskompas/templates/template-routes");
 let templateRepository = null;
 let templateService = null;
 let documentRepository = null;
+let documentSearch = null;
 
 const app = express();
 const PORT = process.env.PORT || 3002;
@@ -2280,6 +2283,7 @@ templateRoutes.mount(app, {
   publishLive: publishTemplateLive,
 });
 documentRoutes.mount(app, { requireAuth, getRepository: () => documentRepository });
+searchRoutes.mount(app, { internalToken: process.env.BELEIDSKOMPAS_STORE_TOKEN, getSearch: () => documentSearch });
 
 // ── Beleidskompas user feedback ──────────────────────────────────
 //
@@ -2765,6 +2769,7 @@ if (require.main === module) {
       templateRepository = createTemplateRepository(pool, defaultBeleidskompasState().settings);
       documentRepository = createDocumentRepository(pool);
       templateService = createTemplateService({ pool, templates: templateRepository, documents: documentRepository });
+      documentSearch = createDocumentSearch({ templates: templateRepository, documents: documentRepository });
       createDocumentIndexer(documentRepository).start();
       ensureLiveBeleidskompasTemplate().catch((err) => console.error("[govchat-admin] Could not publish deployed template:", err));
     },

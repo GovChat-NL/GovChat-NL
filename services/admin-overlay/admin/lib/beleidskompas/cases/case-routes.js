@@ -24,28 +24,16 @@
  */
 
 const { HttpError } = require("../shared/errors");
-
-function suppliedToken(headers) {
-  const auth = String((headers && headers.authorization) || "").trim();
-  if (auth.toLowerCase().startsWith("bearer ")) return auth.slice(7).trim();
-  return String((headers && headers["x-govchat-token"]) || "").trim();
-}
+const { createTokenCheck } = require("../shared/internal-token");
 
 function createBeleidskompasHandlers({ repository, internalToken, resolveUser, getLive }) {
-  const token = String(internalToken || "").trim();
-
-  /** The answer when a request from n8n carries no valid token, or null. */
-  function refuseToken(req) {
-    if (!token) return { status: 503, body: { error: "Server misconfiguratie: BELEIDSKOMPAS_STORE_TOKEN ontbreekt" } };
-    if (suppliedToken(req.headers) !== token) return { status: 401, body: { error: "Unauthorized" } };
-    return null;
-  }
+  const refuseToken = createTokenCheck(internalToken);
 
   /** The answer when a request from n8n may not go through, or null when
    *  it may. */
   function refuse(req) {
     if (!repository) return { status: 503, body: { error: "Beleidskompas store is not configured" } };
-    return refuseToken(req);
+    return refuseToken(req.headers);
   }
 
   // The user comes from the body of a write and from the query of a read.
@@ -86,7 +74,7 @@ function createBeleidskompasHandlers({ repository, internalToken, resolveUser, g
 
   return {
     // The live template for the orchestrator, read from the template tables.
-    live: (req) => Promise.resolve(refuseToken(req) || answer(async () => (typeof getLive === "function" ? getLive() : {}))),
+    live: (req) => Promise.resolve(refuseToken(req.headers) || answer(async () => (typeof getLive === "function" ? getLive() : {}))),
 
     myCases: (req) => handleMine(req, (userId) => repository.listCases({ userId, limit: q(req).limit })),
 
