@@ -4,12 +4,12 @@
  *  version and the settings. */
 
 const { HttpError } = require("../shared/errors");
-const { createAdminRoute } = require("../shared/admin-route");
+const { createRoute } = require("../shared/route");
 
 function mount(app, { requireAuth, getRepository, getService, normalizeFlow, defaultFlow, publishLive }) {
   const failure = "Template request failed";
-  const repositoryRoute = createAdminRoute(app, { requireAuth, get: getRepository, failure });
-  const serviceRoute = createAdminRoute(app, { requireAuth, get: getService, failure });
+  const repositoryRoute = createRoute(app, { requireAuth, get: getRepository, failure });
+  const serviceRoute = createRoute(app, { requireAuth, get: getService, failure });
   const flow = (input) => {
     if (!input || typeof input !== "object" || !Array.isArray(input.steps)) throw new HttpError(400, "A template flow with steps is required");
     const normalized = normalizeFlow(input);

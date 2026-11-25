@@ -3,15 +3,16 @@
 const { HttpError } = require("./errors");
 
 /**
- * Returns a function that adds a route of the admin UI to `app`. Such a
- * route needs a login and answers 503 while `get` has nothing to give,
- * which is until the database is ready. What `get` gives is passed to the
- * handler of the route.
+ * Returns a function that adds a route to `app`. Such a route lets a
+ * request through only when `requireAuth` does: the login of the admin UI,
+ * or the token of n8n. The route answers 503 while `get` has nothing to
+ * give, which is until the database is ready. What `get` gives is passed
+ * to the handler of the route.
  *
  * An HttpError is answered with its status and message. Any other error is
  * logged and answered with 500 and `failure`, so no details leak.
  */
-function createAdminRoute(app, { requireAuth, get, failure }) {
+function createRoute(app, { requireAuth, get, failure }) {
   return (method, path, run) => app[method](path, requireAuth, async (req, res) => {
     try {
       const target = get();
@@ -25,4 +26,4 @@ function createAdminRoute(app, { requireAuth, get, failure }) {
   });
 }
 
-module.exports = { createAdminRoute };
+module.exports = { createRoute };
