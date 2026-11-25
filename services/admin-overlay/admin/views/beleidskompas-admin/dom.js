@@ -144,9 +144,11 @@ export function askText({ title, label, placeholder = "", value = "", confirm = 
   });
 }
 
+/** Shows a message for 4 seconds; a repeated message replaces the one showing */
 export function toast(message, kind = "info") {
   const box = document.getElementById("toasts");
   const el = h("div", { class: `toast toast-${kind}`, role: "status" }, message);
+  [...box.children].find((t) => t.className === el.className && t.textContent === message)?.remove();
   box.append(el);
   setTimeout(() => el.remove(), 4000);
 }

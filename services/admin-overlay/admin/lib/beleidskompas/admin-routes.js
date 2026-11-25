@@ -16,7 +16,10 @@ function mount(app, { requireAuth, getStore, normalizeFlow, defaultFlow, publish
   const flow = (input) => {
     if (!input || typeof input !== "object" || !Array.isArray(input.steps)) throw new StoreError(400, "A template flow with steps is required");
     const normalized = normalizeFlow(input);
-    const ids = normalized.steps.flatMap((step) => (step.substeps || []).map((sub) => sub.id));
+    // Reports and feedback are stored by substep id. The editor gives every substep one, so a
+    // substep without an id comes from a hand-edited import.
+    const ids = input.steps.flatMap((step) => (step?.substeps || []).map((sub) => String(sub?.id || "").trim()));
+    if (ids.some((id) => !id)) throw new StoreError(400, "Every substep needs an id");
     const duplicate = ids.find((id, i) => ids.indexOf(id) !== i);
     if (duplicate) throw new StoreError(400, `Substep id ${duplicate} is used more than once`);
     return normalized;
