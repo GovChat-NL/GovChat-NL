@@ -113,12 +113,7 @@ export function openGeneralFeedback() {
   // If the address cannot be read, the form still works: the server decides.
   fetchOwnEmail()
     .then((email) => {
-      if (email) {
-        note.textContent = `Je e-mailadres (${email}) wordt meegestuurd, zodat een beheerder per e-mail kan reageren.`;
-      } else {
-        note.textContent = "Je account heeft geen e-mailadres; feedback geven kan niet.";
-        send.disabled = true;
-      }
+      note.textContent = `Je e-mailadres (${email}) wordt meegestuurd, zodat een beheerder per e-mail kan reageren.`;
     })
     .catch(() => {});
 
