@@ -73,7 +73,7 @@ test("a substep counts as done once it has a non-empty report, a step once all i
   store.replaceResults({ "1.1": { report_text: "uitwerking", citations: [{ id: "a" }] } });
   assert.equal(store.substepDone("1.1"), true);
   assert.equal(store.stepDone("stap1"), false);
-  assert.equal(store.substepResult("1.1").citations[0].rank, 1);
+  assert.deepEqual(store.substepResult("1.1").citations, [{ id: "a", filename: "Document", pages: [], passages: [] }]);
   assert.equal(store.substepResult("1.1").retrieval_trace, null);
 
   store.replaceResults({ "1.1": { report_text: "uitwerking" }, "1.2": { report_text: "ook" } });

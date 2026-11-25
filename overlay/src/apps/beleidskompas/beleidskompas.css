@@ -1324,6 +1324,11 @@
   margin: 0 0 4px;
 }
 
+.gc-bk-doc-passage {
+  /* A passage keeps the line ends of its document. */
+  white-space: pre-wrap;
+}
+
 .gc-bk-doc-body h5 {
   margin: 12px 0 4px;
   font-size: 12px;
