@@ -25,40 +25,41 @@
  */
 
 const db = require("../../db/connection");
-const { createStore, StoreError } = require("./store");
-const routes = require("./routes");
+const { createCaseRepository } = require("./cases/case-repository");
+const { HttpError } = require("./shared/errors");
+const routes = require("./cases/case-routes");
 
 // How long to wait before the next attempt to reach the database: after the
 // first failure, the second, and so on. The last one repeats.
 const RETRY_DELAYS_MS = [2000, 5000, 10000, 30000, 60000];
 
-const STORE_FUNCTIONS = ["ensureCase", "setCaseText", "addReport", "addTurn", "setTitle", "getState", "listCases"];
+const REPOSITORY_FUNCTIONS = ["ensureCase", "setCaseText", "addReport", "addTurn", "setTitle", "getState", "listCases"];
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-/** Stands in for the store until the database is ready. Every function
- *  passes the call on to the real store, or answers 503 while there is
+/** Stands in for the repository until the database is ready. Every function
+ *  passes the call on to the real repository, or answers 503 while there is
  *  none yet. */
-function waitingStore(current) {
+function waitingRepository(current) {
   return Object.fromEntries(
-    STORE_FUNCTIONS.map((name) => [
+    REPOSITORY_FUNCTIONS.map((name) => [
       name,
       (...args) => {
-        const store = current();
-        if (!store) throw new StoreError(503, "Beleidskompas store is not available");
-        return store[name](...args);
+        const repository = current();
+        if (!repository) throw new HttpError(503, "Beleidskompas store is not available");
+        return repository[name](...args);
       },
     ]),
   );
 }
 
-/** Tries to run the migrations until it succeeds, and then returns the store. */
+/** Tries to run the migrations until it succeeds, and then returns the repository. */
 async function connect(pool, { migrate, wait, log, delays }) {
   for (let attempt = 1; ; attempt += 1) {
     try {
       const applied = await migrate(pool);
       log.log(`[govchat-admin] Beleidskompas store ready (migrations applied: ${applied.length ? applied.join(", ") : "none"})`);
-      return createStore((sql, params) => pool.query(sql, params));
+      return createCaseRepository((sql, params) => pool.query(sql, params));
     } catch (err) {
       const delay = delays[Math.min(attempt - 1, delays.length - 1)];
       log.error(
@@ -75,15 +76,15 @@ function start(app, { resolveUser, getLive, onReady } = {}, env = process.env, d
   const internalToken = String(env.BELEIDSKOMPAS_STORE_TOKEN || "").trim();
   const pool = openPool(env);
   if (!pool) {
-    routes.mount(app, { store: null, internalToken, resolveUser, getLive });
+    routes.mount(app, { repository: null, internalToken, resolveUser, getLive });
     log.log("[govchat-admin] Beleidskompas store disabled (BELEIDSKOMPAS_DB_HOST not set)");
     return Promise.resolve(null);
   }
 
-  let store = null;
-  routes.mount(app, { store: waitingStore(() => store), internalToken, resolveUser, getLive });
+  let repository = null;
+  routes.mount(app, { repository: waitingRepository(() => repository), internalToken, resolveUser, getLive });
   return connect(pool, { migrate, wait, log, delays }).then((ready) => {
-    store = ready;
+    repository = ready;
     if (onReady) onReady(pool);
     return ready;
   });

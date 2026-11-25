@@ -3,11 +3,11 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 
-const { createBeleidskompasHandlers } = require("../lib/beleidskompas/routes");
-const { StoreError } = require("../lib/beleidskompas/store");
+const { createBeleidskompasHandlers } = require("../lib/beleidskompas/cases/case-routes");
+const { HttpError } = require("../lib/beleidskompas/shared/errors");
 
-/** A store that records what it was asked and answers what the test says. */
-function fakeStore(answers = {}) {
+/** A repository that records what it was asked and answers what the test says. */
+function fakeRepository(answers = {}) {
   const calls = [];
   const make = (name) => async (args) => {
     calls.push({ name, args });
@@ -22,59 +22,59 @@ const TOKEN = "store-secret";
 const withToken = (req) => ({ headers: { authorization: `Bearer ${TOKEN}` }, params: {}, query: {}, body: {}, ...req });
 
 test("every endpoint needs the store token, as bearer or in x-govchat-token", async () => {
-  const handlers = createBeleidskompasHandlers({ store: fakeStore({ listCases: [] }), internalToken: TOKEN });
+  const handlers = createBeleidskompasHandlers({ repository: fakeRepository({ listCases: [] }), internalToken: TOKEN });
   assert.equal((await handlers.listCases({ headers: {}, query: { user_id: "u" } })).status, 401);
   assert.equal((await handlers.listCases({ headers: { authorization: "Bearer wrong" }, query: { user_id: "u" } })).status, 401);
   assert.equal((await handlers.listCases({ headers: { "x-govchat-token": TOKEN }, query: { user_id: "u" } })).status, 200);
   assert.equal((await handlers.listCases(withToken({ query: { user_id: "u" } }))).status, 200);
 });
 
-test("without a store or a token the endpoints answer 503, not 401", async () => {
-  const noStore = createBeleidskompasHandlers({ store: null, internalToken: TOKEN });
-  assert.equal((await noStore.listCases(withToken({}))).status, 503);
-  const noToken = createBeleidskompasHandlers({ store: fakeStore(), internalToken: "" });
+test("without a repository or a token the endpoints answer 503, not 401", async () => {
+  const noRepository = createBeleidskompasHandlers({ repository: null, internalToken: TOKEN });
+  assert.equal((await noRepository.listCases(withToken({}))).status, 503);
+  const noToken = createBeleidskompasHandlers({ repository: fakeRepository(), internalToken: "" });
   assert.equal((await noToken.listCases(withToken({}))).status, 503);
 });
 
-test("the live template needs the token but no store", async () => {
+test("the live template needs the token but no repository", async () => {
   const getLive = async () => ({ version_id: "1", flow: { title: "T" }, settings: { default_model: "m" } });
-  const handlers = createBeleidskompasHandlers({ store: null, internalToken: TOKEN, getLive });
+  const handlers = createBeleidskompasHandlers({ repository: null, internalToken: TOKEN, getLive });
   assert.equal((await handlers.live({ headers: {} })).status, 401);
   assert.deepEqual(await handlers.live(withToken({})), { status: 200, body: await getLive() });
-  assert.equal((await createBeleidskompasHandlers({ store: null, internalToken: "", getLive }).live(withToken({}))).status, 503);
+  assert.equal((await createBeleidskompasHandlers({ repository: null, internalToken: "", getLive }).live(withToken({}))).status, 503);
 });
 
-test("getCase passes the case, the user from the query and the turn limit to the store, and answers an empty state for an unknown case", async () => {
-  const store = fakeStore({ getState: (args) => (args.caseId === "conv-1" ? { id: "conv-1", reports: {} } : null) });
-  const handlers = createBeleidskompasHandlers({ store, internalToken: TOKEN });
+test("getCase passes the case, the user from the query and the turn limit to the repository, and answers an empty state for an unknown case", async () => {
+  const repository = fakeRepository({ getState: (args) => (args.caseId === "conv-1" ? { id: "conv-1", reports: {} } : null) });
+  const handlers = createBeleidskompasHandlers({ repository, internalToken: TOKEN });
   const found = await handlers.getCase(withToken({ params: { id: "conv-1" }, query: { user_id: "user-a", max_turns: "20" } }));
   assert.deepEqual(found, { status: 200, body: { id: "conv-1", reports: {} } });
-  assert.deepEqual(store.calls[0], { name: "getState", args: { caseId: "conv-1", userId: "user-a", maxTurns: "20" } });
+  assert.deepEqual(repository.calls[0], { name: "getState", args: { caseId: "conv-1", userId: "user-a", maxTurns: "20" } });
   const missing = await handlers.getCase(withToken({ params: { id: "conv-9" }, query: { user_id: "user-a" } }));
   assert.deepEqual(missing, { status: 200, body: { id: "conv-9", case_text: null, reports: {}, turns: [] } });
 });
 
 test("the writes take the user and the fields from the body", async () => {
-  const store = fakeStore({ setCaseText: { version: 1, unchanged: false }, addReport: { version: 2 }, addTurn: { seq: 3 }, setTitle: undefined });
-  const handlers = createBeleidskompasHandlers({ store, internalToken: TOKEN });
+  const repository = fakeRepository({ setCaseText: { version: 1, unchanged: false }, addReport: { version: 2 }, addTurn: { seq: 3 }, setTitle: undefined });
+  const handlers = createBeleidskompasHandlers({ repository, internalToken: TOKEN });
 
   assert.deepEqual(await handlers.setText(withToken({ params: { id: "conv-1" }, body: { user_id: "user-a", text: "De casus." } })), { status: 200, body: { version: 1, unchanged: false } });
-  assert.deepEqual(store.calls[0].args, { caseId: "conv-1", userId: "user-a", text: "De casus." });
+  assert.deepEqual(repository.calls[0].args, { caseId: "conv-1", userId: "user-a", text: "De casus." });
 
   const report = await handlers.addReport(withToken({ params: { id: "conv-1" }, body: { user_id: "user-a", substep_id: "1.1", text: "Rapport", citations: [{ id: "d" }], retrieval_trace: { x: 1 } } }));
   assert.deepEqual(report, { status: 200, body: { version: 2 } });
-  assert.deepEqual(store.calls[1].args, { caseId: "conv-1", userId: "user-a", substepId: "1.1", text: "Rapport", citations: [{ id: "d" }], retrievalTrace: { x: 1 } });
+  assert.deepEqual(repository.calls[1].args, { caseId: "conv-1", userId: "user-a", substepId: "1.1", text: "Rapport", citations: [{ id: "d" }], retrievalTrace: { x: 1 } });
 
   const turn = await handlers.addTurn(withToken({ params: { id: "conv-1" }, body: { user_id: "user-a", role: "assistant", step_id: "stap3", asked_from: "1.1", text: "Antwoord" } }));
   assert.deepEqual(turn, { status: 200, body: { seq: 3 } });
-  assert.deepEqual(store.calls[2].args, { caseId: "conv-1", userId: "user-a", role: "assistant", stepId: "stap3", askedFrom: "1.1", text: "Antwoord" });
+  assert.deepEqual(repository.calls[2].args, { caseId: "conv-1", userId: "user-a", role: "assistant", stepId: "stap3", askedFrom: "1.1", text: "Antwoord" });
 
   assert.deepEqual(await handlers.setTitle(withToken({ params: { id: "conv-1" }, body: { user_id: "user-a", title: "Laadpalen" } })), { status: 200, body: { ok: true } });
 });
 
-test("a StoreError becomes its status, any other error a 500 without details", async () => {
+test("an HttpError becomes its status, any other error a 500 without details", async () => {
   const handlers = createBeleidskompasHandlers({
-    store: fakeStore({ addReport: new StoreError(400, "report text is required"), addTurn: new Error("connection refused: secret host") }),
+    repository: fakeRepository({ addReport: new HttpError(400, "report text is required"), addTurn: new Error("connection refused: secret host") }),
     internalToken: TOKEN,
   });
   assert.deepEqual(await handlers.addReport(withToken({ params: { id: "conv-1" }, body: { user_id: "u" } })), { status: 400, body: { error: "report text is required" } });
@@ -88,22 +88,22 @@ test("a StoreError becomes its status, any other error a 500 without details", a
 });
 
 test("the page's endpoints take the user from the LibreChat login, never from the request", async () => {
-  const store = fakeStore({ listCases: [{ id: "conv-1" }], getState: (args) => (args.userId === "user-a" && args.caseId === "conv-1" ? { id: "conv-1" } : null) });
+  const repository = fakeRepository({ listCases: [{ id: "conv-1" }], getState: (args) => (args.userId === "user-a" && args.caseId === "conv-1" ? { id: "conv-1" } : null) });
   const resolveUser = (req) => (req.cookies && req.cookies.refreshToken === "good" ? { id: "user-a" } : null);
-  const handlers = createBeleidskompasHandlers({ store, internalToken: TOKEN, resolveUser });
+  const handlers = createBeleidskompasHandlers({ repository, internalToken: TOKEN, resolveUser });
 
   // Not logged in: 401, also with a user_id in the query and a store token.
   assert.equal((await handlers.myCases({ headers: { authorization: `Bearer ${TOKEN}` }, query: { user_id: "user-a" }, cookies: {} })).status, 401);
 
   const logged = { headers: {}, cookies: { refreshToken: "good" }, query: { user_id: "user-b" }, params: {} };
   assert.deepEqual(await handlers.myCases(logged), { status: 200, body: [{ id: "conv-1" }] });
-  assert.equal(store.calls[0].args.userId, "user-a", "the user comes from the login, not from the query");
+  assert.equal(repository.calls[0].args.userId, "user-a", "the user comes from the login, not from the query");
 
   assert.deepEqual(await handlers.myCase({ ...logged, params: { id: "conv-1" } }), { status: 200, body: { id: "conv-1" } });
   assert.deepEqual(await handlers.myCase({ ...logged, params: { id: "conv-9" } }), { status: 404, body: { error: "Unknown case" } });
 });
 
-test("the page's endpoints answer 503 without a store", async () => {
-  const handlers = createBeleidskompasHandlers({ store: null, internalToken: TOKEN, resolveUser: () => ({ id: "user-a" }) });
+test("the page's endpoints answer 503 without a repository", async () => {
+  const handlers = createBeleidskompasHandlers({ repository: null, internalToken: TOKEN, resolveUser: () => ({ id: "user-a" }) });
   assert.equal((await handlers.myCases({ headers: {}, cookies: {} })).status, 503);
 });

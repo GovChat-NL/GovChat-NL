@@ -7,16 +7,18 @@ const path = require("path");
 const sharp = require("sharp");
 const { WebSocket, WebSocketServer } = require("ws");
 const beleidskompas = require("./lib/beleidskompas");
-const { createTemplateStore } = require("./lib/beleidskompas/template-store");
-const { createDocumentStore } = require("./lib/beleidskompas/documents/document-store");
+const { createTemplateRepository } = require("./lib/beleidskompas/templates/template-repository");
+const { createTemplateService } = require("./lib/beleidskompas/templates/template-service");
+const { createDocumentRepository } = require("./lib/beleidskompas/documents/document-repository");
 const { createDocumentIndexer } = require("./lib/beleidskompas/documents/index-documents");
 const documentRoutes = require("./lib/beleidskompas/documents/document-routes");
 const { createAnswerFeedbackHandlers } = require("./lib/beleidskompas/answer-feedback");
-const { StoreError } = require("./lib/beleidskompas/store");
-const templateRoutes = require("./lib/beleidskompas/admin-routes");
+const { HttpError } = require("./lib/beleidskompas/shared/errors");
+const templateRoutes = require("./lib/beleidskompas/templates/template-routes");
 const { createGeneralFeedbackHandlers, librechatEmailFromBearer } = require("./lib/beleidskompas/general-feedback");
-let templateStore = null;
-let documentStore = null;
+let templateRepository = null;
+let templateService = null;
+let documentRepository = null;
 let beleidskompasPool = null;
 
 const app = express();
@@ -559,19 +561,19 @@ function normalizeBeleidskompasState(input) {
 // PostgreSQL is the source of template state. Public JSON and workflow files are
 // generated from the deployed version; saving a draft never changes them.
 async function publishStoredBeleidskompasLive() {
-  if (!templateStore) return;
-  const state = await templateStore.getState();
-  if (state.live) await publishTemplateLive(state.live, undefined, state.templates.find((t) => t.live_version_id).live_version_id);
+  if (!templateRepository) return;
+  const state = await templateRepository.getState();
+  if (state.live) await publishTemplateLive(state.live, state.templates.find((t) => t.live_version_id).live_version_id);
 }
 
 // At startup: when nothing is live yet, the default template goes live as "SiS 4.0".
 async function ensureLiveBeleidskompasTemplate() {
-  if ((await templateStore.getState()).live) return publishStoredBeleidskompasLive();
-  const template = await templateStore.createTemplate("SiS 4.0", normalizeBeleidskompasFlow(defaultBeleidskompasFlow()));
-  await templateStore.deployVersion(template.id, template.versions[0].id, publishTemplateLive);
+  if ((await templateRepository.getState()).live) return publishStoredBeleidskompasLive();
+  const template = await templateRepository.createTemplate("SiS 4.0", normalizeBeleidskompasFlow(defaultBeleidskompasFlow()));
+  await templateRepository.deployVersion(template.id, template.versions[0].id, publishTemplateLive);
 }
 
-async function publishTemplateLive(flow, _documents, versionId) {
+async function publishTemplateLive(flow, versionId) {
   publishBeleidskompasLiveConfig(flow, versionId);
 }
 
@@ -600,8 +602,8 @@ function publishBeleidskompasLiveConfig(flow, versionId) {
 
 /** The live template as the orchestrator reads it (GET /api/beleidskompas/live). */
 async function liveBeleidskompasTemplate() {
-  if (!templateStore) throw new StoreError(503, "Beleidskompas database is not available");
-  const state = await templateStore.getState();
+  if (!templateRepository) throw new HttpError(503, "Beleidskompas database is not available");
+  const state = await templateRepository.getState();
   const versionId = state.templates.find((t) => t.live_version_id)?.live_version_id || "";
   return { version_id: versionId, flow: state.live && normalizeBeleidskompasFlow(state.live), settings: { default_model: state.settings.default_model } };
 }
@@ -2164,10 +2166,10 @@ app.get("/dashboard", requireAuth, async (req, res) => {
   const orchestratorConfig = readOrchestratorConfig();
   let beleidskompasState = {};
   try {
-    if (templateStore) {
-      beleidskompasState = await templateStore.getState();
+    if (templateRepository) {
+      beleidskompasState = await templateRepository.getState();
       beleidskompasState.versions = beleidskompasState.templates.flatMap((t) => t.versions);
-      beleidskompasState.documents = await templateStore.listDocuments();
+      beleidskompasState.documents = await documentRepository.listDocuments();
     }
   } catch (err) {
     console.error("[govchat-admin] Could not load template counts:", err.message);
@@ -2255,12 +2257,13 @@ app.post("/api/config/apps", requireAuth, (req, res) => {
 
 templateRoutes.mount(app, {
   requireAuth,
-  getStore: () => templateStore,
+  getRepository: () => templateRepository,
+  getService: () => templateService,
   normalizeFlow: normalizeBeleidskompasFlow,
   defaultFlow: defaultBeleidskompasFlow,
   publishLive: publishTemplateLive,
 });
-documentRoutes.mount(app, { requireAuth, getStore: () => documentStore });
+documentRoutes.mount(app, { requireAuth, getRepository: () => documentRepository });
 
 // ── Beleidskompas feedback ───────────────────────────────────────
 //
@@ -2730,9 +2733,10 @@ if (require.main === module) {
     getLive: liveBeleidskompasTemplate,
     onReady(pool) {
       beleidskompasPool = pool;
-      templateStore = createTemplateStore(pool, defaultBeleidskompasState().settings);
-      documentStore = createDocumentStore(pool);
-      createDocumentIndexer(documentStore).start();
+      templateRepository = createTemplateRepository(pool, defaultBeleidskompasState().settings);
+      documentRepository = createDocumentRepository(pool);
+      templateService = createTemplateService({ pool, templates: templateRepository, documents: documentRepository });
+      createDocumentIndexer(documentRepository).start();
       ensureLiveBeleidskompasTemplate().catch((err) => console.error("[govchat-admin] Could not publish deployed template:", err));
     },
   });

@@ -2,27 +2,35 @@
 
 /** The endpoints of the document library. */
 
-const { StoreError } = require("../store");
+const { createAdminRoute } = require("../shared/admin-route");
 
-function mount(app, { requireAuth, getStore }) {
+function mount(app, { requireAuth, getRepository }) {
+  const route = createAdminRoute(app, { requireAuth, get: getRepository, failure: "Document request failed" });
+
+  route("get", "/api/beleidskompas/documents", async (repository, req, res) => {
+    res.json({ ok: true, documents: await repository.listDocuments() });
+  });
+  route("post", "/api/beleidskompas/documents", async (repository, req, res) => {
+    res.status(201).json({ ok: true, document: await repository.uploadDocument(req.body || {}) });
+  });
+  route("patch", "/api/beleidskompas/documents/:docId", async (repository, req, res) => {
+    res.json({ ok: true, document: await repository.updateDocument(req.params.docId, req.body?.filename) });
+  });
+  route("get", "/api/beleidskompas/documents/:docId/download", async (repository, req, res) => {
+    const doc = await repository.getDocument(req.params.docId);
+    res.setHeader("Content-Type", doc.mime_type);
+    res.setHeader("Content-Disposition", `attachment; filename="${encodeURIComponent(doc.filename)}"`);
+    res.send(doc.content);
+  });
+  route("delete", "/api/beleidskompas/documents/:docId", async (repository, req, res) => {
+    await repository.deleteDocument(req.params.docId);
+    res.json({ ok: true, removed: req.params.docId });
+  });
+
   // Puts a document back in the queue, so it is indexed once more.
-  // Answers 404 when the document does not exist.
-  app.post("/api/beleidskompas/documents/:docId/reindex", requireAuth, async (req, res) => {
-    try {
-      const store = getStore();
-      if (!store) throw new StoreError(503, "Beleidskompas database is not available");
-
-      // A document id is a whole number above zero, written without a leading zero.
-      const isId = /^[1-9]\d*$/.test(req.params.docId);
-      const found = isId && (await store.requeue(req.params.docId));
-      if (!found) throw new StoreError(404, "Document not found");
-
-      res.json({ ok: true });
-    } catch (err) {
-      if (err instanceof StoreError) return res.status(err.status).json({ error: err.message });
-      console.error("[govchat-admin] Document request failed:", err);
-      res.status(500).json({ error: "Document request failed" });
-    }
+  route("post", "/api/beleidskompas/documents/:docId/reindex", async (repository, req, res) => {
+    await repository.requeue(req.params.docId);
+    res.json({ ok: true });
   });
 }
 

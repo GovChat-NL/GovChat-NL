@@ -11,19 +11,19 @@
  * bridge passes on). The page is not trusted: it sends no token and names
  * no user; the user is read from the LibreChat login (`resolveUser`, the
  * same check the service does for the transcript sessions). The page can
- * only read, under /my. The store checks every case against the user.
+ * only read, under /my. The repository checks every case against the user.
  *
  * The handlers are plain functions: they take `{ headers, params, query,
  * body }` and return `{ status, body }`. That keeps them testable without
  * express. mount() ties them to an express app; only there is express
  * loaded.
  *
- * Every endpoint answers JSON. An error from the store (400, 403, 404, or
+ * Every endpoint answers JSON. An error from the repository (400, 403, 404, or
  * 503 while the database is not ready yet) becomes the HTTP status;
  * anything else is a 500 with a generic message.
  */
 
-const { StoreError } = require("./store");
+const { HttpError } = require("../shared/errors");
 
 function suppliedToken(headers) {
   const auth = String((headers && headers.authorization) || "").trim();
@@ -31,7 +31,7 @@ function suppliedToken(headers) {
   return String((headers && headers["x-govchat-token"]) || "").trim();
 }
 
-function createBeleidskompasHandlers({ store, internalToken, resolveUser, getLive }) {
+function createBeleidskompasHandlers({ repository, internalToken, resolveUser, getLive }) {
   const token = String(internalToken || "").trim();
 
   /** The answer when a request from n8n carries no valid token, or null. */
@@ -44,7 +44,7 @@ function createBeleidskompasHandlers({ store, internalToken, resolveUser, getLiv
   /** The answer when a request from n8n may not go through, or null when
    *  it may. */
   function refuse(req) {
-    if (!store) return { status: 503, body: { error: "Beleidskompas store is not configured" } };
+    if (!repository) return { status: 503, body: { error: "Beleidskompas store is not configured" } };
     return refuseToken(req);
   }
 
@@ -58,7 +58,7 @@ function createBeleidskompasHandlers({ store, internalToken, resolveUser, getLiv
     try {
       return { status: 200, body: await work() };
     } catch (err) {
-      if (err instanceof StoreError) return { status: err.status, body: { error: err.message } };
+      if (err instanceof HttpError) return { status: err.status, body: { error: err.message } };
       console.error("[beleidskompas-store]", err);
       return { status: 500, body: { error: "Beleidskompas store error" } };
     }
@@ -73,7 +73,7 @@ function createBeleidskompasHandlers({ store, internalToken, resolveUser, getLiv
 
   /** For the page: runs `work(userId)` for the logged-in LibreChat user. */
   function handleMine(req, work) {
-    if (!store) return Promise.resolve({ status: 503, body: { error: "Beleidskompas store is not configured" } });
+    if (!repository) return Promise.resolve({ status: 503, body: { error: "Beleidskompas store is not configured" } });
     const user = typeof resolveUser === "function" ? resolveUser(req) : null;
     const userId = String((user && user.id) || "").trim();
     if (!userId) return Promise.resolve({ status: 401, body: { error: "Unauthorized" } });
@@ -88,36 +88,36 @@ function createBeleidskompasHandlers({ store, internalToken, resolveUser, getLiv
     // The live template for the orchestrator, read from the template tables.
     live: (req) => Promise.resolve(refuseToken(req) || answer(async () => (typeof getLive === "function" ? getLive() : {}))),
 
-    myCases: (req) => handleMine(req, (userId) => store.listCases({ userId, limit: q(req).limit })),
+    myCases: (req) => handleMine(req, (userId) => repository.listCases({ userId, limit: q(req).limit })),
 
     myCase: (req) =>
       handleMine(req, async (userId) => {
-        const state = await store.getState({ caseId: p(req).id, userId, maxTurns: q(req).max_turns });
-        if (!state) throw new StoreError(404, "Unknown case");
+        const state = await repository.getState({ caseId: p(req).id, userId, maxTurns: q(req).max_turns });
+        if (!state) throw new HttpError(404, "Unknown case");
         return state;
       }),
 
-    listCases: (req) => handle(req, () => store.listCases({ userId: userOf(req), limit: q(req).limit })),
+    listCases: (req) => handle(req, () => repository.listCases({ userId: userOf(req), limit: q(req).limit })),
 
     // The orchestrator also reads new cases, so an unknown case is empty
     // here. For the page it stays a 404.
     getCase: (req) =>
       handle(req, async () => {
-        const state = await store.getState({ caseId: p(req).id, userId: userOf(req), maxTurns: q(req).max_turns });
+        const state = await repository.getState({ caseId: p(req).id, userId: userOf(req), maxTurns: q(req).max_turns });
         return state || { id: p(req).id, case_text: null, reports: {}, turns: [] };
       }),
 
-    setText: (req) => handle(req, () => store.setCaseText({ caseId: p(req).id, userId: userOf(req), text: b(req).text })),
+    setText: (req) => handle(req, () => repository.setCaseText({ caseId: p(req).id, userId: userOf(req), text: b(req).text })),
 
     setTitle: (req) =>
       handle(req, async () => {
-        await store.setTitle({ caseId: p(req).id, userId: userOf(req), title: b(req).title });
+        await repository.setTitle({ caseId: p(req).id, userId: userOf(req), title: b(req).title });
         return { ok: true };
       }),
 
     addReport: (req) =>
       handle(req, () =>
-        store.addReport({
+        repository.addReport({
           caseId: p(req).id,
           userId: userOf(req),
           substepId: b(req).substep_id,
@@ -129,7 +129,7 @@ function createBeleidskompasHandlers({ store, internalToken, resolveUser, getLiv
 
     addTurn: (req) =>
       handle(req, () =>
-        store.addTurn({
+        repository.addTurn({
           caseId: p(req).id,
           userId: userOf(req),
           role: b(req).role,
@@ -144,8 +144,8 @@ function createBeleidskompasHandlers({ store, internalToken, resolveUser, getLiv
 /** Ties the handlers to an express app under `/api/beleidskompas`. The
  *  page's endpoints get the whole request, because `resolveUser` reads the
  *  cookies. */
-function mount(app, { store, internalToken, resolveUser, getLive }) {
-  const handlers = createBeleidskompasHandlers({ store, internalToken, resolveUser, getLive });
+function mount(app, { repository, internalToken, resolveUser, getLive }) {
+  const handlers = createBeleidskompasHandlers({ repository, internalToken, resolveUser, getLive });
   const route = (handler) => (req, res) =>
     handler({ headers: req.headers, params: req.params, query: req.query, body: req.body, cookies: req.cookies }).then((answer) =>
       res.status(answer.status).json(answer.body),
