@@ -36,7 +36,7 @@
 }
 
 /* The disclaimer line (non-functional requirement: a supporting tool, not
-   automated decision-making), under the message field. */
+   automated decision-making). */
 .gc-bk-note {
   display: flex;
   align-items: center;
