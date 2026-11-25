@@ -107,6 +107,7 @@ CREATE TABLE IF NOT EXISTS document_chunks (
   heading text NOT NULL DEFAULT '',
   embedding halfvec(3072) NOT NULL,
   embedding_model text NOT NULL,
+  index_version integer NOT NULL,
   search_words tsvector GENERATED ALWAYS AS (to_tsvector('dutch', text)) STORED,
   UNIQUE (document_id, chunk_number)
 );

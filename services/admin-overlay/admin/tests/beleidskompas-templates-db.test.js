@@ -8,7 +8,7 @@ const { once } = require("node:events");
 const { connectionSettings, applyMigrations } = require("../db/connection");
 const { createTemplateStore } = require("../lib/beleidskompas/template-store");
 const { createDocumentStore } = require("../lib/beleidskompas/documents/document-store");
-const { createDocumentIndexer } = require("../lib/beleidskompas/documents/index-documents");
+const { createDocumentIndexer, INDEX_VERSION } = require("../lib/beleidskompas/documents/index-documents");
 const documentRoutes = require("../lib/beleidskompas/documents/document-routes");
 const { mount } = require("../lib/beleidskompas/admin-routes");
 
@@ -161,7 +161,7 @@ test("admin template API persists UI actions in PostgreSQL", { skip: !enabled &&
     assert.equal(kader.index_status, "pending");
     const listed = async () => (await api.listDocuments()).find((d) => d.id === kader.id);
     const chunks = async () => (await pool.query(
-      "SELECT chunk_number, heading, text, embedding_model FROM document_chunks WHERE document_id = $1 ORDER BY chunk_number", [kader.id],
+      "SELECT chunk_number, heading, text, embedding_model, index_version FROM document_chunks WHERE document_id = $1 ORDER BY chunk_number", [kader.id],
     )).rows;
     const silent = { log() {}, error() {} };
 
@@ -170,8 +170,8 @@ test("admin template API persists UI actions in PostgreSQL", { skip: !enabled &&
     await createDocumentIndexer(documentStore, { embed, log: silent }).indexPending();
     assert.equal((await listed()).index_status, "ready");
     const stored = [
-      { chunk_number: 1, heading: "Doel", text: "Eerste alinea.", embedding_model: "test-model" },
-      { chunk_number: 2, heading: "Aanpak", text: "Tweede alinea.", embedding_model: "test-model" },
+      { chunk_number: 1, heading: "Doel", text: "Eerste alinea.", embedding_model: "test-model", index_version: INDEX_VERSION },
+      { chunk_number: 2, heading: "Aanpak", text: "Tweede alinea.", embedding_model: "test-model", index_version: INDEX_VERSION },
     ];
     assert.deepEqual(await chunks(), stored);
 

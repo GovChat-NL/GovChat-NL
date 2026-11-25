@@ -41,16 +41,17 @@ function createDocumentStore(pool) {
   }
 
   /** Puts `chunks` in the place of the chunks the document had and marks
-   *  the document as ready, in one transaction. */
-  async function saveChunks(documentId, chunks) {
+   *  the document as ready, in one transaction. `indexVersion` is the
+   *  version of the indexing that made the chunks. */
+  async function saveChunks(documentId, chunks, indexVersion) {
     const client = await pool.connect();
     try {
       await client.query("BEGIN");
       await client.query("DELETE FROM document_chunks WHERE document_id = $1", [documentId]);
       for (const chunk of chunks) {
         await client.query(
-          `INSERT INTO document_chunks (document_id, chunk_number, heading, text, location, page, embedding, embedding_model)
-           VALUES ($1, $2, $3, $4, $5, $6, $7::halfvec, $8)`,
+          `INSERT INTO document_chunks (document_id, chunk_number, heading, text, location, page, embedding, embedding_model, index_version)
+           VALUES ($1, $2, $3, $4, $5, $6, $7::halfvec, $8, $9)`,
           [
             documentId,
             chunk.number,
@@ -60,6 +61,7 @@ function createDocumentStore(pool) {
             chunk.page,
             toVector(chunk.embedding),
             chunk.embeddingModel,
+            indexVersion,
           ],
         );
       }

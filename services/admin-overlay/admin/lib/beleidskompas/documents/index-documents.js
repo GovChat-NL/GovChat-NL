@@ -20,6 +20,12 @@ const { embedChunks } = require("./embed");
 
 const LOOK_EVERY_MS = 5000;
 
+// Raise this number when the same document would get other chunks than
+// before: when the text is read, cut or embedded in another way. Every
+// chunk keeps the number it was made with, so the chunks show which
+// documents have to be indexed again.
+const INDEX_VERSION = 1;
+
 /** `store` is the document store. `deps` replaces the embedding model and
  *  the log in the tests. */
 function createDocumentIndexer(store, deps = {}) {
@@ -36,7 +42,7 @@ function createDocumentIndexer(store, deps = {}) {
       // A document of headings only has text, but nothing to search in.
       if (!chunks.length) throw new Error("No text found in this document");
 
-      await store.saveChunks(documentId, chunks);
+      await store.saveChunks(documentId, chunks, INDEX_VERSION);
       log.log(`[govchat-admin] Beleidskompas document ${documentId} indexed (${chunks.length} chunks)`);
     } catch (err) {
       await store.markFailed(documentId, err.message);
@@ -78,4 +84,4 @@ function createDocumentIndexer(store, deps = {}) {
   return { indexPending, start };
 }
 
-module.exports = { createDocumentIndexer };
+module.exports = { createDocumentIndexer, INDEX_VERSION };
