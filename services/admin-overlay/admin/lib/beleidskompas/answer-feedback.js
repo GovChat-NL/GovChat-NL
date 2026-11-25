@@ -1,14 +1,9 @@
 "use strict";
 
 /**
- * Answer feedback: a rating (up or down) with an optional comment on one
- * Beleidskompas answer. Deliberately anonymous: only the rating, the comment,
- * the step and substep it is about and the template version. No user,
- * e-mail or conversation id, so it cannot be traced back to a person or a case.
- *
- * Plain functions like routes.js. `getQuery()` gives the database's query
- * function once it is ready, or null before that (the handlers then answer
- * 503). Only the newest `max` items are kept.
+ * Answer feedback: 👍/👎 with an optional comment on one answer, stored without
+ * user or e-mail. `getQuery()` is null until the database is ready (then 503).
+ * Only the newest `max` items are kept.
  */
 
 function createAnswerFeedbackHandlers({ getQuery, max = 500 }) {

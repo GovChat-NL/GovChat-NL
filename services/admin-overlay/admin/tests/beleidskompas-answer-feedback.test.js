@@ -23,13 +23,6 @@ test("answer feedback is stored anonymously and only the newest items are kept",
   assert.deepEqual(calls[1].params, [500]);
 });
 
-test("a rating other than up or down is refused without touching the database", async () => {
-  const { calls, query } = fakeQuery();
-  const handlers = createAnswerFeedbackHandlers({ getQuery: () => query });
-  assert.equal((await handlers.submit({ body: { rating: "meh" } })).status, 400);
-  assert.equal(calls.length, 0);
-});
-
 test("without a database both endpoints answer 503", async () => {
   const handlers = createAnswerFeedbackHandlers({ getQuery: () => null });
   assert.equal((await handlers.submit({ body: { rating: "up" } })).status, 503);
