@@ -10,7 +10,6 @@ import { renderDocuments } from "./pages/documents.js";
 import { renderFlow } from "./pages/flow.js";
 import { renderDeploy } from "./pages/deploy.js";
 import { renderFeedback } from "./pages/feedback.js";
-import { renderGeneralFeedback } from "./pages/general-feedback.js";
 
 const ROUTES = {
   general: { title: "Algemeen", page: renderGeneral },
@@ -19,8 +18,7 @@ const ROUTES = {
   "editor/documents": { title: "Documentenbibliotheek", page: renderDocuments, editor: true, gated: true },
   "editor/flow": { title: "Flow builder", page: renderFlow, editor: true, gated: true },
   deploy: { title: "Deploy", page: renderDeploy },
-  feedback: { title: "Antwoordfeedback", page: renderFeedback },
-  "general-feedback": { title: "Algemene feedback", page: renderGeneralFeedback },
+  feedback: { title: "Feedback", page: renderFeedback },
 };
 const DEFAULT_ROUTE = "editor";
 

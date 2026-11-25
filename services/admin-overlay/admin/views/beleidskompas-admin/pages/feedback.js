@@ -4,6 +4,7 @@ import { h, icon } from "../dom.js";
 import { dropdown } from "../components/dropdown.js";
 import { feedbackGroup } from "../components/feedback-row.js";
 import { versionLabel, versionOptions } from "../app.js";
+import { renderGeneralFeedback } from "./general-feedback.js";
 
 const PERIODS = [
   { value: "7", label: "Laatste 7 dagen" },
@@ -13,7 +14,22 @@ const PERIODS = [
   { value: "custom", label: "Aangepast…" },
 ];
 
-export function renderFeedback({ store, render }) {
+// The page: answer feedback, then general feedback, each in a foldable section.
+// Both start open; a folded section stays folded while the admin page is open.
+const folded = new Set();
+
+export function renderFeedback(ctx) {
+  const sections = [["answer", "Antwoordfeedback", renderAnswerFeedback(ctx)], ["general", "Algemene feedback", renderGeneralFeedback(ctx)]];
+  return { content: h("div", { class: "stack" }, sections.map(([key, title, part]) => section(key, title, part))) };
+}
+
+function section(key, title, { subtitle, content }) {
+  const el = h("details", { class: "fb-section", open: !folded.has(key) }, h("summary", {}, icon("chevronDown", 16), h("h2", {}, title), h("span", { class: "muted" }, subtitle)), content);
+  el.addEventListener("toggle", () => (el.open ? folded.delete(key) : folded.add(key)));
+  return el;
+}
+
+function renderAnswerFeedback({ store, render }) {
   const ui = store.ui;
   if (!store.feedback) {
     api

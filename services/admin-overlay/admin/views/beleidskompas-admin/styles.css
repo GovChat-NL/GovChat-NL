@@ -45,7 +45,6 @@ a { color: inherit; text-decoration: none; }
 .side-item.is-active { background: rgba(26,54,93,.14); font-weight: 600; }
 .side-item.is-disabled { opacity: .45; cursor: not-allowed; }
 .side-item.is-disabled:hover { background: none; }
-.side-item.is-heading:hover { background: none; }
 .side-sep { border: none; border-top: 1px solid var(--line); margin: 8px 8px; }
 
 /* ── Right pane ───────────────────────────────────── */
@@ -213,6 +212,10 @@ textarea.input { resize: vertical; line-height: 1.45; }
 .fb-meta { display: flex; gap: 10px; color: var(--muted); font-size: 12px; }
 .fb-version { padding: 0 7px; border-radius: 9px; background: #f0f0f3; }
 .fb-comment.is-empty { color: #b0b0b8; font-style: italic; }
+.fb-section > summary { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; cursor: pointer; list-style: none; }
+.fb-section > summary::-webkit-details-marker { display: none; }
+.fb-section > summary h2 { margin: 0; font-size: 17px; }
+.fb-section:not([open]) > summary svg { transform: rotate(-90deg); }
 .fb-row.is-general { grid-template-columns: 1fr; }
 .fb-row.is-general .fb-comment { white-space: pre-wrap; overflow-wrap: anywhere; }
 
