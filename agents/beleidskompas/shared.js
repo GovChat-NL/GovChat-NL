@@ -121,7 +121,6 @@ function parsePageMessage(text) {
 // answer to it would become the "title".
 
 const TITLE_REQUEST_MARKER = '__BELEIDSKOMPAS_TITLE_REQUEST__';
-const TITLE_PREFIX = 'Beleidskompas - ';
 
 function isTitleRequest(text) {
   return String(text || '').includes(TITLE_REQUEST_MARKER);
@@ -180,7 +179,6 @@ function nodeError(output) {
 module.exports = {
   DISCLAIMER,
   TITLE_REQUEST_MARKER,
-  TITLE_PREFIX,
   REQUEST_META_LABEL,
   extractSuppliedToken,
   parsePageMessage,
