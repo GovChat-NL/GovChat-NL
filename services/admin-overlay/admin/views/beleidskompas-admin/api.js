@@ -72,7 +72,7 @@ export const downloadUrl = (id) =>
 export const reindexDocument = (id) =>
   request("POST", `${BASE}/documents/${encodeURIComponent(id)}/reindex`);
 
-// Document selections are saved with each version; assistant retrieval does not use them yet.
+// The documents picked for a step. The agent of that step searches them once the version is live.
 export const stepDocumentIds = (step) =>
   new Set((step.document_ids || []).map(String));
 

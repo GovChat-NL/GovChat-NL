@@ -31,8 +31,8 @@ export function renderFlow({ store, render, markDirty }) {
     "p",
     { class: "notice notice-info" },
     icon("info", 14),
-    "Titel, beschrijving, deelstappen, instructies, regels en prompts gaan bij Deploy naar de pagina en de assistent. " +
-      "De vier stappen zelf staan vast (SiS 4.0). Documenten leest de assistent nog niet.",
+    "Titel, beschrijving, deelstappen, documenten, instructies, regels en prompts gaan bij Deploy naar de pagina en de assistent. " +
+      "De vier stappen zelf staan vast (SiS 4.0).",
   );
 
   const list = flowList({
@@ -154,10 +154,9 @@ function stepEditor(step, { store, markDirty, render }) {
     "div",
     { class: "stack" },
     texts,
-    // Saved with the version; assistant retrieval does not use these selections yet.
     card(
-      ["Documenten ", h("span", { class: "badge badge-pending", title: "Wordt opgeslagen, maar de assistent gebruikt dit nog niet" }, "Nog niet gebruikt")],
-      h("p", { class: "field-hint" }, "De documentkeuze wordt opgeslagen, maar de assistent gebruikt haar nog niet."),
+      "Documenten",
+      h("p", { class: "field-hint" }, "De assistent van deze stap zoekt in de aangevinkte documenten."),
       docList,
     ),
     card("Substappen", substeps),
