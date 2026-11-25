@@ -124,7 +124,8 @@
 
 /* The toggle doubles as the "Stappen" title of the left panel. */
 .gc-bk-stepper > .gc-bk-panel-toggle {
-  align-self: flex-start;
+  flex-direction: row-reverse;
+  justify-content: space-between;
   align-items: center;
   gap: 6px;
   flex-shrink: 0;
@@ -1553,14 +1554,6 @@
 
   .gc-bk-resizer {
     display: none;
-  }
-
-  .gc-bk-stepper > .gc-bk-panel-toggle {
-    flex-direction: row-reverse;
-    align-self: stretch;
-    justify-content: space-between;
-    align-items: center;
-    color: inherit;
   }
 
   .gc-bk-stepper.is-collapsed .gc-bk-panel-toggle-label {
