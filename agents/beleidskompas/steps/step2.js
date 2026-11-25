@@ -16,7 +16,7 @@ const STEP = {
   nr: 2,
   title: 'Rolbepaling provincie',
   role: readPrompt('step2/role.md'),
-  substeps: [{ id: '2.1', title: 'Rolbepaling', ...readSubstepPrompt('step2/2.1-rolbepaling.md') }],
+  substeps: [{ id: 'sub_maats7cr', title: 'Rolbepaling', ...readSubstepPrompt('step2/2.1-rolbepaling.md') }],
 };
 
 module.exports = { STEP };

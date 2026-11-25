@@ -38,7 +38,7 @@ function asksForReport(assignmentText) {
 function buildSystemPrompt({ template, step, substeps, rules }) {
   const values = {
     role: step.role,
-    substeps: substeps.map((substep) => `Deelstap ${substep.id}: ${substep.title}\n${substep.instruction}`).join('\n\n'),
+    substeps: substeps.map((substep) => `Deelstap ${substep.label}: ${substep.title}\n${substep.instruction}`).join('\n\n'),
     rules: rules.map((rule) => '- ' + rule).join('\n'),
     substep_format: substeps.map((substep) => substep.format).join('\n\n'),
   };
@@ -73,7 +73,8 @@ function readStepTemplate(text) {
 /** What the agent is told.
  *
  *  `input` is what the orchestrator's tool call passed:
- *  - substep_id, assignment: filled in by the orchestrator's model
+ *  - substep_label, assignment: filled in by the orchestrator's model;
+ *    substep_label is the number of the substep as a person sees it, like 1.2
  *  - case_id, user_id, findings, conversation, template: filled in by the
  *    orchestrator workflow; `findings` holds the earlier reports in full,
  *    `template` what readStepTemplate reads
@@ -94,8 +95,9 @@ function buildAssignment({ input }) {
   }
   const step = template.step;
 
-  const substepId = String(given.substep_id || '').trim();
-  const substep = step.substeps.find((candidate) => candidate.id === substepId) || null;
+  // The orchestrator's model names the substep by its label. The store uses the id.
+  const substepLabel = String(given.substep_label || '').trim();
+  const substep = step.substeps.find((candidate) => candidate.label === substepLabel) || null;
   const forReport = asksForReport(given.assignment);
 
   // What every result carries, whatever the mode.
@@ -106,14 +108,15 @@ function buildAssignment({ input }) {
     step_nr: step.nr,
     step_title: step.title,
     substep_id: substep ? substep.id : '',
+    substep_label: substep ? substep.label : '',
     substep_title: substep ? substep.title : '',
     model: template.model,
     report_disclaimer: String(template.report_disclaimer || ''),
   };
 
   if (forReport && !substep) {
-    const known = step.substeps.map((candidate) => candidate.id).join(', ');
-    const error = `Stap ${step.nr} kent deelstap "${substepId}" niet. Bekende deelstappen: ${known}.`;
+    const known = step.substeps.map((candidate) => candidate.label).join(', ');
+    const error = `Stap ${step.nr} kent deelstap "${substepLabel}" niet. Bekende deelstappen: ${known}.`;
     return { ...about, mode: 'invalid', valid: false, error };
   }
 
@@ -131,7 +134,7 @@ function buildAssignment({ input }) {
       mode: 'report',
       valid: true,
       system_prompt: buildSystemPrompt({ template: String(template.report_prompt || ''), step, substeps, rules }),
-      user_prompt: buildUserPrompt({ input: given, task: `Opdracht: werk deelstap ${substep.id} (${substep.title}) uit.` }),
+      user_prompt: buildUserPrompt({ input: given, task: `Opdracht: werk deelstap ${substep.label} (${substep.title}) uit.` }),
     };
   }
 
@@ -166,7 +169,7 @@ function processReply({ assignment, agent }) {
   let error = nodeError(agent);
   if (!error && !text) error = `De agent van stap ${assignment.step_nr} gaf geen antwoord.`;
 
-  const heading = `**Stap ${assignment.step_nr} · ${assignment.step_title} · ${assignment.substep_id} ${assignment.substep_title}**`;
+  const heading = `**Stap ${assignment.step_nr} · ${assignment.step_title} · ${assignment.substep_label} ${assignment.substep_title}**`;
   const footer = assignment.report_disclaimer ? '---\n' + assignment.report_disclaimer : '';
 
   return {
@@ -174,6 +177,7 @@ function processReply({ assignment, agent }) {
     case_id: assignment.case_id,
     user_id: assignment.user_id,
     substep_id: assignment.substep_id,
+    substep_label: assignment.substep_label,
     save: assignment.mode === 'report' && !error,
     report_text: [heading, text, footer].filter(Boolean).join('\n\n'),
     answer: text,
@@ -212,7 +216,7 @@ function buildResult({ assignment, reply, saved }) {
   return {
     kind: 'report',
     step_id: assignment.step_id,
-    substep_id: reply.substep_id,
+    substep_label: reply.substep_label,
     saved: stored,
     version: stored ? saved.version : null,
     error: stored ? null : 'Het rapport is gemaakt, maar opslaan is mislukt.',

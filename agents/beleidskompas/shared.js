@@ -89,11 +89,10 @@ const REQUEST_META_LABEL = 'beleidskompas-request';
 /** Takes a message apart. `fromPage` says whether the message carries the
  *  block of the page; without it the message was typed in LibreChat's own
  *  chat and all of it is the message. `shown` is the visible text, without
- *  the block. A substep id also names its step:
- *  1.3 is a substep of stap1. A part that is missing is ''. */
+ *  the block. A part that is missing is ''. */
 function parsePageMessage(text) {
   const raw = String(text || '');
-  const parts = { fromPage: false, stepId: '', substepId: '', message: raw.trim(), shown: raw.trim() };
+  const parts = { fromPage: false, substepId: '', message: raw.trim(), shown: raw.trim() };
   const marker = `[${REQUEST_META_LABEL}]: data:application/json;base64,`;
   const idx = raw.lastIndexOf(marker);
   if (idx === -1) return parts;
@@ -105,11 +104,9 @@ function parsePageMessage(text) {
   } catch (_) {
     return parts;
   }
-  const substepMatch = /^(\d+)\.\d+/.exec(String(request.substep_id || '').trim());
   parts.fromPage = true;
   parts.shown = raw.slice(0, idx).trim();
-  parts.substepId = substepMatch ? substepMatch[0] : '';
-  parts.stepId = substepMatch ? `stap${substepMatch[1]}` : '';
+  parts.substepId = String(request.substep_id || '').trim();
   parts.message = String(request.message || '').trim();
   return parts;
 }
@@ -124,7 +121,6 @@ function parsePageMessage(text) {
 // answer to it would become the "title".
 
 const TITLE_REQUEST_MARKER = '__BELEIDSKOMPAS_TITLE_REQUEST__';
-const TITLE_PREFIX = 'Beleidskompas - ';
 
 function isTitleRequest(text) {
   return String(text || '').includes(TITLE_REQUEST_MARKER);
@@ -183,7 +179,6 @@ function nodeError(output) {
 module.exports = {
   DISCLAIMER,
   TITLE_REQUEST_MARKER,
-  TITLE_PREFIX,
   REQUEST_META_LABEL,
   extractSuppliedToken,
   parsePageMessage,

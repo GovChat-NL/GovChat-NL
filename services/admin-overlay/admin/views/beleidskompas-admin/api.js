@@ -76,8 +76,10 @@ export const reindexDocument = (id) =>
 export const stepDocumentIds = (step) =>
   new Set((step.document_ids || []).map(String));
 
+export const listGeneralFeedback = async () => (await request("GET", "/api/beleidskompas-general-feedback")).items || [];
+
 // The template follows from version_id; items without a known version show as "Onbekend template".
-export async function listFeedback(templates) {
+export async function listAnswerFeedback(templates) {
   const data = await request("GET", "/api/beleidskompas-feedback");
   return (data.items || []).map((item) => ({
     ...item,
