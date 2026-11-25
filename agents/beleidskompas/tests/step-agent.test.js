@@ -120,6 +120,36 @@ test('the reply for a report is stored with the step heading and the disclaimer,
   assert.equal(processed.error, null);
 });
 
+test('a report is stored with the documents the agent searched, each passage once', () => {
+  const chunk = (documentId, filename, number, page, location = `pagina ${page}`) => ({
+    document_id: documentId, filename, chunk_number: number, heading: `Kop ${number}`, text: `Tekst ${number}`, location, page, similarity: 0.5, score: 0.03,
+  });
+  // What n8n hands the agent: the answer of the HTTP call in a list, as text.
+  const search = (chunks) => ({ action: { tool: 'Zoeken_in_documenten' }, observation: JSON.stringify([{ document_count: 2, chunks }]) });
+  const searched = {
+    output: reply,
+    intermediateSteps: [
+      search([chunk('6', 'kader.pdf', 67, 39), chunk('6', 'kader.pdf', 8, 9), chunk('7', 'koffer.xlsx', 2, null, 'werkblad Rollen')]),
+      search([chunk('6', 'kader.pdf', 8, 9), chunk('6', 'kader.pdf', 9, 9)]),
+    ],
+  };
+
+  assert.deepEqual(processReply({ assignment, agent: searched }).citations, [
+    {
+      id: '6',
+      filename: 'kader.pdf',
+      pages: [9, 39],
+      passages: [
+        { heading: 'Kop 8', location: 'pagina 9', text: 'Tekst 8' },
+        { heading: 'Kop 9', location: 'pagina 9', text: 'Tekst 9' },
+        { heading: 'Kop 67', location: 'pagina 39', text: 'Tekst 67' },
+      ],
+    },
+    { id: '7', filename: 'koffer.xlsx', pages: [], passages: [{ heading: 'Kop 2', location: 'werkblad Rollen', text: 'Tekst 2' }] },
+  ]);
+  assert.deepEqual(processReply({ assignment, agent }).citations, []);
+});
+
 test('the orchestrator gets the report as it was stored', () => {
   const processed = processReply({ assignment, agent });
   const result = buildResult({ assignment, reply: processed, saved: { version: 3 } });

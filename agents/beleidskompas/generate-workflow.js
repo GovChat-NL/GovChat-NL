@@ -441,7 +441,7 @@ function buildStepAgentWorkflow(step) {
     documentSearchToolNode(step, at(4, 1)),
 
     codeNode('Antwoord verwerken', at(5, 0), {
-      functions: ['toolCalls', 'nodeError', 'unwrapCodeBlock', 'processReply'],
+      functions: ['toolCalls', 'nodeError', 'unwrapCodeBlock', 'chunksOfSearch', 'searchedChunks', 'citationsOf', 'processReply'],
       run: `return [{ json: processReply({ assignment: ${outputOf('Opdracht opbouwen')}, agent: $json }) }];`,
     }),
 
@@ -451,7 +451,7 @@ function buildStepAgentWorkflow(step) {
       method: 'POST',
       caseId: '$json.case_id',
       casePath: '/reports',
-      body: { user_id: '$json.user_id', substep_id: '$json.substep_id', text: '$json.report_text', citations: '[]' },
+      body: { user_id: '$json.user_id', substep_id: '$json.substep_id', text: '$json.report_text', citations: '$json.citations' },
     }),
 
     codeNode('Resultaat voor de orchestrator', at(8, 1), {
