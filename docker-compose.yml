@@ -401,7 +401,7 @@ services:
   #  De data staat in een Docker-volume, net als die van MongoDB en n8n.
   # ---------------------------------------------------------------------------
   beleidskompas-postgres:
-    image: postgres:16-alpine
+    image: pgvector/pgvector:0.8.0-pg16
     container_name: librechat-beleidskompas-postgres
     restart: unless-stopped
     environment:
@@ -896,6 +896,8 @@ services:
       - BELEIDSKOMPAS_DB_HOST=beleidskompas-postgres
       - BELEIDSKOMPAS_DB_PASSWORD=${BELEIDSKOMPAS_POSTGRES_PASSWORD}
       - BELEIDSKOMPAS_STORE_TOKEN=${BELEIDSKOMPAS_STORE_TOKEN}
+      - LITELLM_URL=${LITELLM_URL:-http://litellm:4000}
+      - LITELLM_API_KEY=${LITELLM_API_KEY}
       - IMAGE_JOBS_ENABLED=${IMAGE_JOBS_ENABLED:-false}
       - IMAGE_JOBS_WEBHOOK_URL=${IMAGE_JOBS_WEBHOOK_URL:-http://n8n:5678/webhook/image-generator}
       - IMAGE_JOBS_WEBHOOK_TOKEN=${IMAGE_JOBS_WEBHOOK_TOKEN:-${N8N_WEBHOOK_TOKEN}}

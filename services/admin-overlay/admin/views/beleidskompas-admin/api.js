@@ -69,6 +69,9 @@ export const deleteDocument = (id) =>
 export const downloadUrl = (id) =>
   `${BASE}/documents/${encodeURIComponent(id)}/download`;
 
+export const reindexDocument = (id) =>
+  request("POST", `${BASE}/documents/${encodeURIComponent(id)}/reindex`);
+
 // Document selections are saved with each version; assistant retrieval does not use them yet.
 export const stepDocumentIds = (step) =>
   new Set((step.document_ids || []).map(String));
