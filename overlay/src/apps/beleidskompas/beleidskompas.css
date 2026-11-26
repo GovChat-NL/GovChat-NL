@@ -514,17 +514,6 @@
   border-top: 1px solid #e5e7eb;
 }
 
-/* Why a request got no answer, above the text field. */
-.gc-bk-send-failed:not([hidden]) {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.gc-bk-send-failed span {
-  flex: 1;
-}
-
 .gc-bk-compose-field {
   position: relative;
 }

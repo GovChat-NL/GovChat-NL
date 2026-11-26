@@ -76,20 +76,15 @@ test("sendBeleidskompasFeedback posts the rating with step, substep and template
 
 /** Runs sendBeleidskompasChatMessage against a LibreChat whose "start the
  *  answer" call gives `startResponses` one after the other; a function
- *  among them is called and may throw. A started answer (200) gets
- *  `streamResponse` as its stream. With another `refreshStatus` than 200
- *  the session token has expired and cannot be fetched. Returns how often the answer was
+ *  among them is called and may throw. Returns how often the answer was
  *  started, the pauses in between and the error message. */
-async function sendWithStartResponses(startResponses, streamResponse, refreshStatus = 200) {
+async function sendWithStartResponses(startResponses) {
   const pauses = [];
   let starts = 0;
   const realFetch = globalThis.fetch;
-  const realNow = Date.now;
-  if (refreshStatus !== 200) Date.now = () => realNow() + 60 * 60 * 1000;
   globalThis.window = {};
   globalThis.fetch = async (url) => {
-    if (url === "/api/auth/refresh") return { ok: refreshStatus === 200, status: refreshStatus, json: async () => ({ token: "t" }) };
-    if (url.includes("/stream/")) return streamResponse;
+    if (url === "/api/auth/refresh") return { ok: true, json: async () => ({ token: "t" }) };
     const next = startResponses[starts++];
     return typeof next === "function" ? next() : { ok: next === 200, status: next, json: async () => ({ streamId: "s" }) };
   };
@@ -100,7 +95,6 @@ async function sendWithStartResponses(startResponses, streamResponse, refreshSta
     message = err.message;
   } finally {
     globalThis.fetch = realFetch;
-    Date.now = realNow;
     delete globalThis.window;
   }
   return { starts, pauses, message };
@@ -121,23 +115,4 @@ test("a request that never started is sent again three times, then the cause is 
 test("a request LibreChat refused is not sent again", async () => {
   assert.deepEqual(await sendWithStartResponses([400]), { starts: 1, pauses: [], message: "Kon geen antwoord starten (HTTP 400)." });
   assert.deepEqual(await sendWithStartResponses([429]), { starts: 1, pauses: [], message: "De limiet voor het aantal berichten is bereikt." });
-});
-
-test("a started answer whose stream fails names the cause and is not sent again", async () => {
-  assert.deepEqual(await sendWithStartResponses([200], { ok: false, status: 504 }), {
-    starts: 1,
-    pauses: [],
-    message: "Beleidskompas deed er te lang over (time-out).",
-  });
-  const broken = { ok: true, body: { getReader: () => ({ read: () => Promise.reject(new TypeError("network error")) }) } };
-  assert.equal((await sendWithStartResponses([200], broken)).message, "Geen verbinding met Beleidskompas.");
-});
-
-test("a session token that cannot be fetched because LibreChat is down counts as a request that never started", async () => {
-  assert.deepEqual(await sendWithStartResponses([], null, 503), { starts: 0, pauses: [500, 1000, 2000], message: "Beleidskompas is tijdelijk niet beschikbaar." });
-  assert.deepEqual(await sendWithStartResponses([], null, 401), {
-    starts: 0,
-    pauses: [],
-    message: "Kon geen LibreChat-sessie ophalen (HTTP 401). Log opnieuw in.",
-  });
 });

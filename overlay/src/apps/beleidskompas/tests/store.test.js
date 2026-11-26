@@ -164,13 +164,3 @@ test("startNewSession forgets the case and starts again at the first substep", (
     assert.equal(store.state.messages[0].role, "assistant");
   });
 });
-
-test("removeMessages takes the given messages out of the chat and leaves the rest", () => {
-  const store = createStore(STEPS);
-  const question = store.addMessage("user", "Vraag");
-  const pending = store.addMessage("assistant", "", { pending: true });
-  store.removeMessages(question, pending, null);
-  assert.equal(store.state.messages.length, 1);
-  assert.equal(store.state.messages[0].notice, true);
-  assert.equal(store.caseStarted(), false);
-});

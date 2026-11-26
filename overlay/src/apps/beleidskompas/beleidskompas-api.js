@@ -104,13 +104,10 @@ const RETRY_PAUSES_MS = [500, 1000, 2000];
 const RETRY_STATUSES = [0, 502, 503, 504];
 
 /** fetch rejects with a TypeError when there is no connection; that
- *  counts as a response with status 0. A session token that could not be
- *  fetched for one of the causes above counts as a response with that
- *  status. */
+ *  counts as a response with status 0. */
 function noResponse(err) {
-  const status = err instanceof TypeError ? 0 : err.status;
-  if (!(status in CONNECTION_CAUSES)) throw err;
-  return { ok: false, status, json: async () => ({}) };
+  if (!(err instanceof TypeError)) throw err;
+  return { ok: false, status: 0, json: async () => ({}) };
 }
 
 /** Sends one message to the Beleidskompas custom endpoint and waits for
