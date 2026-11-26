@@ -23,15 +23,13 @@ function fakeQuery(rows = []) {
   return { calls, query };
 }
 
-test("general feedback is stored with the e-mail address of the logged-in user, after purging old items", async () => {
+test("general feedback is stored with the e-mail address of the logged-in user", async () => {
   const { calls, query } = fakeQuery();
-  const handlers = createGeneralFeedbackHandlers({ getQuery: () => query, retentionDays: 365 });
+  const handlers = createGeneralFeedbackHandlers({ getQuery: () => query });
   const res = await handlers.submit({ email: "a@example.nl", body: { text: "  Knop werkt niet  ", email: "other@example.nl" } });
   assert.equal(res.status, 201);
-  assert.match(calls[0].sql, /^DELETE FROM general_feedback/);
-  assert.deepEqual(calls[0].params, [365]);
-  assert.match(calls[1].sql, /^INSERT INTO general_feedback/);
-  assert.deepEqual(calls[1].params, ["a@example.nl", "Knop werkt niet"]);
+  assert.match(calls[0].sql, /^INSERT INTO general_feedback/);
+  assert.deepEqual(calls[0].params, ["a@example.nl", "Knop werkt niet"]);
 });
 
 test("it refuses a sender who is not logged in or sends no text, without touching the database", async () => {

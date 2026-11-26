@@ -48,7 +48,8 @@ function createTemplateRepository(pool, defaultSettings = {}) {
       COALESCE((SELECT jsonb_agg(t ORDER BY t.id) FROM templates t), '[]') AS templates,
       COALESCE((SELECT jsonb_agg(v ORDER BY v.template_id, v.version DESC) FROM template_versions v), '[]') AS versions,
       (SELECT row_to_json(l) FROM live l WHERE key = 'live') AS live,
-      (SELECT data FROM settings WHERE key = 'settings') AS settings`);
+      (SELECT data FROM settings WHERE key = 'settings') AS settings,
+      (SELECT data FROM settings WHERE key = 'retention') AS retention`);
     const templates = row.templates.map((t) => ({
       id: String(t.id), name: t.name,
       live_version_id: row.live?.template_id === t.id ? String(row.live.version_id) : null,
@@ -56,7 +57,7 @@ function createTemplateRepository(pool, defaultSettings = {}) {
     }));
     const liveTemplate = templates.find((t) => t.live_version_id);
     return {
-      templates, settings: { ...defaultSettings, ...row.settings },
+      templates, settings: { ...defaultSettings, ...row.settings }, retention: row.retention,
       live: liveTemplate?.versions.find((v) => v.id === liveTemplate.live_version_id)?.snapshot || null,
     };
   }
