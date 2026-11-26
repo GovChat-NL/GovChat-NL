@@ -56,6 +56,11 @@
       </div>
       <div id="gc-bk-chat-log" class="gc-bk-chat-log" role="log" aria-live="polite" aria-label="Gesprek"></div>
       <div class="gc-bk-chat-compose">
+        <div id="gc-bk-send-failed" class="gc-bk-step-stale gc-bk-send-failed" role="alert" hidden>
+          <span id="gc-bk-send-failed-text"></span>
+          <button id="gc-bk-send-retry" class="gc-bk-feedback-send" type="button">Opnieuw proberen</button>
+          <button id="gc-bk-send-failed-close" class="gc-bk-head-btn" type="button" title="Sluiten" aria-label="Melding sluiten"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path stroke-linecap="round" d="M6 6l12 12M18 6L6 18"/></svg></button>
+        </div>
         <div class="gc-bk-compose-field">
           <textarea id="gc-bk-chat-input" rows="1" placeholder="Beschrijf je casus" aria-label="Je casus, of een aanvulling bij de deelstap"></textarea>
           <button id="gc-bk-send" type="button" title="Verzenden (Enter)" aria-label="Verzenden"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"/></svg></button>

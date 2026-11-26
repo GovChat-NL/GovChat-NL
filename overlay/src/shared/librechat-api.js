@@ -27,7 +27,7 @@ export async function getLibreChatAuthToken(forceRefresh) {
     credentials: "include",
     headers: { "Content-Type": "application/json" },
   });
-  if (!resp.ok) throw new Error(`Kon geen LibreChat-sessie ophalen (HTTP ${resp.status}). Log opnieuw in.`);
+  if (!resp.ok) throw Object.assign(new Error(`Kon geen LibreChat-sessie ophalen (HTTP ${resp.status}). Log opnieuw in.`), { status: resp.status });
   const data = await resp.json().catch(() => ({}));
   const token = String(data?.token || "").trim();
   if (!token) throw new Error("LibreChat gaf geen geldig sessietoken terug.");
