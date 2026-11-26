@@ -112,7 +112,7 @@ test("a request that never started is sent again three times, then the cause is 
   };
   assert.deepEqual(await sendWithStartResponses([offline, 502, 503, offline]), {
     starts: 4,
-    pauses: [1000, 2000, 4000],
+    pauses: [500, 1000, 2000],
     message: "Geen verbinding met Beleidskompas.",
   });
   assert.equal((await sendWithStartResponses([504, 504, 504, 504])).message, "Beleidskompas deed er te lang over (time-out).");
@@ -134,7 +134,7 @@ test("a started answer whose stream fails names the cause and is not sent again"
 });
 
 test("a session token that cannot be fetched because LibreChat is down counts as a request that never started", async () => {
-  assert.deepEqual(await sendWithStartResponses([], null, 503), { starts: 0, pauses: [1000, 2000, 4000], message: "Beleidskompas is tijdelijk niet beschikbaar." });
+  assert.deepEqual(await sendWithStartResponses([], null, 503), { starts: 0, pauses: [500, 1000, 2000], message: "Beleidskompas is tijdelijk niet beschikbaar." });
   assert.deepEqual(await sendWithStartResponses([], null, 401), {
     starts: 0,
     pauses: [],

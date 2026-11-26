@@ -100,7 +100,7 @@ const CONNECTION_CAUSES = {
   504: "Beleidskompas deed er te lang over (time-out).",
 };
 // A request that never started is sent again after each of these pauses.
-const RETRY_PAUSES_MS = [1000, 2000, 4000];
+const RETRY_PAUSES_MS = [500, 1000, 2000];
 const RETRY_STATUSES = [0, 502, 503, 504];
 
 /** fetch rejects with a TypeError when there is no connection; that
