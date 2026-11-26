@@ -240,12 +240,7 @@ export function setupChat(store, { refreshState, versionId }) {
 
   newChatBtn.addEventListener("click", () => store.startNewSession());
   requireElement("gc-bk-send-failed-close").addEventListener("click", () => showFailure(null));
-  requireElement("gc-bk-send-retry").addEventListener("click", () => {
-    if (!failed) return;
-    if (failed.message) chatInputEl.value = "";
-    autoGrowInput();
-    ask(failed.substep, failed.message);
-  });
+  requireElement("gc-bk-send-retry").addEventListener("click", () => (failed.message ? sendUserMessage() : ask(failed.substep, "")));
   sendBtn.addEventListener("click", sendUserMessage);
   chatInputEl.addEventListener("input", autoGrowInput);
   chatInputEl.addEventListener("keydown", (e) => {
