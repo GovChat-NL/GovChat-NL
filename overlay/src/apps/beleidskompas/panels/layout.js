@@ -12,7 +12,7 @@ const MIN_WIDTH = { left: 160, right: 320 };
 const CHAT_MIN_WIDTH = 300;
 const COLLAPSED_WIDTH = 44;
 const KEY_STEP = 16;
-const LABELS = { left: "de stappen", right: "de uitwerking" };
+const LABELS = { left: "de stappen", chat: "het gesprek", right: "de uitwerking" };
 
 // A saved layout as stored; anything missing or broken falls back to the
 // default (no width = the width from the stylesheet).
@@ -29,6 +29,7 @@ export function parseLayout(raw) {
     right: width(data?.right),
     leftCollapsed: data?.leftCollapsed === true,
     rightCollapsed: data?.rightCollapsed === true,
+    chatCollapsed: data?.chatCollapsed === true,
   };
 }
 
@@ -51,8 +52,10 @@ export function fitWidths(wanted, min, room) {
 
 export function setupLayout() {
   const grid = requireElement("gc-bk-workspace");
-  const panels = { left: requireElement("gc-bk-stepper"), right: requireElement("gc-bk-step-card") };
-  const toggles = { left: requireElement("gc-bk-left-toggle"), right: requireElement("gc-bk-right-toggle") };
+  const panels = { left: requireElement("gc-bk-stepper"), chat: requireElement("gc-bk-chat"), right: requireElement("gc-bk-step-card") };
+  const toggles = { left: requireElement("gc-bk-left-toggle"), chat: requireElement("gc-bk-chat-toggle"), right: requireElement("gc-bk-right-toggle") };
+  // With the chat folded in, an open side panel (the right one first) takes its space.
+  const fill = () => layout.chatCollapsed && (layout.rightCollapsed ? "left" : "right");
   const resizers = { left: requireElement("gc-bk-left-resizer"), right: requireElement("gc-bk-right-resizer") };
 
   let saved = null;
@@ -83,13 +86,15 @@ export function setupLayout() {
 
   // While dragging, the other panel is already at its final width.
   function maxWidth(side) {
-    return room() - panels[side === "left" ? "right" : "left"].offsetWidth;
+    const other = side === "left" ? "right" : "left";
+    return room() - (other === fill() ? MIN_WIDTH[other] : panels[other].offsetWidth);
   }
 
   function apply() {
     const collapsed = (side) => layout[`${side}Collapsed`];
     for (const side of SIDES) {
       if (collapsed(side)) grid.style.setProperty(`--gc-bk-${side}`, `${COLLAPSED_WIDTH}px`);
+      else if (side === fill()) grid.style.setProperty(`--gc-bk-${side}`, "minmax(0, 1fr)");
       else if (!layout[side]) grid.style.removeProperty(`--gc-bk-${side}`);
     }
     // Planned from the wanted widths, not the ones on screen, so a panel that
@@ -103,15 +108,18 @@ export function setupLayout() {
     const min = { left: Math.min(MIN_WIDTH.left, wanted.left), right: Math.min(MIN_WIDTH.right, wanted.right) };
     const fitted = fitWidths(wanted, min, room());
     for (const side of SIDES) {
-      if (!collapsed(side) && layout[side]) grid.style.setProperty(`--gc-bk-${side}`, `${fitted[side]}px`);
+      if (!collapsed(side) && side !== fill() && layout[side]) grid.style.setProperty(`--gc-bk-${side}`, `${fitted[side]}px`);
     }
-    for (const side of SIDES) {
+    if (layout.chatCollapsed) grid.style.setProperty("--gc-bk-chat", `${COLLAPSED_WIDTH}px`);
+    else grid.style.removeProperty("--gc-bk-chat");
+    for (const side of Object.keys(panels)) {
       const folded = collapsed(side);
       const label = `${folded ? "Toon" : "Verberg"} ${LABELS[side]}`;
       panels[side].classList.toggle("is-collapsed", folded);
       toggles[side].setAttribute("aria-expanded", String(!folded));
       toggles[side].setAttribute("aria-label", label);
       toggles[side].title = label;
+      if (!resizers[side]) continue;
       resizers[side].classList.toggle("is-disabled", folded);
       resizers[side].tabIndex = folded ? -1 : 0;
       if (grid.clientWidth) {
@@ -126,15 +134,20 @@ export function setupLayout() {
     apply();
   }
 
-  for (const side of SIDES) {
-    const handle = resizers[side];
-    const sign = side === "left" ? 1 : -1;
-
+  for (const side of Object.keys(toggles)) {
     toggles[side].addEventListener("click", () => {
+      // At least one panel stays open: the last open one doesn't fold in.
+      const open = Object.keys(toggles).filter((p) => !layout[`${p}Collapsed`]);
+      if (open.length === 1 && open[0] === side) return;
       layout[`${side}Collapsed`] = !layout[`${side}Collapsed`];
       apply();
       save();
     });
+  }
+
+  for (const side of SIDES) {
+    const handle = resizers[side];
+    const sign = side === "left" ? 1 : -1;
 
     handle.addEventListener("pointerdown", (e) => {
       if (layout[`${side}Collapsed`] || e.button !== 0) return;

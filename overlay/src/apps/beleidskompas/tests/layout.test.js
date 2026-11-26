@@ -6,7 +6,7 @@ import assert from "node:assert/strict";
 
 import { clampWidth, fitWidths, parseLayout } from "../panels/layout.js";
 
-const DEFAULT = { left: null, right: null, leftCollapsed: false, rightCollapsed: false };
+const DEFAULT = { left: null, right: null, leftCollapsed: false, rightCollapsed: false, chatCollapsed: false };
 
 test("nothing or something broken saved gives the default layout", () => {
   assert.deepEqual(parseLayout(null), DEFAULT);
@@ -15,7 +15,7 @@ test("nothing or something broken saved gives the default layout", () => {
 });
 
 test("a saved layout comes back as saved", () => {
-  const saved = { left: 240, right: 410, leftCollapsed: true, rightCollapsed: false };
+  const saved = { left: 240, right: 410, leftCollapsed: true, rightCollapsed: false, chatCollapsed: true };
   assert.deepEqual(parseLayout(JSON.stringify(saved)), saved);
 });
 

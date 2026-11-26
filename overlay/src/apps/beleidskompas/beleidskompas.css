@@ -64,7 +64,7 @@
    columns between the panels are the drag handles. */
 .gc-bk-grid {
   display: grid;
-  grid-template-columns: var(--gc-bk-left, 210px) 12px minmax(300px, 1fr) 12px var(--gc-bk-right, minmax(320px, 1.25fr));
+  grid-template-columns: var(--gc-bk-left, 210px) 12px var(--gc-bk-chat, minmax(300px, 1fr)) 12px var(--gc-bk-right, minmax(320px, 1.25fr));
   gap: 12px 0;
   flex: 1;
   min-height: 0;
@@ -74,7 +74,7 @@
 
 @media (max-width: 1200px) {
   .gc-bk-grid {
-    grid-template-columns: var(--gc-bk-left, 180px) 10px minmax(260px, 1fr) 10px var(--gc-bk-right, minmax(280px, 1.2fr));
+    grid-template-columns: var(--gc-bk-left, 180px) 10px var(--gc-bk-chat, minmax(260px, 1fr)) 10px var(--gc-bk-right, minmax(280px, 1.2fr));
     gap: 10px 0;
   }
 }
@@ -148,20 +148,41 @@
 }
 
 .gc-bk-stepper.is-collapsed > :not(.gc-bk-panel-toggle),
+.gc-bk-chat.is-collapsed > :not(.gc-bk-card-head),
 .gc-bk-step.is-collapsed > :not(.gc-bk-card-head) {
   display: none;
 }
 
+.gc-bk-chat.is-collapsed .gc-bk-card-head,
 .gc-bk-step.is-collapsed .gc-bk-card-head {
   justify-content: center;
   padding: 8px 4px;
   border-bottom: 0;
 }
 
+.gc-bk-chat.is-collapsed .gc-bk-card-head > h2,
+.gc-bk-chat.is-collapsed #gc-bk-new-chat,
 .gc-bk-step.is-collapsed .gc-bk-card-head > h2,
 .gc-bk-step.is-collapsed #gc-bk-progress,
 .gc-bk-step.is-collapsed .gc-bk-step-nav {
   display: none;
+}
+
+#gc-bk-new-chat {
+  margin-left: auto;
+}
+
+/* A folded panel's toggle arrows turn around: a click opens it again. */
+.is-collapsed .gc-bk-arrow {
+  transform: scaleX(-1);
+  transform-box: fill-box;
+  transform-origin: center;
+}
+
+/* The panel toggles and new chat take the text colour, like the panel titles. */
+#gc-bk .gc-bk-panel-toggle,
+#gc-bk-new-chat {
+  color: inherit;
 }
 
 /* The progress pill sits right after the title; the free space goes behind it. */
@@ -1577,16 +1598,18 @@
     padding: 8px 10px;
   }
 
+  .gc-bk-chat.is-collapsed .gc-bk-card-head,
   .gc-bk-step.is-collapsed .gc-bk-card-head {
     justify-content: space-between;
     padding: 10px 12px;
   }
 
+  .gc-bk-chat.is-collapsed .gc-bk-card-head > h2,
   .gc-bk-step.is-collapsed .gc-bk-card-head > h2 {
     display: block;
   }
 
-  .gc-bk-chat {
+  .gc-bk-chat:not(.is-collapsed) {
     height: 70vh;
     min-height: 360px;
   }
