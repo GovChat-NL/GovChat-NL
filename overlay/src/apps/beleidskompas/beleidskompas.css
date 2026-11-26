@@ -172,6 +172,13 @@
   margin-left: auto;
 }
 
+/* A folded panel's toggle arrows turn around: a click opens it again. */
+.is-collapsed .gc-bk-arrow {
+  transform: scaleX(-1);
+  transform-box: fill-box;
+  transform-origin: center;
+}
+
 /* The panel toggles and new chat take the text colour, like the panel titles. */
 #gc-bk .gc-bk-panel-toggle,
 #gc-bk-new-chat {
