@@ -172,6 +172,12 @@
   margin-left: auto;
 }
 
+/* The panel toggles and new chat take the text colour, like the panel titles. */
+#gc-bk .gc-bk-panel-toggle,
+#gc-bk-new-chat {
+  color: inherit;
+}
+
 /* The progress pill sits right after the title; the free space goes behind it. */
 #gc-bk-progress {
   flex-shrink: 0;
