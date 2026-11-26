@@ -1,12 +1,11 @@
 // The workspace layout: drag the border between two panels (or use the arrow
-// keys on it) to resize them, fold the panels in and out, and remember
+// keys on it) to resize them, fold the side panels in and out, and remember
 // that in localStorage so the page opens the same way next time.
 
 import { requireElement } from "../../../shared/dom.js";
 
 const STORAGE_KEY = "gc_bk_layout";
 const SIDES = ["left", "right"];
-const PANELS = ["left", "chat", "right"];
 // The right minimum matches the stylesheet's minimum for the default
 // (flexible) right column, so planning with it never overflows the grid.
 const MIN_WIDTH = { left: 160, right: 320 };
@@ -34,11 +33,6 @@ export function parseLayout(raw) {
   };
 }
 
-// At least one panel stays open, so the last open one can't be folded in.
-export function canToggle(layout, panel) {
-  return layout[`${panel}Collapsed`] || PANELS.some((p) => p !== panel && !layout[`${p}Collapsed`]);
-}
-
 export function clampWidth(width, min, max) {
   return Math.max(min, Math.min(width, max));
 }
@@ -59,11 +53,9 @@ export function fitWidths(wanted, min, room) {
 export function setupLayout() {
   const grid = requireElement("gc-bk-workspace");
   const panels = { left: requireElement("gc-bk-stepper"), chat: requireElement("gc-bk-chat"), right: requireElement("gc-bk-step-card") };
-  const toggles = {
-    left: requireElement("gc-bk-left-toggle"),
-    chat: requireElement("gc-bk-chat-toggle"),
-    right: requireElement("gc-bk-right-toggle"),
-  };
+  const toggles = { left: requireElement("gc-bk-left-toggle"), chat: requireElement("gc-bk-chat-toggle"), right: requireElement("gc-bk-right-toggle") };
+  // With the chat folded in, an open side panel (the right one first) takes its space.
+  const fill = () => layout.chatCollapsed && (layout.rightCollapsed ? "left" : "right");
   const resizers = { left: requireElement("gc-bk-left-resizer"), right: requireElement("gc-bk-right-resizer") };
 
   let saved = null;
@@ -84,65 +76,52 @@ export function setupLayout() {
     }
   }
 
-  // With the chat folded in, an open side panel takes the free space (the right one first).
-  function filler() {
-    if (!layout.chatCollapsed) return null;
-    return layout.rightCollapsed ? "left" : "right";
-  }
-
-  // A folded panel or the one filling the space has no border to drag.
-  const locked = (side) => layout[`${side}Collapsed`] || side === filler();
-
   // The room for both side panels while the chat keeps its minimum width.
   function room() {
     if (!grid.clientWidth) return Infinity; // hidden (overview open): nothing to measure yet
     const style = getComputedStyle(grid);
     const inner = grid.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight);
-    const chat = layout.chatCollapsed ? COLLAPSED_WIDTH : CHAT_MIN_WIDTH;
-    return inner - resizers.left.offsetWidth - resizers.right.offsetWidth - chat;
+    return inner - resizers.left.offsetWidth - resizers.right.offsetWidth - CHAT_MIN_WIDTH;
   }
 
   // While dragging, the other panel is already at its final width.
   function maxWidth(side) {
     const other = side === "left" ? "right" : "left";
-    return room() - (other === filler() ? MIN_WIDTH[other] : panels[other].offsetWidth);
+    return room() - (other === fill() ? MIN_WIDTH[other] : panels[other].offsetWidth);
   }
 
   function apply() {
     const collapsed = (side) => layout[`${side}Collapsed`];
-    const fill = filler();
-    for (const side of PANELS) {
+    for (const side of SIDES) {
       if (collapsed(side)) grid.style.setProperty(`--gc-bk-${side}`, `${COLLAPSED_WIDTH}px`);
-      else if (side === fill) grid.style.setProperty(`--gc-bk-${side}`, "minmax(0, 1fr)");
-      else if (side === "chat" || !layout[side]) grid.style.removeProperty(`--gc-bk-${side}`);
+      else if (side === fill()) grid.style.setProperty(`--gc-bk-${side}`, "minmax(0, 1fr)");
+      else if (!layout[side]) grid.style.removeProperty(`--gc-bk-${side}`);
     }
     // Planned from the wanted widths, not the ones on screen, so a panel that
     // is being unfolded counts at its full width. Without a saved width, the
     // left panel has the stylesheet's fixed width and the right one can
     // shrink to its minimum.
     const wanted = {
-      left: collapsed("left") ? COLLAPSED_WIDTH : fill === "left" ? MIN_WIDTH.left : layout.left || panels.left.offsetWidth,
+      left: collapsed("left") ? COLLAPSED_WIDTH : layout.left || panels.left.offsetWidth,
       right: collapsed("right") ? COLLAPSED_WIDTH : layout.right || MIN_WIDTH.right,
     };
-    if (fill === "right") wanted.right = MIN_WIDTH.right;
     const min = { left: Math.min(MIN_WIDTH.left, wanted.left), right: Math.min(MIN_WIDTH.right, wanted.right) };
     const fitted = fitWidths(wanted, min, room());
     for (const side of SIDES) {
-      if (!locked(side) && layout[side]) grid.style.setProperty(`--gc-bk-${side}`, `${fitted[side]}px`);
+      if (!collapsed(side) && side !== fill() && layout[side]) grid.style.setProperty(`--gc-bk-${side}`, `${fitted[side]}px`);
     }
-    for (const panel of PANELS) {
-      const folded = collapsed(panel);
-      const label = `${folded ? "Toon" : "Verberg"} ${LABELS[panel]}`;
-      const blocked = !canToggle(layout, panel);
-      panels[panel].classList.toggle("is-collapsed", folded);
-      toggles[panel].setAttribute("aria-expanded", String(!folded));
-      toggles[panel].setAttribute("aria-label", label);
-      toggles[panel].setAttribute("aria-disabled", String(blocked));
-      toggles[panel].title = blocked ? "Minstens één paneel blijft open" : label;
-    }
-    for (const side of SIDES) {
-      resizers[side].classList.toggle("is-disabled", locked(side));
-      resizers[side].tabIndex = locked(side) ? -1 : 0;
+    if (layout.chatCollapsed) grid.style.setProperty("--gc-bk-chat", `${COLLAPSED_WIDTH}px`);
+    else grid.style.removeProperty("--gc-bk-chat");
+    for (const side of Object.keys(panels)) {
+      const folded = collapsed(side);
+      const label = `${folded ? "Toon" : "Verberg"} ${LABELS[side]}`;
+      panels[side].classList.toggle("is-collapsed", folded);
+      toggles[side].setAttribute("aria-expanded", String(!folded));
+      toggles[side].setAttribute("aria-label", label);
+      toggles[side].title = label;
+      if (!resizers[side]) continue;
+      resizers[side].classList.toggle("is-disabled", folded);
+      resizers[side].tabIndex = folded ? -1 : 0;
       if (grid.clientWidth) {
         resizers[side].setAttribute("aria-valuenow", String(Math.round((100 * panels[side].offsetWidth) / grid.clientWidth)));
       }
@@ -155,10 +134,12 @@ export function setupLayout() {
     apply();
   }
 
-  for (const panel of PANELS) {
-    toggles[panel].addEventListener("click", () => {
-      if (!canToggle(layout, panel)) return;
-      layout[`${panel}Collapsed`] = !layout[`${panel}Collapsed`];
+  for (const side of Object.keys(toggles)) {
+    toggles[side].addEventListener("click", () => {
+      // At least one panel stays open: the last open one doesn't fold in.
+      const open = Object.keys(toggles).filter((p) => !layout[`${p}Collapsed`]);
+      if (open.length === 1 && open[0] === side) return;
+      layout[`${side}Collapsed`] = !layout[`${side}Collapsed`];
       apply();
       save();
     });
@@ -169,7 +150,7 @@ export function setupLayout() {
     const sign = side === "left" ? 1 : -1;
 
     handle.addEventListener("pointerdown", (e) => {
-      if (locked(side) || e.button !== 0) return;
+      if (layout[`${side}Collapsed`] || e.button !== 0) return;
       e.preventDefault();
       const startX = e.clientX;
       const startWidth = panels[side].offsetWidth;
@@ -190,7 +171,7 @@ export function setupLayout() {
 
     handle.addEventListener("keydown", (e) => {
       const delta = { ArrowLeft: -KEY_STEP, ArrowRight: KEY_STEP }[e.key];
-      if (!delta || locked(side)) return;
+      if (!delta || layout[`${side}Collapsed`]) return;
       e.preventDefault();
       resize(side, panels[side].offsetWidth + sign * delta);
       save();

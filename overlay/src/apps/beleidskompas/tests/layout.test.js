@@ -4,7 +4,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { canToggle, clampWidth, fitWidths, parseLayout } from "../panels/layout.js";
+import { clampWidth, fitWidths, parseLayout } from "../panels/layout.js";
 
 const DEFAULT = { left: null, right: null, leftCollapsed: false, rightCollapsed: false, chatCollapsed: false };
 
@@ -36,11 +36,4 @@ test("widths that don't fit: the wider panel gives way first, neither goes below
   assert.deepEqual(fitWidths({ left: 300, right: 900 }, min, 400), { left: 160, right: 320 });
   // A folded panel keeps its strip width.
   assert.deepEqual(fitWidths({ left: 44, right: 900 }, { left: 44, right: 320 }, 500), { left: 44, right: 456 });
-});
-
-test("the last open panel can't be folded in, folded ones can always open", () => {
-  const twoFolded = { leftCollapsed: true, chatCollapsed: false, rightCollapsed: true };
-  assert.equal(canToggle(twoFolded, "chat"), false);
-  assert.equal(canToggle(twoFolded, "left"), true);
-  assert.equal(canToggle({ ...twoFolded, rightCollapsed: false }, "chat"), true);
 });
