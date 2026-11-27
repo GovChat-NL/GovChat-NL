@@ -18,6 +18,7 @@ const { createAnswerFeedbackHandlers } = require("./lib/beleidskompas/answer-fee
 const { HttpError } = require("./lib/beleidskompas/shared/errors");
 const templateRoutes = require("./lib/beleidskompas/templates/template-routes");
 const { createGeneralFeedbackHandlers, librechatEmailFromBearer } = require("./lib/beleidskompas/general-feedback");
+const { retentionDefaults, startRetention } = require("./lib/beleidskompas/retention/retention");
 let templateRepository = null;
 let templateService = null;
 let documentRepository = null;
@@ -85,7 +86,6 @@ const LIBRECHAT_INTERNAL_URL = String(process.env.LIBRECHAT_INTERNAL_URL || "htt
 const TRANSCRIPT_SESSIONS_FILE = "transcript-sessions.json";
 const BELEIDSKOMPAS_LIVE_FILE = "beleidskompas-config.json";
 const BELEIDSKOMPAS_FEEDBACK_MAX = 500;
-const BELEIDSKOMPAS_GENERAL_FEEDBACK_RETENTION_DAYS = 365;
 const TRANSCRIPT_AUTH_DEBUG = String(process.env.TRANSCRIPT_AUTH_DEBUG || "false").toLowerCase() === "true";
 const LIBRECHAT_JWT_REFRESH_SECRET = String(process.env.JWT_REFRESH_SECRET || process.env.JWT_SECRET || "").trim();
 
@@ -482,7 +482,7 @@ function defaultBeleidskompasState() {
     ],
     documents: [],
     settings: {
-      retention_days: 365,
+      ...retentionDefaults(),
       enforce_source_citation: true,
       require_human_validation: true,
       default_model: "govchat-default",
@@ -2227,8 +2227,10 @@ app.post("/api/config/apps", requireAuth, (req, res) => {
   }
 });
 
+let sweepRetention = async () => undefined; // set once the database is ready
 templateRoutes.mount(app, {
   requireAuth,
+  sweepRetention: () => sweepRetention(),
   getRepository: () => templateRepository,
   getService: () => templateService,
   normalizeFlow: normalizeBeleidskompasFlow,
@@ -2246,10 +2248,7 @@ searchRoutes.mount(app, { internalToken: process.env.BELEIDSKOMPAS_STORE_TOKEN, 
 // (lib/beleidskompas/general-feedback.js).
 const feedbackQuery = () => (beleidskompasPool ? (sql, params) => beleidskompasPool.query(sql, params) : null);
 const answerFeedback = createAnswerFeedbackHandlers({ getQuery: feedbackQuery, max: BELEIDSKOMPAS_FEEDBACK_MAX });
-const generalFeedback = createGeneralFeedbackHandlers({
-  getQuery: feedbackQuery,
-  retentionDays: BELEIDSKOMPAS_GENERAL_FEEDBACK_RETENTION_DAYS,
-});
+const generalFeedback = createGeneralFeedbackHandlers({ getQuery: feedbackQuery });
 
 const sendFeedbackResult = (label, work) => async (req, res) => {
   try {
@@ -2712,6 +2711,7 @@ if (require.main === module) {
       documentSearch = createDocumentSearch({ templates: templateRepository, documents: documentRepository });
       createDocumentIndexer(documentRepository).start();
       ensureLiveBeleidskompasTemplate().catch((err) => console.error("[govchat-admin] Could not publish deployed template:", err));
+      sweepRetention = startRetention({ query: (sql, params) => pool.query(sql, params), getSettings: async () => (await templateRepository.getState()).settings });
     },
   });
   server.listen(PORT, "0.0.0.0", () => {

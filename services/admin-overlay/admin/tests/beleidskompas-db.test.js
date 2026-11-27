@@ -11,6 +11,7 @@ const assert = require("node:assert/strict");
 
 const { connectionSettings, applyMigrations } = require("../db/connection");
 const { createCaseRepository } = require("../lib/beleidskompas/cases/case-repository");
+const { sweep } = require("../lib/beleidskompas/retention/retention");
 
 const enabled = String(process.env.BELEIDSKOMPAS_DB_TEST || "").toLowerCase() === "true" && connectionSettings().host;
 
@@ -67,6 +68,18 @@ test("the repository against a real Postgres", { skip: !enabled && "set BELEIDSK
     assert.deepEqual(await repository.addTurn({ caseId: "conv-3", userId: "user-a", role: "user", text: "Wat is Beleidskompas?" }), { seq: 1 });
     assert.equal((await repository.getState({ caseId: "conv-3", userId: "user-a" })).case_text, null);
     assert.deepEqual(await repository.listCases({ userId: "user-b" }), []);
+
+    // Retention: a case not touched for 31 days goes, with its texts, reports and turns.
+    await query("UPDATE cases SET updated_at = now() - interval '31 days' WHERE id = 'conv-1'");
+    const settings = { retention_days: 30, feedback_retention_days: 365 };
+    const silent = { log: () => {}, error: () => {} };
+    await query("INSERT INTO answer_feedback (rating) VALUES ('up')");
+    assert.equal((await sweep({ query, settings, log: silent })).cases.deleted, 1);
+    assert.equal((await query("SELECT count(*)::int AS n FROM answer_feedback")).rows[0].n, 1, "feedback stays when its case goes");
+    assert.equal((await query("SELECT count(*)::int AS n FROM reports WHERE case_id = 'conv-1'")).rows[0].n, 0);
+    await sweep({ query, settings, log: silent });
+    const { rows: [retention] } = await query("SELECT data FROM settings WHERE key = 'retention'");
+    assert.deepEqual([retention.data.cases.deleted, retention.data.cases.last_deletion.deleted, retention.data.feedback.days], [0, 1, 365], "the last deletion stays after an empty sweep");
   } finally {
     await client.query(`DROP SCHEMA IF EXISTS ${schema} CASCADE`);
     await client.end();

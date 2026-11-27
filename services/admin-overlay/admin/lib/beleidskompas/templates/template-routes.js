@@ -5,8 +5,9 @@
 
 const { HttpError } = require("../shared/errors");
 const { createRoute } = require("../shared/route");
+const { retentionKinds } = require("../retention/retention");
 
-function mount(app, { requireAuth, getRepository, getService, normalizeFlow, defaultFlow, publishLive }) {
+function mount(app, { requireAuth, getRepository, getService, normalizeFlow, defaultFlow, publishLive, sweepRetention = async () => undefined }) {
   const failure = "Template request failed";
   const repositoryRoute = createRoute(app, { requireAuth, get: getRepository, failure });
   const serviceRoute = createRoute(app, { requireAuth, get: getService, failure });
@@ -23,7 +24,7 @@ function mount(app, { requireAuth, getRepository, getService, normalizeFlow, def
   };
 
   repositoryRoute("get", "/api/beleidskompas/state", async (repository, req, res) => {
-    res.json({ ok: true, state: { ...await repository.getState(), default_flow: defaultFlow() } });
+    res.json({ ok: true, state: { ...await repository.getState(), default_flow: defaultFlow(), retention_kinds: retentionKinds() } });
   });
   repositoryRoute("post", "/api/beleidskompas/templates", async (repository, req, res) => {
     const template = await repository.createTemplate(req.body?.name, flow(req.body?.flow ?? defaultFlow()));
@@ -40,10 +41,12 @@ function mount(app, { requireAuth, getRepository, getService, normalizeFlow, def
   repositoryRoute("post", "/api/beleidskompas/settings", async (repository, req, res) => {
     const input = req.body || {};
     const settings = {};
-    if (Object.hasOwn(input, "retention_days")) {
-      const days = Number(input.retention_days);
-      if (!Number.isInteger(days) || days < 1) throw new HttpError(400, "Retention days must be a positive integer");
-      settings.retention_days = days;
+    for (const { setting } of retentionKinds()) {
+      if (Object.hasOwn(input, setting)) {
+        const days = Number(input[setting]);
+        if (!Number.isInteger(days) || days < 1) throw new HttpError(400, "Retention days must be a positive integer");
+        settings[setting] = days;
+      }
     }
     for (const key of ["enforce_source_citation", "require_human_validation"]) {
       if (Object.hasOwn(input, key)) {
@@ -52,7 +55,11 @@ function mount(app, { requireAuth, getRepository, getService, normalizeFlow, def
       }
     }
     if (Object.hasOwn(input, "default_model")) settings.default_model = String(input.default_model).trim() || "govchat-default";
-    res.json({ ok: true, settings: await repository.saveSettings(settings) });
+    const before = (await repository.getState()).settings;
+    const saved = await repository.saveSettings(settings);
+    const changed = retentionKinds().filter(({ setting }) => saved[setting] !== before[setting]);
+    for (const { id, setting } of changed) console.log(`[govchat-admin] Beleidskompas retention: Bewaartermijn ${id} set to ${saved[setting]} days`);
+    res.json({ ok: true, settings: saved, retention: changed.length ? await sweepRetention() : undefined });
   });
   serviceRoute("get", "/api/beleidskompas/templates/:templateId/export", async (service, req, res) => {
     res.json(await service.exportTemplate(req.params.templateId));
