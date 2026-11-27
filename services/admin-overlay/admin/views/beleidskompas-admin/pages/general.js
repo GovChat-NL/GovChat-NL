@@ -47,6 +47,9 @@ export function renderGeneral({ store, render }) {
             try {
               // Only what changed here, so an old page cannot undo a change made elsewhere.
               const changed = Object.fromEntries(Object.entries(settings).filter(([key, value]) => value !== store.state.settings[key]));
+              const lowered = (store.state.retention_kinds || []).filter((kind) => changed[kind.setting] < store.state.settings[kind.setting]);
+              const warning = lowered.map((kind) => `${kind.label} ouder dan ${changed[kind.setting]} dagen`).join(" en ");
+              if (lowered.length && !confirm(`${warning} worden meteen verwijderd. Doorgaan?`)) return;
               const res = await api.saveSettings(changed);
               store.state.settings = res.settings;
               if (res.retention) store.state.retention = res.retention;
