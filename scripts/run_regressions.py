@@ -29,7 +29,8 @@ NEW_FILES = {"scripts/librechat_release.py", "scripts/librechat-release-pin.js",
              "tests/orchestrator/n8n-image-integration.test.js",
              "scripts/image-edit-workflow.js", "scripts/orchestrator-image-edit-workflow.js",
              "scripts/enable-image-to-image.js", "tests/image-edit-workflow.test.js",
-             "tests/orchestrator/run-image-edit-smoke.js"}
+             "tests/orchestrator/run-image-edit-smoke.js",
+             "scripts/librechat-openid-recovery-preload.js", "tests/openid-recovery.test.js"}
 SOURCE_TEST_PATTERNS = ["tests/*.test.js", "tests/branding/*.test.js", "tests/agents/*.test.js",
                         "agents/beleidskompas/*.test.js",
                         "overlay/src/apps/beleidskompas/tests/*.test.js", "tests/overlay/*.test.js"]
@@ -126,7 +127,7 @@ def node_tests(source, patterns, exclude=()):
     return ["node", "--test", "--test-concurrency=2", *files]
 
 
-def container_args(source, image, command, mounts=(), image_storage=False):
+def container_args(source, image, command, mounts=(), image_storage=False, read_only=False):
     args = ["docker", "run", "--rm", "--pull", "never", "--network", "none",
             "--security-opt", "no-new-privileges:true", "--cap-drop", "ALL",
             "--env", "CI=true", "--env", "NODE_PATH=/app/node_modules",
@@ -135,6 +136,10 @@ def container_args(source, image, command, mounts=(), image_storage=False):
         args += ["--mount", f"type=bind,source={source / name},target={target},readonly"]
     if image_storage:
         args += ["--tmpfs", "/shared-images:uid=1000,gid=1000,mode=0700"]
+    if read_only:
+        args += ["--read-only", "--tmpfs", "/tmp:rw,noexec,nosuid,size=256m",
+                 "--env", "NODE_OPTIONS=", "--workdir", "/tmp"]
+        command = [command[0], *["/repo/" + arg if arg.startswith("tests/") else arg for arg in command[1:]]]
     return [*args, "--entrypoint", "node", image, *command[1:]]
 
 
@@ -189,13 +194,19 @@ def execute_suite(source, offline=False):
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--offline", action="store_true", help="No container run/build/pull; image/admin/n8n/proxy tests excluded")
+    modes = parser.add_mutually_exclusive_group()
+    modes.add_argument("--openid", action="store_true", help="Only native OpenID tests in the cached pinned image; no network/build/app init")
+    modes.add_argument("--offline", action="store_true", help="No container run/build/pull; image/admin/n8n/proxy tests excluded")
     args = parser.parse_args(argv)
     try:
         with tempfile.TemporaryDirectory(prefix="govchat-regression-") as directory:
             source = Path(directory)
             snapshot(source)
-            execute_suite(source, args.offline)
+            if args.openid:
+                image, _ = read_pins((source / "docker-compose.yml").read_text())
+                run(container_args(source, image, ["node", "--test", "tests/openid-recovery.test.js"], read_only=True), source)
+            else:
+                execute_suite(source, args.offline)
     except (ReleaseError, subprocess.CalledProcessError, OSError) as exc:
         parser.exit(1, f"Regression failed: {exc}\n")
     return 0
