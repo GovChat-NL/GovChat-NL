@@ -1,7 +1,9 @@
+import copy
 import importlib.util
 import json
 import pathlib
 
+import pytest
 import yaml
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
@@ -41,6 +43,39 @@ def test_render_is_idempotent_and_preserves_policies_media_and_lower_limits():
     assert result['fileConfig']['endpoints']['govchat-orchestrator']['fileSizeLimit'] == 6
     assert result['fileConfig']['endpoints']['unrelated'] == {'disabled': True}
     assert 'govchat-orchestrator' not in source['fileConfig']['endpoints']
+    assert renderer.document_config(result, routes) == result
+
+
+@pytest.mark.parametrize('context,tokens,characters,count', [
+    (8192, 4000, 12000, 2),
+    (160000, 120000, 750000, 20),
+])
+def test_render_preserves_configured_model_and_cumulative_attachment_budgets(
+        context, tokens, characters, count):
+    spec = importlib.util.spec_from_file_location('renderer', ROOT / 'scripts/render-document-processing-config.py')
+    renderer = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(renderer)
+    source = {
+        'endpoints': {'custom': [{
+            'name': 'govchat-orchestrator',
+            'tokenConfig': {'synthetic-model': {
+                'context': context, 'prompt': 0.125, 'completion': 0.5,
+            }},
+        }]},
+        'fileConfig': {
+            'fileTokenLimit': tokens,
+            'fileContextCharLimit': characters,
+            'endpoints': {'govchat-orchestrator': {'fileLimit': count}},
+        },
+    }
+    original = copy.deepcopy(source)
+    routes = json.loads((ROOT / 'services/document-extractor/routes.json').read_text())
+    result = renderer.document_config(source, routes)
+    assert source == original
+    assert result['endpoints']['custom'][0]['tokenConfig'] == original['endpoints']['custom'][0]['tokenConfig']
+    assert result['fileConfig']['fileTokenLimit'] == tokens
+    assert result['fileConfig']['fileContextCharLimit'] == characters
+    assert result['fileConfig']['endpoints']['govchat-orchestrator']['fileLimit'] == count
     assert renderer.document_config(result, routes) == result
 
 

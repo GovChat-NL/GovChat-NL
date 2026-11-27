@@ -24,6 +24,12 @@
       "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     ]
   },
+  "xlsm": {
+    "parser": "spreadsheet",
+    "mimes": [
+      "application/vnd.ms-excel.sheet.macroenabled.12"
+    ]
+  },
   "eml": {
     "parser": "tika",
     "mimes": [

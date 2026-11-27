@@ -29,7 +29,9 @@ def document_config(source, routes, stt_configured=False):
     endpoint = next(e for e in config['endpoints']['custom'] if e['name'] == target)
     endpoint['resendFiles'] = True
     mimes = sorted({m for route in routes.values() for m in route['mimes']})
-    exact = ['^' + re.escape(m) + '$' for m in mimes]
+    # Browser MIME uses macroEnabled; transport MIME is normalized to lowercase.
+    # Character class works in both Python validation and LibreChat's JS RegExp.
+    exact = ['^' + re.escape(m).replace('macroenabled', 'macro[eE]nabled') + '$' for m in mimes]
     file_config = config.setdefault('fileConfig', {})
     endpoints = file_config.setdefault('endpoints', {})
     inherited = endpoints.get(target, endpoints.get('agents', endpoints.get('default', {})))
@@ -50,6 +52,8 @@ def document_config(source, routes, stt_configured=False):
                 target_config.setdefault('defaultLLMDeliveryPath', {}).setdefault('overrides', {})[media] = path
     target_config.setdefault('defaultLLMDeliveryPath', {}).setdefault('overrides', {}).update(
         {m: 'text' for m in mimes})
+    if 'application/vnd.ms-excel.sheet.macroenabled.12' in mimes:
+        target_config['defaultLLMDeliveryPath']['overrides']['application/vnd.ms-excel.sheet.macroEnabled.12'] = 'text'
     # Explicit endpoint allowlist needed for .msg and browser aliases absent from defaults.
     existing_supported = target_config.get('supportedMimeTypes',
         file_config['endpoints'].get('default', {}).get('supportedMimeTypes', DEFAULT_SUPPORTED))

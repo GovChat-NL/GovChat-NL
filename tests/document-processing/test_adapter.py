@@ -54,6 +54,39 @@ def test_missing_auth(client):
     assert client.post('/text', content=b'x').status_code == 401
 
 
+def test_admission_rejection_logged_once_without_payload(client, caplog):
+    with caplog.at_level('WARNING', logger='govchat.document_extractor'):
+        response = client.post('/text', content=b'private-document-sentinel')
+    assert response.status_code == 401
+    records = [r for r in caplog.records if r.name == 'govchat.document_extractor']
+    assert len(records) == 1
+    assert __import__('json').loads(records[0].message) == {
+        'event': 'document_extraction_rejected', 'status': 401,
+        'code': 'invalid_extraction_token'}
+    assert 'private-document-sentinel' not in caplog.text
+
+
+def test_parser_rejection_logged_once_without_payload(client, caplog):
+    client.result[0]['X-TIKA:WARN:parse'] = 'private-parser-sentinel'
+    with caplog.at_level('WARNING', logger='govchat.document_extractor'):
+        response = upload(client, filename='private-filename-sentinel.pdf')
+    assert response.status_code == 422
+    records = [r for r in caplog.records if r.name == 'govchat.document_extractor']
+    assert len(records) == 1
+    assert __import__('json').loads(records[0].message) == {
+        'event': 'document_extraction_rejected', 'status': 422,
+        'code': 'tika_partial_or_failed'}
+    assert 'private-parser-sentinel' not in caplog.text
+    assert 'private-filename-sentinel' not in caplog.text
+
+
+def test_unknown_rejection_detail_not_logged(caplog):
+    with caplog.at_level('WARNING', logger='govchat.document_extractor'):
+        e.log_rejection(e.HTTPException(422, 'private_exception_sentinel'))
+    assert 'unknown_rejection' in caplog.text
+    assert 'private_exception_sentinel' not in caplog.text
+
+
 def test_once_native_parser_and_cleanup(client):
     r = upload(client)
     assert r.status_code == 200 and r.json() == {'text': client.result[0]['X-TIKA:content']}
@@ -99,7 +132,25 @@ def test_limits_busy_and_contract(client):
     assert upload(client).status_code == 429
     client.app.state.safety['waiting'] = 0
     assert client.post('/text', headers={'Authorization': token()}, data={'url': 'http://invalid'}).status_code == 400
-    assert upload(client, pdf(pages=61)).status_code == 422
+    calls_before = len(client.calls)
+    assert upload(client, pdf(pages=2001)).status_code == 422
+    assert len(client.calls) == calls_before
+
+
+def test_217_page_pdf_accepted_before_native_context_handling(client):
+    client.result[0]['xmpTPg:NPages'] = '217'
+    response = upload(client, pdf(pages=217))
+    assert response.status_code == 200
+    assert response.json() == {'text': client.result[0]['X-TIKA:content']}
+    assert len(client.calls) == 1
+    assert not list(client.scratch.iterdir())
+
+
+def test_page_safety_ceiling_remains_bounded():
+    assert e.Settings(secret=SECRET).max_pages == 2000
+    for pages in (0, 2001):
+        with pytest.raises(ValueError, match='page/time limits'):
+            e.Settings(secret=SECRET, max_pages=pages)
 
 
 def test_native_text_preserved(client):
