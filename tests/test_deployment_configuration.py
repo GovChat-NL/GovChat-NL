@@ -54,6 +54,28 @@ class ComposeConfigurationTests(unittest.TestCase):
         self.assertEqual(services["librechat"]["image"], image)
         self.assertEqual(services["govchat-retention"]["image"], image)
 
+    def test_openid_native_startup_adapter_is_read_only_and_only_on_librechat(self):
+        services = self.config("docker-compose.override.yml")["services"]
+        mounts = {v["target"]: v for v in services["librechat"]["volumes"]}
+        name = "librechat-openid-recovery-preload.js"
+        target = "/app/govchat-overlay/" + name
+        self.assertTrue(mounts[target]["read_only"])
+        self.assertTrue(mounts[target]["source"].endswith("/scripts/" + name))
+        self.assertNotIn("/app/govchat-overlay/librechat-openid-recovery.js", mounts)
+        self.assertEqual(services["librechat"]["environment"]["GOVCHAT_OPENID_RECOVERY_ENABLED"], "false")
+        enabled = self.config("docker-compose.override.yml", GOVCHAT_OPENID_RECOVERY_ENABLED="true")["services"]
+        self.assertEqual(enabled["librechat"]["environment"]["GOVCHAT_OPENID_RECOVERY_ENABLED"], "true")
+        options = services["librechat"]["environment"]["NODE_OPTIONS"]
+        self.assertNotIn("librechat-openid-recovery", options)
+        self.assertIn("librechat-tool-event-preload.js", options)
+        self.assertIn("librechat-orchestrator-name-preload.js", options)
+        startup = (ROOT / "scripts/apply-branding.sh").read_text()
+        self.assertIn('node "$openid_script"', startup)
+        self.assertNotIn("GOVCHAT_OPENID_RECOVERY_CHECK_ONLY", services["librechat"]["environment"])
+        for name, service in services.items():
+            if name != "librechat":
+                self.assertNotIn("librechat-openid-recovery", service.get("environment", {}).get("NODE_OPTIONS", ""))
+
     def test_portable_paths_network_image_and_context(self):
         config = self.config(GOVCHAT_DATA_ROOT="/srv/govchat-test", GOVCHAT_NETWORK_EXTERNAL="true",
                              GOVCHAT_NETWORK_NAME="review-network", MONGO_IMAGE="mongo:8.2",

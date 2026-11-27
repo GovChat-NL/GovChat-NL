@@ -76,6 +76,16 @@ node "$translations_script"
 metadata_script=${BRANDING_METADATA_SCRIPT:-/app/govchat-overlay/apply-branding-metadata.js}
 node "$metadata_script"
 
+# Review-only native OpenID adapter. Never load it through NODE_OPTIONS.
+case "${GOVCHAT_OPENID_RECOVERY_ENABLED:-false}" in
+  false) ;;
+  true)
+    openid_script=${GOVCHAT_OPENID_ADAPTER_SCRIPT:-/app/govchat-overlay/librechat-openid-recovery-preload.js}
+    node "$openid_script"
+    ;;
+  *) fail 'GOVCHAT_OPENID_RECOVERY_ENABLED must be true or false' ;;
+esac
+
 # Select a runtime-only minimal config; never overwrite the mounted source YAML.
 minimal_script=${GOVCHAT_MINIMAL_UI_SCRIPT:-/app/govchat-overlay/apply-minimal-ui.js}
 CONFIG_PATH=$(node "$minimal_script")

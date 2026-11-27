@@ -80,6 +80,32 @@ test('enabled rendering writes a private temporary config and disabling restores
   }
 });
 
+test('OpenID startup is opt-in, runs once before app start and fails closed', () => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'govchat-openid-startup-'));
+  const noop = path.join(directory, 'noop.js');
+  const openid = path.join(directory, 'openid.js');
+  fs.writeFileSync(noop, '');
+  fs.writeFileSync(openid, 'console.log("openid-adapter-called");process.exit(Number(process.env.FIXTURE_EXIT || 0))');
+  try {
+    for (const [enabled, exit] of [[undefined, 0], ['false', 0], ['true', 0], ['invalid', 0], ['true', 7]]) {
+      const env = { ...process.env, BRANDING_MODE: 'librechat',
+        LIBRECHAT_NL_TRANSLATIONS_SCRIPT: noop, BRANDING_METADATA_SCRIPT: noop,
+        GOVCHAT_OPENID_ADAPTER_SCRIPT: openid, FIXTURE_EXIT: String(exit),
+        GOVCHAT_MINIMAL_UI_SCRIPT: path.join(root, 'scripts/apply-minimal-ui.js'),
+        CONFIG_PATH: path.join(root, 'librechat.yaml'), GOVCHAT_MINIMAL_UI: 'false' };
+      delete env.GOVCHAT_OPENID_RECOVERY_ENABLED;
+      if (enabled !== undefined) env.GOVCHAT_OPENID_RECOVERY_ENABLED = enabled;
+      const result = spawnSync('sh', [path.join(root, 'scripts/apply-branding.sh'), 'node', '-e',
+        'console.log("app-started")'], { encoding: 'utf8', env });
+      const failed = enabled === 'invalid' || exit !== 0;
+      assert.equal(result.status === 0, !failed, result.stderr);
+      assert.equal(result.stdout.includes('app-started'), !failed);
+      assert.equal(result.stdout.split('openid-adapter-called').length - 1, enabled === 'true' ? 1 : 0);
+      if (enabled === 'true' && !failed) assert.ok(result.stdout.indexOf('openid-adapter-called') < result.stdout.indexOf('app-started'));
+    }
+  } finally { fs.rmSync(directory, { recursive: true, force: true }); }
+});
+
 test('startup selects minimal endpoints only when enabled and fails closed on invalid mode', () => {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'govchat-startup-test-'));
   const translation = path.join(directory, 'translations.js');
@@ -91,6 +117,7 @@ test('startup selects minimal endpoints only when enabled and fails closed on in
         encoding: 'utf8', env: { ...process.env, BRANDING_MODE: 'librechat',
           LIBRECHAT_NL_TRANSLATIONS_SCRIPT: translation,
           BRANDING_METADATA_SCRIPT: translation,
+          GOVCHAT_OPENID_RECOVERY_ENABLED: 'false',
           GOVCHAT_MINIMAL_UI_SCRIPT: path.join(root, 'scripts/apply-minimal-ui.js'),
           CONFIG_PATH: path.join(root, 'librechat.yaml'), ENDPOINTS: 'custom,agents', GOVCHAT_MINIMAL_UI: mode },
       });

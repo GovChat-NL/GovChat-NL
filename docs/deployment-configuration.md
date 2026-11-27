@@ -224,3 +224,32 @@ is optioneel: alleen als een oude publieke panel-URL 404 moet geven. Het script
 slaat geen cookies, screenshots of browserstate op en print geen credentials of
 browserexceptiondetails. Testaccounts/credentials horen nooit in Git. De test
 bewijst geen Entra-login of workflowuitvoering.
+
+
+## Native OpenID-sessieherstel (concept; standaard uit)
+
+De v0.8.8-startupadapter ondersteunt herstel van verlopen of onderbroken
+loginsessies via LibreChats native refreshcoördinatie. Dit staat los van LLM-tokenlimieten.
+De adapter wordt alleen gestart bij `GOVCHAT_OPENID_RECOVERY_ENABLED=true`;
+standaard is dit `false`. De scriptmount is alleen-lezen en uitsluitend voor
+LibreChat. Het is geen `NODE_OPTIONS`-preload of tweede authenticatie-engine.
+
+De adapter controleert vijf exacte bronfingerprints vóór wijzigingen in de
+containerlaag en stopt startup bij afwijkingen. Hij controleert access-tokenversheid,
+behoudt native identity/ownership/delivery-controles en begrenst herstelpogingen.
+Tijdelijke providerproblemen blokkeren verzending; terminale authenticatiefouten
+vereisen opnieuw aanmelden. Reeds verstuurde chatverzoeken worden niet opnieuw
+verstuurd door de recoverylaag. Tokens worden niet toegevoegd aan opslag, logs
+of tab-broadcasts. Native sessietermijnen en configuratie blijven ongewijzigd.
+
+Een geïsoleerde controle kan met `python3 scripts/run_regressions.py --openid`:
+alleen de lokaal aanwezige officiële image, synthetische fixtures, geen netwerk,
+alleen-lezen bron en filesystem en een tijdelijke schrijfbare werkmap.
+Deze VM/unit- en compiled-source-tests bewijzen geen werkende Entra/browserintegratie.
+
+**Vóór inschakelen:** onafhankelijke beveiligingsreview; aparte niet-productieacceptatie
+van Entra-login, revocation/MFA, cookie rolling, meerdere tabs/accountwissels,
+SSE-afbreken/herverbinden en service-worker/cache-upgrades; controle op compatibiliteit
+met alle overige startup-overlays. Rollback vereist uitschakelen én een verse
+containerlaag, omdat uitschakelen bestaande gepatchte bestanden niet herstelt.
+Geen productieacceptatie of rollout is onderdeel van deze wijziging.

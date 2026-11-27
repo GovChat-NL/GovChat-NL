@@ -137,6 +137,18 @@ class RunnerTests(unittest.TestCase):
             self.assertEqual(config.stat().st_mode & 0o777, 0o700)
             self.assertEqual(execute.call_args.kwargs["env"]["DOCKER_CONFIG"], str(config))
 
+    def test_openid_command_is_read_only_and_uses_temporary_workdir(self):
+        args = runner.container_args(Path('/tmp/public-snapshot'), 'example:image',
+                                     ['node', '--test', 'tests/openid-recovery.test.js'], read_only=True)
+        self.assertIn('--read-only', args)
+        self.assertIn('NODE_OPTIONS=', args)
+        self.assertIn('/tmp:rw,noexec,nosuid,size=256m', args)
+        self.assertEqual(args[-1], '/repo/tests/openid-recovery.test.js')
+        workdirs = [args[i + 1] for i, arg in enumerate(args) if arg == '--workdir']
+        self.assertEqual(workdirs[-1], '/tmp')
+        self.assertEqual(args[args.index('--pull') + 1], 'never')
+        self.assertEqual(args[args.index('--network') + 1], 'none')
+
     def test_offline_never_runs_builds_or_pulls_containers(self):
         with patch.object(runner, "run") as run:
             runner.execute_suite(ROOT, offline=True)
