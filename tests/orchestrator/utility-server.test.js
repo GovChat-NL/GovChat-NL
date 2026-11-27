@@ -55,17 +55,17 @@ async function startServer(t, { token = "utility-test-token", legacy = { image_d
 test('PR13 publication keeps policy and app config but never publishes code or private feedback', async (t) => {
   const server = await startServer(t);
   // The real image mounts overlay/defaults next to server.js. Seed the same
-  // public documents here without writing into the read-only source checkout.
+  // documents here without writing into the read-only source checkout. Manual HTML is private.
   for (const file of ['apps.json', 'help-content.json']) {
     fs.copyFileSync(path.resolve(__dirname, '../../overlay/defaults', file), path.join(server.data, file));
   }
   // publishAll also runs on the periodic refresh, after policy-only startup.
   await delay(15100);
   assert.ok(server.policy().tools);
-  for (const file of ['apps.json', 'help-content.json', 'beleidskompas-config.json']) {
+  for (const file of ['apps.json', 'manual-config.json', 'beleidskompas-config.json']) {
     assert.ok(fs.existsSync(path.join(server.publish, file)), `Missing public config: ${file}`);
   }
-  for (const file of ['loader.js', 'custom.css', 'beleidskompas-feedback.json']) {
+  for (const file of ['loader.js', 'custom.css', 'help-content.json', 'beleidskompas-feedback.json']) {
     assert.equal(fs.existsSync(path.join(server.publish, file)), false);
   }
   assert.equal((await server.request('/api/beleidskompas-feedback', { rating: 'invalid' })).status, 400);

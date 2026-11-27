@@ -173,7 +173,8 @@ def execute_suite(source, offline=False):
         run(container_args(source, bridge_image, bridge_tests), source)
         for script in ("tests/translations/run-tests.js", "tests/translations/run-image-loader-test.js"):
             run(container_args(source, image, ["node", script]), source)
-        run(container_args(source, admin_image, node_tests(source, ["tests/orchestrator/name*.test.js", "tests/orchestrator/prompt*.test.js", "tests/orchestrator/utility*.test.js"])), source)
+        run(container_args(source, admin_image, node_tests(source, ["tests/orchestrator/name*.test.js", "tests/orchestrator/prompt*.test.js", "tests/orchestrator/utility*.test.js", "tests/manual/*.test.js"])), source)
+        run([sys.executable, "scripts/manual-error-inventory.py"], source)
         run(container_args(source, n8n_image, ["node", "--test", "tests/orchestrator/n8n-utility-integration.test.js",
                                              "tests/orchestrator/n8n-image-integration.test.js"], mounts), source)
         run(container_args(source, n8n_image, ["node", "tests/orchestrator/run-document-smoke.js"]), source)

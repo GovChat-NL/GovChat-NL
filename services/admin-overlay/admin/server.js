@@ -12,6 +12,9 @@ const { registerPromptRoutes } = require("./lib/orchestrator-prompt-routes");
 const { createNameStore } = require("./lib/orchestrator-name");
 const { registerNameRoutes } = require("./lib/orchestrator-name-routes");
 const { createUtilityHandler } = require("./lib/utility-tools");
+const { createManualStore } = require("./lib/manual-store");
+const { createManualContext } = require("./lib/manual-context");
+const { registerManualRoutes } = require("./lib/manual-routes");
 
 const app = express();
 const PORT = process.env.PORT || 3002;
@@ -71,6 +74,12 @@ const ORCHESTRATOR_IMAGE_MAX_RESOLUTION_PX_DEFAULT = Math.max(
   Number.parseInt(String(process.env.N8N_ORCHESTRATOR_IMAGE_MAX_RESOLUTION_PX || "1568"), 10) || 1568,
 );
 const LIBRECHAT_INTERNAL_URL = String(process.env.LIBRECHAT_INTERNAL_URL || "http://librechat:3080").trim();
+const MANUAL_HARD_DISABLED = String(process.env.GOVCHAT_MANUAL_HARD_DISABLED || "false");
+if (!["true", "false"].includes(MANUAL_HARD_DISABLED)) throw new Error("GOVCHAT_MANUAL_HARD_DISABLED must be true or false");
+const manualStore = createManualStore({ dataDir: DATA_DIR, publishDir: PUBLISH_DIR,
+  hardDisabled: MANUAL_HARD_DISABLED === "true", configFile: String(process.env.GOVCHAT_MANUAL_CONFIG_FILE || "") });
+const manualContext = createManualContext({ baseUrl: LIBRECHAT_INTERNAL_URL,
+  minimal: process.env.GOVCHAT_MINIMAL_UI === "true", readTools: () => readOrchestratorConfig(), readApps: () => readJSON("apps.json"), readFeatures: () => ({ image: IMAGE_JOBS_ENABLED }) });
 const TRANSCRIPT_SESSIONS_FILE = "transcript-sessions.json";
 const BELEIDSKOMPAS_STATE_FILE = "beleidskompas-state.json";
 const BELEIDSKOMPAS_LIVE_FILE = "beleidskompas-config.json";
@@ -265,6 +274,13 @@ function extractTranscriptFromRealtimeEvent(evt) {
 }
 
 // ── Middleware ──────────────────────────────────────────────────────
+app.use("/api/internal/manual", express.json({ limit: "2kb", strict: true }));
+app.use(["/api/manual", "/api/admin/manual"], express.json({ limit: "2200kb", strict: true }));
+app.use(["/api/manual", "/api/admin/manual", "/api/internal/manual"], (err, req, res, next) => {
+  if (!err) return next();
+  res.set("Cache-Control", "private, no-store");
+  return res.status(err.status === 413 ? 413 : 400).json({ ok: false, error: { code: err.status === 413 ? "INPUT_TOO_LARGE" : "INVALID_JSON", message: "Ongeldige of te grote handleidinginvoer" } });
+});
 app.use("/api/orchestrator/name", (req, res, next) => {
   res.set("Cache-Control", "no-store");
   next();
@@ -337,7 +353,7 @@ function ensureDataDir() {
 
 function initDefaults() {
   ensureDataDir();
-  const jsonDefaults = ["help-content.json", "apps.json", "crawler-config.json", "orchestrator-config.json"];
+  const jsonDefaults = ["apps.json", "crawler-config.json", "orchestrator-config.json"];
   for (const file of jsonDefaults) {
     const target = path.join(DATA_DIR, file);
     if (!fs.existsSync(target)) {
@@ -1113,12 +1129,13 @@ function publishOrchestratorConfig() {
 function publishAll() {
   // This shared policy must always be complete and replaced atomically, never copied raw.
   publishOrchestratorConfig();
-  const jsonFiles = ["help-content.json", "apps.json"];
+  const jsonFiles = ["apps.json"];
   for (const file of jsonFiles) {
     const data = readJSON(file);
     if (data) publishFile(file, data);
   }
   const bkState = readBeleidskompasState();
+  try { manualStore.init(); } catch (error) { console.error(`[manual] Startup blocked: ${error.code || "MANUAL_UNAVAILABLE"}`); }
   publishBeleidskompasLiveConfig(bkState.live || bkState.draft || defaultBeleidskompasFlow());
 }
 
@@ -2452,11 +2469,10 @@ registerPromptRoutes(app, {
   extractToken,
 });
 
-app.get("/api/config/help-content", (req, res) => {
-  const data = readJSON("help-content.json");
-  if (!data) return res.status(404).json({ error: "Not found" });
-  res.json(data);
-});
+registerManualRoutes(app, { store: manualStore, context: manualContext, isAuthenticated,
+  token: CRAWLER_INTERNAL_TOKEN, publicBaseUrl: PUBLIC_BASE_URL });
+// Removed insecure public legacy content endpoint. Frontend must use authenticated /api/manual.
+app.get("/api/config/help-content", (req, res) => res.status(410).json({ error: "Gebruik de geauthenticeerde handleiding-API" }));
 
 app.get("/api/config/apps", (req, res) => {
   const data = readJSON("apps.json");
@@ -2668,9 +2684,10 @@ app.get("/orchestrator-editor", requireAuth, (req, res) => {
 });
 
 app.get("/help-editor", requireAuth, (req, res) => {
-  const data = readJSON("help-content.json") || { title: "", subtitle: "", sections: [] };
+  const data = manualStore.adminState().model;
   sendView(res, "help-editor.html", {
-    jsonData: JSON.stringify(data),
+    // JSON is embedded in an inline script by the legacy view. Escape the HTML parser boundary.
+    jsonData: JSON.stringify(data).replace(/</g, "\\u003c").replace(/>/g, "\\u003e").replace(/&/g, "\\u0026").replace(/\u2028/g, "\\u2028").replace(/\u2029/g, "\\u2029"),
   });
 });
 
@@ -2689,12 +2706,7 @@ app.get("/beleidskompas-editor", requireAuth, (req, res) => {
 
 // ── Admin API endpoints (auth required) ────────────────────────────
 app.post("/api/config/help-content", requireAuth, (req, res) => {
-  try {
-    writeJSON("help-content.json", req.body);
-    res.json({ ok: true });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
+  res.status(410).json({ error: "Gebruik concept, preview en expliciete publicatie via /api/admin/manual" });
 });
 
 app.post("/api/config/apps", requireAuth, (req, res) => {
@@ -3449,6 +3461,7 @@ realtimeWss.on("connection", (clientWs, req) => {
 
 // ── Start ──────────────────────────────────────────────────────────
 initDefaults();
+try { manualStore.init(); } catch (error) { console.error(`[manual] Startup blocked: ${error.code || "MANUAL_UNAVAILABLE"}`); }
 // Publish policy before accepting requests (publishAll refreshes it again after startup).
 publishOrchestratorConfig();
 loadPersistedImageJobs();
