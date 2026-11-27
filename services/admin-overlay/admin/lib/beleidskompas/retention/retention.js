@@ -69,18 +69,20 @@ async function sweep({ query, settings, log = console, seen = {} }) {
   return result;
 }
 
-/** Sweeps now and every 6 hours. `getSettings()` gives the saved settings. */
+/** Sweeps now and every 6 hours. `getSettings()` gives the saved settings.
+ *  Returns the sweep, so a changed Bewaartermijn can apply at once. */
 function startRetention({ query, getSettings, log = console, intervalMs = SWEEP_INTERVAL_MS }) {
   const seen = {};
   const run = async () => {
     try {
-      await sweep({ query, settings: await getSettings(), log, seen });
+      return await sweep({ query, settings: await getSettings(), log, seen });
     } catch (err) {
       log.error(`[govchat-admin] Beleidskompas retention failed: ${err.message}`);
     }
   };
   setInterval(run, intervalMs).unref();
-  return run();
+  run();
+  return run;
 }
 
 module.exports = { retentionKinds, retentionDefaults, sweep, startRetention };

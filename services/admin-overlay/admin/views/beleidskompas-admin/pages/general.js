@@ -16,7 +16,7 @@ function retentionNotice(kinds, retention) {
   return h("div", { class: "notice notice-info", role: "status" }, h("span", {}, ...lines.map((line) => h("div", {}, line))));
 }
 
-export function renderGeneral({ store }) {
+export function renderGeneral({ store, render }) {
   const settings = { ...store.state.settings };
 
   const settingsCard = card(
@@ -45,9 +45,13 @@ export function renderGeneral({ store }) {
           class: "btn btn-primary",
           onClick: async () => {
             try {
-              const res = await api.saveSettings(settings);
+              // Only what changed here, so an old page cannot undo a change made elsewhere.
+              const changed = Object.fromEntries(Object.entries(settings).filter(([key, value]) => value !== store.state.settings[key]));
+              const res = await api.saveSettings(changed);
               store.state.settings = res.settings;
+              if (res.retention) store.state.retention = res.retention;
               toast("Instellingen opgeslagen", "success");
+              render();
             } catch (err) {
               toast(`Opslaan mislukt: ${err.message}`, "error");
             }

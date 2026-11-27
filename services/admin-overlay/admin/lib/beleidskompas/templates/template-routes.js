@@ -7,7 +7,7 @@ const { HttpError } = require("../shared/errors");
 const { createRoute } = require("../shared/route");
 const { retentionKinds } = require("../retention/retention");
 
-function mount(app, { requireAuth, getRepository, getService, normalizeFlow, defaultFlow, publishLive }) {
+function mount(app, { requireAuth, getRepository, getService, normalizeFlow, defaultFlow, publishLive, sweepRetention = async () => undefined }) {
   const failure = "Template request failed";
   const repositoryRoute = createRoute(app, { requireAuth, get: getRepository, failure });
   const serviceRoute = createRoute(app, { requireAuth, get: getService, failure });
@@ -57,10 +57,9 @@ function mount(app, { requireAuth, getRepository, getService, normalizeFlow, def
     if (Object.hasOwn(input, "default_model")) settings.default_model = String(input.default_model).trim() || "govchat-default";
     const before = (await repository.getState()).settings;
     const saved = await repository.saveSettings(settings);
-    for (const { id, setting } of retentionKinds()) {
-      if (saved[setting] !== before[setting]) console.log(`[govchat-admin] Beleidskompas retention: Bewaartermijn ${id} set to ${saved[setting]} days (applies at the next sweep)`);
-    }
-    res.json({ ok: true, settings: saved });
+    const changed = retentionKinds().filter(({ setting }) => saved[setting] !== before[setting]);
+    for (const { id, setting } of changed) console.log(`[govchat-admin] Beleidskompas retention: Bewaartermijn ${id} set to ${saved[setting]} days`);
+    res.json({ ok: true, settings: saved, retention: changed.length ? await sweepRetention() : undefined });
   });
   serviceRoute("get", "/api/beleidskompas/templates/:templateId/export", async (service, req, res) => {
     res.json(await service.exportTemplate(req.params.templateId));

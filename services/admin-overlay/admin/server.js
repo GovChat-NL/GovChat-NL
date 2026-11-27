@@ -2227,8 +2227,10 @@ app.post("/api/config/apps", requireAuth, (req, res) => {
   }
 });
 
+let sweepRetention = async () => undefined; // set once the database is ready
 templateRoutes.mount(app, {
   requireAuth,
+  sweepRetention: () => sweepRetention(),
   getRepository: () => templateRepository,
   getService: () => templateService,
   normalizeFlow: normalizeBeleidskompasFlow,
@@ -2709,7 +2711,7 @@ if (require.main === module) {
       documentSearch = createDocumentSearch({ templates: templateRepository, documents: documentRepository });
       createDocumentIndexer(documentRepository).start();
       ensureLiveBeleidskompasTemplate().catch((err) => console.error("[govchat-admin] Could not publish deployed template:", err));
-      startRetention({ query: (sql, params) => pool.query(sql, params), getSettings: async () => (await templateRepository.getState()).settings });
+      sweepRetention = startRetention({ query: (sql, params) => pool.query(sql, params), getSettings: async () => (await templateRepository.getState()).settings });
     },
   });
   server.listen(PORT, "0.0.0.0", () => {
