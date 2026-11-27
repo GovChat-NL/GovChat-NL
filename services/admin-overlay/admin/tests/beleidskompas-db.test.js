@@ -73,7 +73,9 @@ test("the repository against a real Postgres", { skip: !enabled && "set BELEIDSK
     await query("UPDATE cases SET updated_at = now() - interval '31 days' WHERE id = 'conv-1'");
     const settings = { retention_days: 30, feedback_retention_days: 365 };
     const silent = { log: () => {}, error: () => {} };
+    await query("INSERT INTO answer_feedback (rating) VALUES ('up')");
     assert.equal((await sweep({ query, settings, log: silent })).cases.deleted, 1);
+    assert.equal((await query("SELECT count(*)::int AS n FROM answer_feedback")).rows[0].n, 1, "feedback stays when its case goes");
     assert.equal((await query("SELECT count(*)::int AS n FROM reports WHERE case_id = 'conv-1'")).rows[0].n, 0);
     await sweep({ query, settings, log: silent });
     const { rows: [retention] } = await query("SELECT data FROM settings WHERE key = 'retention'");
