@@ -10,6 +10,9 @@ test('rejects document fallback but leaves plain text and media untouched', () =
   for (const mime of Object.values(routes).flatMap(route => route.mimes)) {
     assert.throws(() => guard.rejectFallback({ mimetype: mime }), { code: 'TIKA_EXTRACTION_FAILED' });
   }
+  assert.throws(() => guard.rejectFallback({
+    mimetype: 'application/vnd.ms-excel.sheet.macroEnabled.12',
+  }), { code: 'TIKA_EXTRACTION_FAILED' });
   for (const mime of ['text/plain', 'text/csv', 'image/png', 'audio/mpeg', 'video/mp4']) {
     assert.doesNotThrow(() => guard.rejectFallback({ mimetype: mime }));
   }

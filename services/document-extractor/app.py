@@ -1,10 +1,12 @@
 """Independently owned LibreChat extraction-protocol adapter, not a RAG server.
 
-Tika-only upload extraction; LibreChat owns persisted text and retention.
+Tika upload extraction plus a cached-cell-only XLSM worker; LibreChat owns
+persisted text and retention.
 No document cache, URL-source route, tenant store, embedding or native-byte path.
 """
 import asyncio
 import json
+import logging
 import os
 import pathlib
 import re
@@ -24,6 +26,29 @@ from starlette.responses import JSONResponse
 
 HERE = pathlib.Path(__file__).resolve().parent
 MiB = 1024 * 1024
+LOG = logging.getLogger('govchat.document_extractor')
+VALIDATION_CODES = frozenset(json.loads((HERE / 'validation-errors.json').read_text()))
+# Never log exception strings, filenames, tokens, IDs or parser/document payloads.
+REJECTION_CODES = frozenset({
+    'invalid_extraction_token', 'invalid_filename', 'unsupported_format',
+    'mime_extension_mismatch', 'empty_or_invalid_extraction', 'extracted_text_limit',
+    'unreadable_extraction', 'invalid_tika_result', 'pdf_page_count_mismatch',
+    'encrypted_document', 'invalid_tika_record', 'tika_partial_or_failed',
+    'invalid_tika_content', 'parser_response_limit', 'invalid_parser_json',
+    'extraction_deadline_exhausted', 'unreadable_or_unsupported_document',
+    'parser_work_termination_unproven', 'document_validation_timeout',
+    'invalid_or_unsupported_document', 'upload_limit', 'extractor_busy',
+    'content_length_required', 'upload_disconnected',
+    'timeout_work_termination_unproven', 'query_options_unsupported',
+    'invalid_multipart_contract', 'invalid_file_id', 'invalid_text_encoding',
+    'binary_text_mismatch', 'invalid_document_request',
+}) | VALIDATION_CODES
+
+
+def log_rejection(error):
+    code = error.detail if isinstance(error.detail, str) and error.detail in REJECTION_CODES else 'unknown_rejection'
+    LOG.warning(json.dumps({'event': 'document_extraction_rejected',
+                            'status': error.status_code, 'code': code}))
 
 
 @dataclass(frozen=True)
@@ -33,7 +58,8 @@ class Settings:
     scratch: str = '/tmp'
     max_input: int = 12 * MiB
     max_output: int = 15 * MiB
-    max_pages: int = 60
+    # Generous parser safety ceiling, not a model-context policy.
+    max_pages: int = 2000
     deadline: float = 270
     min_meaningful_ratio: float = 0.10
     max_replacement_ratio: float = 0.20
@@ -44,7 +70,7 @@ class Settings:
             raise ValueError('JWT secret must be at least 32 characters')
         if not (0 < self.max_input <= 12 * MiB and 0 < self.max_output <= 15 * MiB):
             raise ValueError('byte limits outside safety envelope')
-        if not (1 <= self.max_pages <= 60 and 1 <= self.deadline <= 270):
+        if not (1 <= self.max_pages <= 2000 and 1 <= self.deadline <= 270):
             raise ValueError('page/time limits outside safety envelope')
         if not (0 < self.min_meaningful_ratio <= 1 and
                 0 <= self.max_replacement_ratio <= 0.20 and
@@ -84,12 +110,12 @@ def authenticate(value, secret):
 
 def load_routes(path=HERE / 'routes.json'):
     routes = json.loads(path.read_text())
-    expected = {'pdf', 'docx', 'pptx', 'xlsx', 'msg', 'eml', 'odt', 'doc', 'rtf'}
+    expected = {'pdf', 'docx', 'pptx', 'xlsx', 'xlsm', 'msg', 'eml', 'odt', 'doc', 'rtf'}
     if set(routes) != expected:
         raise ValueError('unsupported routing keys')
     seen = set()
     for ext, route in routes.items():
-        if route['parser'] != 'tika' or not route['mimes']:
+        if route['parser'] != ('spreadsheet' if ext == 'xlsm' else 'tika') or not route['mimes']:
             raise ValueError('format route cannot change fidelity')
         for mime in route['mimes']:
             if not re.fullmatch(r'[a-z0-9.+-]+/[a-z0-9.+-]+', mime) or mime in seen:
@@ -240,24 +266,51 @@ class ParserClient:
             raise HTTPException(503, 'parser_work_termination_unproven') from None
 
 
-async def preflight(path, extension, pages, deadline=None):
-    budget = 30 if deadline is None else min(30, deadline - time.monotonic())
+async def local_worker(script, args, deadline, max_seconds, timeout_code):
+    budget = max_seconds if deadline is None else min(max_seconds, deadline - time.monotonic())
     if budget <= 0:
-        raise HTTPException(503, 'document_validation_timeout')
-    proc = await asyncio.create_subprocess_exec(sys.executable, str(HERE / 'preflight.py'),
-        str(path), extension, str(pages), stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL)
+        raise HTTPException(503, timeout_code)
+    proc = await asyncio.create_subprocess_exec(sys.executable, str(HERE / script), *map(str, args),
+        stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL)
     try:
         async with asyncio.timeout(budget):
             stdout, _ = await proc.communicate()
-        if proc.returncode or len(stdout) > 1024:
+        if proc.returncode == -24:  # SIGXCPU (Linux resource-limited workers).
+            raise HTTPException(422, 'worker_cpu_limit')
+        if proc.returncode < 0:
+            raise HTTPException(422, 'worker_resource_limit')
+        if len(stdout) > 1024:
             raise HTTPException(422, 'invalid_or_unsupported_document')
-        return json.loads(stdout)['pages']
+        try:
+            result = json.loads(stdout)
+        except (ValueError, UnicodeError):
+            raise HTTPException(422, 'invalid_or_unsupported_document') from None
+        if proc.returncode:
+            code = result.get('error') if isinstance(result, dict) else None
+            raise HTTPException(422, code if isinstance(code, str) and code in VALIDATION_CODES
+                                else 'invalid_or_unsupported_document')
+        return result
     except TimeoutError:
-        raise HTTPException(503, 'document_validation_timeout') from None
+        raise HTTPException(503, timeout_code) from None
     finally:
         if proc.returncode is None:
             proc.kill()
             await proc.wait()
+
+
+async def preflight(path, extension, pages, deadline=None):
+    result = await local_worker('preflight.py', [path, extension, pages], deadline,
+                                30, 'document_validation_timeout')
+    return result['pages']
+
+
+async def extract_spreadsheet(path, output, cap, deadline):
+    # Extraction is not preflight. Allow bounded useful work after validation,
+    # without renewing the request deadline or increasing the memory envelope.
+    result = await local_worker('spreadsheet.py', [path, output, cap], deadline,
+                                120, 'spreadsheet_extraction_timeout')
+    if result != {'status': 'ok'}:
+        raise HTTPException(422, 'invalid_or_unsupported_document')
 
 
 class Admission:
@@ -329,6 +382,7 @@ class Admission:
                     self.state['fault'] = 'timeout_work_termination_unproven'
                 raise HTTPException(503, self.state['fault'] or 'extraction_deadline_exhausted') from None
         except HTTPException as error:
+            log_rejection(error)
             response = JSONResponse({'detail': error.detail}, status_code=error.status_code)
             await response(scope, receive, send)
         finally:
@@ -360,6 +414,13 @@ def create_app(settings=None, transport=None):
     app.state.safety = state
 
     app.add_middleware(Admission, settings=s, state=state)
+
+    @app.exception_handler(HTTPException)
+    async def extraction_error(request: Request, error: HTTPException):
+        if request.url.path == '/text':
+            log_rejection(error)
+        return JSONResponse({'detail': error.detail}, status_code=error.status_code,
+                            headers=error.headers)
 
     @app.get('/health')
     async def health():
@@ -403,6 +464,13 @@ def create_app(settings=None, transport=None):
                         if content.startswith(('%PDF-', 'PK\x03\x04')):
                             raise HTTPException(415, 'binary_text_mismatch')
                         return {'text': checked_text(content, s.max_output, s)}
+                    if parser == 'spreadsheet':
+                        # Bounded local worker: never send VBA, objects or links to Tika.
+                        output = pathlib.Path(scratch) / 'cells.txt'
+                        await preflight(path, ext, s.max_pages, request.state.extraction_deadline)
+                        await extract_spreadsheet(path, output, s.max_output,
+                                                  request.state.extraction_deadline)
+                        return {'text': checked_text(output.read_text(encoding='utf-8'), s.max_output, s)}
                     pages = await preflight(path, ext, s.max_pages, request.state.extraction_deadline)
                     try:
                         request.state.parser_started = True

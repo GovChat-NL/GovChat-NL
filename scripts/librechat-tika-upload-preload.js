@@ -15,7 +15,7 @@ const marker = `configuredText = await parseText({ req, file, file_id, allowNati
       } catch (err) {`;
 
 function rejectFallback(file) {
-  if (mimes.has(file?.mimetype)) {
+  if (mimes.has(file?.mimetype?.toLowerCase())) {
     const error = new Error('Document extraction failed. Please try again later or upload a readable, smaller document.');
     error.code = 'TIKA_EXTRACTION_FAILED';
     throw error;

@@ -7,9 +7,25 @@ import resource
 import sys
 import zipfile
 from email.parser import BytesParser
+from xml.etree.ElementTree import ParseError
 
 import olefile
 from pypdf import PdfReader
+
+SAFE_ERRORS = frozenset(json.loads(pathlib.Path(__file__).with_name('validation-errors.json').read_text()))
+
+
+def diagnostic_code(error):
+    if isinstance(error, MemoryError):
+        return 'worker_memory_limit'
+    if isinstance(error, ParseError):
+        return 'invalid_xml'
+    if isinstance(error, KeyError):
+        return 'missing_archive_member'
+    # Only independently owned, fixed validation strings may leave this worker.
+    if isinstance(error, ValueError) and str(error) in SAFE_ERRORS:
+        return str(error)
+    return 'invalid_or_unsupported_document'
 
 
 def inspect(path, extension, max_pages):
@@ -24,7 +40,7 @@ def inspect(path, extension, max_pages):
         if not 1 <= count <= max_pages:
             raise ValueError('page_limit')
         return {'pages': count}
-    if extension in {'docx', 'pptx', 'xlsx', 'odt'}:
+    if extension in {'docx', 'pptx', 'xlsx', 'xlsm', 'odt'}:
         with zipfile.ZipFile(io.BytesIO(data)) as archive:
             entries = archive.infolist()
             names = {e.filename for e in entries}
@@ -40,7 +56,7 @@ def inspect(path, extension, max_pages):
                 if entry.file_size > max(entry.compress_size, 1) * 250:
                     raise ValueError('archive_ratio')
             roots = {'docx': 'word/document.xml', 'pptx': 'ppt/presentation.xml',
-                     'xlsx': 'xl/workbook.xml', 'odt': 'content.xml'}
+                     'xlsx': 'xl/workbook.xml', 'xlsm': 'xl/workbook.xml', 'odt': 'content.xml'}
             signatures = [roots[e] in names for e in ('docx', 'pptx', 'xlsx')]
             if roots[extension] not in names or sum(signatures) > 1:
                 raise ValueError('signature_mismatch')
@@ -49,14 +65,14 @@ def inspect(path, extension, max_pages):
                     raise ValueError('signature_mismatch')
             elif '[Content_Types].xml' not in names:
                 raise ValueError('signature_mismatch')
-            if any('vbaProject' in n for n in names):
+            if extension != 'xlsm' and any('vbaproject' in n.lower() for n in names):
                 raise ValueError('macros_unsupported')
             if extension == 'pptx':
                 count = sum(n.startswith('ppt/slides/slide') and n.endswith('.xml')
                             and '/' not in n[len('ppt/slides/'):] for n in names)
                 if not 1 <= count <= max_pages:
                     raise ValueError('page_limit')
-            if extension == 'xlsx':
+            if extension in {'xlsx', 'xlsm'}:
                 count = sum(n.startswith('xl/worksheets/sheet') and n.endswith('.xml') for n in names)
                 if not 1 <= count <= 30:
                     raise ValueError('sheet_limit')
@@ -93,8 +109,9 @@ if __name__ == '__main__':
     resource.setrlimit(resource.RLIMIT_CPU, (5, 5))
     resource.setrlimit(resource.RLIMIT_AS, (256 * 1024 * 1024, 256 * 1024 * 1024))
     try:
-        print(json.dumps(inspect(sys.argv[1], sys.argv[2], int(sys.argv[3]))))
-    except Exception:
+        result = inspect(sys.argv[1], sys.argv[2], int(sys.argv[3]))
+        print(json.dumps(result))
+    except Exception as error:
         # Parser exceptions may contain document text or filenames.
-        print('{"error":"invalid_or_unsupported_document"}')
+        print(json.dumps({'error': diagnostic_code(error)}))
         sys.exit(1)

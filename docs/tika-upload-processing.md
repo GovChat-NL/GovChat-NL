@@ -21,9 +21,11 @@ is needed in the adapter. The upstream environment variable is named RAG_API_URL
 but this adapter implements extraction only, not RAG endpoints.
 
 The [format manifest](../services/document-extractor/routes.json) covers PDF,
-DOCX, PPTX, XLSX, MSG, EML, ODT, DOC and RTF. Native UTF-8 text and existing media
-routes are preserved. PDF parsing uses normal auto OCR first; only a completed
-unreadable result gets one bounded OCR-only recovery attempt.
+DOCX, PPTX, XLSX, XLSM, MSG, EML, ODT, DOC and RTF. XLSM uses a separate
+[cached-cell-only reader](macro-excel-uploads.md), not Tika: macro code, formulas,
+external links and embedded objects are never executed. Native UTF-8 text and
+existing media routes are preserved. PDF parsing uses normal auto OCR first;
+only a completed unreadable result gets one bounded OCR-only recovery attempt.
 
 ## What was broken and what changed
 
@@ -47,12 +49,37 @@ unreadable result gets one bounded OCR-only recovery attempt.
   requests can wait without their bodies being read/spooled. Waiting counts
   against the original deadline; excess callers receive a busy response. A
   waiting timeout does not poison a parser that was never called.
-- Uploads are limited to 12 MiB, 60 PDF pages and 15 MiB extracted UTF-8 text.
+- Uploads are limited to 12 MiB, 2,000 PDF pages and 15 MiB extracted UTF-8 text.
+  The page ceiling is a parser safety bound, not a guarantee that every document
+  below it fits the resource/time budgets or the selected model's context.
   Binary preflight has up to 30 seconds within the same 270-second request
-  deadline; an overloaded/timed-out validator returns a temporary service error
-  and is killed/reaped, not classified as an invalid document or a parser fault.
+  deadline. A timed-out validator returns a temporary service error and is
+  killed/reaped, not classified as an invalid document or a parser fault.
+  Resource-limit and validation rejections use fixed diagnostic codes; logs
+  exclude filenames, document contents, tokens and raw parser exceptions.
   The renderer also caps the endpoint upload-size setting at 12 MiB. Actual model
   context/token limits are inherited, not increased or bypassed.
+
+## Reproducing the same behaviour on another server
+
+Use the same reviewed source revision and rebuild the extraction adapter from
+the [Dockerfile](../services/document-extractor/Dockerfile). Copying configuration
+alone cannot supply the XLSM reader, MIME handling, diagnostic codes or changed
+page ceiling. Reusing an older image under the same local tag is insufficient.
+
+Keep deployment-specific model context, attachment token/character ceilings and
+cumulative attachment count in the deployment's configuration. Set them for the
+actual provider/model behind the bridge alias; do not assume the alias itself
+defines the provider's context window. The renderer preserves these configured
+budgets, including lower limits, rather than supplying a model-specific default.
+Stored extraction text does not guarantee that all of it enters every prompt.
+
+After updating source and rebuilding, regenerate the opt-in upload configuration
+from the target server's current configuration and recreate LibreChat with the
+existing opt-in overlay. The target server needs its own private credentials;
+never commit or publish environment files, signing keys, uploads or runtime data.
+Within that deployment, LibreChat and the adapter must share its signing key as
+described below. No database copy or manual container source patch is required.
 
 ## Activation
 

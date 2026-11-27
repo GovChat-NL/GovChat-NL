@@ -2,5 +2,7 @@
 !requirements.lock
 !app.py
 !preflight.py
+!spreadsheet.py
 !routes.json
 !native-text.json
+!validation-errors.json

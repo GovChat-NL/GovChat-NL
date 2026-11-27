@@ -16,7 +16,9 @@ for (const config of [candidate, minimalConfig(candidate)]) {
   const ec = lc.getEndpointFileConfig({ fileConfig: merged, endpoint: 'govchat-orchestrator', endpointType: 'custom' });
   assert.equal(ec.legacyFileUploadUX, false);
   assert.equal(lc.isPermissiveMimeConfig(merged.text.supportedMimeTypes), false);
-  for (const route of Object.values(routes)) for (const mimeType of route.mimes) {
+  const documentMimes = [...Object.values(routes).flatMap(route => route.mimes),
+    'application/vnd.ms-excel.sheet.macroEnabled.12'];
+  for (const mimeType of documentMimes) {
     assert.equal(lc.resolveDefaultUploadLLMDeliveryPath({ mimeType, endpointConfig: ec, fileConfig: merged, endpoint: 'govchat-orchestrator', sttConfigured: false }), 'text', mimeType);
     assert.equal(merged.checkType(mimeType, merged.text.supportedMimeTypes), true);
   }
