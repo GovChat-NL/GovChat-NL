@@ -4,23 +4,20 @@
  * /govchat-overlay/src/overlay.js.
  */
 import { escapeHTML, escapeAttr } from "./shared/html.js";
-import { fetchHelpContent, openHelpModal as showHelpModal, closeHelpModal } from "./shared/help.js";
+import { initializeManual, openHelpModal as showHelpModal, closeHelpModal, manualRouteCheck, scheduleManualAuto, suspendManual, isManualEnabled } from "./shared/help.js";
 
 (function () {
   "use strict";
 
   const CONFIG = {
-    helpContentUrl: "/govchat-overlay/help-content.json",
     appsUrl: "/govchat-overlay/apps.json",
     appName: window.GOVCHAT_BRANDING?.appName || document.title || "GovChat-NL",
-    storageKey: "govchat_help_dont_show",
     helpFaqUrl: "https://govchat-nl.github.io/",
     // sessionStorage key for the app requested via the URL
     // (see rememberRequestedScreen).
     requestedScreenStorageKey: "gc_requested_screen",
   };
 
-  let helpData = null;
   let appsData = null;
   let overlayActive = false;
   // App id that the URL asked for, until the overlay is active and can
@@ -146,6 +143,7 @@ import { fetchHelpContent, openHelpModal as showHelpModal, closeHelpModal } from
   }
 
   function refreshOverlayState() {
+    manualRouteCheck();
     rewriteHelpFaqMenuLink();
 
     requestScreenAfterLogin();
@@ -164,6 +162,7 @@ import { fetchHelpContent, openHelpModal as showHelpModal, closeHelpModal } from
     }
     if (!shouldBeActive && overlayActive) {
       overlayActive = false;
+      suspendManual();
       removeButtonsAndModals();
     }
   }
@@ -179,6 +178,7 @@ import { fetchHelpContent, openHelpModal as showHelpModal, closeHelpModal } from
 
     // Strictly target only the "Help & FAQ" item.
     document.querySelectorAll("a, button, [role='menuitem']").forEach((el) => {
+      if (el.hasAttribute("data-govchat-manual-menu")) return;
       const label = normalize(el.textContent);
       if (label !== "help & faq") return;
 
@@ -193,7 +193,8 @@ import { fetchHelpContent, openHelpModal as showHelpModal, closeHelpModal } from
       el.addEventListener("click", (e) => {
         e.preventDefault();
         e.stopPropagation();
-        window.open(targetUrl, "_blank", "noopener,noreferrer");
+        if (isManualEnabled()) openHelpModal();
+        else window.open(targetUrl, "_blank", "noopener,noreferrer");
       });
     });
   }
@@ -254,6 +255,7 @@ import { fetchHelpContent, openHelpModal as showHelpModal, closeHelpModal } from
   }
 
   function removeButtonsAndModals() {
+    closeHelpModal();
     [
       "gc-help-btn",
       "gc-launcher-btn",
@@ -269,15 +271,6 @@ import { fetchHelpContent, openHelpModal as showHelpModal, closeHelpModal } from
   }
 
   function createButtons() {
-    if (!document.getElementById("gc-help-btn")) {
-      const helpBtn = document.createElement("button");
-      helpBtn.id = "gc-help-btn";
-      helpBtn.title = "Help";
-      helpBtn.textContent = "?";
-      helpBtn.addEventListener("click", openHelpModal);
-      document.body.appendChild(helpBtn);
-    }
-
     if (!document.getElementById("gc-launcher-btn")) {
       const launcherBtn = document.createElement("button");
       launcherBtn.id = "gc-launcher-btn";
@@ -300,20 +293,11 @@ import { fetchHelpContent, openHelpModal as showHelpModal, closeHelpModal } from
   }
 
   async function loadHelpContent() {
-    helpData = await fetchHelpContent(CONFIG.helpContentUrl);
-
-    // When the URL asks for an app, the user is about to be forwarded to
-    // it; the help modal would only flash. If no forward follows,
-    // openRequestedScreen shows it after all.
-    if (!requestedScreenId) scheduleHelpModal();
+    await initializeManual({ auto: !requestedScreenId, nativeEntrypoints: true });
   }
 
   function scheduleHelpModal() {
-    const dontShow = localStorage.getItem(CONFIG.storageKey) === "1";
-    if (dontShow) return;
-    setTimeout(() => {
-      if (overlayActive) openHelpModal();
-    }, 250);
+    scheduleManualAuto();
   }
 
   async function loadAppsConfig() {
@@ -333,7 +317,7 @@ import { fetchHelpContent, openHelpModal as showHelpModal, closeHelpModal } from
   // Opens the shared help modal with the overlay's own settings, so the
   // other callers in this file do not have to repeat them.
   function openHelpModal() {
-    showHelpModal(helpData, { appName: CONFIG.appName, storageKey: CONFIG.storageKey });
+    showHelpModal();
   }
 
   function openAppLauncher() {

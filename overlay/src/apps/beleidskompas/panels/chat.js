@@ -6,6 +6,7 @@ import { requireElement } from "../../../shared/dom.js";
 import { composePrompt, sendBeleidskompasChatMessage, sendBeleidskompasFeedback } from "../beleidskompas-api.js";
 import { formatRichText, formatTime, normalizeCitations, parseAdvice, verdictClass } from "../format.js";
 import { citationButtonHTML, openCitationFromClick } from "../popups.js";
+import { manualRouteCheck } from "../../../shared/help.js";
 
 /** Reveals `fullText` progressively over ~`durationMs`, calling
  *  `onTick(partialText)` each frame - a client-side typewriter effect,
@@ -49,7 +50,7 @@ function feedbackHTML(message, index) {
   }
   return `
     <div class="gc-bk-feedback" data-feedback-for="${index}">
-      ${message.feedbackError ? `<span class="gc-bk-feedback-label">Versturen mislukt (${escapeHTML(message.feedbackError)}), probeer opnieuw.</span>` : ""}
+      ${message.feedbackError ? `<span class="gc-bk-feedback-label" data-govchat-manual-error="feedback" data-govchat-error-message="${escapeHTML(message.feedbackError)}">Versturen mislukt (${escapeHTML(message.feedbackError)}), probeer opnieuw.<span data-govchat-manual-error-actions></span></span>` : ""}
       <span class="gc-bk-feedback-label">Was dit bruikbaar?</span>
       <button type="button" class="gc-bk-feedback-btn ${message.feedbackRating === "up" ? "is-chosen" : ""}" data-feedback-rating="up" aria-label="Wel bruikbaar">👍</button>
       <button type="button" class="gc-bk-feedback-btn ${message.feedbackRating === "down" ? "is-chosen" : ""}" data-feedback-rating="down" aria-label="Niet bruikbaar">👎</button>
@@ -94,11 +95,11 @@ function messageHTML(m, idx) {
           ${isUser
             ? ""
             : `<div class="gc-bk-msg-author"><span class="gc-bk-msg-avatar">${CHART_ICON}</span><span class="gc-bk-msg-name">Beleidskompas</span></div>`}
-          <div class="gc-bk-msg-text">${
+          <div class="gc-bk-msg-text" ${m.manualError ? `data-govchat-manual-error="app" data-govchat-error-message="${escapeHTML(m.manualError)}"` : ""}>${
             m.pending && !m.text
               ? '<span class="gc-bk-typing-dots"><span></span><span></span><span></span></span>'
               : messageBodyHTML(m)
-          }</div>
+          }${m.manualError ? '<span data-govchat-manual-error-actions></span>' : ""}</div>
           ${Array.isArray(m.citations) && m.citations.length
             ? `<div class="gc-bk-citations">${m.citations.map(citationButtonHTML).join("")}</div>`
             : ""}
@@ -119,6 +120,7 @@ export function setupChat(store, { sources }) {
   function renderChat() {
     chatLogEl.innerHTML = state.messages.map(messageHTML).join("");
     chatLogEl.scrollTop = chatLogEl.scrollHeight;
+    manualRouteCheck(); // Only explicitly marked caught errors; no generated-text scan.
   }
 
   async function submitFeedback(message, comment) {
@@ -207,6 +209,7 @@ export function setupChat(store, { sources }) {
       store.updateMessage(pendingMessage, {
         pending: false,
         text: `Beleidskompas niet bereikbaar of fout: ${String(err?.message || err)}. Probeer het opnieuw of open een nieuwe chat.`,
+        manualError: String(err?.message || err),
       });
     } finally {
       setComposerDisabled(false);

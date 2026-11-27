@@ -1,0 +1,129 @@
+{
+  "generatedAt": "2026-11-27T15:05:50.432Z",
+  "browser": "145.0.7632.6",
+  "isolation": "loopback-only; synthetic trusted auth/config; actual model/store/routes/editor and ES modules; native markers not full client build",
+  "passed": 24,
+  "failed": 0,
+  "results": [
+    {
+      "name": "desktop modal, focus trap, dynamic inert and exact restore",
+      "status": "passed",
+      "durationMs": 1707
+    },
+    {
+      "name": "passage history and explicit TOC fallback never modify chat history",
+      "status": "passed",
+      "durationMs": 1742
+    },
+    {
+      "name": "200 and 400 percent equivalent viewport reflow keeps text and controls reachable",
+      "status": "passed",
+      "durationMs": 2566
+    },
+    {
+      "name": "automatic preflight rejects unavailable authenticated content despite public enabled metadata",
+      "status": "passed",
+      "durationMs": 1936
+    },
+    {
+      "name": "suspended login bootstrap cannot re-enable private entrypoints from a late response",
+      "status": "passed",
+      "durationMs": 934
+    },
+    {
+      "name": "complete repository catalog is searchable and editable without public defaults",
+      "status": "passed",
+      "durationMs": 8882
+    },
+    {
+      "name": "hierarchy and trusted rights filter TOC/search/get/document/print/context",
+      "status": "passed",
+      "durationMs": 5127
+    },
+    {
+      "name": "canonical citations validate current passage and preserve conversation; stale/hidden/unknown fallback",
+      "status": "passed",
+      "durationMs": 5438
+    },
+    {
+      "name": "mobile layout/navigation and dark theme screenshots",
+      "status": "passed",
+      "durationMs": 3587
+    },
+    {
+      "name": "native marker adapter is idempotent and fixed errors do not scan chat prose",
+      "status": "passed",
+      "durationMs": 2859
+    },
+    {
+      "name": "revision/focus and disable invalidate old content, remove entries and restore inert on close",
+      "status": "passed",
+      "durationMs": 3525
+    },
+    {
+      "name": "focus revalidates changed rights without a new content revision",
+      "status": "passed",
+      "durationMs": 2068
+    },
+    {
+      "name": "initial canonical deep link and route/popstate opens validate without replacing route",
+      "status": "passed",
+      "durationMs": 3112
+    },
+    {
+      "name": "global error-reference visibility removes articles from all read routes, print and contextual buttons",
+      "status": "passed",
+      "durationMs": 2330
+    },
+    {
+      "name": "automatic never: full-route same-session suppression and next-session policy",
+      "status": "passed",
+      "durationMs": 5196
+    },
+    {
+      "name": "automatic first-use: full-route same-session suppression and next-session policy",
+      "status": "passed",
+      "durationMs": 4170
+    },
+    {
+      "name": "automatic new-revision: full-route same-session suppression and next-session policy",
+      "status": "passed",
+      "durationMs": 7708
+    },
+    {
+      "name": "automatic every-session: full-route same-session suppression and next-session policy",
+      "status": "passed",
+      "durationMs": 4781
+    },
+    {
+      "name": "storage denied prevents automatic popups across full chat/start/app routes, manual remains usable",
+      "status": "passed",
+      "durationMs": 4605
+    },
+    {
+      "name": "verified account-scoped storage contains only opaque preferences and does not suppress another user",
+      "status": "passed",
+      "durationMs": 2874
+    },
+    {
+      "name": "automatic opening never competes with another dialog or an explicit manual click",
+      "status": "passed",
+      "durationMs": 3637
+    },
+    {
+      "name": "start and Beleidskompas use the same real manual and preserve app state",
+      "status": "passed",
+      "durationMs": 2191
+    },
+    {
+      "name": "Beleidskompas caught error components offer validated context without scanning answer prose",
+      "status": "passed",
+      "durationMs": 1161
+    },
+    {
+      "name": "real admin editor saves draft, previews hidden reasons, publishes and preserves conflicting local changes",
+      "status": "passed",
+      "durationMs": 3202
+    }
+  ]
+}

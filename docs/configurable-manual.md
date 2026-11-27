@@ -2,7 +2,7 @@
 
 ## Status en grens
 
-Dit is het backend/content/agentdeel vanaf dev-commit 5b1e251. De nieuwe modal, helpknoppen, startpagina-integratie, automatische opening, footeradapter, printweergave, contextuele foutlinks en beheereditor zijn **nog niet geïmplementeerd**. De oude editor kan niet meer via de oude save-route publiceren. De volgende frontendtaak moet de endpoints hieronder gebruiken. Activeer de handleiding pas na die taak en onafhankelijke security-/regressiereview.
+Backend/content/agent én de gedeelde frontend en beheereditor zijn geïmplementeerd vanaf dev-commit 5b1e251. Chat, startpagina en Beleidskompas gebruiken dezelfde geauthenticeerde modal met zoeken, passagenavigatie, print, automatische voorkeuren en gevalideerde citaatbestemmingen. De editor gebruikt uitsluitend de private beheer-API, zonder inline contentbootstrap. Native footer/menu/mobiele toegang vereist de kleine opt-in buildoverride; zie [frontendbeheer en migratie](manual-frontend.md). De feature blijft standaard uit. Activeer pas na onafhankelijke security-/agentintegratiereview; er is niets uitgerold.
 
 Standaard is de handleiding uit; automatisch openen staat afzonderlijk op nooit. Er worden geen LibreChat-productfuncties aan-/uitgezet. Limburg/LAICA is een afzonderlijk optioneel profiel. De opgegeven contacten en cursuslink zijn profieldata om vóór publicatie te controleren; geen beleidsgaranties. Er zijn geen vaste model-, kennisgrens-, privacy-, logging-, training-, retentie-, beschikbaarheids-, kosten- of CO₂-garanties opgenomen.
 
@@ -100,7 +100,7 @@ Alle mutaties behalve preview bevatten baseRevision én draftRevision uit het me
 | POST /rollback | revision van historie plus beide actuele revisies; atomair nieuwe publicatie van historisch effectief model |
 | POST /disable | beide revisies; één vergrendelde publicatie van live versie met enabled:false; niet een ander concept publiceren |
 
-Frontendeditor moet profiel-/broninformatie, locks, lege overrides en conflicten zichtbaar maken. Voor preview tonen verborgen redenen zoals manual-disabled, deployment-disabled, chapters-hidden, topics-hidden, errors-hidden, category-hidden, capability:… en right:…. UI mag preview nooit als gebruikers-/agentbron gebruiken. Safe inline legacybootstrap is alleen tijdelijke compatibiliteit, geen nieuwe editorimplementatie.
+De frontendeditor toont profiel-/broninformatie, locks, lege overrides en conflicten. Preview toont verborgen redenen zoals manual-disabled, deployment-disabled, chapters-hidden, topics-hidden, errors-hidden, category-hidden, capability:… en right:…. Preview is nooit een gebruikers-/agentbron. De tijdelijke inline legacybootstrap is vervangen door geauthenticeerde fetch en expliciet toegestane editorassets; backendmodel/store/API-contracten zijn niet gewijzigd.
 
 Statuscodes: 400 INVALID_MANUAL/INVALID_INPUT/INVALID_JSON, 401 UNAUTHORIZED, 403 CROSS_ORIGIN/TOOL_DISABLED, 404 MANUAL_DISABLED/PASSAGE_NOT_FOUND, 409 REVISION_CONFLICT/REVISION_CHANGED, 413 INPUT_TOO_LARGE, 415 JSON_REQUIRED, 503 MANUAL_UNAVAILABLE/PUBLISH_FAILED/AUTH_NOT_CONFIGURED. Foutvorm: ok:false, error:{code,message}, fallback. Parserfouten kunnen geen fallback hebben. Geen BadRequest automatisch als contentfilter vertalen.
 
@@ -142,4 +142,4 @@ De content beschrijft chat starten/stoppen/bewerken/hergenereren/geschiedenis/zo
 
 [tests/manual](../tests/manual) test model/sanitization, 256 zichtbaarheid/contextcombinaties over zoek/get/UI/agent, ouders, defaults/profiel/lege waarden, migratie, source/reset, revisionconflicten, storageprivacy, symlinks, publicatiefalen, restart, rollback, CLI, echte lokale HTTP-auth/API en toolselectie/invocationdisable. Gepinde upstream UI-/errorbronnen zijn onderzocht. Bestaande minimale-UI-, footer-, toolstream-, prompt-/naam-, documentcontext-, utilityserver- en configuratietests worden apart gerapporteerd in de overdracht.
 
-Geen live SSO-gebruiker, browsermodal, toegankelijkheid, echte product-/foutvraag aan een draaiende LLM of end-to-end citaatklik gevalideerd in deze backendtaak. Die blijven frontend-/acceptatiewerk. Geen deployments veranderd, geen push/PR gemaakt.
+De historische backendtaak bevatte nog geen browseracceptatie. De frontendvervolgtaak bevat echte geïsoleerde Playwright-tests voor modal/editor, zichtbaarheid, voorkeuren, print-DOM, focus/inert, citaatklik en appintegratie, plus een geslaagde volledige native-clientcompilatie. Zie [browserbewijs](../tests/manual/evidence/README.md) en [native/regressieresultaten](manual-native-build-validation.md). Live Entra/SSO, echte LLM-product-/foutvragen, schermlezerhardware, OS-printer/PDF-uitvoer en browseracceptatie van de volledige ingelogde native client blijven niet uitgevoerd. Geen deployments veranderd, geen push/PR gemaakt.

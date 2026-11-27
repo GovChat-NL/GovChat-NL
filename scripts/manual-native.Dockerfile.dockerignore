@@ -1,0 +1,5 @@
+# Only the patch is required from the host. Never send local tools/runtime/config.
+**
+!scripts/
+!scripts/patch-manual-native.js
+!scripts/manual-native.Dockerfile

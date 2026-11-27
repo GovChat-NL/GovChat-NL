@@ -1,5 +1,7 @@
 # Overdracht backend/content/agent — configureerbare handleiding
 
+> Historische overdracht van backendcommit 6e1417996d69071aeab20dbfb0cfe804e04abb3f. De hieronder als open genoemde frontend/editor zijn inmiddels geïmplementeerd. Actuele oplevering, beheer/migratie, bewijs en resterende grenzen staan in [manual-frontend.md](manual-frontend.md). Deze oorspronkelijke testresultaten blijven historische backendresultaten, niet het totale huidige acceptatiebewijs.
+
 Branch: feat/configurable-user-manual. Basis: origin/dev 5b1e2517e1bfad83fb8caf3f9b03911717c68f47. Geen push, PR, deploymentwijzigingen, andere worktrees of private runtimebestanden. Tijdelijke Node/upstream/testafhankelijkheden staan uitsluitend in de genegeerde werkmap van deze worktree. Geen manifest-/dependenciewijzigingen nodig.
 
 Het exacte model, alle endpoints, body-/responsevormen, foutcodes, filtering, frontendrevisie-/citaatvalidatie, authbootstrap, adminoverrides/reset en script-/deployprocedure staan in [configurable-manual.md](configurable-manual.md).
@@ -80,4 +82,4 @@ Tests/docs:
 - [manual-error-inventory.json](manual-error-inventory.json)
 - [manual-backend-handoff.md](manual-backend-handoff.md)
 
-Niet gewijzigd: gedeelde helpfrontend, overlayintegratie, start/appfrontend, modal-CSS en admineditorimplementatie.
+Niet gewijzigd **in de oorspronkelijke backendcommit**: gedeelde helpfrontend, overlayintegratie, start/appfrontend, modal-CSS en admineditorimplementatie. De frontendvervolgcommit wijzigt deze wel; zie de actuele frontenddocumentatie.

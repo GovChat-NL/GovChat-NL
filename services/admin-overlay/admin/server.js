@@ -2684,11 +2684,20 @@ app.get("/orchestrator-editor", requireAuth, (req, res) => {
 });
 
 app.get("/help-editor", requireAuth, (req, res) => {
-  const data = manualStore.adminState().model;
-  sendView(res, "help-editor.html", {
-    // JSON is embedded in an inline script by the legacy view. Escape the HTML parser boundary.
-    jsonData: JSON.stringify(data).replace(/</g, "\\u003c").replace(/>/g, "\\u003e").replace(/&/g, "\\u0026").replace(/\u2028/g, "\\u2028").replace(/\u2029/g, "\\u2029"),
-  });
+  if (req.path.endsWith("/")) return res.redirect("../help-editor");
+  res.set("Vary", "Cookie");
+  res.set("X-Content-Type-Options", "nosniff");
+  res.set("Content-Security-Policy", "default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; frame-src 'self' about:; img-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'self'");
+  sendView(res, "help-editor.html");
+});
+
+// Only these editor assets are served; never expose views, defaults or private state.
+app.get("/help-editor-assets/:asset", requireAuth, (req, res) => {
+  if (!["editor.js", "editor.css"].includes(req.params.asset)) return res.sendStatus(404);
+  res.set("Cache-Control", "private, no-store");
+  res.set("Vary", "Cookie");
+  res.set("X-Content-Type-Options", "nosniff");
+  res.sendFile(path.join(__dirname, "views", "help-editor-assets", req.params.asset));
 });
 
 app.get("/apps-editor", requireAuth, (req, res) => {

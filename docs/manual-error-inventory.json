@@ -6363,7 +6363,7 @@
     {
       "origin": "repo",
       "path": "overlay/src/apps/beleidskompas/page.js",
-      "sha256": "c41f6bcc445ee26fd6c381f44f79c858ece53e0c6c85cc56c704b15bd0922004",
+      "sha256": "b1a4204129f8d89a324ec521106c8bc4e0a25cdfe43ffd025d33f24847b97c35",
       "entries": [],
       "exclusion": "Geen letterlijk gebruikersfouttype in deze bron; dynamische provider-/exceptiontekst valt onder probleem-algemeen. Tests en logging zijn geen catalogusinhoud."
     },
@@ -6377,9 +6377,25 @@
     {
       "origin": "repo",
       "path": "overlay/src/apps/beleidskompas/panels/chat.js",
-      "sha256": "f3e70c47fca31d6b2ea21c35d7fecd484b06799d86d5d964a91983b31d71133c",
-      "entries": [],
-      "exclusion": "Geen letterlijk gebruikersfouttype in deze bron; dynamische provider-/exceptiontekst valt onder probleem-algemeen. Tests en logging zijn geen catalogusinhoud."
+      "sha256": "817369ef65fec502da8ec477f92b5d5838a47db52c6968bd756533030c8a1ea8",
+      "entries": [
+        {
+          "code": "<span class=\"gc-bk-feedback-label\" data-govchat-manual-error=\"feedback\" data-govchat-error-message=\"${escapeHTML(message.feedbackError)}\">Versturen mislukt (${escapeHTML(message.feedbackError)}), probeer opnieuw.<span data-govchat-manual-error-actions></span></span>",
+          "message": "",
+          "line": 53,
+          "article": "err-unknown_provider_error",
+          "exclusion": "Dynamische exception-/provider-/SSO-tekst: geen vaste foutcode en geen betrouwbare tekstmatching. Gebruik probleem-algemeen; ErrorTypes-symbolen worden daarnaast als vaste enum geïnventariseerd.",
+          "relevance": "Fallback zonder diagnose."
+        },
+        {
+          "code": "data-govchat-manual-error=\"app\" data-govchat-error-message=\"${escapeHTML(m.manualError)}\"",
+          "message": "",
+          "line": 98,
+          "article": "err-unknown_provider_error",
+          "exclusion": "Dynamische exception-/provider-/SSO-tekst: geen vaste foutcode en geen betrouwbare tekstmatching. Gebruik probleem-algemeen; ErrorTypes-symbolen worden daarnaast als vaste enum geïnventariseerd.",
+          "relevance": "Fallback zonder diagnose."
+        }
+      ]
     },
     {
       "origin": "repo",
@@ -6447,7 +6463,7 @@
     {
       "origin": "repo",
       "path": "overlay/src/apps/start/start.js",
-      "sha256": "73620e8088063d4d557d3cfba7862bd777e1da841e7008d010ce8d8956f26d9d",
+      "sha256": "a6c9794188d7ab6cea137206965764267f94c64b06dcf4c79361f39701240ea2",
       "entries": [],
       "exclusion": "Geen letterlijk gebruikersfouttype in deze bron; dynamische provider-/exceptiontekst valt onder probleem-algemeen. Tests en logging zijn geen catalogusinhoud."
     },
@@ -7723,7 +7739,7 @@
     {
       "origin": "repo",
       "path": "services/admin-overlay/admin/server.js",
-      "sha256": "cac7a0397aae72934f6c4e8fdf6645f42d47bdc44c178fc983452d2b5a0b3eb5",
+      "sha256": "752f520f14ae3a39a56368a9763842c01ece7e5937cc7a07ff505f652d6db201",
       "entries": [
         {
           "code": "INPUT_TOO_LARGE",
@@ -7808,7 +7824,7 @@
         {
           "code": "Unauthorized",
           "message": "",
-          "line": 3287,
+          "line": 3296,
           "article": "err-unauthorized-d089c8a9",
           "reachableAt": [],
           "relevance": "Letterlijke foutmelding/code of vertaalalias; bereikbaarheid afhankelijk van effectieve functie en rechten. Geen callsite gevonden betekent dat dit conservatieve catalogusdekking is, geen bevestiging van actieve bereikbaarheid."

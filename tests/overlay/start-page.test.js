@@ -10,8 +10,9 @@ const html = fs.readFileSync(path.join(root, 'overlay/src/shared/html.js'), 'utf
 const source = fs.readFileSync(path.join(root, 'overlay/src/apps/start/start.js'), 'utf8')
   .replace(/^import .*;\s*$/gm, '').replace('\nstart();', '\nglobalThis.ready = start();');
 
-async function page({ loggedIn = true, apps = null, search = '' } = {}) {
+async function page({ loggedIn = true, apps = null, search = '', manualEnabled = false } = {}) {
   const redirects = [];
+  const manualCalls = [];
   const document = {
     title: 'GovChat-NL', body: { innerHTML: '' }, querySelectorAll: () => [],
     querySelector: () => null, getElementById: () => null,
@@ -21,16 +22,18 @@ async function page({ loggedIn = true, apps = null, search = '' } = {}) {
     window: { location: { origin: 'https://govchat.example', search, replace: url => redirects.push(url) } },
     getLibreChatAuthToken: async () => { if (!loggedIn) throw new Error('Unauthenticated'); return 'synthetic-token'; },
     fetch: async url => ({ ok: true, json: async () => url === '/api/config' ? { appTitle: 'GovChat-NL' } : apps }),
-    fetchHelpContent: async () => null, openHelpModal() {}, applyLibreChatTheme() {},
+    initializeManual: async options => { manualCalls.push(options); return { enabled: manualEnabled }; },
+    scheduleManualAuto() { manualCalls.push('schedule'); }, openHelpModal() {}, applyLibreChatTheme() {},
   });
   vm.runInContext(html + '\n' + source, context);
   await context.ready;
-  return { redirects, html: document.body.innerHTML };
+  return { redirects, html: document.body.innerHTML, manualCalls };
 }
 
 test('start page requires a LibreChat session before rendering app tiles', async () => {
   const result = await page({ loggedIn: false });
   assert.equal(result.html, '');
+  assert.deepEqual(result.manualCalls, []);
   assert.deepEqual(result.redirects, ['/login?redirect_to=' + encodeURIComponent('/c/new?app=start')]);
 });
 
@@ -68,4 +71,14 @@ test('landing preserves tile order, existing chat context and escaped configurat
   assert.match(result.html, /href="\/c\/existing-case"/);
   assert.ok(result.html.indexOf('data-id="policy"') < result.html.indexOf('data-id="chat"'));
   assert.doesNotMatch(result.html, /Not a page/);
+});
+
+test('landing help is gated and shares post-login manual initialization without legacy assets', async () => {
+  const apps = { landing: { enabled: true, apps: ['chat'] }, apps: [{ id: 'chat', name: 'Chat', target: 'navigate', url: '/c/new' }] };
+  for (const enabled of [false, true]) {
+    const result = await page({ apps, manualEnabled: enabled });
+    assert.equal(result.html.includes('gc-landing-help-btn'), enabled);
+    assert.equal(result.manualCalls[0].auto, false); assert.equal(result.manualCalls[1], 'schedule');
+  }
+  assert.doesNotMatch(source, /help-content\.json|govchat_help_dont_show/);
 });

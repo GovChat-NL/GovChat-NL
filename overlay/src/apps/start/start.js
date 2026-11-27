@@ -4,32 +4,27 @@
 
 import { escapeHTML, escapeAttr } from "../../shared/html.js";
 import { getLibreChatAuthToken } from "../../shared/librechat-api.js";
-import { fetchHelpContent, openHelpModal } from "../../shared/help.js";
+import { initializeManual, openHelpModal, scheduleManualAuto } from "../../shared/help.js";
 import { applyLibreChatTheme } from "../../shared/theme.js";
 
 const APPS_URL = "/govchat-overlay/apps.json";
-const HELP_CONTENT_URL = "/govchat-overlay/help-content.json";
 const CHAT_URL = "/c/new";
 // After a login LibreChat can only redirect to its own routes, so the way
 // back to this page goes through the chat, which the overlay forwards here.
 const LOGIN_URL = "/login?redirect_to=" + encodeURIComponent("/c/new?app=start");
-// Same keys as the overlay: "don't show again" for the manual, and the app
-// the overlay opens after a login (see rememberRequestedScreen there).
-const HELP_STORAGE_KEY = "govchat_help_dont_show";
+// The app the overlay opens after login (see rememberRequestedScreen there).
 const REQUESTED_SCREEN_KEY = "gc_requested_screen";
 
 applyLibreChatTheme();
 start();
 
 async function start() {
-  const [loggedIn, apps, helpData, librechatConfig] = await Promise.all([
+  const [loggedIn, apps] = await Promise.all([
     getLibreChatAuthToken(true).then(
       () => true,
       () => false,
     ),
     fetchJson(APPS_URL),
-    fetchHelpContent(HELP_CONTENT_URL),
-    fetchJson("/api/config"),
   ]);
   if (!loggedIn) {
     window.location.replace(LOGIN_URL);
@@ -43,7 +38,6 @@ async function start() {
   const tiles = ids
     .map((id) => all.find((a) => a && a.id === id))
     .filter((a) => a && a.target === "navigate" && a.url);
-  const appName = String(librechatConfig?.appTitle || document.title);
 
   // After a login the overlay passes along the conversation the user was in
   // (?chat=/c/<id>), so the chat tile takes them back into it.
@@ -58,7 +52,9 @@ async function start() {
     return;
   }
 
-  render(cfg, tiles, chatUrl, helpData, appName);
+  const helpData = await initializeManual({ auto: false });
+  render(cfg, tiles, chatUrl, helpData.enabled ? helpData : null);
+  scheduleManualAuto();
 }
 
 function isChatUrl(url) {
@@ -70,7 +66,7 @@ function isChatUrl(url) {
   }
 }
 
-function render(cfg, tiles, chatUrl, helpData, appName) {
+function render(cfg, tiles, chatUrl, helpData) {
   const cards = tiles
     .map((app) => {
       const href = isChatUrl(app.url) ? chatUrl : app.url;
@@ -90,7 +86,7 @@ function render(cfg, tiles, chatUrl, helpData, appName) {
         <h1 id="gc-landing-title">${escapeHTML(cfg.title || "Welkom")}</h1>
         ${cfg.subtitle ? `<p class="gc-landing-subtitle">${escapeHTML(cfg.subtitle)}</p>` : ""}
         <div class="gc-landing-grid">${cards}</div>
-        ${helpData ? `<p class="gc-landing-help">Twijfel je wat je nodig hebt? <button type="button" id="gc-landing-help-btn">Bekijk de handleiding</button></p>` : ""}
+        ${helpData ? `<p class="gc-landing-help">Twijfel je wat je nodig hebt? <button type="button" id="gc-landing-help-btn" data-gc-manual-entry>Bekijk de handleiding</button></p>` : ""}
       </div>
     </main>`;
 
@@ -109,7 +105,7 @@ function render(cfg, tiles, chatUrl, helpData, appName) {
   });
 
   document.getElementById("gc-landing-help-btn")?.addEventListener("click", () => {
-    openHelpModal(helpData, { appName, storageKey: HELP_STORAGE_KEY });
+    openHelpModal();
   });
 
   const first = document.querySelector(".gc-landing-card");
