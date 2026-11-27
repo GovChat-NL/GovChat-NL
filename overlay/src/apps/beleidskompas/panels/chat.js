@@ -239,7 +239,11 @@ export function setupChat(store, { refreshState, versionId }) {
   }
 
   newChatBtn.addEventListener("click", () => store.startNewSession());
-  requireElement("gc-bk-send-retry").addEventListener("click", () => (failed.message ? sendUserMessage() : ask(failed.substep, "")));
+  requireElement("gc-bk-send-retry").addEventListener("click", () => {
+    if (!failed.message) return ask(failed.substep, "");
+    if (!chatInputEl.value.trim()) chatInputEl.value = failed.message;
+    sendUserMessage();
+  });
   sendBtn.addEventListener("click", sendUserMessage);
   chatInputEl.addEventListener("input", autoGrowInput);
   chatInputEl.addEventListener("keydown", (e) => {

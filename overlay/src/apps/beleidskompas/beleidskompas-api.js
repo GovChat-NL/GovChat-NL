@@ -101,7 +101,7 @@ const CONNECTION_CAUSES = {
 };
 // A request that never started is sent again after each of these pauses.
 const RETRY_PAUSES_MS = [500, 1000, 2000];
-const RETRY_STATUSES = [0, 502, 503, 504];
+const RETRY_STATUSES = [0, 502, 503];
 
 /** fetch rejects with a TypeError when there is no connection; that
  *  counts as a response with status 0. */

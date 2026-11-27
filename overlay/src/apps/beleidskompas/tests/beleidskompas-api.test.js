@@ -109,10 +109,10 @@ test("a request that never started is sent again three times, then the cause is 
     pauses: [500, 1000, 2000],
     message: "Geen verbinding met Beleidskompas.",
   });
-  assert.equal((await sendWithStartResponses([504, 504, 504, 504])).message, "Beleidskompas deed er te lang over (time-out).");
 });
 
-test("a request LibreChat refused is not sent again", async () => {
+test("a request that was refused or timed out is not sent again", async () => {
+  assert.deepEqual(await sendWithStartResponses([504]), { starts: 1, pauses: [], message: "Beleidskompas deed er te lang over (time-out)." });
   assert.deepEqual(await sendWithStartResponses([400]), { starts: 1, pauses: [], message: "Kon geen antwoord starten (HTTP 400)." });
   assert.deepEqual(await sendWithStartResponses([429]), { starts: 1, pauses: [], message: "De limiet voor het aantal berichten is bereikt." });
 });
