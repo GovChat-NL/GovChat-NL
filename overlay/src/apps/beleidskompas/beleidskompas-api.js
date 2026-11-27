@@ -90,11 +90,35 @@ function base64Utf8(text) {
   return btoa(binary);
 }
 
+// What the page says when Beleidskompas cannot be reached, by HTTP status
+// (0: the request got no response at all).
+const CONNECTION_CAUSES = {
+  0: "Geen verbinding met Beleidskompas.",
+  429: "De limiet voor het aantal berichten is bereikt.",
+  502: "Beleidskompas is tijdelijk niet beschikbaar.",
+  503: "Beleidskompas is tijdelijk niet beschikbaar.",
+  504: "Beleidskompas deed er te lang over (time-out).",
+};
+// A request that never started is sent again after each of these pauses.
+const RETRY_PAUSES_MS = [500, 1000, 2000];
+const RETRY_STATUSES = [0, 502, 503];
+
+/** fetch rejects with a TypeError when there is no connection; that
+ *  counts as a response with status 0. */
+function noResponse(err) {
+  if (!(err instanceof TypeError)) throw err;
+  return { ok: false, status: 0, json: async () => ({}) };
+}
+
 /** Sends one message to the Beleidskompas custom endpoint and waits for
- *  the full reply via SSE. Returns { conversationId, messageId, text }. */
-export async function sendBeleidskompasChatMessage({ text, conversationId, parentMessageId }) {
+ *  the full reply via SSE. Returns { conversationId, messageId, text }.
+ *  `pause(ms)` waits between two tries to start the answer. */
+export async function sendBeleidskompasChatMessage(
+  { text, conversationId, parentMessageId },
+  { pause = (ms) => new Promise((resolve) => setTimeout(resolve, ms)) } = {},
+) {
   const messageId = newClientMessageId();
-  const startResp = await librechatFetch("/api/agents/chat/" + BELEIDSKOMPAS_ENDPOINT, {
+  const startAnswer = () => librechatFetch("/api/agents/chat/" + BELEIDSKOMPAS_ENDPOINT, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -113,10 +137,18 @@ export async function sendBeleidskompasChatMessage({ text, conversationId, paren
       editedContent: null,
       addedConvo: null,
     }),
-  });
+  }).catch(noResponse);
+  let startResp = await startAnswer();
+  for (const ms of RETRY_PAUSES_MS) {
+    if (!RETRY_STATUSES.includes(startResp.status)) break;
+    await pause(ms);
+    startResp = await startAnswer();
+  }
   const startData = await startResp.json().catch(() => ({}));
   if (!startResp.ok || !startData?.streamId) {
-    throw new Error(String(startData?.message || startData?.error || `Kon geen antwoord starten (HTTP ${startResp.status}).`));
+    throw new Error(
+      CONNECTION_CAUSES[startResp.status] || String(startData?.message || startData?.error || `Kon geen antwoord starten (HTTP ${startResp.status}).`),
+    );
   }
 
   const streamId = startData.streamId;
@@ -124,9 +156,9 @@ export async function sendBeleidskompasChatMessage({ text, conversationId, paren
   const streamResp = await fetch(`/api/agents/chat/stream/${encodeURIComponent(streamId)}`, {
     method: "GET",
     headers: { Authorization: `Bearer ${token}`, Accept: "text/event-stream" },
-  });
+  }).catch(noResponse);
   if (!streamResp.ok || !streamResp.body) {
-    throw new Error(`Kon geen antwoordstroom openen (HTTP ${streamResp.status}).`);
+    throw new Error(CONNECTION_CAUSES[streamResp.status] || `Kon geen antwoordstroom openen (HTTP ${streamResp.status}).`);
   }
 
   const reader = streamResp.body.getReader();
@@ -136,7 +168,9 @@ export async function sendBeleidskompasChatMessage({ text, conversationId, paren
   let sawError = null;
 
   while (true) {
-    const { value, done } = await reader.read();
+    const { value, done } = await reader.read().catch(() => {
+      throw new Error(CONNECTION_CAUSES[0]);
+    });
     if (done) break;
     buffer += decoder.decode(value, { stream: true });
 

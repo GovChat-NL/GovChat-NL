@@ -24,8 +24,8 @@ function emptyResults(substeps) {
 // carry the substep the user was in (substepId); other messages carry
 // none. An answer also says which step gave it (agent), which can be
 // another step than the substep's when the question was about that step.
-// A notice is what the page itself says, like a greeting or that
-// Beleidskompas cannot be reached. It is not an answer.
+// A notice is what the page itself says, like a greeting or that the
+// cards are not updated. It is not an answer.
 function createMessage(role, text, meta = {}) {
   const message = {
     role,
@@ -163,6 +163,11 @@ export function createStore(steps) {
     changed("chat");
   }
 
+  function removeMessages(...messages) {
+    state.messages = state.messages.filter((m) => !messages.includes(m));
+    changed("chat");
+  }
+
   function updateMessage(message, changes) {
     Object.assign(message, changes);
     changed("chat");
@@ -230,6 +235,7 @@ export function createStore(steps) {
     talkedSinceReport,
     addMessage,
     replaceMessages,
+    removeMessages,
     updateMessage,
     setLastMessageId,
     setConversationId,

@@ -82,6 +82,20 @@ export function setupChat(store, { refreshState, versionId }) {
   const chatInputEl = requireElement("gc-bk-chat-input");
   const sendBtn = requireElement("gc-bk-send");
   const newChatBtn = requireElement("gc-bk-new-chat");
+  const failedEl = requireElement("gc-bk-send-failed");
+  const failedTextEl = requireElement("gc-bk-send-failed-text");
+  // The request that got no answer, for the retry button; null when the
+  // last request was answered.
+  let failed = null;
+
+  /** Shows above the text field why a request got no answer; null hides it. */
+  function showFailure(next) {
+    failed = next;
+    failedEl.hidden = !failed;
+    if (!failed) return;
+    const what = failed.message ? "Je bericht is niet beantwoord" : `Deelstap ${failed.substep.label} is niet uitgewerkt`;
+    failedTextEl.textContent = `${what}: ${failed.reason}.`;
+  }
 
   function stepLabel(stepId) {
     const step = store.steps.find((s) => s.id === stepId);
@@ -131,6 +145,7 @@ export function setupChat(store, { refreshState, versionId }) {
     chatInputEl.placeholder = store.caseStarted()
       ? `Stel een vraag of reageer op deelstap ${store.activeSubstep().label}`
       : "Beschrijf je casus";
+    if (failed && failed.session !== state.session) showFailure(null);
     sendBtn.disabled = Boolean(state.asking);
     chatInputEl.disabled = Boolean(state.asking);
   }
@@ -152,8 +167,9 @@ export function setupChat(store, { refreshState, versionId }) {
    *  its own case. */
   async function ask(substep, message) {
     if (state.asking) return;
+    showFailure(null);
     const text = composePrompt({ substep, message });
-    if (message) store.addMessage("user", message, { substepId: substep.id });
+    const userMessage = message ? store.addMessage("user", message, { substepId: substep.id }) : null;
     // Without text, the answer bubble shows typing dots until the answer
     // arrives.
     const pendingMessage = message ? store.addMessage("assistant", "", { pending: true, substepId: substep.id }) : null;
@@ -193,9 +209,12 @@ export function setupChat(store, { refreshState, versionId }) {
       else if (stillOpen() && answer) store.addMessage("assistant", answer, { agent });
     } catch (err) {
       if (!stillOpen()) return;
-      const failure = `Beleidskompas niet bereikbaar of fout: ${reasonOf(err)}. Probeer het opnieuw of open een nieuwe chat.`;
-      if (pendingMessage) store.updateMessage(pendingMessage, { pending: false, text: failure, notice: true });
-      else store.addMessage("assistant", failure, { notice: true });
+      // No answer came, so a typed message leaves the chat and returns to
+      // the text field; the notice above the field says why.
+      store.removeMessages(userMessage, pendingMessage);
+      if (message) chatInputEl.value = message;
+      autoGrowInput();
+      showFailure({ substep, message, reason: reasonOf(err), session });
     } finally {
       if (stillOpen()) {
         store.setAsking("");
@@ -220,6 +239,11 @@ export function setupChat(store, { refreshState, versionId }) {
   }
 
   newChatBtn.addEventListener("click", () => store.startNewSession());
+  requireElement("gc-bk-send-retry").addEventListener("click", () => {
+    if (!failed.message) return ask(failed.substep, "");
+    if (!chatInputEl.value.trim()) chatInputEl.value = failed.message;
+    sendUserMessage();
+  });
   sendBtn.addEventListener("click", sendUserMessage);
   chatInputEl.addEventListener("input", autoGrowInput);
   chatInputEl.addEventListener("keydown", (e) => {

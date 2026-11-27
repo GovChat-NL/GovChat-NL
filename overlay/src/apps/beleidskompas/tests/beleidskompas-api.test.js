@@ -5,7 +5,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { composePrompt, readCaseState, sendBeleidskompasFeedback } from "../beleidskompas-api.js";
+import { composePrompt, readCaseState, sendBeleidskompasChatMessage, sendBeleidskompasFeedback } from "../beleidskompas-api.js";
 
 const SUBSTEP = { id: "sub_k3x9q2m7", label: "2.1", title: "Rolbepaling" };
 
@@ -72,4 +72,47 @@ test("sendBeleidskompasFeedback posts the rating with step, substep and template
   assert.equal(calls[0][0], "/govchat-api/beleidskompas-feedback");
   assert.deepEqual(calls[0][1], { rating: "up", comment: "", step_id: "stap2", substep_id: "2.1", version_id: "v3" });
   assert.deepEqual(calls[1][1], { rating: "down", comment: "", step_id: "stap1", substep_id: null, version_id: null });
+});
+
+/** Runs sendBeleidskompasChatMessage against a LibreChat whose "start the
+ *  answer" call gives `startResponses` one after the other; a function
+ *  among them is called and may throw. Returns how often the answer was
+ *  started, the pauses in between and the error message. */
+async function sendWithStartResponses(startResponses) {
+  const pauses = [];
+  let starts = 0;
+  const realFetch = globalThis.fetch;
+  globalThis.window = {};
+  globalThis.fetch = async (url) => {
+    if (url === "/api/auth/refresh") return { ok: true, json: async () => ({ token: "t" }) };
+    const next = startResponses[starts++];
+    return typeof next === "function" ? next() : { ok: next === 200, status: next, json: async () => ({ streamId: "s" }) };
+  };
+  let message = "";
+  try {
+    await sendBeleidskompasChatMessage({ text: "Vraag" }, { pause: async (ms) => pauses.push(ms) });
+  } catch (err) {
+    message = err.message;
+  } finally {
+    globalThis.fetch = realFetch;
+    delete globalThis.window;
+  }
+  return { starts, pauses, message };
+}
+
+test("a request that never started is sent again three times, then the cause is named", async () => {
+  const offline = () => {
+    throw new TypeError("Failed to fetch");
+  };
+  assert.deepEqual(await sendWithStartResponses([offline, 502, 503, offline]), {
+    starts: 4,
+    pauses: [500, 1000, 2000],
+    message: "Geen verbinding met Beleidskompas.",
+  });
+});
+
+test("a request that was refused or timed out is not sent again", async () => {
+  assert.deepEqual(await sendWithStartResponses([504]), { starts: 1, pauses: [], message: "Beleidskompas deed er te lang over (time-out)." });
+  assert.deepEqual(await sendWithStartResponses([400]), { starts: 1, pauses: [], message: "Kon geen antwoord starten (HTTP 400)." });
+  assert.deepEqual(await sendWithStartResponses([429]), { starts: 1, pauses: [], message: "De limiet voor het aantal berichten is bereikt." });
 });
