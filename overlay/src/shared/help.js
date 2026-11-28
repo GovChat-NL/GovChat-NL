@@ -14,6 +14,10 @@ let bootstrapFailure = null;
 let getDocument = options => manualRequest('document', {}, options);
 let pendingDeepLink = typeof window !== 'undefined' ? parseManualHref(window.location.pathname + window.location.search) : null;
 let hooks = false;
+let printCleanup = null;
+const competingDialog = () => document.querySelector('[role="dialog"],[role="alertdialog"],dialog[open],#gc-app-backdrop,#gc-iframe,#gc-vs,#gc-img,#gc-tr');
+const authRoute = () => /^\/(login|register|forgot-password|reset-password|verify|oauth)(\/|$)/.test(window.location.pathname);
+function clearPrint() { printCleanup?.(); printCleanup = null; document.getElementById('gc-manual-print')?.remove(); }
 
 export function isManualEnabled() { return authenticated && config.enabled === true; }
 export async function fetchHelpContent() { // compatibility: metadata only, never legacy assets
@@ -81,12 +85,15 @@ export async function recheckManual(force = false, refreshContent = false) {
     if (generation !== lifecycle) return config;
     const changed = next.revision !== config.revision || next.enabled !== config.enabled;
     config = next;
+    if (refreshContent) clearPrint();
+    updatePreferences();
     // Contextual error indexes are scoped to the latest read lifecycle, never a
     // cross-route cache of formerly permitted articles.
     getDocument = options => manualRequest('document', {}, options);
-    cleanupManualEntrypoints();
+    // Adapter identity replacement drops only contextual indexes. Keep the
+    // native trigger connected so async opening can restore keyboard focus.
     if (changed) {
-      document.getElementById('gc-manual-print')?.remove();
+      clearPrint();
       toc = null; active = null; operation++; searchOperation++;
       if (dialog) { dialog.history = []; dialog.historyIndex = -1; updateHistory(); }
       if (dialog) {
@@ -108,9 +115,10 @@ export async function recheckManual(force = false, refreshContent = false) {
         else status(previous ? 'Dit onderwerp is voor jouw account niet meer zichtbaar. Kies een actueel onderwerp.' : 'Actuele inhoudsopgave geladen.');
       }
     }
-  } catch {
+  } catch (error) {
+    if (error?.code === 'CANCELLED') return config;
     if (generation !== lifecycle) return config;
-    document.getElementById('gc-manual-print')?.remove();
+    clearPrint();
     config = { enabled: false }; toc = null; active = null; operation++; searchOperation++;
     cleanupManualEntrypoints();
     if (dialog) { dialog.title.textContent = 'Handleiding'; dialog.subtitle.textContent = ''; dialog.nav.replaceChildren(); dialog.article.replaceChildren(); status(failureText()); }
@@ -138,11 +146,11 @@ export function manualRouteCheck() {
 
 export function scheduleManualAuto() {
   clearTimeout(autoTimer);
-  if (!isManualEnabled() || manualWins || !prefs?.shouldOpen(config.autoOpen, config.revision)) return;
+  if (authRoute() || !isManualEnabled() || manualWins || !prefs?.shouldOpen(config.autoOpen, config.revision)) return;
   autoTimer = setTimeout(() => {
     // Do not wait/poll above someone else's dialog or app. A later manual click
     // remains available; storage denial disables auto across full page routes.
-    if (manualWins || dialog || document.querySelector('[role="dialog"],dialog[open],#gc-app-backdrop,#gc-iframe,#gc-vs,#gc-img,#gc-tr')) return;
+    if (authRoute() || manualWins || dialog || competingDialog()) return;
     if (!autoBusy) openManual({}, { automatic: true });
   }, 350);
 }
@@ -161,12 +169,16 @@ function citationClick(event) {
 export function openHelpModal(_legacyData, _legacyOptions) { return openManual(); }
 
 export async function openManual(target = {}, { automatic = false } = {}) {
+  const trigger = document.activeElement;
+  const focusKind = trigger?.getAttribute?.('data-govchat-manual-owned');
+  const focusHost = focusKind ? trigger.parentElement : null;
+  const focusReturn = trigger?.hasAttribute?.('data-govchat-manual-menu') ? document.querySelector('[data-testid="nav-user"]') || trigger : trigger;
   if (!automatic) { manualWins = true; prefs?.cancelAuto(); clearTimeout(autoTimer); }
   if (!authenticated) await initializeManual({ auto: false });
   const generation = lifecycle;
   const current = await recheckManual(true);
   if (generation !== lifecycle) return;
-  if (automatic && (!current.enabled || !prefs?.shouldOpen(current.autoOpen, current.revision))) return;
+  if (automatic && (authRoute() || !current.enabled || !prefs?.shouldOpen(current.autoOpen, current.revision))) return;
   if (automatic) {
     // A public enabled flag alone does not authorize a popup. Preflight the
     // authenticated, filtered TOC before interrupting the user's screen.
@@ -174,10 +186,10 @@ export async function openManual(target = {}, { automatic = false } = {}) {
     try {
       const permitted = await manualRequest('toc');
       if (generation !== lifecycle || manualWins || dialog || !isManualEnabled() || !prefs?.shouldOpen(config.autoOpen, config.revision) || permitted.revision !== config.revision ||
-          document.querySelector('[role="dialog"],dialog[open],#gc-app-backdrop,#gc-iframe,#gc-vs,#gc-img,#gc-tr')) return;
+           authRoute() || competingDialog()) return;
     } catch { prefs?.cancelAuto(); return; } finally { autoBusy = false; }
   }
-  ensureDialog();
+  ensureDialog({ focusReturn, focusHost, focusKind });
   const serial = ++operation;
   if (!current.enabled) { dialog.nav.replaceChildren(); dialog.article.replaceChildren(); status(failureText(bootstrapFailure || { code: 'MANUAL_DISABLED' })); return; }
   prefs?.opened(current.revision);
@@ -192,12 +204,11 @@ export async function openManual(target = {}, { automatic = false } = {}) {
       if (toc.sections[0]) await navigate(toc.sections[0].id, toc.revision);
       else status('Er zijn geen onderwerpen zichtbaar voor jouw account.');
     } else status('');
-  } catch (error) { showFailure(error); }
+  } catch (error) { if (dialog && serial === operation) showFailure(error); }
 }
 
-function ensureDialog() {
+function ensureDialog({ focusReturn = document.activeElement, focusHost = null, focusKind = null } = {}) {
   if (dialog) return;
-  const focusReturn = document.activeElement;
   const overflow = document.body.style.overflow;
   const backdrop = node('div', null, { id: 'gc-manual-backdrop' });
   const modal = node('section', null, { id: 'gc-manual-modal', role: 'dialog', 'aria-modal': 'true', 'aria-labelledby': 'gc-manual-title', tabindex: '-1' });
@@ -224,8 +235,8 @@ function ensureDialog() {
   const footer = node('footer', null, { class: 'gc-manual-preferences' });
   const optLabel = node('label'); const opt = node('input', null, { type: 'checkbox' });
   optLabel.append(opt, document.createTextNode(' Niet meer automatisch openen'));
-  const restore = node('button', 'Automatische voorkeur herstellen', { type: 'button' });
-  const prefNote = node('span', 'Geen verplichte beleidsacceptatie.');
+  const restore = node('button', 'Opnieuw toestaan', { type: 'button' });
+  const prefNote = node('span');
   footer.append(optLabel, restore, prefNote);
   modal.append(header, subtitle, searchLabel, search, message, body, footer); backdrop.append(modal);
   const inert = new Map();
@@ -234,12 +245,12 @@ function ensureDialog() {
   // Narrow observer exists only while modal is open, to inert newly mounted
   // native menus/routes. It does not fetch, scan content or poll activation.
   const observer = new MutationObserver(makeInert); observer.observe(document.body, { childList: true });
-  dialog = { backdrop, modal, title, subtitle, nav, article, search, message, opt, optLabel, restore, prefNote, observer, inert, focusReturn, overflow, previous, next, history: [], historyIndex: -1 };
+  dialog = { backdrop, modal, title, subtitle, nav, article, search, message, footer, opt, optLabel, restore, prefNote, observer, inert, focusReturn, focusHost, focusKind, overflow, previous, next, history: [], historyIndex: -1 };
   previous.addEventListener('click', () => historyNavigate(-1)); next.addEventListener('click', () => historyNavigate(1)); updateHistory();
   const keydown = event => {
     if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); closeHelpModal(); }
     if (event.key === 'Tab') {
-      const focusable = [...modal.querySelectorAll('button,input,a[href],[tabindex="0"]')].filter(el => !el.disabled && !el.hidden && el.getClientRects().length);
+      const focusable = [...modal.querySelectorAll('button,input,select,textarea,summary,a[href],[tabindex="0"]')].filter(el => !el.disabled && !el.hidden && el.getClientRects().length);
       const first = focusable[0], last = focusable.at(-1);
       if (!first) { event.preventDefault(); modal.focus(); }
       else if (event.shiftKey && (document.activeElement === first || !modal.contains(document.activeElement))) { event.preventDefault(); last.focus(); }
@@ -254,7 +265,7 @@ function ensureDialog() {
   full.addEventListener('click', () => { const on = modal.classList.toggle('gc-manual-full'); full.setAttribute('aria-pressed', String(on)); full.textContent = on ? 'Vensterweergave' : 'Volledig scherm'; });
   navToggle.addEventListener('click', () => { const on = modal.classList.toggle('gc-manual-show-nav'); navToggle.setAttribute('aria-expanded', String(on)); });
   print.addEventListener('click', printManual);
-  opt.addEventListener('change', () => prefs?.suppress(opt.checked));
+  opt.addEventListener('change', () => { prefs?.suppress(opt.checked); updatePreferences(); });
   restore.addEventListener('click', () => { prefs?.restore(); updatePreferences(); status('Voorkeur hersteld. Automatische opening wordt vanaf een volgende sessie opnieuw beoordeeld.'); });
   let timer;
   search.addEventListener('input', () => { clearTimeout(timer); ++searchOperation; timer = setTimeout(() => searchManual(), 250); });
@@ -263,14 +274,18 @@ function ensureDialog() {
 
 function updatePreferences() {
   if (!dialog) return;
+  dialog.footer.hidden = !isManualEnabled() || config.autoOpen === 'never';
   dialog.opt.checked = prefs?.optOut === true;
+  dialog.optLabel.hidden = dialog.opt.checked;
   dialog.opt.disabled = !prefs?.available;
   dialog.restore.disabled = !prefs?.available;
-  dialog.prefNote.textContent = prefs?.available ? 'Geen verplichte beleidsacceptatie. Voorkeur geldt voor jouw account in deze browser.' : 'Browseropslag niet beschikbaar: automatisch openen staat veilig uit.';
+  dialog.restore.hidden = !prefs?.optOut;
+  dialog.prefNote.textContent = !prefs?.available ? 'Browseropslag niet beschikbaar: automatisch openen staat uit.' : dialog.opt.checked ? 'Automatisch openen staat uit.' : '';
+  dialog.prefNote.hidden = !!prefs?.available && !dialog.opt.checked;
 }
 
 export function closeHelpModal() {
-  document.getElementById('gc-manual-print')?.remove();
+  clearPrint();
   if (!dialog) return;
   const previous = dialog; dialog = null; active = null; ++operation; ++searchOperation;
   previous.observer.disconnect();
@@ -278,14 +293,16 @@ export function closeHelpModal() {
   previous.backdrop.remove();
   for (const [element, value] of previous.inert) element.inert = value;
   document.body.style.overflow = previous.overflow;
-  if (previous.focusReturn?.isConnected) previous.focusReturn.focus();
+  const restoredTrigger = previous.focusReturn?.isConnected ? previous.focusReturn : previous.focusHost?.isConnected && previous.focusKind ? previous.focusHost.querySelector('[data-govchat-manual-owned]') : null;
+  restoredTrigger?.focus({ preventScroll: true });
 }
 
 function status(text) { if (dialog) dialog.message.textContent = text; }
 
 async function loadToc() {
+  const owner = dialog, serial = operation, generation = lifecycle;
   const current = await manualRequest('toc');
-  if (!dialog) return;
+  if (!dialog || dialog !== owner || serial !== operation || generation !== lifecycle) throw new ManualFailure('CANCELLED');
   if (current.revision !== config.revision) throw new ManualFailure('REVISION_CHANGED');
   toc = current;
   dialog.title.textContent = current.title; dialog.subtitle.textContent = [current.subtitle, current.reviewedAt ? `Gecontroleerd: ${current.reviewedAt}` : ''].filter(Boolean).join(' · ');
@@ -365,11 +382,11 @@ async function navigate(id, revision, remember = true) {
 }
 
 function showFailure(error) {
-  if (!dialog) return;
+  if (!dialog || error?.code === 'CANCELLED') return;
   if (['UNAUTHORIZED', 'MANUAL_DISABLED', 'MANUAL_UNAVAILABLE'].includes(error?.code)) {
     toc = null; dialog.nav.replaceChildren(); dialog.title.textContent = 'Handleiding'; dialog.subtitle.textContent = '';
     dialog.history = []; dialog.historyIndex = -1; updateHistory();
-    document.getElementById('gc-manual-print')?.remove(); cleanupManualEntrypoints();
+    clearPrint(); cleanupManualEntrypoints();
     if (error.code === 'UNAUTHORIZED') { authenticated = false; config = { enabled: false }; prefs = null; updateEntrypoints(); }
     else if (error.code === 'MANUAL_DISABLED') { config = { enabled: false }; updateEntrypoints(); }
   }
@@ -402,17 +419,21 @@ async function searchManual() {
 }
 
 async function printManual() {
+  const owner = dialog, generation = lifecycle;
+  clearPrint();
   status('Alle toegestane inhoud voor print laden…');
   try {
     await recheckManual(true);
     if (!isManualEnabled()) throw new ManualFailure('MANUAL_DISABLED');
+    const serial = operation;
     const result = await manualRequest('document');
+    if (dialog !== owner || generation !== lifecycle || serial !== operation) return;
     if (!dialog || result.revision !== config.revision || !result.enabled) throw new ManualFailure('REVISION_CHANGED');
-    document.getElementById('gc-manual-print')?.remove();
+    clearPrint();
     const print = node('section', null, { id: 'gc-manual-print' });
     print.append(node('h1', result.title), node('p', result.subtitle), node('p', `Handleidingrevisie: ${result.revision}`));
     // Group by the authenticated compiled document, never private defaults.
-    const passages = new Map(result.passages.map(passage => [passage.id, passage]));
+    const passages = new Map(result.passages.filter(passage => !passage.hiddenReasons).map(passage => [passage.id, passage]));
     for (const section of result.sections) for (const item of [section, ...section.items]) {
       if (passages.has(item.id)) print.append(articleNode(passages.get(item.id), item.id === section.id ? 'h2' : 'h3'));
     }
@@ -422,8 +443,9 @@ async function printManual() {
       for (const article of category.articles) if (passages.has(article.id)) print.append(articleNode(passages.get(article.id), 'h4'));
     }
     document.body.append(print); print.inert = false;
-    const cleanup = () => { print.remove(); window.removeEventListener('afterprint', cleanup); };
+    const cleanup = () => { print.remove(); window.removeEventListener('afterprint', cleanup); if (printCleanup === cleanup) printCleanup = null; };
+    printCleanup = cleanup;
     window.addEventListener('afterprint', cleanup);
     window.print(); status('Printweergave bevat alle zichtbare hoofdstukken, onderwerpen en foutartikelen.');
-  } catch (error) { showFailure(error); }
+  } catch (error) { if (dialog === owner && generation === lifecycle) showFailure(error); }
 }

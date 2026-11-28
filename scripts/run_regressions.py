@@ -21,7 +21,8 @@ DIRECTORIES = {"agents", "branding", "custom-branding", "overlay", "scripts", "t
                "services", "nginx", "litellm", "n8n", "bridge", "cron", "n8n-openai-bridge"}
 FILES = {".env.example", ".gitignore", ".gitattributes", "librechat.yaml", "docker-compose.yml",
          "docker-compose.override.yml", "docker-compose.sso-only.yml", "docker-compose.management.yml",
-         "docker-compose.admin-panel-build.yml"}
+         "docker-compose.admin-panel-build.yml", "docker-compose.manual-native-build.yml",
+         "docs/manual-error-inventory.json"}
 # Permit this change set before the maintainer's first commit, not arbitrary untracked files.
 NEW_FILES = {"scripts/librechat_release.py", "scripts/librechat-release-pin.js", "scripts/run_regressions.py",
              "tests/test_librechat_release.py", "tests/test_regression_runner.py", "tests/librechat-release-pin.test.js",
@@ -29,7 +30,11 @@ NEW_FILES = {"scripts/librechat_release.py", "scripts/librechat-release-pin.js",
              "tests/orchestrator/n8n-image-integration.test.js",
              "scripts/image-edit-workflow.js", "scripts/orchestrator-image-edit-workflow.js",
              "scripts/enable-image-to-image.js", "tests/image-edit-workflow.test.js",
-             "tests/orchestrator/run-image-edit-smoke.js"}
+             "tests/orchestrator/run-image-edit-smoke.js",
+             "scripts/manual_catalog_content.py", "tests/test_manual_content_security.py",
+             "tests/manual/content-security-review.test.js", "tests/manual/agent-review.test.js",
+             "tests/manual/admin-session.test.js", "tests/manual/search-ranking.test.js",
+             "services/admin-overlay/admin/lib/admin-session.js"}
 SOURCE_TEST_PATTERNS = ["tests/*.test.js", "tests/branding/*.test.js", "tests/agents/*.test.js",
                         "agents/beleidskompas/*.test.js",
                         "overlay/src/apps/beleidskompas/tests/*.test.js", "tests/overlay/*.test.js"]
@@ -141,6 +146,8 @@ def container_args(source, image, command, mounts=(), image_storage=False):
 def execute_suite(source, offline=False):
     text = (source / "docker-compose.yml").read_text()
     image, tag = read_pins(text)
+    run([sys.executable, "scripts/build-manual-content.py", "--check"], source)
+    run([sys.executable, "scripts/manual-error-inventory.py"], source)
     if offline:
         run(node_tests(source, ["tests/librechat-release-pin.test.js"]), source)
         run(["node", "tests/translations/run-tests.js"], source)
@@ -174,7 +181,6 @@ def execute_suite(source, offline=False):
         for script in ("tests/translations/run-tests.js", "tests/translations/run-image-loader-test.js"):
             run(container_args(source, image, ["node", script]), source)
         run(container_args(source, admin_image, node_tests(source, ["tests/orchestrator/name*.test.js", "tests/orchestrator/prompt*.test.js", "tests/orchestrator/utility*.test.js", "tests/manual/*.test.js"])), source)
-        run([sys.executable, "scripts/manual-error-inventory.py"], source)
         run(container_args(source, n8n_image, ["node", "--test", "tests/orchestrator/n8n-utility-integration.test.js",
                                              "tests/orchestrator/n8n-image-integration.test.js"], mounts), source)
         run(container_args(source, n8n_image, ["node", "tests/orchestrator/run-document-smoke.js"]), source)

@@ -39,7 +39,8 @@ class RunnerTests(unittest.TestCase):
         self.assertNotIn("COPY . ", runner.BRIDGE_DOCKERFILE)
 
     def test_public_snapshot_contains_tracked_statistics_builder_dependencies(self):
-        names = ("scripts/openbesluitvorming-statistics-workflow.js",
+        names = ("docker-compose.manual-native-build.yml",
+                 "scripts/openbesluitvorming-statistics-workflow.js",
                  "scripts/openbesluitvorming-tool-inputs.js",
                  "scripts/openbesluitvorming-search-performance.js",
                  "scripts/openbesluitvorming-filter-description.js",

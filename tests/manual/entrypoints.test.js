@@ -102,6 +102,7 @@ test('no document callback means no error reads; callback is lazy and bounded ac
 test('exact codes/messages/aliases match only designated native errors; unknown/substrings/case use permitted general', async () => {
   const h = harness(); const opened = [];
   const code = h.error('NETWORK_ERROR'); const alias = h.error('known-alias'); const message = h.error(null, 'Exact network failure');
+  message.node.setAttribute('data-govchat-error-message', 'Exact network failure');
   const substring = h.error(null, 'This mentions Exact network failure but is not exact');
   const unknown = h.error('network_error'); const badRequest = h.error('BadRequest');
   const chat = h.root.appendChild(new Element('div')); chat.textContent = 'NETWORK_ERROR';
@@ -111,6 +112,15 @@ test('exact codes/messages/aliases match only designated native errors; unknown/
   assert.deepEqual(opened.map(p => p.id), ['err-known', 'err-known', 'err-known', 'probleem-algemeen', 'probleem-algemeen', 'err-known']);
   assert.ok(opened.every(p => p.revision === 'revision-1'));
   assert.equal(chat.childNodes.length, 1); assert.equal(chat.textContent, 'NETWORK_ERROR');
+  h.cleanupManualEntrypoints();
+});
+
+test('rendered translated text never supplies an exact error match', async () => {
+  const h = harness(); const opened = [];
+  const translated = h.error(null, 'Exact network failure');
+  h.syncManualEntrypoints({ enabled: true, open: target => opened.push(target), getDocument: async () => doc([article, general]) });
+  await settle(); translated.actions.childNodes[0].click();
+  assert.equal(opened[0].id, 'probleem-algemeen');
   h.cleanupManualEntrypoints();
 });
 

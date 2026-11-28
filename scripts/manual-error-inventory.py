@@ -12,6 +12,10 @@ import json
 import re
 import subprocess
 from pathlib import Path
+if __package__:
+    from .manual_catalog_content import explain
+else:
+    from manual_catalog_content import explain
 
 ROOT = Path(__file__).resolve().parents[1]
 INVENTORY = ROOT / 'docs/manual-error-inventory.json'
@@ -23,6 +27,7 @@ CATEGORIES = {
     'document-errors': 'Upload, extractie en bestandsbeheer', 'prompt-errors': 'Promptbibliotheek',
     'network-errors': 'Netwerk, proxy en services', 'tool-errors': 'Apps en agenttools',
     'manual-errors': 'Handleiding en bronverwijzingen',
+    'appendix-errors': 'Optionele bijlage: labels en conservatieve bronvermeldingen',
 }
 # Meaning / safe steps / administrator investigation. First matching rule wins.
 RULES = [
@@ -46,10 +51,13 @@ RULES = [
 
 
 def category(key, source):
+    if key.startswith('HTTP '): return 'session-errors' if key in {'HTTP 401', 'HTTP 403'} else 'network-errors'
+    if key == 'NETWORK_CONNECTION_FAILED': return 'network-errors'
+    if key == 'UNKNOWN_PROVIDER_ERROR': return 'chat-errors'
     low = (key + ' ' + source).lower()
     if 'manual' in low: return 'manual-errors'
     if re.search(r'prompt', low): return 'prompt-errors'
-    if re.search(r'document|extract|spreadsheet|upload|file|ocr|heic|archive|workbook|worksheet|cell', low): return 'document-errors'
+    if re.search(r'document|extract|spreadsheet|upload|file|attachment|attach_error|ocr|heic|archive|workbook|worksheet|cell', low): return 'document-errors'
     if re.search(r'utility|tool|holiday|timezone|news|image|transcript|beleidskompas|openbesluit|topdesk', low): return 'tool-errors'
     if re.search(r'auth|login|openid|sso|oauth|session|unauthorized|permission|banned|password|cross_origin', low): return 'session-errors'
     if re.search(r'network|proxy|gateway|HTTP [45]', low): return 'network-errors'
@@ -58,13 +66,7 @@ def category(key, source):
 
 def article(key, message, source):
     cat = category(key, source)
-    meaning = 'Deze specifieke actie is niet voltooid. De zichtbare melding alleen geeft onvoldoende informatie voor een zekere diagnose.'
-    user = 'Controleer het betrokken onderdeel en de aangeboden invoer. Probeer alleen een normale toegestane actie opnieuw als dat veilig kan. Meld herhaald falen via de helpdesk.'
-    admin = 'Controleer de concrete foutcode, het endpoint en de actuele configuratie; veronderstel niet dat iedere fout dezelfde oorzaak heeft.'
-    for pattern, meaning_match, user_match, admin_match in RULES:
-        if re.search(pattern, key + ' ' + message, re.I):
-            meaning, user, admin = meaning_match, user_match, admin_match
-            break
+    heading, meaning, user, admin, disposition, rationale = explain(key, message, source, RULES)
     id = 'err-' + re.sub(r'[^a-z0-9_-]', '-', key.lower())[:65]
     # Colliding codes from different surfaces are merged deliberately by the caller.
     p = lambda t: '<p>' + html.escape(t) + '</p>'
@@ -78,12 +80,18 @@ def article(key, message, source):
     if cat == 'prompt-errors': requires, rights = ['prompts'], ['prompts.use']
     if 'holidays' in source: requires = ['holidays']
     if 'utility-time' in source: requires = ['time']
-    title = message if source.endswith('translation.json') else CATEGORIES[cat] + ': ' + key
+    if re.search(r'image_gen|image-generator|image-workflow', key + ' ' + source, re.I): requires = ['image']
+    if re.search(r'transcript', key + ' ' + source, re.I): requires = ['transcript']
+    title = message if source.endswith('translation.json') else heading + ': ' + key
+    if disposition == 'appendix': cat = 'appendix-errors'
     return cat, dict(id=id, title=title[:180], content=content, items=[], aliases=[], codes=[key], messages=[message] if message else [], requires=requires, rights=rights, related=related + ['ondersteuning'])
 
 
 def repo_sources():
-    explicit = ['overlay/locales/nl/translation.json', 'services/document-extractor/validation-errors.json']
+    explicit = ['overlay/locales/nl/translation.json', 'services/document-extractor/validation-errors.json',
+                'scripts/patch-manual-native.js', 'scripts/orchestrator-manual-workflow.js',
+                'scripts/manual_catalog_content.py', 'scripts/build-manual-content.py',
+                'scripts/manual-error-inventory.py']
     result = set(explicit)
     # Explicit source roots work in sanitized regression snapshots without Git metadata.
     # Never discover runtime/export/secret directories or local deployment overrides.
@@ -112,6 +120,8 @@ def upstream_sources(tree):
 
 def extract(path, text):
     entries = []
+    if path in {'scripts/manual_catalog_content.py', 'scripts/build-manual-content.py', 'scripts/manual-error-inventory.py'}:
+        return entries  # Generatorfingerprint, niet de uitleg zelf als foutbron inventariseren.
     if path.endswith('translation.json'):
         data = json.loads(text)
         for key, message in data.items():
@@ -154,6 +164,10 @@ def collect(tree=None, previous=None):
     # Concrete symbol/translation callsites establish that keys are more than a locale list.
     # Keep all references in the pinned source, but never include source text or user logs.
     references = {}
+    if not tree and previous:
+        for artifact in previous['artifacts']:
+            for entry in artifact['entries']:
+                if entry.get('reachableAt'): references.setdefault(entry['code'], entry['reachableAt'])
     if tree:
         enum_text = (tree / 'packages/data-provider/src/config.ts').read_text()
         enum_block = enum_text.split('export enum ErrorTypes {', 1)[1].split('\n}', 1)[0]
@@ -173,12 +187,15 @@ def collect(tree=None, previous=None):
             # Preserve a fingerprint even for source files with only dynamic errors.
             artifact = dict(origin=origin, path=path, sha256=hashlib.sha256(text.encode()).hexdigest(), entries=[])
             if not entries:
-                artifact['exclusion'] = 'Geen letterlijk gebruikersfouttype in deze bron; dynamische provider-/exceptiontekst valt onder probleem-algemeen. Tests en logging zijn geen catalogusinhoud.'
+                artifact['exclusion'] = ('Generatorbron: volledige fingerprint controleren; uitleg en generatorchecks zijn geen extra gebruikersfouten.'
+                                         if path in {'scripts/manual_catalog_content.py', 'scripts/build-manual-content.py', 'scripts/manual-error-inventory.py'}
+                                         else 'Geen letterlijk gebruikersfouttype in deze bron; dynamische provider-/exceptiontekst valt onder probleem-algemeen. Tests en logging zijn geen catalogusinhoud.')
             for key, message, line in entries:
                 if '${' in key:
                     artifact['entries'].append(dict(code=key, message='', line=line, article='err-unknown_provider_error', exclusion='Dynamische exception-/provider-/SSO-tekst: geen vaste foutcode en geen betrouwbare tekstmatching. Gebruik probleem-algemeen; ErrorTypes-symbolen worden daarnaast als vaste enum geïnventariseerd.', relevance='Fallback zonder diagnose.'))
                     continue
                 cat, item = article(key, message, path)
+                _, _, _, _, disposition, rationale = explain(key, message, path, RULES)
                 # Text aliases with parameter placeholders are displayed, never substring-matched
                 # against arbitrary chat text by the frontend.
                 existing = lookup.get(item['id'])
@@ -189,13 +206,21 @@ def collect(tree=None, previous=None):
                     lookup[item['id']] = item; catalog[cat].append(item)
                 elif message and message not in existing['messages']:
                     existing['messages'].append(message)
-                artifact['entries'].append(dict(code=key, message=message, line=line, article=item['id'], reachableAt=references.get(key, [])[:20], relevance='Letterlijke foutmelding/code of vertaalalias; bereikbaarheid afhankelijk van effectieve functie en rechten. Geen callsite gevonden betekent dat dit conservatieve catalogusdekking is, geen bevestiging van actieve bereikbaarheid.'))
+                artifact['entries'].append(dict(code=key, message=message, line=line, article=item['id'], disposition=disposition, reviewReason=rationale, reachableAt=references.get(key, [])[:20], relevance='Letterlijke foutmelding/code of vertaalalias; bereikbaarheid afhankelijk van effectieve functie en rechten. Geen callsite gevonden betekent dat dit conservatieve catalogusdekking is, geen bevestiging van actieve bereikbaarheid.'))
             artifacts.append(artifact)
     if not tree and previous:
         artifacts.extend(a for a in previous['artifacts'] if a['origin'] == 'upstream')
-        for cat in previous['catalog']:
-            for item in cat['articles']:
-                if item['id'] not in lookup: lookup[item['id']] = item; catalog[cat['id']].append(item)
+        # Recompile the pinned entries with current content recipes, not stale generated
+        # article bodies. Removed repo entries must not silently reappear as upstream.
+        for artifact in previous['artifacts']:
+            if artifact['origin'] != 'upstream': continue
+            for entry in artifact['entries']:
+                if entry.get('exclusion'): continue
+                cat, item = article(entry['code'], entry['message'], artifact['path'])
+                item['id'] = entry['article']
+                if item['id'] not in lookup: lookup[item['id']] = item; catalog[cat].append(item)
+                elif entry['message'] and entry['message'] not in lookup[item['id']]['messages']:
+                    lookup[item['id']]['messages'].append(entry['message'])
     # Proxy status types and dynamic SSO/provider failures do not always have literal enums.
     synthetic = ['HTTP 400', 'HTTP 401', 'HTTP 403', 'HTTP 404', 'HTTP 408', 'HTTP 411', 'HTTP 413', 'HTTP 415', 'HTTP 422', 'HTTP 429', 'HTTP 500', 'HTTP 502', 'HTTP 503', 'HTTP 504', 'SSO_CALLBACK_FAILED', 'NETWORK_CONNECTION_FAILED', 'UNKNOWN_PROVIDER_ERROR']
     entries = []
@@ -204,7 +229,19 @@ def collect(tree=None, previous=None):
         if item['id'] not in lookup: catalog[cat].append(item); lookup[item['id']] = item
         entries.append(dict(code=code, message='', line=0, article=item['id'], relevance='Expliciete transport-/SSO-/providerfallback; code alleen is geen zekere diagnose.'))
     artifacts.append(dict(origin='contract', path='HTTP/SSO/provider fallback', entries=entries, exclusion='Arbitraire providertekst en persoonlijke logs worden niet geïnventariseerd; de algemene fallback geeft geen verzonnen diagnose.'))
+    # Keep stable historical IDs (including the original 684) without pretending old
+    # extraction fragments are active errors. Explicit retirement is not hash suppression.
+    retired = []
+    if previous:
+        for category_ in previous['catalog']:
+            for old in category_['articles']:
+                if old['id'] in lookup: continue
+                cat, item = article(old['codes'][0], old['messages'][0] if old['messages'] else '', 'retired-catalog')
+                item['id'], item['codes'], item['messages'] = old['id'], old['codes'], old['messages']
+                lookup[item['id']] = item; catalog[cat].append(item)
+                retired.append(dict(id=item['id'], reason='Niet meer door actuele extractie aangetroffen; stabiel ID behouden in verborgen historische bijlage.'))
     return dict(schemaVersion=1, upstream=dict(tag=PIN, commit=SHA), artifacts=artifacts,
+                retiredCatalog=sorted(retired, key=lambda x: x['id']),
                 catalog=[dict(id=k, title=CATEGORIES[k], articles=sorted(v, key=lambda x: x['id'])) for k, v in catalog.items()])
 
 
@@ -215,8 +252,14 @@ def check(tree):
     actual = {(a['origin'], a['path']): a.get('sha256') for a in current['artifacts'] if a['origin'] != 'contract'}
     changed = sorted(k for k in expected.keys() | actual.keys() if expected.get(k) != actual.get(k))
     if changed: raise SystemExit('Foutbronnen gewijzigd; expliciete catalogusreview vereist: ' + ', '.join(str(x) for x in changed))
+    if baseline['artifacts'] != current['artifacts']:
+        raise SystemExit('Bronvermeldingen gewijzigd; expliciete inventarisreview vereist')
+    if baseline['catalog'] != current['catalog'] or baseline.get('retiredCatalog', []) != current['retiredCatalog']:
+        raise SystemExit('Catalogusuitleg gewijzigd; expliciete generatorreview vereist')
     model = json.loads((ROOT / 'services/admin-overlay/admin/defaults/manual.json').read_text())
     articles = {a['id']: a for c in model['errorCategories'] for a in c['articles']}
+    if [{k: v for k, v in c.items() if k != 'parentId'} for c in model['errorCategories']] != baseline['catalog']:
+        raise SystemExit('Defaultcatalogus niet gesynchroniseerd; draai build-manual-content.py')
     for artifact in baseline['artifacts']:
         for entry in artifact['entries']:
             if entry['article'] not in articles or not entry.get('exclusion') and entry['code'] not in articles[entry['article']]['codes']:

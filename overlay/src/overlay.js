@@ -255,6 +255,7 @@ import { initializeManual, openHelpModal as showHelpModal, closeHelpModal, manua
   }
 
   function removeButtonsAndModals() {
+    const ownedScroll = ['gc-app-backdrop', 'gc-iframe', 'gc-vs'].some(id => document.getElementById(id));
     closeHelpModal();
     [
       "gc-help-btn",
@@ -267,7 +268,7 @@ import { initializeManual, openHelpModal as showHelpModal, closeHelpModal, manua
       const el = document.getElementById(id);
       if (el) el.remove();
     });
-    document.body.style.overflow = "";
+    if (ownedScroll) document.body.style.overflow = "";
   }
 
   function createButtons() {

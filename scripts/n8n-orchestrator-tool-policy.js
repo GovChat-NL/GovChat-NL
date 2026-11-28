@@ -13,10 +13,10 @@ const TOOL_KEYS = Object.freeze({
 
 function readManualPolicy(filename = process.env.N8N_MANUAL_POLICY_FILE || "/govchat-config/manual-config.json") {
   try {
-    const stat = fs.statSync(filename);
+    const stat = fs.lstatSync(filename);
     if (!stat.isFile() || stat.size > 1024) return false;
     const policy = JSON.parse(fs.readFileSync(filename, "utf8"));
-    return policy.schemaVersion === 1 && policy.enabled === true && policy.agentEnabled === true && typeof policy.revision === "string" && /^[a-f0-9-]{36}$/.test(policy.revision);
+    return policy.schemaVersion === 1 && policy.enabled === true && policy.agentEnabled === true && typeof policy.revision === "string" && /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/.test(policy.revision);
   } catch { return false; }
 }
 

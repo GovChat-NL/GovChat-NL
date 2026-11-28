@@ -1,6 +1,10 @@
 # Native manual client compile and selected regression validation
 
+> Current combined acceptance: [manual-final-review.md](manual-final-review.md), including 92 manual Node passes, 692 catalog articles and freshly rerun fixture/complete-native browser evidence. The compile and earlier test results below are historical, not additional passes to sum. The sibling final build is reused without modifying the native patch or runner.
+
 Validated on **2026-11-27 UTC**, exclusively from the handleiding worktree.
+
+**Superseding independent review:** [manual-frontend-review.md](manual-frontend-review.md) records the subsequent native-mobile/focus fixes, new complete production compile (**9,733 modules, 20.77 seconds**), **68/68** manual tests and actual complete compiled native Chromium acceptance (**5/5**). The report below preserves the earlier run: its unchanged-patch and no-native-browser statements apply only to that historical run, not the final reviewed source.
 
 Parent follow-up: the complete manual suite was rerun with the new frontend helper tests: **61 passed, 0 failed/skipped**. Separate start/Beleidskompas regressions passed **18/18**, Python static/config/security tests completed **63 tests, 13 explicit skips, 0 failures**, and final real Chromium acceptance passed **24/24** (see [machine results](../tests/manual/evidence/browser-results.json)). The table below preserves the original native-build subtask's counts and is not an additional duplicate total.
 

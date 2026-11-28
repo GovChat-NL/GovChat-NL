@@ -73,18 +73,8 @@ function exactValues(component) {
     const value = component.getAttribute(attribute);
     if (value && value.length <= 24000) values.add(value);
   }
-  // Exact visible leaf text only inside a pinned error component. No chat-wide scans,
-  // substring matching, provider JSON parsing, regex diagnosis or fuzzy matching.
-  const collect = node => {
-    if (node.nodeType === 1 && (node.hasAttribute('data-govchat-manual-owned') ||
-        node.hasAttribute('data-govchat-manual-error-actions'))) return;
-    if (node.nodeType === 3) {
-      const text = node.textContent.trim();
-      if (text && text.length <= 24000) values.add(text);
-    }
-    for (const child of node.childNodes || []) collect(child);
-  };
-  collect(component);
+  // Only explicit source values, never translated/rendered text or generated prose.
+  // Components without a stable value receive general help, not a guessed diagnosis.
   return values;
 }
 

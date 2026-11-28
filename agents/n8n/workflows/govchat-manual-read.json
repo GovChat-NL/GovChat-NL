@@ -83,7 +83,7 @@
           0
         ],
         "parameters": {
-          "jsCode": "if (!$json || typeof $json.ok !== 'boolean' || JSON.stringify($json).length > 32000) throw new Error('Handleiding niet beschikbaar: ongeldig backendantwoord');\nreturn [{json:{response:JSON.stringify($json)}}];"
+          "jsCode": "if (!$json || typeof $json.ok !== 'boolean' || ($json.ok && $json.contextScope !== 'common') || JSON.stringify($json).length > 32000) throw new Error('Handleiding niet beschikbaar: ongeldig backendantwoord');\nreturn [{json:{response:JSON.stringify($json)}}];"
         }
       }
     ],

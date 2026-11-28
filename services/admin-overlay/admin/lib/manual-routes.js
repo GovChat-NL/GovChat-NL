@@ -19,11 +19,17 @@ function readManual(document, request, agent = false) {
     return { ...base, passage: passage(found) };
   }
   if (typeof request.query !== "string" || !request.query.trim() || request.query.length > 200) throw new ManualError("INVALID_INPUT", "Zoektekst moet 1–200 tekens bevatten");
-  const words = request.query.toLocaleLowerCase("nl").trim().split(/\s+/).slice(0, 20);
-  const ranked = document.passages.map(p => {
-    const title = p.title.toLocaleLowerCase("nl"), text = [p.text, ...p.codes, ...p.messages, ...p.aliases].join(" ").toLocaleLowerCase("nl");
-    return { p, score: words.every(w => title.includes(w) || text.includes(w)) ? words.reduce((sum, w) => sum + (title.includes(w) ? 3 : 1), 0) : 0 };
-  }).filter(x => x.score > 0).sort((a, b) => b.score - a.score);
+  const normalize = value => value.normalize("NFKC").toLocaleLowerCase("nl").trim().replace(/\s+/g, " ");
+  const query = normalize(request.query), words = query.split(" ").slice(0, 20);
+  // Rank only the already authorized/visibility-filtered compiled document.
+  // Templates are searchable text, never an exact error identity or a matcher.
+  const template = /\$\{|\{[^}]*\}|%[sdif]|<[^>]+>/;
+  const ranked = document.passages.map((p, index) => {
+    const title = normalize(p.title), text = normalize([p.text, ...p.codes, ...p.messages, ...p.aliases].join(" "));
+    const exact = [...p.codes, ...p.messages].some(value => !template.test(value) && normalize(value) === query);
+    const score = words.every(w => title.includes(w) || text.includes(w)) ? words.reduce((sum, w) => sum + (title.includes(w) ? 3 : 1), 0) : 0;
+    return { p, index, exact, topic: p.kind !== "articles", score };
+  }).filter(x => x.exact || x.score > 0).sort((a, b) => Number(b.exact) - Number(a.exact) || Number(b.topic) - Number(a.topic) || b.score - a.score || a.index - b.index);
   return { ...base, results: ranked.slice(0, limit).map(({ p }) => ({ id: p.id, title: p.title, snippet: p.text.slice(0, 240), href: p.href })), total: ranked.length };
 }
 function registerManualRoutes(app, { store, context, isAuthenticated, token, publicBaseUrl = "" }) {
@@ -54,11 +60,18 @@ function registerManualRoutes(app, { store, context, isAuthenticated, token, pub
   });
   app.get("/api/manual/config", wrap(() => ({ ok: true, ...store.metadata() })));
   app.get("/api/manual/:action(toc|search|get|document)", user);
-  app.post("/api/internal/manual", wrap(req => {
+  app.post("/api/internal/manual", wrap(async req => {
     if (!token) throw new ManualError("AUTH_NOT_CONFIGURED", "Interne authenticatie ontbreekt", 503);
-    if (!safeTokenEqual(req.get("authorization")?.replace(/^Bearer /i, ""), token)) throw new ManualError("UNAUTHORIZED", "Niet geautoriseerd", 401);
+    const authorization = req.get("authorization");
+    if (!/^Bearer [^\s]+$/i.test(authorization || "") || !safeTokenEqual(authorization.replace(/^Bearer /i, ""), token)) throw new ManualError("UNAUTHORIZED", "Niet geautoriseerd", 401);
+    if (!req.is("application/json")) throw new ManualError("JSON_REQUIRED", "JSON vereist", 415);
+    if (Buffer.byteLength(JSON.stringify(req.body) || "", "utf8") > 2048) throw new ManualError("INPUT_TOO_LARGE", "Handleidinginvoer is te groot", 413);
     // Request schema contains no roles/capabilities/user IDs. Never trust tool-supplied context.
-    return readManual(store.document({ ...context.general(), agent: true }), req.body, true);
+    // Validate before network/context work; local policy is not authorization.
+    if (!req.body || Array.isArray(req.body) || typeof req.body !== "object" || Object.keys(req.body).some(k => !["action", "query", "id", "revision", "limit"].includes(k))) throw new ManualError("INVALID_INPUT", "Onbekende handleidinginvoer");
+    const trusted = context.agent ? await context.agent() : context.general();
+    const result = readManual(store.document({ capabilities: trusted.capabilities, rights: [], agent: true }), req.body, true);
+    return { ...result, contextScope: "common", ...(trusted.availability ? { availability: trusted.availability } : {}) };
   }));
   app.get("/api/admin/manual", admin, wrap(() => ({ ok: true, ...store.adminState() })));
   app.get("/api/admin/manual/export", admin, wrap(() => ({ ok: true, model: store.adminState().model })));

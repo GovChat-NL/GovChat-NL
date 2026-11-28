@@ -5,6 +5,7 @@ No runtime defaults overwrite an imported or published manual. This is a reposit
 """
 import html
 import json
+import argparse
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -30,7 +31,7 @@ def chapter(id, title, content, *items, requires=None, aliases=None):
     return result
 
 
-def build():
+def build(check=False):
     P, S, T = paragraphs, steps, topic
     sections = [
         chapter('sec1', 'Welkom en snelstart', P('{{APP_NAME}} helpt bij schrijven, samenvatten en onderzoeken. Een taalmodel genereert een waarschijnlijk antwoord; dat is geen bewijs dat de inhoud klopt. Controleer bronnen, cijfers en juridische conclusies zelf.', 'Deze handleiding is naslaginformatie, geen verplichte beleidsacceptatie. Hulp openen of sluiten verandert je gesprek niet. Gebruik de zoekfunctie voor een onderwerp of foutmelding.'),
@@ -57,7 +58,7 @@ def build():
             T('bestanden-verwijderen', 'Een bijlage losmaken of opgeslagen bestand verwijderen', P('Een bijlage uit het invoerveld verwijderen voorkomt dat je die met dat nieuwe bericht meestuurt; dit is niet automatisch het verwijderen van een eerder opgeslagen upload.', 'Gebruik in het bestandenoverzicht de verwijderactie voor het bedoelde bestand, lees de bevestiging en controleer wat er daarna nog zichtbaar is. Verwijderen kan latere verwijzingen onbruikbaar maken. Verwijder niet op basis van een toevallig gelijkende bestandsnaam.', 'Een verwijderactie geeft geen absolute garantie over onmiddellijke verwijdering van iedere kopie, backup, log of leveranciersregistratie. Vraag de bevoegde contactpersoon naar toegang, bewaartermijn en het afhandelen van een verwijderverzoek.'), ['files'], related=['chat-verwijderen', 'faq-retentie']),
             T('document-kennisbank', 'Upload versus bestandszoeken', P('Een upload in de chat en een beheerde kennisbron zijn verschillende voorzieningen. Een upload is niet automatisch doorzoekbaar voor anderen en voegt niet vanzelf blijvende modelkennis toe. Gebruik de aangewezen kennisbron voor gedeelde informatie.'), ['upload']),
             T('native-bestandszoeken', 'Native bestandszoeken', P('Als native bestandszoeken beschikbaar is, kunnen geselecteerde bestanden via een zoekindex worden geraadpleegd. Dat is geen garantie dat elk relevant fragment wordt gevonden. Controleer de bronverwijzingen, toegang en reikwijdte. Dit is iets anders dan de GovChat-documentadapter die uploadtekst aan een agent aanbiedt.'), ['fileSearch'])),
-        chapter('promptbibliotheek', 'Promptbibliotheek', P('Een bibliotheekprompt is een herbruikbare gebruikersvraag. De door beheerders ingestelde masterprompt stuurt de agent op een ander niveau; een bibliotheekprompt wijzigt die niet.'),
+        chapter('promptbibliotheek', 'Promptbibliotheek', P('Een bibliotheekprompt is een herbruikbare gebruikersvraag. De door beheerders ingestelde masterprompt stuurt de agent op een ander niveau; een bibliotheekprompt wijzigt die niet.', 'De applicatie biedt de promptbibliotheek aan, maar dit bevestigt geen persoonlijke gebruiks-, maak-, bewerk- of deelrechten. Alleen als jouw account toegang heeft en de actie wordt aangeboden, kun je Prompts in de navigatie of de beschikbare inline promptkiezer openen, een beschikbare prompt kiezen, de actieve productieversie lezen en eventuele variabelen invullen. Raadpleeg de ingelogde handleiding voor jouw toegestane passages; probeer ontbrekende rechten niet te omzeilen.', 'Controleer vóór Prompt gebruiken het gesprek en de gewenste opdracht: de actie kan de prompt meteen in het gesprek indienen; bij variabelen opent eerst het invulvenster. Variabelen zijn geen beveiligde kluis: wat je invult kan onderdeel van de modelvraag worden. Gebruik uitsluitend informatie die je volgens het actuele organisatiebeleid mag verwerken.'),
             T('prompt-vinden', 'Een prompt vinden en gebruiken', S('Open Prompts in de navigatie of de beschikbare inline promptkiezer. Gebruik zoek- en categoriefilters om een relevante promptgroep te vinden.', 'Open de prompt en lees de actieve productieversie. Controleer de instructies voordat je eigen bronmateriaal toevoegt.', 'Kies Prompt gebruiken. In de detailweergave kan deze actie de prompt meteen in het gesprek indienen; bij variabelen opent eerst het invulvenster. Controleer daarom vóór de actie het gesprek en de gewenste opdracht.'), ['prompts'], ['prompts.use'], ['prompt-variabelen', 'prompt-versies']),
             T('prompt-variabelen', 'Variabelen invullen', P('Een prompt kan invulvelden gebruiken zoals {{doelgroep}} of {{tekst}}. Vul ieder benodigd veld doelgericht in. Variabelen zijn geen beveiligde kluis: wat je invult kan onderdeel van de modelvraag worden.', 'Het invulvenster toont de gevraagde waarden. Controleer de uiteindelijke betekenis voordat je de opdracht uitvoert. Voor speciale variabelen, zoals datumwaarden, kan de toepassing zelf een waarde leveren; voeg niet willekeurig vertrouwelijke informatie aan een generieke variabele toe.'), ['prompts'], ['prompts.use']),
             T('prompt-maken', 'Een eigen prompt maken en bewerken', S('Gebruik de maakactie in de promptbibliotheek wanneer je daarvoor toestemming hebt.', 'Geef een duidelijke naam, beschrijving en categorie. Schrijf de opdracht met doel, randvoorwaarden en gewenste output; voeg herbruikbare variabelen toe waar dat nuttig is.', 'Sla op en test met niet-gevoelige voorbeeldinformatie. Bewerk alleen prompts waarvoor je bewerkingsrechten hebt. Controleer of je wijzigingen de actieve productieversie veranderen.'), ['prompts'], ['prompts.create'], ['prompt-versies', 'prompt-voorbeelden']),
@@ -102,28 +103,37 @@ def build():
     inventory = json.loads((ROOT / 'docs/manual-error-inventory.json').read_text())
     for section in sections:
         if section['id'] == 'documenten': section['requires'] = ['upload']
-        if section['id'] == 'promptbibliotheek': section['requires'], section['rights'] = ['prompts'], ['prompts.use']
+        if section['id'] == 'promptbibliotheek': section['requires'] = ['prompts']
+        for item in section['items']:
+            if item['id'] == 'handleiding-gebruiken':
+                item['content'] += P('De gewone foutcatalogus beschrijft herkenbare problemen en veilige vervolgstappen. Labels, aanvullende schermtekst en niet algemeen aangetoonde productfuncties staan in een optionele naslagbijlage die standaard verborgen is. Een beheerder kan die afzonderlijk zichtbaar maken; een zichtbaar naslagartikel bewijst niet dat de functie voor jou beschikbaar is.')
     categories = inventory['catalog']
     for category in categories:
         category['parentId'] = 'problemen'
     model = dict(schemaVersion=1, enabled=False, agentEnabled=True, autoOpen='never', profile='generic',
                  organization=dict(appName='GovChat-NL', name='', helpdeskEmail='', aiEmail='', trainingEmail='', privacyEmail='', courseUrl='', policyUrl='', incidentUrl=''),
                  title='Handleiding {{APP_NAME}}', subtitle='Praktische hulp bij verantwoord gebruik', reviewedAt='',
-                 visibility=dict(chapters={}, topics={}, errors=True, categories={}, articles={}), sections=sections, errorCategories=categories)
-    DEST.mkdir(parents=True, exist_ok=True)
-    (DEST / 'manual.json').write_text(json.dumps(model, ensure_ascii=False, indent=2) + '\n')
+                 visibility=dict(chapters={}, topics={}, errors=True, categories={'appendix-errors': False}, articles={}), sections=sections, errorCategories=categories)
     profile = dict(organization=dict(appName='LAICA', name='Provincie Limburg', helpdeskEmail='helpdesk@prvlimburg.nl', aiEmail='ai@prvlimburg.nl', trainingEmail='Limburgacademie@prvlimburg.nl', courseUrl='https://provincielimburg.studytube.nl/courses/435552/de-nationale-ai-cursus'),
                    reviewRequired=['DPIA', 'juridische compliance', 'datalocatie', 'leveranciers', 'logging', 'beheerdersinzage', 'bewaartermijnen', 'modeltraining', 'kosten', 'beschikbaarheid'],
                    note='Profielgegevens controleren vóór publicatie; geen geverifieerde beleidsgaranties.')
-    (DEST / 'manual-limburg.json').write_text(json.dumps(profile, ensure_ascii=False, indent=2) + '\n')
     # Compose replaces /app/defaults with this tracked directory. Keep both build contexts equal.
-    for name in ['manual.json', 'manual-limburg.json']:
-        (ROOT / 'overlay/defaults' / name).write_text((DEST / name).read_text())
     # Compatibility tombstone; the actual content must not be served as a public asset.
     tombstone = dict(title='Handleiding', subtitle='', sections=[])
+    payloads = {'manual.json': model, 'manual-limburg.json': profile, 'help-content.json': tombstone}
     for folder in [DEST, ROOT / 'overlay/defaults']:
-        (folder / 'help-content.json').write_text(json.dumps(tombstone, ensure_ascii=False, indent=2) + '\n')
+        for name, value in payloads.items():
+            text = json.dumps(value, ensure_ascii=False, indent=2) + '\n'
+            path = folder / name
+            if check:
+                if not path.exists() or path.read_text() != text: raise SystemExit(f'Defaultinhoud niet actueel: {path.relative_to(ROOT)}')
+            else:
+                folder.mkdir(parents=True, exist_ok=True)
+                path.write_text(text)
+    print(f'Content {"check OK" if check else "gebouwd"}: {len(sections)} hoofdstukken, {sum(len(s["items"]) for s in sections)} topics, {sum(len(c["articles"]) for c in categories)} catalogusartikelen')
 
 
 if __name__ == '__main__':
-    build()
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--check', action='store_true', help='Controleer beide defaultmappen zonder te schrijven')
+    build(check=parser.parse_args().check)

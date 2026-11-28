@@ -13,41 +13,68 @@ function createManualContext({ baseUrl, fetchImpl = fetch, minimal = false, read
   }
   function general() {
     const capabilities = ["chat", "history"];
-    // apply-minimal-ui explicitly keeps the GovChat upload endpoints enabled. These
-    // instructions require no sharing/management role; file actions still enforce ownership.
-    if (minimal) capabilities.push("upload", "files");
+    // UI visibility cannot override disabled/unknown effective upload configuration.
+    // The agent has no authenticated file configuration; keep these passages closed.
     // These are trusted, existing backend product configurations, not manual settings.
     try { for (const [key, enabled] of Object.entries(readTools()?.tools || {})) if (enabled === true && ["nos_news", "l1_news", "time", "holidays", "calculator"].includes(key)) capabilities.push(key); } catch { /* safe subset */ }
     return { capabilities, rights: [] };
+  }
+  const object = value => value && typeof value === "object" && !Array.isArray(value);
+  const validIdentity = identity => object(identity) && typeof identity.id === "string" && identity.id.length > 0 && identity.id.length <= 200 &&
+    typeof identity.role === "string" && /^[A-Za-z0-9_-]{1,100}$/.test(identity.role) &&
+    identity.disabled !== true && identity.banned !== true && identity.active !== false;
+  async function agent() {
+    // Public product configuration proves visibility, NOT anyone's PROMPTS.USE.
+    // Grant only the generic capability; all guidance comes from the compiler.
+    const context = general();
+    let state = "unknown";
+    try {
+      const config = await request("/api/config", "");
+      if (object(config) && object(config.interface) && typeof config.interface.prompts === "boolean") state = config.interface.prompts ? "user-dependent" : "disabled";
+      if (state === "user-dependent") context.capabilities.push("prompts");
+    } catch { /* availability remains unknown; no cached privilege fallback */ }
+    return { ...context, scope: "common", availability: { promptLibrary: { state } } };
   }
   async function user(req) {
     const authorization = req.get("authorization");
     if (!/^Bearer [^\s]{1,8192}$/i.test(authorization || "")) return null;
     let identity;
     try { identity = await request("/api/user", authorization); } catch { return null; }
-    if (!identity?.id || typeof identity.role !== "string") return null;
-    const context = general();
+    if (!validIdentity(identity)) return null;
+    let context = general();
     try {
       const [config, role, files] = await Promise.all([request("/api/config", authorization), request(`/api/roles/${encodeURIComponent(identity.role)}`, authorization), request("/api/files/config", authorization)]);
-      if (!config || !role) throw new Error("Effective context missing");
+      if (!object(config) || !object(role) || (role.name !== undefined && role.name !== identity.role)) throw new Error("Effective context missing");
+      // Build separately: failures below must not retain partially granted rights.
+      const effective = general();
       const ui = config.interface || {};
-      if (ui.prompts === true) context.capabilities.push("prompts");
-      for (const key of ["temporaryChat", "sharedLinks", "webSearch", "fileSearch"]) if (!minimal && ui[key] === true) context.capabilities.push(key);
-      if (!minimal && ui.modelSelect === true) context.capabilities.push("models");
-      const endpoint = files?.endpoints?.["govchat-orchestrator"] || files?.endpoints?.custom || files?.endpoints?.agents || files?.endpoints?.default;
-      if (files === null || endpoint?.disabled !== true) context.capabilities.push("upload", "files");
+      if (!object(ui)) throw new Error("Invalid interface context");
+      if (ui.prompts === true) effective.capabilities.push("prompts");
+      for (const key of ["temporaryChat", "sharedLinks", "webSearch", "fileSearch"]) if (!minimal && ui[key] === true) effective.capabilities.push(key);
+      if (!minimal && ui.modelSelect === true) effective.capabilities.push("models");
+      if (files !== null && (!object(files) || (files.disabled !== undefined && typeof files.disabled !== "boolean") || (files.endpoints !== undefined && !object(files.endpoints)))) throw new Error("Invalid file context");
+      const endpoint = files?.endpoints?.["govchat-orchestrator"] ?? files?.endpoints?.custom ?? files?.endpoints?.default;
+      if (endpoint !== undefined && (!object(endpoint) || (endpoint.disabled !== undefined && typeof endpoint.disabled !== "boolean"))) throw new Error("Invalid endpoint context");
+      if (files?.disabled !== true && endpoint?.disabled !== true) effective.capabilities.push("upload", "files");
       const permissions = role.permissions?.PROMPTS || role.PROMPTS || {};
-      for (const [key, right] of [["USE", "use"], ["CREATE", "create"], ["CREATE", "edit"], ["SHARE", "share"], ["SHARE_PUBLIC", "sharePublic"]]) if (permissions[key] === true) context.rights.push(`prompts.${right}`);
+      if (!object(permissions)) throw new Error("Invalid role context");
+      for (const [key, right] of [["USE", "use"], ["CREATE", "create"], ["CREATE", "edit"], ["SHARE", "share"], ["SHARE_PUBLIC", "sharePublic"]]) if (ui.prompts === true && permissions[key] === true) effective.rights.push(`prompts.${right}`);
       // Apps are visible only from existing trusted app config; no webhook tokens leave here.
       const apps = readApps();
       if (apps?.enabled === true) for (const app of apps.apps || []) if (app.enabled !== false) {
         const key = { beleidskompas: "beleidskompas", versimpelaar: "simplifier", transcriptie: "transcript", "afbeelding-generator": "image" }[app.id];
         // A launcher entry is not sufficient evidence that an optional backend works.
-        if (key && (!["image", "transcript"].includes(key) || readFeatures()[key] === true)) context.capabilities.push(key);
+        if (key && key !== "transcript" && (key !== "image" || readFeatures().image === true)) effective.capabilities.push(key);
       }
+      context = effective;
     } catch { /* authenticated safe generally available subset only */ }
+    // Detect deletion/revocation or an identity/role change during the context reads.
+    // This is not an atomic authorization snapshot; LibreChat remains the authority.
+    let current;
+    try { current = await request("/api/user", authorization); } catch { return null; }
+    if (!validIdentity(current) || current.id !== identity.id || current.role !== identity.role || current.tenantId !== identity.tenantId) return null;
     return { ...context, capabilities: [...new Set(context.capabilities)], userId: identity.id };
   }
-  return { user, general };
+  return { user, general, agent };
 }
 module.exports = { createManualContext };

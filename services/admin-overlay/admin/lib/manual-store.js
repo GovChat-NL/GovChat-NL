@@ -22,7 +22,8 @@ function sources(model, defaults, overrides, source) {
   const result = {};
   for (const key of Object.keys(model)) result[key] = Object.hasOwn(overrides, key) ? source : Object.hasOwn(defaults, key) ? "deployment-file" : "default";
   for (const key of Object.keys(model.organization)) result[`organization.${key}`] = Object.hasOwn(overrides.organization || {}, key) ? source : Object.hasOwn(defaults.organization || {}, key) ? "deployment-file" : Object.hasOwn(profile, key) ? "profile" : "default";
-  for (const group of ["chapters", "topics", "categories", "articles"]) for (const id of Object.keys(model.visibility[group])) result[`visibility.${group}.${id}`] = Object.hasOwn(overrides.visibility?.[group] || {}, id) ? source : "deployment-file";
+  result["visibility.errors"] = Object.hasOwn(overrides.visibility || {}, "errors") ? source : Object.hasOwn(defaults.visibility || {}, "errors") ? "deployment-file" : "default";
+  for (const group of ["chapters", "topics", "categories", "articles"]) for (const id of Object.keys(model.visibility[group])) result[`visibility.${group}.${id}`] = Object.hasOwn(overrides.visibility?.[group] || {}, id) ? source : Object.hasOwn(defaults.visibility?.[group] || {}, id) ? "deployment-file" : "default";
   return result;
 }
 function rejectSymlinks(target) {
@@ -48,12 +49,20 @@ function atomic(directory, filename, value, mode = 0o600) {
 }
 function readFile(filename, limit = 48000000) {
   rejectSymlinks(filename);
-  const stat = fs.statSync(filename);
-  if (!stat.isFile() || stat.size > limit) throw new ManualError("MANUAL_UNAVAILABLE", "Handleidingopslag is ongeldig", 503);
-  return JSON.parse(fs.readFileSync(filename, "utf8"));
+  // De leaf mag tussen padcontrole en lezen niet alsnog een symlink worden.
+  const fd = fs.openSync(filename, fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW | fs.constants.O_NONBLOCK);
+  try {
+    const stat = fs.fstatSync(fd);
+    if (!stat.isFile() || stat.size > limit) throw new ManualError("MANUAL_UNAVAILABLE", "Handleidingopslag is ongeldig", 503);
+    const text = fs.readFileSync(fd, "utf8");
+    if (Buffer.byteLength(text) > limit) throw new ManualError("MANUAL_UNAVAILABLE", "Handleidingopslag is te groot", 503);
+    return JSON.parse(text);
+  } finally { fs.closeSync(fd); }
 }
 function createManualStore({ dataDir, publishDir, hardDisabled = false, configFile = "", io = atomic }) {
   let locallyBlocked = false;
+  let writing = false;
+  let retainLock = false;
   const directory = path.join(dataDir, "manual");
   const filename = path.join(directory, "state.json"), blocked = path.join(directory, "blocked.json"), lock = path.join(directory, "write.lock");
   // This directory must NOT be inside the public asset tree.
@@ -73,7 +82,14 @@ function createManualStore({ dataDir, publishDir, hardDisabled = false, configFi
     fs.mkdirSync(directory, { recursive: true, mode: 0o700 });
     fs.chmodSync(directory, 0o700);
     try { fs.mkdirSync(lock, { mode: 0o700 }); } catch { throw new ManualError("REVISION_CONFLICT", "Een andere schrijver is actief; lees de actuele revisie opnieuw", 409); }
-    try { return action(); } finally { fs.rmdirSync(lock); }
+    writing = true;
+    try { return action(); } finally { writing = false; if (!retainLock) fs.rmdirSync(lock); }
+  }
+  function isBlocked() {
+    // Ook een achtergebleven lock of een dangling symlink mag geen oude publicatie vrijgeven.
+    try { rejectSymlinks(blocked); rejectSymlinks(lock); }
+    catch { return true; }
+    return locallyBlocked || fs.existsSync(blocked) || (!writing && fs.existsSync(lock));
   }
   function record(model, source, overrides = {}) {
     const rev = revision();
@@ -82,7 +98,7 @@ function createManualStore({ dataDir, publishDir, hardDisabled = false, configFi
   function metadata() {
     try {
       const live = read().live;
-      const enabled = live.model.enabled && !hardDisabled && !locallyBlocked && !fs.existsSync(blocked);
+      const enabled = live.model.enabled && !hardDisabled && !isBlocked();
       return { schemaVersion: 1, enabled, revision: live.revision, autoOpen: enabled ? live.model.autoOpen : "never", agentEnabled: enabled && live.model.agentEnabled };
     } catch { return { schemaVersion: 1, enabled: false, revision: null, autoOpen: "never", agentEnabled: false }; }
   }
@@ -90,8 +106,17 @@ function createManualStore({ dataDir, publishDir, hardDisabled = false, configFi
   function invalidate() {
     locallyBlocked = true;
     // Persist a fail-closed marker before touching the authoritative publication.
-    atomic(directory, "blocked.json", { blocked: true });
-    for (const name of ["manual-config.json", "help-content.json"]) fs.rmSync(path.join(publishDir, name), { force: true });
+    try { atomic(directory, "blocked.json", { blocked: true }); retainLock = false; }
+    catch (error) {
+      // Als de marker niet duurzaam geschreven kan worden, behoud de reeds bestaande
+      // lock. Andere processen en een herstart mogen de oude live staat niet vrijgeven.
+      retainLock = true;
+      throw error;
+    }
+    finally {
+      // Verwijder oude activatiemetadata ook wanneer het schrijven van de marker faalt.
+      for (const name of ["manual-config.json", "help-content.json"]) fs.rmSync(path.join(publishDir, name), { force: true });
+    }
   }
   function init() {
     return withLock(() => {
@@ -112,7 +137,7 @@ function createManualStore({ dataDir, publishDir, hardDisabled = false, configFi
     const state = read();
     const defaults = state.deploymentDefaults || {}, overrides = state.draftOverrides || {};
     const profileReview = state.draft.profile === "limburg" ? { required: require("../defaults/manual-limburg.json").reviewRequired, note: require("../defaults/manual-limburg.json").note } : null;
-    return { model: state.draft, overrides, sources: sources(state.draft, defaults, overrides, state.draftSource), profileReview, baseRevision: state.live.revision, draftRevision: state.draftRevision, source: state.draftSource, hardDisabled, blocked: locallyBlocked || fs.existsSync(blocked), effective: metadata(), history: state.history.map(({ revision, publishedAt, source }) => ({ revision, publishedAt, source })) };
+    return { model: state.draft, overrides, sources: sources(state.draft, defaults, overrides, state.draftSource), profileReview, baseRevision: state.live.revision, draftRevision: state.draftRevision, source: state.draftSource, hardDisabled, blocked: isBlocked(), effective: metadata(), history: state.history.map(({ revision, publishedAt, source }) => ({ revision, publishedAt, source })) };
   }
   function check(state, expected) {
     if (!expected || expected.baseRevision !== state.live.revision || expected.draftRevision !== state.draftRevision) throw new ManualError("REVISION_CONFLICT", "De handleiding is gewijzigd; laad het actuele concept en vergelijk je wijzigingen", 409);
@@ -126,6 +151,17 @@ function createManualStore({ dataDir, publishDir, hardDisabled = false, configFi
     const state = read(); check(state, expected);
     if (typeof field !== "string" || !/^(?:enabled|agentEnabled|autoOpen|profile|title|subtitle|reviewedAt|sections|errorCategories|organization\.[A-Za-z]+|visibility\.(?:errors|(?:chapters|topics|categories|articles)\.[A-Za-z0-9_-]+))$/.test(field)) throw new ManualError("INVALID_INPUT", "Ongeldig resetveld");
     const overrides = clone(state.draftOverrides || {}), parts = field.split(".");
+    let known = state.draft;
+    for (const key of parts) {
+      if (!known || typeof known !== "object" || !Object.hasOwn(known, key)) {
+        // Zichtbaarheidsflags zijn sparse: alleen bestaande passage-IDs zijn geldig.
+        const group = parts[1], id = parts[2];
+        const ids = group === "chapters" ? state.draft.sections.map(s => s.id) : group === "topics" ? state.draft.sections.flatMap(s => s.items.map(n => n.id)) : group === "categories" ? state.draft.errorCategories.map(c => c.id) : group === "articles" ? state.draft.errorCategories.flatMap(c => c.articles.map(n => n.id)) : [];
+        if (parts.length === 3 && parts[0] === "visibility" && key === id && ids.includes(id)) break;
+        throw new ManualError("INVALID_INPUT", "Onbekend resetveld");
+      }
+      known = known[key];
+    }
     let parent = overrides;
     for (const key of parts.slice(0, -1)) { if (!parent[key]) return save(overrides, expected); parent = parent[key]; }
     delete parent[parts.at(-1)];
@@ -165,7 +201,7 @@ function createManualStore({ dataDir, publishDir, hardDisabled = false, configFi
     });
   }
   function document(context = {}) {
-    if (locallyBlocked || fs.existsSync(blocked)) throw new ManualError("MANUAL_UNAVAILABLE", "De handleiding is tijdelijk niet beschikbaar", 503);
+    if (isBlocked() || writing) throw new ManualError("MANUAL_UNAVAILABLE", "De handleiding is tijdelijk niet beschikbaar", 503);
     const live = read().live;
     if (hardDisabled || !live.model.enabled) throw new ManualError("MANUAL_DISABLED", "De handleiding is uitgeschakeld", 404);
     if (context.agent && !live.model.agentEnabled) throw new ManualError("TOOL_DISABLED", "De handleidingtool is uitgeschakeld", 403);

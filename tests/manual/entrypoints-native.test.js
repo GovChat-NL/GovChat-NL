@@ -24,7 +24,7 @@ test('pinned marker patch is byte-idempotent and confined to exact native compon
   const first = files.map(file => fs.readFileSync(path.join(temp, file), 'utf8'));
   patchManualNative(temp);
   assert.deepEqual(files.map(file => fs.readFileSync(path.join(temp, file), 'utf8')), first);
-  assert.equal(files.length, 6);
+  assert.equal(files.length, 7);
   assert.equal(fs.readFileSync(path.join(temp, helperPath), 'utf8'), helper);
   assert.doesNotMatch(first.join(''), /MutationObserver|setInterval|setTimeout/);
   const footer = first[0];
@@ -43,6 +43,13 @@ test('pinned marker patch is byte-idempotent and confined to exact native compon
   assert.match(first[2], /<NativeError \{\.\.\.props\} \/>/);
   assert.match(first[3], /<Alert/);
   assert.match(first[4], /onClick=\{onRetry\}/);
+  assert.match(first[5], /useManualEntrypoints/);
+  const clearance = first[5].match(/if \(manualEnabled\) bottomClearance = `mb-14 \$\{bottomClearance\}`;/)[0];
+  for (const enabled of [false, true]) {
+    const context = { manualEnabled: enabled, bottomClearance: 'sm:mb-10' };
+    vm.runInNewContext(clearance, context);
+    assert.equal(context.bottomClearance, enabled ? 'mb-14 sm:mb-10' : 'sm:mb-10');
+  }
 });
 
 test('source drift or partially modified patch fails before any writes', { skip: !available }, t => {

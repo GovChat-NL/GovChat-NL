@@ -15,6 +15,7 @@ const { createUtilityHandler } = require("./lib/utility-tools");
 const { createManualStore } = require("./lib/manual-store");
 const { createManualContext } = require("./lib/manual-context");
 const { registerManualRoutes } = require("./lib/manual-routes");
+const { ADMIN_SESSION_TTL_MS, isAdminSessionValid } = require("./lib/admin-session");
 
 const app = express();
 const PORT = process.env.PORT || 3002;
@@ -2435,7 +2436,7 @@ function createSession() {
 
 function isAuthenticated(req) {
   const sid = req.cookies?.session;
-  return sid && sessions.has(sid);
+  return isAdminSessionValid(sessions, sid);
 }
 
 function requireAuth(req, res, next) {
@@ -2617,7 +2618,7 @@ app.post("/login", (req, res) => {
     res.cookie("session", sid, {
       httpOnly: true,
       sameSite: "strict",
-      maxAge: 24 * 60 * 60 * 1000, // 24 hours
+      maxAge: ADMIN_SESSION_TTL_MS,
     });
     return res.redirect("/dashboard");
   }

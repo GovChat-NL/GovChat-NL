@@ -97,8 +97,10 @@ The [acceptance runner](browser-acceptance.cjs) covers:
     720 × 500 / 360 × 250 reflow with reachable controls and no horizontal overflow.
 16. Automatic authenticated TOC preflight, late login-response invalidation and
     current rights changes on focus without a new content revision.
-17. Complete repository-backed admin catalog (684 articles), the trusted fixture's
-    permitted subset (668 articles), server/user search and editor article search.
+17. Complete repository-backed admin catalog (692 articles: 466 ordinary and 226
+    default-hidden appendix entries), with 450 articles permitted by the trusted fixture;
+    explicit default document exclusion of every appendix entry, server/user search
+    and editor article search. These are fixture-specific permissions, not a universal count.
 18. Explicitly caught Beleidskompas error components, validated contextual links
     and unchanged app route/state.
 
@@ -110,9 +112,11 @@ fixtures**, not production deployment or user-session evidence. Only modal
 viewport captures are used except the full-page editor and print-media capture.
 The editor's hidden passages and empty contact fields are also synthetic.
 
-- Native desktop/mobile/error markers are fixture elements, not the complete
-  ingelogde native browser. The full patched native production client **was
-  compiled separately**; see [compile and source/render evidence](../../docs/manual-native-build-validation.md).
+- Native desktop/mobile/error markers in this fixture runner are fixture elements.
+  A **separate complete compiled native-client browser runner** now validates actual
+  desktop/mobile controls, the real failed-turn component, menu/disable and anonymous
+  auth page with the production overlay route loop. See the [independent review](../../docs/manual-frontend-review.md)
+  and [native machine results](evidence/native-browser-results.json). API/auth remain synthetic.
 - Real shared native-marker adapter logic runs, but the complete parent overlay
   route-loop bundle and deployment proxy are not built in this fixture.
 - Window lifecycle focus/popstate/native-open events are explicitly dispatched
@@ -130,3 +134,20 @@ The editor's hidden passages and empty contact fields are also synthetic.
 
 Read [browser-results.json](evidence/browser-results.json) for the exact browser
 version, timestamp and per-scenario outcomes of the latest completed run.
+
+## Independent native runner and final review additions
+
+The [native runner](native-browser-acceptance.cjs) requires an independently compiled
+pinned native client directory supplied through the environment, as documented in
+the [review reproduction](../../docs/manual-frontend-review.md). It does not create
+marker elements. Native service workers and outbound origins are blocked. The native
+login's refresh denial is intentionally synthetic; no production API server, Mongo,
+SSO or Entra runtime is launched.
+
+Fixture acceptance now comprises **29 passing scenarios**, including five new review
+cases for compact conditional preferences (measured 0/57/57 px), no translated-error
+text matching, auth/alert-dialog auto suppression, stale TOC/print isolation, and print
+preview/hidden-reason/same-revision invalidation. Positive page-scroll restoration is
+asserted alongside focus/overflow/inert restoration. The separate complete native
+runner comprises **5 passing scenarios**; its mobile case covers both welcome and
+existing-conversation pages.

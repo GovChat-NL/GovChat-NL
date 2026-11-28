@@ -1,4 +1,5 @@
 #gc-manual-backdrop { position:fixed; inset:0; z-index:100100; background:rgb(0 0 0 / .56); display:flex; align-items:center; justify-content:center; padding:24px; }
+[data-govchat-manual-owned="mobile"] { min-height:44px; }
 #gc-manual-modal { --manual-bg:#fff; --manual-ink:#17212c; --manual-line:#c7d1db; --manual-muted:#eff4f8; color:var(--manual-ink); background:var(--manual-bg); width:min(1320px,100%); height:min(900px,94dvh); border-radius:16px; box-shadow:0 16px 60px #0005; display:flex; flex-direction:column; min-width:0; overflow:hidden; font:1rem/1.6 ui-sans-serif,system-ui,sans-serif; }
 .dark #gc-manual-modal, html[data-theme="dark"] #gc-manual-modal { --manual-bg:#182129; --manual-ink:#f1f5f8; --manual-line:#5f7280; --manual-muted:#263640; color-scheme:dark; }
 #gc-manual-modal * { box-sizing:border-box; }
@@ -40,9 +41,12 @@
 .gc-manual-article blockquote { margin:1em 0; border-left:4px solid var(--manual-line); padding-left:16px; }
 .gc-manual-related { display:flex; flex-wrap:wrap; gap:8px; margin-top:24px; }
 .gc-manual-snippet { display:block; font-size:.85rem; font-weight:400; opacity:.85; margin-top:6px; }
-.gc-manual-preferences { display:flex; align-items:center; gap:12px; flex-wrap:wrap; border-top:1px solid var(--manual-line); padding:12px 24px; font-size:.85rem; }
+.gc-manual-preferences { display:flex; align-items:center; gap:8px; flex-wrap:wrap; border-top:1px solid var(--manual-line); padding:6px 24px; font-size:.85rem; }
+.gc-manual-preferences[hidden], .gc-manual-preferences [hidden] { display:none !important; }
 .gc-manual-preferences input { width:18px; height:18px; accent-color:#0875b6; vertical-align:middle; }
-.gc-manual-preferences label { padding:6px 0; }
+.gc-manual-preferences label { display:flex; align-items:center; gap:6px; min-height:44px; padding:0; }
+.gc-manual-preferences input { margin:0; flex-shrink:0; }
+#gc-manual-modal .gc-manual-preferences button { margin:0; font-size:.85rem; }
 #gc-manual-modal .gc-manual-nav-toggle { display:none; }
 #gc-manual-modal.gc-manual-full { position:fixed; inset:0; width:100%; height:100dvh; max-height:none; border-radius:0; }
 #gc-manual-print { display:none; }
@@ -62,7 +66,7 @@
   .gc-manual-show-nav .gc-manual-reader { display:none; }
   .gc-manual-reader { flex:1; }
   .gc-manual-pane { flex:1; padding:20px; }
-  .gc-manual-preferences { padding:8px 16px; gap:6px; }
+  .gc-manual-preferences { padding:6px 16px; gap:6px; }
 }
 @media(prefers-reduced-motion:reduce) { .gc-manual-pane { scroll-behavior:auto; } }
 /* Browser zoom reduces the CSS viewport, including its height. Keep every

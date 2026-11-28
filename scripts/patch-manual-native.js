@@ -37,7 +37,7 @@ const patches = [
       ['  const localize = useLocalize();', '  const localize = useLocalize();\n  const manualEnabled = useManualEntrypoints();'],
       ['if (footerElements.length === 0) {', 'if (footerElements.length === 0 && !manualEnabled) {'],
       ['<div className="relative w-full">', '<div className="relative w-full" data-govchat-manual-footer="native">'],
-      ['        })}\n      </div>', '        })}\n        {manualEnabled && <span data-govchat-manual-slot="desktop" />}\n      </div>\n      {manualEnabled && (\n        <div className="absolute bottom-0 right-0 px-2 py-1 sm:hidden" data-govchat-manual-slot="mobile" />\n      )}'],
+      ['        })}\n      </div>', '        })}\n        {manualEnabled && <span data-govchat-manual-slot="desktop" />}\n      </div>\n      {manualEnabled && (\n        <div className="absolute bottom-0 right-0 z-20 px-2 py-1 sm:hidden" data-govchat-manual-slot="mobile" />\n      )}'],
     ],
   },
   {
@@ -96,6 +96,15 @@ export default Error;`],
     changes: [
       ['<div className="py-12 text-center" role="alert"', '<div data-govchat-manual-error="agent" data-govchat-error-code={isErrorObject(error) && typeof error.code === \'string\' ? error.code : undefined} className="py-12 text-center" role="alert"'],
       ['        {/* Retry button with enhanced accessibility */}', '        <span data-govchat-manual-error-actions="" />\n        {/* Retry button with enhanced accessibility */}'],
+    ],
+  },
+  {
+    file: 'client/src/components/Chat/Input/ChatForm.tsx',
+    sha256: 'cb5cfccac60bf632d98d4adda9fd787d3b1a704682eaa5271c91dd6fceffed8a',
+    changes: [
+      ["import { useGetStartupConfig } from '~/data-provider';", "import { useGetStartupConfig } from '~/data-provider';\nimport { useManualEntrypoints } from '../useManualEntrypoints';"],
+      ['  const localize = useLocalize();', '  const localize = useLocalize();\n  const manualEnabled = useManualEntrypoints();'],
+      ['  /** Answer mode, then during-run steering', "  // Below sm the upstream composer otherwise covers the native help control.\n  // Reserve only the optional manual's 44px mobile target; desktop stays upstream.\n  if (manualEnabled) bottomClearance = `mb-14 ${bottomClearance}`;\n\n  /** Answer mode, then during-run steering"],
     ],
   },
 ];

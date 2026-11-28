@@ -37,7 +37,7 @@ function model(autoOpen = "never") {
   });
 }
 
-async function startFixture() {
+async function startFixture({ nativeDist } = {}) {
   const temp = path.join(ROOT, ".manual-tools/tmp"); fs.mkdirSync(temp, { recursive: true });
   const directory = fs.mkdtempSync(path.join(temp, "browser-"));
   const store = createManualStore({ dataDir: path.join(directory, "data"), publishDir: path.join(directory, "public") });
@@ -51,6 +51,39 @@ async function startFixture() {
   ] };
   let restrictedShares = false;
   const userFor = req => req.get("authorization") === "Bearer fixture-privileged" ? "privileged" : req.get("authorization") === "Bearer fixture-restricted" ? "restricted" : null;
+  if (nativeDist) {
+    const nativeUser = { id: 'fixture-restricted', _id: 'fixture-restricted', username: 'synthetic', name: 'Synthetic browser user', email: 'synthetic@example.invalid', role: 'USER', provider: 'local', emailVerified: true, avatar: '/assets/favicon-32x32.png' };
+    app.post('/api/auth/refresh', (req, res) => req.cookies.fixtureUser === 'anonymous' ? res.sendStatus(401) : res.json({ token: 'fixture-restricted', user: nativeUser }));
+    app.get('/api/user', (req, res) => userFor(req) ? res.json(nativeUser) : res.sendStatus(401));
+    app.get('/api/config', (_req, res) => res.json({ appTitle: 'GovChat Synthetic Native', registrationEnabled: false, emailLoginEnabled: true, socialLogins: [], customFooter: '**Controleer synthetische bronnen**', helpAndFaqURL: 'https://example.invalid/faq', interface: { prompts: true, privacyPolicy: { externalUrl: 'https://example.invalid/privacy' }, termsOfService: { externalUrl: 'https://example.invalid/terms' } } }));
+    app.get('/api/endpoints', (_req, res) => res.json({ openAI: { userProvide: false, modelDisplayLabel: 'Synthetic model' } }));
+    app.get('/api/models', (_req, res) => res.json({ openAI: ['synthetic-model'] }));
+    app.get('/api/convos', (_req, res) => res.json({ conversations: [], hasMore: false, pageNumber: 1, pageSize: 25 }));
+    app.get(['/api/keys', '/api/search/config', '/api/mcp/connection/status', '/api/mcp/tools'], (_req, res) => res.json({}));
+    app.get(['/api/agents', '/api/files', '/api/assistants'], (_req, res) => res.json([]));
+    app.get('/api/prompts/groups', (_req, res) => res.json({ promptGroups: [], pageNumber: 1, pages: 0 }));
+    app.get('/api/tags', (_req, res) => res.json([]));
+    app.get('/api/projects', (_req, res) => res.json({ projects: [], nextCursor: null }));
+    app.get('/api/banner', (_req, res) => res.json(null));
+    app.get('/api/user/settings/favorites', (_req, res) => res.json([]));
+    app.get('/api/user/settings/pinned-order', (_req, res) => res.json([]));
+    app.get('/api/files/speech/config/get', (_req, res) => res.json({}));
+    app.get('/api/search/enable', (_req, res) => res.json(false));
+    app.get('/api/agents/tools/web_search/auth', (_req, res) => res.json({ authenticated: false }));
+    app.get('/api/endpoints/token-config', (_req, res) => res.json({}));
+    app.get('/api/balance', (_req, res) => res.json({ tokenCredits: 0 }));
+    app.get('/api/agents/chat/active', (_req, res) => res.json({ activeJobIds: [] }));
+    app.get('/health', (_req, res) => res.sendStatus(200));
+    const conversationId = '11111111-1111-4111-8111-111111111111';
+    app.get(`/api/convos/${conversationId}`, (_req, res) => res.json({ conversationId, title: 'Synthetic failed turn', endpoint: 'openAI', model: 'synthetic-model', user: nativeUser.id, createdAt: '2026-01-01T00:00:00Z', updatedAt: '2026-01-01T00:00:00Z' }));
+    app.get(`/api/share/link/${conversationId}`, (_req, res) => res.json({ shareId: null }));
+    app.get('/api/agents/tools/calls', (_req, res) => res.json([]));
+    app.get(`/api/agents/chat/status/${conversationId}`, (_req, res) => res.json({ active: false }));
+    app.get(`/api/messages/${conversationId}`, (_req, res) => res.json([
+      { conversationId, messageId: '22222222-2222-4222-8222-222222222222', parentMessageId: '00000000-0000-0000-0000-000000000000', sender: 'User', text: 'bad_document mentioned in ordinary synthetic chat prose', isCreatedByUser: true, createdAt: '2026-01-01T00:00:00Z' },
+      { conversationId, messageId: '33333333-3333-4333-8333-333333333333', parentMessageId: '22222222-2222-4222-8222-222222222222', sender: 'Synthetic model', endpoint: 'openAI', model: 'synthetic-model', text: '{"error":{"code":"bad_document","message":"Exacte vaste testmelding"}}', content: [{ type: 'error', error: '{"error":{"code":"bad_document","message":"Exacte vaste testmelding"}}' }], error: true, isCreatedByUser: false, createdAt: '2026-01-01T00:00:01Z' }
+    ]));
+  }
   app.post("/api/auth/refresh", (req, res) => req.cookies.fixtureUser === "anonymous" ? res.sendStatus(401) : res.json({ token: `fixture-${req.cookies.fixtureUser === "privileged" ? "privileged" : "restricted"}` }));
   app.get("/api/user", (req, res) => { const user = userFor(req); return user ? res.json({ id: `fixture-${user}`, role: user === "privileged" ? "ADMIN" : "USER" }) : res.sendStatus(401); });
   app.get("/api/config", (_req, res) => res.json({ appTitle: "GovChat Fixture", interface: { prompts: true } }));
@@ -80,6 +113,13 @@ async function startFixture() {
   // Production page imports are relative to their deployed assets.
   app.use("/shared", express.static(path.join(ROOT, "overlay/src/shared")));
   app.use("/tests/manual", express.static(__dirname));
+  if (nativeDist) {
+    app.use(express.static(nativeDist, { index: false }));
+    app.get(['/', '/c/:id', '/login', '/login/2fa'], (_req, res) => {
+      const html = fs.readFileSync(path.join(nativeDist, 'index.html'), 'utf8');
+      res.type('html').send(html.replace('</body>', '<script type="module" src="/govchat-overlay/src/overlay.js"></script></body>'));
+    });
+  }
   app.get(["/c/:id", "/fixture"], (_req, res) => res.type("html").send(`<!doctype html><html lang="nl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>GovChat acceptance fixture</title><style>body{font:16px/1.5 system-ui;margin:0;background:#f2f5f8;color:#203542}main{max-width:1000px;margin:40px auto;padding:24px}button{padding:10px;margin:6px}textarea{width:90%;min-height:70px}.dark body{background:#111b23;color:#edf4f8}aside{padding:16px;background:#dee8ef}</style></head><body><main id="fixture-chat"><h1>GovChat browserfixture</h1><p>Openbare synthetische acceptatietest · native slots zijn fixtures, geen volledige LibreChat-build.</p><div id="native-menu" data-govchat-manual-slot="menu"></div><div id="native-footer" data-govchat-manual-slot="footer"></div><button id="manual-open" data-gc-manual-entry>Handleiding openen</button><p id="conversation">Synthetisch gesprek: mijn testdocument</p><label>Testbericht<textarea id="composer">Niet-verzonden testbericht blijft behouden</textarea></label><p id="citations"></p><aside id="exact-error" data-govchat-manual-error data-govchat-error-code="bad_document"><span>Exacte vaste testmelding</span><div data-govchat-manual-error-actions></div></aside><aside id="unknown-error" data-govchat-manual-error data-govchat-error-code="unknown_fixture"><span>Onbekende testfout</span><div data-govchat-manual-error-actions></div></aside><p id="ordinary-text">bad_document in gewone gesprekstekst is geen foutcomponent</p></main><div id="already-inert" inert>Reeds inert testelement</div><script type="module" src="/tests/manual/browser-harness.js"></script></body></html>`));
   const server = app.listen(0, "127.0.0.1"); await new Promise(r => server.once("listening", r)); base = `http://127.0.0.1:${server.address().port}`;
   return { base, calls, store, setRestrictedShares(value) { restrictedShares = value === true; }, async close() { server.closeAllConnections(); await new Promise(r => server.close(r)); fs.rmSync(directory, { recursive: true, force: true }); } };

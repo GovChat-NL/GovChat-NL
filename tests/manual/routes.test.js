@@ -56,8 +56,8 @@ test("authenticated identity with missing effective configuration falls back to 
   } });
   const user = await context.user({ get: () => "Bearer x" }); assert.deepEqual(user.capabilities, ["chat", "history"]); assert.deepEqual(user.rights, []);
 });
-test("pinned empty files/config means default upload config; minimal agent can read general document instructions", async () => {
+test("pinned empty files/config means authenticated default upload; common agent does not infer it from UI", async () => {
   const context = createManualContext({ baseUrl: "http://trusted", minimal: true, fetchImpl: async url => ({ ok: true, text: async () => url.endsWith("/api/user") ? JSON.stringify({ id: "u", role: "USER" }) : url.endsWith("/api/files/config") ? "" : url.endsWith("/api/config") ? '{"interface":{"prompts":true}}' : '{"permissions":{"PROMPTS":{"USE":true}}}' }) });
   const user = await context.user({ get: () => "Bearer x" }); assert.ok(user.capabilities.includes("upload")); assert.ok(user.rights.includes("prompts.use"));
-  assert.ok(context.general().capabilities.includes("files")); assert.deepEqual(context.general().rights, []);
+  assert.ok(!context.general().capabilities.includes("files")); assert.deepEqual(context.general().rights, []);
 });

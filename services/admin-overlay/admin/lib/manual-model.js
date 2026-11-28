@@ -14,6 +14,7 @@ class ManualError extends Error {
 const fail = (message) => { throw new ManualError("INVALID_MANUAL", message); };
 const clone = value => JSON.parse(JSON.stringify(value));
 const escape = value => String(value).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const validId = value => typeof value === "string" && ID.test(value);
 function object(value, allowed, label) {
   if (!value || typeof value !== "object" || Array.isArray(value)) fail(`${label}: object vereist`);
   for (const key of Object.keys(value)) if (!allowed.includes(key)) fail(`${label}: onbekend veld ${key}`);
@@ -91,6 +92,14 @@ function resolve(input = {}) {
   if (input.organization !== undefined) object(input.organization, ORG, "Organisatie");
   if (input.visibility !== undefined) object(input.visibility, ["chapters", "topics", "errors", "categories", "articles"], "Zichtbaarheid");
   const base = clone(require("../defaults/manual.json"));
+  // Alleen geërfde defaultflags vervallen bij een expliciet vervangen catalogus.
+  // Onbekende flags uit invoer blijven onverminderd een validatiefout.
+  if (Array.isArray(input.errorCategories)) {
+    const categories = new Set(input.errorCategories.map(c => c?.id));
+    const articles = new Set(input.errorCategories.flatMap(c => Array.isArray(c?.articles) ? c.articles.map(a => a?.id) : []));
+    base.visibility.categories = Object.fromEntries(Object.entries(base.visibility.categories).filter(([id]) => categories.has(id)));
+    base.visibility.articles = Object.fromEntries(Object.entries(base.visibility.articles).filter(([id]) => articles.has(id)));
+  }
   const profile = input.profile === undefined ? "generic" : input.profile;
   if (!["generic", "limburg"].includes(profile)) fail("Onbekend profiel");
   const org = profile === "limburg" ? require("../defaults/manual-limburg.json").organization : {};
@@ -107,7 +116,7 @@ function validate(model) {
   for (const [key, value] of Object.entries(model.organization)) {
     string(value, key, 2048);
     if (value && key.endsWith("Email") && !safeHref(`mailto:${value}`)) fail(`Ongeldig e-mailadres ${key}`);
-    if (value && key.endsWith("Url") && !safeHref(value)) fail(`Ongeldige URL ${key}`);
+    if (value && key.endsWith("Url") && (!safeHref(value) || !/^(?:https?:\/\/|\/(?!\/))/.test(value) || /\{\{/.test(value))) fail(`Ongeldige URL ${key}`);
   }
   string(model.title, "Titel"); string(model.subtitle, "Ondertitel", 1000); string(model.reviewedAt, "Controledatum", 40);
   object(model.visibility, ["chapters", "topics", "errors", "categories", "articles"], "Zichtbaarheid");
@@ -116,21 +125,22 @@ function validate(model) {
   let count = 0, total = 0;
   function node(n, kind) {
     object(n, ["id", "title", "content", "items", "aliases", "requires", "rights", "related", "codes", "messages"], "Passage");
-    if (++count > 1200 || !ID.test(n.id) || ids.has(n.id)) fail("Dubbel of ongeldig passage-ID");
+    if (++count > 1200 || !validId(n.id) || ids.has(n.id)) fail("Dubbel of ongeldig passage-ID");
     ids.add(n.id); known[kind].add(n.id);
     string(n.title, "Passagetitel"); string(n.content, "Inhoud", 24000); total += n.content.length;
     if (total > 2000000) fail("Handleiding te groot");
     n.content = sanitize(n.content);
-    n.aliases = array(n.aliases || [], "Aliases", 30).map(a => { if (!ID.test(a) || aliases.has(a)) fail("Dubbele of ongeldige alias"); aliases.add(a); return a; });
+    n.aliases = array(n.aliases === undefined ? [] : n.aliases, "Aliases", 30).map(a => { if (!validId(a) || aliases.has(a)) fail("Dubbele of ongeldige alias"); aliases.add(a); return a; });
     for (const [key, list] of [["requires", CAPABILITIES], ["rights", RIGHTS]]) {
-      n[key] = array(n[key] || [], key, 30);
+      n[key] = array(n[key] === undefined ? [] : n[key], key, 30);
       if (n[key].some(v => !list.includes(v))) fail(`Onbekende ${key}`);
     }
-    n.related = array(n.related || [], "Verwijzingen", 30);
+    n.related = array(n.related === undefined ? [] : n.related, "Verwijzingen", 30);
+    if (n.related.some(id => !validId(id))) fail("Ongeldige verwijzing");
     links.push(...n.related);
     const parser = new Parser({ onopentag: (tag, attr) => { if (tag === "a" && attr.href?.startsWith("manual:")) links.push(attr.href.slice(7)); } }); parser.write(n.content); parser.end();
-    for (const key of ["codes", "messages"]) n[key] = array(n[key] || [], key, 100).map(v => string(v, key, 1000));
-    n.items = array(n.items || [], "Subsecties", 100);
+    for (const key of ["codes", "messages"]) n[key] = array(n[key] === undefined ? [] : n[key], key, 100).map(v => string(v, key, 1000));
+    n.items = array(n.items === undefined ? [] : n.items, "Subsecties", 100);
     if (kind !== "chapters" && n.items.length) fail("Alleen hoofdstukken mogen subsecties bevatten");
     for (const item of n.items) node(item, "topics");
   }
@@ -138,19 +148,23 @@ function validate(model) {
   for (const category of array(model.errorCategories, "Foutcategorieën", 50)) {
     object(category, ["id", "title", "parentId", "articles"], "Foutcategorie");
     if (category.parentId !== undefined && !known.chapters.has(category.parentId) && !known.topics.has(category.parentId)) fail("Onbekende ouder van foutcategorie");
-    if (!ID.test(category.id) || ids.has(category.id)) fail("Ongeldig categorie-ID");
+    if (!validId(category.id) || ids.has(category.id)) fail("Ongeldig categorie-ID");
     ids.add(category.id); known.categories.add(category.id); string(category.title, "Categorietitel");
     for (const article of array(category.articles, "Foutartikelen", 700)) node(article, "articles");
   }
   for (const alias of aliases) if (ids.has(alias)) fail("Alias overlapt een ID");
-  for (const link of links) if (!ids.has(link) && !aliases.has(link)) fail(`Onbekende verwijzing ${link}`);
+  for (const link of links) if (!known.chapters.has(link) && !known.topics.has(link) && !known.articles.has(link) && !aliases.has(link)) fail(`Onbekende verwijzing ${link}`);
   for (const key of ["chapters", "topics", "categories", "articles"]) {
     const flags = model.visibility[key]; object(flags, [...known[key]], key);
     for (const value of Object.values(flags)) if (typeof value !== "boolean") fail("Zichtbaarheid: boolean vereist");
   }
   // Check placeholders now, including organization-derived links, not only at rendering time.
-  for (const section of model.sections) for (const n of [section, ...section.items]) sanitize(interpolate(n.content, model.organization, true));
-  for (const category of model.errorCategories) for (const n of category.articles) sanitize(interpolate(n.content, model.organization, true));
+  interpolate(model.title, model.organization); interpolate(model.subtitle, model.organization);
+  for (const section of model.sections) for (const n of [section, ...section.items]) { interpolate(n.title, model.organization); sanitize(interpolate(n.content, model.organization, true)); }
+  for (const category of model.errorCategories) {
+    interpolate(category.title, model.organization);
+    for (const n of category.articles) { interpolate(n.title, model.organization); sanitize(interpolate(n.content, model.organization, true)); }
+  }
   return model;
 }
 function destination(id, revision) { return `/c/new?manual=${encodeURIComponent(id)}&manualRevision=${encodeURIComponent(revision)}`; }
@@ -185,8 +199,8 @@ function compile(model, { revision = "preview", capabilities = ["chat", "history
   }
   for (const section of model.sections) if (allowed.has(section.id)) result.sections.push({ id: section.id, title: interpolate(section.title, model.organization), items: section.items.filter(n => allowed.has(n.id)).map(n => ({ id: n.id, title: interpolate(n.title, model.organization) })) });
   for (const category of model.errorCategories) {
-    const articles = category.articles.filter(n => allowed.has(n.id)).map(n => ({ id: n.id, title: n.title }));
-    if (articles.length) result.errorCategories.push({ id: category.id, title: category.title, parentId: category.parentId || null, articles });
+    const articles = category.articles.filter(n => allowed.has(n.id)).map(n => ({ id: n.id, title: interpolate(n.title, model.organization) }));
+    if (articles.length) result.errorCategories.push({ id: category.id, title: interpolate(category.title, model.organization), parentId: category.parentId || null, articles });
   }
   if (!enabled && !preview) { result.title = "Handleiding"; result.subtitle = ""; result.reviewedAt = ""; }
   if (preview) result.preview = true;

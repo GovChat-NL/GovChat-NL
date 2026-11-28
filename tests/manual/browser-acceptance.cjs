@@ -9,6 +9,7 @@ const { startFixture, model } = require("./browser-fixture.cjs");
 const evidence = path.join(__dirname, "evidence");
 const adminHeaders = { cookie: "authfixture=manual-browser-admin", "content-type": "application/json" };
 const results = [];
+const metrics = {};
 let fixture, browser;
 
 async function api(route, method = "GET", body) {
@@ -36,14 +37,15 @@ async function test(name, fn) {
   const makeContext = async opts => { const c = await context(opts); contexts.push(c); return c; };
   try { fixture.setRestrictedShares(false); await publish(); await fn(makeContext); results.push({ name, status: "passed", durationMs: Date.now() - start }); console.log("PASS", name); }
   catch (error) { results.push({ name, status: "failed", error: error.message, durationMs: Date.now() - start }); console.error("FAIL", name, error.message); }
-  finally { for (const c of contexts) await c.close(); }
+  finally { for (const c of contexts) { await c.unrouteAll({ behavior: 'ignoreErrors' }); await c.close(); } }
 }
 
 async function main() {
   fs.mkdirSync(evidence, { recursive: true }); fixture = await startFixture(); browser = await chromium.launch({ headless: true });
   try {
     await test("desktop modal, focus trap, dynamic inert and exact restore", async make => {
-      const p = await chat(await make()); await p.evaluate(() => { document.body.style.overflow = "scroll"; });
+      const p = await chat(await make()); await p.evaluate(() => { document.body.style.overflow = "scroll"; document.body.style.minHeight = '2000px'; document.getElementById('fixture-chat').style.marginTop = '300px'; window.scrollTo(0, 200); });
+      const scrollBefore = await p.evaluate(() => window.scrollY);
       await p.locator("#manual-open").click(); await opened(p);
       await expect(p.locator("#fixture-chat")).toHaveJSProperty("inert", true);
       await p.evaluate(() => { const div = document.createElement("div"); div.id = "late-route"; document.body.append(div); });
@@ -55,6 +57,7 @@ async function main() {
       await expect(p.locator("#manual-open")).toBeFocused(); await expect(p.locator("#fixture-chat")).toHaveJSProperty("inert", false);
       await expect(p.locator("#late-route")).toHaveJSProperty("inert", false); await expect(p.locator("#already-inert")).toHaveJSProperty("inert", true);
       assert.equal(await p.evaluate(() => document.body.style.overflow), "scroll"); assert.deepEqual(p.errors, []);
+      assert.equal(await p.evaluate(() => window.scrollY), scrollBefore);
     });
     await test("passage history and explicit TOC fallback never modify chat history", async make => {
       const p = await chat(await make()); const url = p.url();
@@ -73,7 +76,7 @@ async function main() {
         assert.ok(bounds.width <= viewport.width); assert.ok(bounds.scrollWidth <= viewport.width + 1);
         await p.getByRole('button', { name: 'Inhoud', exact: true }).click();
         await p.locator('#gc-manual-nav [data-manual-id="documenten"]').click(); await opened(p, 'documenten');
-        await p.getByRole('button', { name: 'Automatische voorkeur herstellen' }).scrollIntoViewIfNeeded();
+        await p.getByRole('button', { name: 'Print / PDF' }).scrollIntoViewIfNeeded();
         await close(p);
       }
     });
@@ -97,10 +100,18 @@ async function main() {
     });
     await test("complete repository catalog is searchable and editable without public defaults", async make => {
       const defaults = require('../../overlay/defaults/manual.json'); await publish({ ...defaults, enabled: true });
-      assert.equal((await api('')).model.errorCategories.reduce((count, category) => count + category.articles.length, 0), 684);
+      const catalog = (await api('')).model.errorCategories;
+      assert.equal(catalog.reduce((count, category) => count + category.articles.length, 0), 692);
+      const appendix = catalog.find(category => category.id === 'appendix-errors');
+      assert.equal(appendix.articles.length, 226);
+      assert.equal(catalog.filter(category => category.id !== 'appendix-errors').reduce((count, category) => count + category.articles.length, 0), 466);
       const p = await chat(await make()); await p.locator('#manual-open').click(); await expect(p.locator('#gc-manual-modal')).toBeVisible();
       const articles = await p.evaluate(async () => (await window.fixtureRequest('document')).passages.filter(p => p.kind === 'articles').map(p => ({ id: p.id, title: p.title, codes: p.codes })));
-      assert.equal(articles.length, 668); // Current trusted capabilities/rights filter 16 articles.
+      assert.equal(articles.length, 450); // 466 ordinary articles minus 16 filtered by trusted fixture context.
+      const defaultDocument = await p.evaluate(async () => window.fixtureRequest('document'));
+      assert.ok(!defaultDocument.errorCategories.some(category => category.id === 'appendix-errors'));
+      for (const article of appendix.articles) assert.ok(!articles.some(passage => passage.id === article.id), article.id);
+      metrics.catalog = { total: 692, ordinary: 466, defaultHiddenAppendix: 226, trustedFixtureVisible: articles.length, defaultExcludesAppendix: true };
       const target = articles.find(article => article.codes.length && article.codes[0].length <= 200);
       await p.locator('#gc-manual-search').fill(target.codes[0]);
       await expect(p.locator(`#gc-manual-nav [data-manual-id="${target.id}"]`)).toBeVisible();
@@ -233,7 +244,7 @@ async function main() {
         await publish(model(policy)); const revised = await make({ storageState: state }); const q = await chat(revised); await opened(q);
         await q.getByRole("checkbox").check(); await close(q); const optState = await revised.storageState(); await publish(model(policy));
         const opted = await chat(await make({ storageState: optState })); await opted.waitForTimeout(550); await expect(opted.locator("#gc-manual-modal")).toHaveCount(0);
-        await opted.locator("#manual-open").click(); await opened(opted); await opted.getByRole("button", { name: "Automatische voorkeur herstellen" }).click(); await expect(opted.getByRole("checkbox")).not.toBeChecked();
+        await opted.locator("#manual-open").click(); await opened(opted); await opted.getByRole("button", { name: "Opnieuw toestaan" }).click(); await expect(opted.getByRole("checkbox")).not.toBeChecked();
       }
     });
     await test("storage denied prevents automatic popups across full chat/start/app routes, manual remains usable", async make => {
@@ -263,6 +274,65 @@ async function main() {
       await p.locator("#manual-open").click(); await opened(p); await close(p);
       const q = await chat(await make()); await q.locator("#manual-open").click(); await opened(q); await close(q); await q.waitForTimeout(550); await expect(q.locator("#gc-manual-modal")).toHaveCount(0);
     });
+    await test("compact conditional preferences reclaim mobile reader space", async make => {
+      const p = await chat(await make({ viewport: { width: 390, height: 844 } }));
+      await p.locator('#manual-open').click(); await opened(p);
+      await expect(p.locator('.gc-manual-preferences')).toBeHidden();
+      metrics.mobilePreferencesNeverPx = await p.locator('.gc-manual-preferences').evaluate(el => el.getBoundingClientRect().height);
+      assert.equal(metrics.mobilePreferencesNeverPx, 0);
+      assert.equal(await p.locator('#gc-manual-modal').innerText().then(text => text.includes('beleidsacceptatie')), false);
+      await close(p); await publish(model('every-session'));
+      await p.locator('#manual-open').click(); await opened(p);
+      await expect(p.getByRole('checkbox')).toBeVisible();
+      await expect(p.getByRole('button', { name: 'Opnieuw toestaan' })).toBeHidden();
+      metrics.mobilePreferencesEnabledPx = await p.locator('.gc-manual-preferences').evaluate(el => el.getBoundingClientRect().height);
+      assert.ok(metrics.mobilePreferencesEnabledPx <= 60);
+      await p.getByRole('checkbox').check(); await expect(p.getByRole('button', { name: 'Opnieuw toestaan' })).toBeVisible();
+      metrics.mobilePreferencesOptOutPx = await p.locator('.gc-manual-preferences').evaluate(el => el.getBoundingClientRect().height);
+      assert.ok(metrics.mobilePreferencesOptOutPx <= 100);
+      await screenshot(p, 'manual-mobile-preferences');
+    });
+    await test("translated error text is ignored and explicit exact message attributes still match", async make => {
+      const p = await chat(await make());
+      await p.evaluate(() => { const error = document.getElementById('exact-error'); error.removeAttribute('data-govchat-error-code'); window.fixtureManual.manualRouteCheck(); });
+      await p.locator('#exact-error button').click(); await opened(p, 'probleem-algemeen'); await close(p);
+      await p.evaluate(() => { document.getElementById('exact-error').setAttribute('data-govchat-error-message', 'Exacte vaste testmelding'); window.fixtureManual.manualRouteCheck(); });
+      await p.locator('#exact-error button').click(); await opened(p, 'bad-document');
+    });
+    await test("alertdialog and auth route suppress automatic opening without polling", async make => {
+      await publish(model('every-session')); const ctx = await make();
+      await ctx.addInitScript(() => document.addEventListener('DOMContentLoaded', () => { const other = document.createElement('section'); other.setAttribute('role', 'alertdialog'); document.body.append(other); }));
+      const p = await chat(ctx); await p.waitForTimeout(600); await expect(p.locator('#gc-manual-modal')).toHaveCount(0);
+      await p.evaluate(() => { document.querySelector('[role="alertdialog"]').remove(); history.pushState({}, '', '/login/2fa'); window.fixtureManual.scheduleManualAuto(); });
+      await p.waitForTimeout(600); await expect(p.locator('#gc-manual-modal')).toHaveCount(0);
+    });
+    await test("late TOC and print reads cannot populate a replacement dialog", async make => {
+      const ctx = await make(); const p = await chat(ctx);
+      let release, captured;
+      await ctx.route('**/govchat-api/manual/toc', async route => { const response = await route.fetch(); captured = true; await new Promise(resolve => { release = resolve; }); await route.fulfill({ response, json: { ...await response.json(), title: 'LATE_TOC_SENTINEL' } }); });
+      await p.locator('#manual-open').click(); await expect(p.locator('#gc-manual-modal')).toBeVisible();
+      await expect.poll(() => captured).toBe(true); await close(p); await ctx.unroute('**/govchat-api/manual/toc');
+      await p.locator('#manual-open').click(); await opened(p); release(); await p.waitForTimeout(300);
+      await expect(p.locator('#gc-manual-title')).not.toContainText('LATE_TOC_SENTINEL');
+      captured = false;
+      await ctx.route('**/govchat-api/manual/document', async route => { const response = await route.fetch(); captured = true; await new Promise(resolve => { release = resolve; }); await route.fulfill({ response }); });
+      await p.evaluate(() => { window.print = () => { window.latePrintCalled = true; }; });
+      await p.getByRole('button', { name: 'Print / PDF' }).click(); await expect.poll(() => captured).toBe(true);
+      await close(p); await ctx.unroute('**/govchat-api/manual/document'); await p.locator('#manual-open').click(); await opened(p);
+      release(); await p.waitForTimeout(300); await expect(p.locator('#gc-manual-print')).toHaveCount(0);
+      assert.notEqual(await p.evaluate(() => window.latePrintCalled), true);
+    });
+    await test("print trust rejects preview and hiddenReasons and clears on same-revision focus", async make => {
+      const ctx = await make(); const p = await chat(ctx); await p.locator('#manual-open').click(); await opened(p);
+      await p.evaluate(() => { window.print = () => {}; });
+      await ctx.route('**/govchat-api/manual/document', async route => { const response = await route.fetch(); await route.fulfill({ response, json: { ...await response.json(), preview: true } }); });
+      await p.getByRole('button', { name: 'Print / PDF' }).click(); await expect(p.locator('.gc-manual-status')).toContainText('tijdelijk niet beschikbaar'); await expect(p.locator('#gc-manual-print')).toHaveCount(0);
+      await ctx.unroute('**/govchat-api/manual/document');
+      await ctx.route('**/govchat-api/manual/document', async route => { const response = await route.fetch(); const data = await response.json(); data.passages[0].hiddenReasons = ['fixture-denied']; data.passages[0].html = '<p>PRINT_HIDDEN_SENTINEL</p>'; await route.fulfill({ response, json: data }); });
+      await p.getByRole('button', { name: 'Print / PDF' }).click(); await expect(p.locator('#gc-manual-print')).toHaveCount(1);
+      await expect(p.locator('#gc-manual-print')).not.toContainText('PRINT_HIDDEN_SENTINEL');
+      await p.evaluate(() => window.dispatchEvent(new Event('focus'))); await expect(p.locator('#gc-manual-print')).toHaveCount(0);
+    });
     await test("start and Beleidskompas use the same real manual and preserve app state", async make => {
       const ctx = await make(); const p = await ctx.newPage();
       await p.goto(fixture.base + "/start/?chat=/c/fixture-conversation"); await p.locator("#gc-landing-help-btn").click(); await opened(p); await screenshot(p, "manual-start"); await close(p);
@@ -290,7 +360,7 @@ async function main() {
       const anonymous = await browser.newContext(); try { assert.equal((await anonymous.request.get(fixture.base + "/api/admin/manual")).status(), 401); } finally { await anonymous.close(); }
     });
   } finally {
-    const report = { generatedAt: new Date().toISOString(), browser: browser.version(), isolation: "loopback-only; synthetic trusted auth/config; actual model/store/routes/editor and ES modules; native markers not full client build", passed: results.filter(r => r.status === "passed").length, failed: results.filter(r => r.status === "failed").length, results };
+    const report = { generatedAt: new Date().toISOString(), browser: browser.version(), isolation: "loopback-only; synthetic trusted auth/config; actual model/store/routes/editor and ES modules; native markers not full client build", passed: results.filter(r => r.status === "passed").length, failed: results.filter(r => r.status === "failed").length, metrics, results };
     fs.writeFileSync(path.join(evidence, "browser-results.json"), JSON.stringify(report, null, 2) + "\n"); console.log(JSON.stringify({ passed: report.passed, failed: report.failed }));
     await browser.close(); await fixture.close(); if (report.failed) process.exitCode = 1;
   }

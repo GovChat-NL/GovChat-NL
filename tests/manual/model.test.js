@@ -10,7 +10,9 @@ test("defaults off, separate automatic policy and reviewed Limburg precedence", 
   assert.equal(m.compile(l).passages.length, 0);
   const all = m.compile({ ...m.resolve(), enabled: true }, { capabilities: m.CAPABILITIES, rights: m.RIGHTS });
   for (const id of ["sec1", "sec2", "sec3", "beleidskompas", "chat-geschiedenis", "document-upload", "bestanden-verwijderen", "prompt-variabelen", "prompt-versies"]) assert.ok(all.passages.some(p => p.id === id), id);
-  assert.ok(all.passages.length > 600);
+  assert.ok(all.passages.length > 300);
+  assert.ok(!all.errorCategories.some(c => c.id === "appendix-errors"));
+  assert.ok(m.compile({ ...m.resolve(), enabled: true }, { preview: true }).passages.length > 600);
   assert.match(all.passages.find(p => p.id === "document-kwaliteit").text, /XLSM/);
 });
 test("hierarchical flags, capabilities and rights cannot be overridden in any read channel", () => {
