@@ -1,0 +1,166 @@
+{
+  "generatedAt": "2026-11-28T11:24:39.532Z",
+  "browser": "145.0.7632.6",
+  "isolation": "loopback-only; synthetic trusted auth/config; actual model/store/routes/editor and ES modules; native markers not full client build",
+  "passed": 29,
+  "failed": 0,
+  "metrics": {
+    "catalog": {
+      "total": 692,
+      "ordinary": 466,
+      "defaultHiddenAppendix": 226,
+      "trustedFixtureVisible": 450,
+      "defaultExcludesAppendix": true
+    },
+    "mobilePreferencesNeverPx": 0,
+    "mobilePreferencesEnabledPx": 57,
+    "mobilePreferencesOptOutPx": 57
+  },
+  "results": [
+    {
+      "name": "desktop modal, focus trap, dynamic inert and exact restore",
+      "status": "passed",
+      "durationMs": 4186
+    },
+    {
+      "name": "passage history and explicit TOC fallback never modify chat history",
+      "status": "passed",
+      "durationMs": 2042
+    },
+    {
+      "name": "200 and 400 percent equivalent viewport reflow keeps text and controls reachable",
+      "status": "passed",
+      "durationMs": 2482
+    },
+    {
+      "name": "automatic preflight rejects unavailable authenticated content despite public enabled metadata",
+      "status": "passed",
+      "durationMs": 2143
+    },
+    {
+      "name": "suspended login bootstrap cannot re-enable private entrypoints from a late response",
+      "status": "passed",
+      "durationMs": 1083
+    },
+    {
+      "name": "complete repository catalog is searchable and editable without public defaults",
+      "status": "passed",
+      "durationMs": 10413
+    },
+    {
+      "name": "hierarchy and trusted rights filter TOC/search/get/document/print/context",
+      "status": "passed",
+      "durationMs": 5532
+    },
+    {
+      "name": "canonical citations validate current passage and preserve conversation; stale/hidden/unknown fallback",
+      "status": "passed",
+      "durationMs": 4455
+    },
+    {
+      "name": "mobile layout/navigation and dark theme screenshots",
+      "status": "passed",
+      "durationMs": 3583
+    },
+    {
+      "name": "native marker adapter is idempotent and fixed errors do not scan chat prose",
+      "status": "passed",
+      "durationMs": 3217
+    },
+    {
+      "name": "revision/focus and disable invalidate old content, remove entries and restore inert on close",
+      "status": "passed",
+      "durationMs": 3268
+    },
+    {
+      "name": "focus revalidates changed rights without a new content revision",
+      "status": "passed",
+      "durationMs": 1942
+    },
+    {
+      "name": "initial canonical deep link and route/popstate opens validate without replacing route",
+      "status": "passed",
+      "durationMs": 2441
+    },
+    {
+      "name": "global error-reference visibility removes articles from all read routes, print and contextual buttons",
+      "status": "passed",
+      "durationMs": 2227
+    },
+    {
+      "name": "automatic never: full-route same-session suppression and next-session policy",
+      "status": "passed",
+      "durationMs": 4369
+    },
+    {
+      "name": "automatic first-use: full-route same-session suppression and next-session policy",
+      "status": "passed",
+      "durationMs": 4272
+    },
+    {
+      "name": "automatic new-revision: full-route same-session suppression and next-session policy",
+      "status": "passed",
+      "durationMs": 7389
+    },
+    {
+      "name": "automatic every-session: full-route same-session suppression and next-session policy",
+      "status": "passed",
+      "durationMs": 4330
+    },
+    {
+      "name": "storage denied prevents automatic popups across full chat/start/app routes, manual remains usable",
+      "status": "passed",
+      "durationMs": 4046
+    },
+    {
+      "name": "verified account-scoped storage contains only opaque preferences and does not suppress another user",
+      "status": "passed",
+      "durationMs": 2553
+    },
+    {
+      "name": "automatic opening never competes with another dialog or an explicit manual click",
+      "status": "passed",
+      "durationMs": 3642
+    },
+    {
+      "name": "compact conditional preferences reclaim mobile reader space",
+      "status": "passed",
+      "durationMs": 1583
+    },
+    {
+      "name": "translated error text is ignored and explicit exact message attributes still match",
+      "status": "passed",
+      "durationMs": 1207
+    },
+    {
+      "name": "alertdialog and auth route suppress automatic opening without polling",
+      "status": "passed",
+      "durationMs": 2209
+    },
+    {
+      "name": "late TOC and print reads cannot populate a replacement dialog",
+      "status": "passed",
+      "durationMs": 2349
+    },
+    {
+      "name": "print trust rejects preview and hiddenReasons and clears on same-revision focus",
+      "status": "passed",
+      "durationMs": 1457
+    },
+    {
+      "name": "start and Beleidskompas use the same real manual and preserve app state",
+      "status": "passed",
+      "durationMs": 1632
+    },
+    {
+      "name": "Beleidskompas caught error components offer validated context without scanning answer prose",
+      "status": "passed",
+      "durationMs": 1146
+    },
+    {
+      "name": "real admin editor saves draft, previews hidden reasons, publishes and preserves conflicting local changes",
+      "status": "passed",
+      "durationMs": 2652
+    }
+  ]
+}

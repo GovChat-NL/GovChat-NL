@@ -3,7 +3,7 @@
 // from the store and the panels.
 
 import { getLibreChatAuthToken } from "../../shared/librechat-api.js";
-import { fetchHelpContent, openHelpModal } from "../../shared/help.js";
+import { initializeManual, openHelpModal, scheduleManualAuto } from "../../shared/help.js";
 import { applyLibreChatTheme } from "../../shared/theme.js";
 import { requireElement } from "../../shared/dom.js";
 import { buildConfig } from "./config.js";
@@ -16,13 +16,10 @@ import { setupOverview } from "./panels/overview.js";
 
 const APPS_URL = "/govchat-overlay/apps.json";
 const FLOW_CONFIG_URL = "/govchat-overlay/beleidskompas-config.json";
-const HELP_CONTENT_URL = "/govchat-overlay/help-content.json";
 const CHAT_URL = "/c/new";
 // LibreChat only knows its own routes after login, so the way back here goes
 // through the chat, where the overlay sees ?app=beleidskompas and forwards.
 const LOGIN_URL = "/login?redirect_to=" + encodeURIComponent("/c/new?app=beleidskompas");
-// Same key as the overlay, so "don't show again" means the same everywhere.
-const HELP_STORAGE_KEY = "govchat_help_dont_show";
 
 applyLibreChatTheme();
 start();
@@ -35,20 +32,18 @@ async function start() {
     return;
   }
 
-  const [apps, flowConfig, helpData, librechatConfig] = await Promise.all([
+  const [apps, flowConfig] = await Promise.all([
     fetchJson(APPS_URL),
     fetchJson(FLOW_CONFIG_URL),
-    fetchHelpContent(HELP_CONTENT_URL),
-    fetchJson("/api/config"),
   ]);
   const app = (apps?.apps || []).find((a) => a && a.id === "beleidskompas") || { id: "beleidskompas" };
-  const appName = String(librechatConfig?.appTitle || document.title);
 
-  openBeleidskompas(buildConfig(app, flowConfig), { data: helpData, appName });
+  const helpData = await initializeManual({ auto: false });
+  openBeleidskompas(buildConfig(app, flowConfig), { data: helpData.enabled ? helpData : null });
+  scheduleManualAuto();
 }
 
-// `help` holds what the manual needs: its text (`data`) and the name of
-// the installation (`appName`).
+// Metadata gates the entry; the shared modal fetches permitted content itself.
 function openBeleidskompas(config, help) {
   const store = createStore(config.steps);
 
@@ -63,9 +58,10 @@ function openBeleidskompas(config, help) {
   });
   // The manual (with the Beleidskompas chapter) can be opened from this page
   // too; the overlay's floating help button is not shown here.
-  requireElement("gc-bk-help").addEventListener("click", () => {
-    openHelpModal(help.data, { appName: help.appName, storageKey: HELP_STORAGE_KEY });
-  });
+  const helpButton = requireElement("gc-bk-help");
+  helpButton.setAttribute("data-gc-manual-entry", "");
+  helpButton.hidden = !help.data;
+  helpButton.addEventListener("click", () => openHelpModal());
 
   const { resumeConversation } = setupCases(store);
   setupChat(store, { sources: config.sources });

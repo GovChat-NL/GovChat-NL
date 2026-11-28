@@ -68,6 +68,7 @@ test('regenerating the moved orchestrator does not create duplicate utility expo
     for (const file of ['update-orchestrator-workflow.js', 'orchestrator-utility-workflow.js',
       'orchestrator-document-workflow.js', 'n8n-document-context.js',
       'orchestrator-image-workflow.js', 'orchestrator-prompt-workflow.js',
+      'orchestrator-manual-workflow.js',
       'orchestrator-image-edit-workflow.js', 'openbesluitvorming-statistics-workflow.js',
       'openbesluitvorming-tool-inputs.js', 'openbesluitvorming-search-performance.js',
       'openbesluitvorming-filter-description.js',
@@ -81,9 +82,11 @@ test('regenerating the moved orchestrator does not create duplicate utility expo
     execFileSync(process.execPath, [path.join(scripts, 'update-orchestrator-workflow.js')]);
     const renderedOnce = fs.readFileSync(path.join(workflowsDir, 'algemeen/orchestrator-litellm.json'), 'utf8');
     const searchOnce = fs.readFileSync(path.join(workflowsDir, 'topdesk-knowledge-items-search.json'), 'utf8');
+    const manualOnce = fs.readFileSync(path.join(workflowsDir, 'govchat-manual-read.json'), 'utf8');
     execFileSync(process.execPath, [path.join(scripts, 'update-orchestrator-workflow.js')]);
     assert.equal(fs.readFileSync(path.join(workflowsDir, 'algemeen/orchestrator-litellm.json'), 'utf8'), renderedOnce);
     assert.equal(fs.readFileSync(path.join(workflowsDir, 'topdesk-knowledge-items-search.json'), 'utf8'), searchOnce);
+    assert.equal(fs.readFileSync(path.join(workflowsDir, 'govchat-manual-read.json'), 'utf8'), manualOnce);
     const workflows = discoverWorkflows(workflowsDir, env);
     assert.equal(workflows.length, discoverWorkflows(directory, env).length);
     const ids = workflows.flatMap(entry => entry.ids);

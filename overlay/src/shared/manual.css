@@ -1,0 +1,87 @@
+#gc-manual-backdrop { position:fixed; inset:0; z-index:100100; background:rgb(0 0 0 / .56); display:flex; align-items:center; justify-content:center; padding:24px; }
+[data-govchat-manual-owned="mobile"] { min-height:44px; }
+#gc-manual-modal { --manual-bg:#fff; --manual-ink:#17212c; --manual-line:#c7d1db; --manual-muted:#eff4f8; color:var(--manual-ink); background:var(--manual-bg); width:min(1320px,100%); height:min(900px,94dvh); border-radius:16px; box-shadow:0 16px 60px #0005; display:flex; flex-direction:column; min-width:0; overflow:hidden; font:1rem/1.6 ui-sans-serif,system-ui,sans-serif; }
+.dark #gc-manual-modal, html[data-theme="dark"] #gc-manual-modal { --manual-bg:#182129; --manual-ink:#f1f5f8; --manual-line:#5f7280; --manual-muted:#263640; color-scheme:dark; }
+#gc-manual-modal * { box-sizing:border-box; }
+#gc-manual-modal h1 { margin:0; font-size:1.4rem; line-height:1.4; font-weight:700; }
+#gc-manual-modal h2 { font-size:1.3rem; font-weight:700; margin:0 0 1rem; }
+#gc-manual-modal h3 { font-size:1.15rem; font-weight:700; margin:1.4rem 0 .6rem; }
+#gc-manual-modal h4 { font-weight:700; margin:1rem 0 .5rem; }
+#gc-manual-modal button { color:inherit; background:var(--manual-muted); border:1px solid var(--manual-line); border-radius:7px; padding:8px 12px; font:inherit; line-height:1.4; cursor:pointer; min-height:44px; }
+#gc-manual-modal button:hover { text-decoration:underline; }
+#gc-manual-modal :focus-visible { outline:3px solid #2188cc; outline-offset:3px; }
+.gc-manual-header { display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:12px; padding:16px 24px 8px; }
+.gc-manual-actions { display:flex; gap:8px; flex-wrap:wrap; }
+.gc-manual-subtitle { padding:0 24px; margin:0 0 10px; }
+.gc-manual-search-label { margin:0 24px; font-size:.9rem; font-weight:600; }
+#gc-manual-search { color:inherit; background:var(--manual-bg); border:1px solid var(--manual-line); border-radius:8px; margin:6px 24px; padding:10px 14px; font:inherit; min-width:0; }
+.gc-manual-status { margin:4px 24px 10px; font-size:.9rem; min-height:1.5em; }
+.gc-manual-body { display:grid; grid-template-columns:minmax(250px,32%) minmax(0,1fr); min-height:0; flex:1; border-top:1px solid var(--manual-line); }
+#gc-manual-nav { overflow:auto; padding:16px; border-right:1px solid var(--manual-line); }
+#gc-manual-nav button { display:block; width:100%; text-align:left; margin:3px 0; background:none; border-color:transparent; font-size:.94rem; }
+#gc-manual-nav button[aria-current] { background:var(--manual-muted); border-color:var(--manual-line); font-weight:700; }
+#gc-manual-nav .gc-manual-chapter { font-weight:700; }
+#gc-manual-nav .gc-manual-topic { padding-left:24px; }
+.gc-manual-nav-group { margin-bottom:12px; }
+#gc-manual-nav h2 { font-size:1rem; margin:20px 8px 8px; }
+#gc-manual-nav summary { cursor:pointer; padding:12px 8px; font-weight:600; overflow-wrap:anywhere; }
+.gc-manual-pane { padding:28px 36px; overflow:auto; min-width:0; scroll-behavior:smooth; }
+.gc-manual-reader { display:flex; flex-direction:column; min-width:0; min-height:0; }
+.gc-manual-reader .gc-manual-pane { flex:1; }
+.gc-manual-history { display:flex; gap:8px; padding:12px 24px 0; }
+#gc-manual-modal button:disabled { opacity:.6; cursor:default; }
+.gc-manual-highlight { border-top:3px solid #2188cc; padding-top:12px; }
+.gc-manual-article { max-width:76ch; overflow-wrap:anywhere; }
+.gc-manual-article p { margin:0 0 1em; }
+.gc-manual-article ul, .gc-manual-article ol { padding-left:1.6em; margin:1em 0; }
+.gc-manual-article ul { list-style:disc; } .gc-manual-article ol { list-style:decimal; }
+.gc-manual-article a { color:#0875b6; text-decoration:underline; }
+.dark .gc-manual-article a { color:#83d2ff; }
+.gc-manual-article pre { white-space:pre-wrap; padding:12px; background:var(--manual-muted); border-radius:6px; }
+.gc-manual-article blockquote { margin:1em 0; border-left:4px solid var(--manual-line); padding-left:16px; }
+.gc-manual-related { display:flex; flex-wrap:wrap; gap:8px; margin-top:24px; }
+.gc-manual-snippet { display:block; font-size:.85rem; font-weight:400; opacity:.85; margin-top:6px; }
+.gc-manual-preferences { display:flex; align-items:center; gap:8px; flex-wrap:wrap; border-top:1px solid var(--manual-line); padding:6px 24px; font-size:.85rem; }
+.gc-manual-preferences[hidden], .gc-manual-preferences [hidden] { display:none !important; }
+.gc-manual-preferences input { width:18px; height:18px; accent-color:#0875b6; vertical-align:middle; }
+.gc-manual-preferences label { display:flex; align-items:center; gap:6px; min-height:44px; padding:0; }
+.gc-manual-preferences input { margin:0; flex-shrink:0; }
+#gc-manual-modal .gc-manual-preferences button { margin:0; font-size:.85rem; }
+#gc-manual-modal .gc-manual-nav-toggle { display:none; }
+#gc-manual-modal.gc-manual-full { position:fixed; inset:0; width:100%; height:100dvh; max-height:none; border-radius:0; }
+#gc-manual-print { display:none; }
+@media(max-width:760px) {
+  #gc-manual-backdrop { padding:0; }
+  #gc-manual-modal { width:100%; height:100dvh; max-height:none; border-radius:0; }
+  .gc-manual-header { padding:12px 16px 8px; gap:8px; }
+  .gc-manual-subtitle { padding:0 16px; font-size:.9rem; }
+  .gc-manual-actions { gap:5px; } #gc-manual-modal button { font-size:.9rem; }
+  #gc-manual-modal .gc-manual-nav-toggle { display:block; }
+  #gc-manual-modal .gc-manual-full-toggle { display:none; }
+  .gc-manual-search-label, .gc-manual-status { margin-left:16px; margin-right:16px; }
+  #gc-manual-search { margin-left:16px; margin-right:16px; }
+  .gc-manual-body { display:flex; flex-direction:column; }
+  #gc-manual-nav { display:none; border-right:0; flex:1; }
+  .gc-manual-show-nav #gc-manual-nav { display:block; }
+  .gc-manual-show-nav .gc-manual-reader { display:none; }
+  .gc-manual-reader { flex:1; }
+  .gc-manual-pane { flex:1; padding:20px; }
+  .gc-manual-preferences { padding:6px 16px; gap:6px; }
+}
+@media(prefers-reduced-motion:reduce) { .gc-manual-pane { scroll-behavior:auto; } }
+/* Browser zoom reduces the CSS viewport, including its height. Keep every
+   control and article reachable by scrolling the dialog at 200–400% zoom. */
+@media(max-height:600px) {
+  #gc-manual-modal { overflow:auto; }
+  #gc-manual-modal > * { flex-shrink:0; }
+  .gc-manual-body { flex:none; min-height:320px; height:65dvh; }
+  .gc-manual-pane { min-height:180px; }
+}
+@media print {
+  body > *:not(#gc-manual-print) { display:none !important; }
+  body { overflow:visible !important; color:#000 !important; background:#fff !important; }
+  #gc-manual-print { display:block !important; font:11pt/1.5 sans-serif; }
+  #gc-manual-print h1 { font-size:22pt; } #gc-manual-print h2 { font-size:17pt; break-after:avoid; }
+  #gc-manual-print h3 { font-size:14pt; break-after:avoid; }
+  #gc-manual-print pre { white-space:pre-wrap; } #gc-manual-print article { max-width:none; }
+}

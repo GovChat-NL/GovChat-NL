@@ -1,0 +1,23 @@
+{
+  "organization": {
+    "appName": "LAICA",
+    "name": "Provincie Limburg",
+    "helpdeskEmail": "helpdesk@prvlimburg.nl",
+    "aiEmail": "ai@prvlimburg.nl",
+    "trainingEmail": "Limburgacademie@prvlimburg.nl",
+    "courseUrl": "https://provincielimburg.studytube.nl/courses/435552/de-nationale-ai-cursus"
+  },
+  "reviewRequired": [
+    "DPIA",
+    "juridische compliance",
+    "datalocatie",
+    "leveranciers",
+    "logging",
+    "beheerdersinzage",
+    "bewaartermijnen",
+    "modeltraining",
+    "kosten",
+    "beschikbaarheid"
+  ],
+  "note": "Profielgegevens controleren vóór publicatie; geen geverifieerde beleidsgaranties."
+}

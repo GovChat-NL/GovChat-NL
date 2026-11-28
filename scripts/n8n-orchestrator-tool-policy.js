@@ -11,6 +11,15 @@ const TOOL_KEYS = Object.freeze({
   govchat_time_tool: "time",
 });
 
+function readManualPolicy(filename = process.env.N8N_MANUAL_POLICY_FILE || "/govchat-config/manual-config.json") {
+  try {
+    const stat = fs.lstatSync(filename);
+    if (!stat.isFile() || stat.size > 1024) return false;
+    const policy = JSON.parse(fs.readFileSync(filename, "utf8"));
+    return policy.schemaVersion === 1 && policy.enabled === true && policy.agentEnabled === true && typeof policy.revision === "string" && /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/.test(policy.revision);
+  } catch { return false; }
+}
+
 function readPolicy(filename = process.env.N8N_ORCHESTRATOR_POLICY_FILE || "/govchat-config/orchestrator-config.json") {
   try {
     const stat = fs.statSync(filename);
@@ -27,6 +36,7 @@ function readPolicy(filename = process.env.N8N_ORCHESTRATOR_POLICY_FILE || "/gov
 
 function selectTools(tools, policy = readPolicy()) {
   return tools.filter((tool) => {
+    if (tool.name === "govchat_manual_tool") return readManualPolicy();
     if (tool.name === "topdesk_knowledge_search_tool") {
       return typeof tool.description === "string" && tool.description.startsWith("[GOVCHAT_TOPDESK_AVAILABLE] ");
     }
@@ -35,6 +45,16 @@ function selectTools(tools, policy = readPolicy()) {
 }
 
 function guardTool(tool) {
+  if (tool.name === "govchat_manual_tool") {
+    const original = tool._call;
+    tool._call = async function (...args) {
+      if (!readManualPolicy()) {
+        const error = new Error("GovChat manual is disabled or unavailable"); error.code = "MANUAL_UNAVAILABLE"; throw error;
+      }
+      return original.apply(this, args);
+    };
+    return tool;
+  }
   if (!Object.hasOwn(TOOL_KEYS, tool.name)) return tool;
   const original = tool._call;
   // Patch before n8n's logWrapper builds its proxy. Covers invoke(), call() and
@@ -51,4 +71,4 @@ function guardTool(tool) {
   return tool;
 }
 
-module.exports = { TOOL_KEYS, readPolicy, selectTools, guardTool };
+module.exports = { TOOL_KEYS, readPolicy, readManualPolicy, selectTools, guardTool };

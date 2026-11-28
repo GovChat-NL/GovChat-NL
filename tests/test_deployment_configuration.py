@@ -28,6 +28,16 @@ def command(*args, check=True, env=None):
 
 @unittest.skipUnless(shutil.which("docker"), "Docker Compose CLI required")
 class ComposeConfigurationTests(unittest.TestCase):
+    def test_manual_is_private_optional_and_shared_policy_is_passed_to_backend_and_runners(self):
+        config = self.config(COMPOSE_PROFILES="*", GOVCHAT_MANUAL_HARD_DISABLED="true", GOVCHAT_MANUAL_CONFIG_FILE="/private/manual-import.json")
+        services = config["services"]
+        backend = services["govchat-overlay-admin"]
+        self.assertIn("admin-overlay", backend["profiles"])
+        self.assertEqual(backend["environment"]["GOVCHAT_MANUAL_HARD_DISABLED"], "true")
+        self.assertEqual(backend["environment"]["GOVCHAT_MANUAL_CONFIG_FILE"], "/private/manual-import.json")
+        self.assertEqual(backend["environment"]["LIBRECHAT_INTERNAL_URL"], "http://librechat:3080")
+        for name in ("n8n", "n8n-runners"):
+            self.assertEqual(services[name]["environment"]["N8N_MANUAL_POLICY_FILE"], "/govchat-config/manual-config.json")
     def config(self, *files, **settings):
         # Do not import the production environment or interpolate real secrets.
         env = {"PATH": os.environ.get("PATH", ""), **settings}
@@ -313,6 +323,16 @@ class ProxyIntegrationTests(unittest.TestCase):
         status, body = self.request(proxy, "/govchat-api/beleidskompas-feedback?check=1")
         self.assertEqual(status, 200)
         self.assertIn("|/api/beleidskompas-feedback|check=1", body)
+
+    def test_manual_private_routes_and_legacy_content_are_not_public(self):
+        proxy = self.proxy()
+        for path in ("/govchat-overlay/help-content.json", "/static/help-content.json"):
+            self.assertEqual(self.request(proxy, path)[0], 410)
+        for path in ("/govchat-api/internal/manual", "/govchat-api/internal/manual/", "/govchat-api/admin/manual", "/govchat-api/admin/manual/publish"):
+            self.assertEqual(self.request(proxy, path)[0], 404)
+        status, body = self.request(proxy, "/govchat-api/manual/toc?revision=test")
+        self.assertEqual(status, 200)
+        self.assertIn("|/api/manual/toc|revision=test", body)
 
     def test_untrusted_forwarding_metadata_is_not_honored(self):
         proxy = self.proxy()

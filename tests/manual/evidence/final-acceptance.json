@@ -1,0 +1,146 @@
+{
+  "generatedAt": "2026-11-27T16:35:16.871768+00:00",
+  "branch": "feat/configurable-user-manual",
+  "base": "b87a6c7345a6484a2400b39661498b1a4171416c",
+  "readiness": "partial-safe-fallback-only; not full requirements or activation approval",
+  "blockers": [
+    "Full trusted per-user agent context across LibreChat/bridge/n8n/backend unimplemented or unverified",
+    "OpenBesluitvorming, TOPdesk and transcription availability adapters unverified; passages remain hidden",
+    "Separately authorized production installation/auth/deployment acceptance not performed"
+  ],
+  "countsArePerSuiteNotAdditive": true,
+  "finalExitCodes": {
+    "manualNode": 0,
+    "appsNode": 0,
+    "broadNode": 0,
+    "pythonDiscovery": 0,
+    "offlineSnapshot": 0,
+    "fixtureBrowser": 0,
+    "nativeBrowser": 0
+  },
+  "suites": {
+    "manualNode": {
+      "total": 92,
+      "passed": 92,
+      "failed": 0,
+      "cancelled": 0,
+      "skipped": 0
+    },
+    "appsNode": {
+      "total": 18,
+      "passed": 18,
+      "failed": 0,
+      "cancelled": 0,
+      "skipped": 0
+    },
+    "broadNode": {
+      "total": 167,
+      "passed": 166,
+      "failed": 0,
+      "cancelled": 0,
+      "skipped": 1,
+      "skipReason": "Live Tika/external PDF extraction"
+    },
+    "pythonDiscovery": {
+      "total": 72,
+      "passed": 59,
+      "failed": 0,
+      "skipped": 13,
+      "skipReason": "Proxy integrations"
+    },
+    "offlineSnapshot": {
+      "totalPython": 72,
+      "passedPython": 59,
+      "failed": 0,
+      "skippedPython": 13,
+      "overlaps": "Python discovery; never add these counts",
+      "releasePinPassed": 2,
+      "translationFixtures": "passed"
+    },
+    "fixtureBrowser": {
+      "passed": 29,
+      "failed": 0,
+      "generatedAt": "2026-11-27T16:24:42.449Z"
+    },
+    "nativeBrowser": {
+      "passed": 5,
+      "failed": 0,
+      "generatedAt": "2026-11-27T16:20:59.613Z"
+    }
+  },
+  "catalog": {
+    "total": 692,
+    "ordinary": 466,
+    "defaultHiddenAppendix": 226,
+    "trustedFixtureVisible": 450,
+    "defaultExcludesAppendix": true,
+    "sourceEntries": 851,
+    "artifacts": 263,
+    "artifactOrigins": {
+      "repo": 58,
+      "upstream": 204,
+      "contract": 1
+    },
+    "originalIdsPreserved": 684,
+    "addedIds": 8
+  },
+  "native": {
+    "reusedSiblingBuild": true,
+    "indexSha256": "6253c58a7b5de440f88202ae863e8c6ae5e2fa1eef9fc7d3d5065a955dfc348c",
+    "patchSha256": "2c22f2e18ef59eed2de88df17dcdb0725d871b1d17e4e8e77a596f1fe87fa3f9",
+    "runnerSha256": "3802096c63d8f987bfc406806da622dd75026fa4c002cefbecf314477230b916",
+    "recipeSha256": "652e1cb90011f5357f4c2107ea7628b3b2f0cf4967030edc85ceff15ed41a03c",
+    "upstreamLockSha256": "af5f9a7a73a1ec056f796eea736a3e0026b5c7c53813439f093ec51b2a7cb023"
+  },
+  "sourceSha256": {
+    "services/admin-overlay/admin/lib/manual-routes.js": "3b89eb5271b9a907ef9b8efaffafd8beefc284be0673a6ca2acd9f282dd1bf7a",
+    "services/admin-overlay/admin/lib/admin-session.js": "31b9cfe296edc074658ab86632e3e51a06efb98676382adab29ffe8091ab8a9d",
+    "services/admin-overlay/admin/server.js": "daaa865af655e6d41580c84877fc120a850c54eb939d087d0296c6a9e2d1ef6c",
+    "services/admin-overlay/admin/lib/manual-model.js": "839acd5279b14043fcd2160cece58ca3df899a2c3eb4ed92392e72a73513af00",
+    "services/admin-overlay/admin/lib/manual-store.js": "1c116ff76da74ef1ed14acaee8154f0ce038d740225073aeba053ce68555bdba",
+    "services/admin-overlay/admin/lib/manual-context.js": "77321cb278791a225e2bfe46a8b8e61260cb7eb6861615d2298ca93f7cb4e32b",
+    "scripts/run_regressions.py": "c63d304a7e54b351cf71a9128b733d360676661533d442a8f173fad7aa8ff55e",
+    "scripts/patch-manual-native.js": "2c22f2e18ef59eed2de88df17dcdb0725d871b1d17e4e8e77a596f1fe87fa3f9",
+    "scripts/manual-native.Dockerfile": "652e1cb90011f5357f4c2107ea7628b3b2f0cf4967030edc85ceff15ed41a03c",
+    "tests/manual/native-browser-acceptance.cjs": "3802096c63d8f987bfc406806da622dd75026fa4c002cefbecf314477230b916",
+    "tests/manual/browser-acceptance.cjs": "5769b0885fbed04184e4297fcd38428bc87554960e756c2dabe7ba507016bdc0",
+    "tests/manual/search-ranking.test.js": "dd3a35ce9ff7be150fff7ebb9e95a34a2db3e52dbbc04c2c4135397b8ea0dafa",
+    "tests/manual/admin-session.test.js": "58c90f5e78cad3c15f7864fb0d34ec844f96dc2326a8d7732bd8dd24032d3689",
+    "tests/test_regression_runner.py": "ceb3e65cf6b015b2e82e1dcb26fa40fc3f87f23205206ced1e312a5295fa9f8f",
+    "overlay/defaults/manual.json": "d483effa2cccb2ea1605072e577dd2ff380c13d42fb3cf6f9b45c6260d76d83e",
+    "docs/manual-error-inventory.json": "85cc14a5fe9fca79358e094bf6d4c15af0193d029cc269752c4f63c06911de09",
+    "overlay/src/shared/help.js": "e65a471d624a00e1f14d224398736a2f00f64c1028b2c47cb5eda7659f08b94d"
+  },
+  "diagnostics": [
+    {
+      "run": "focused first",
+      "passed": 5,
+      "failed": 2,
+      "reason": "Stale link in new test fixtures; corrected"
+    },
+    {
+      "run": "first container manual",
+      "passed": 87,
+      "failed": 5,
+      "reason": "Express 5 instead of declared Express 4; missing tracked native Compose snapshot file"
+    },
+    {
+      "run": "HTTP diagnosis",
+      "passed": 0,
+      "failed": 2,
+      "reason": "Confirmed Express 5 route parsing failure"
+    },
+    {
+      "run": "corrected dependency container manual",
+      "passed": 91,
+      "failed": 1,
+      "reason": "Missing tracked optional native build config; snapshot allowlist and test corrected"
+    }
+  ],
+  "limits": [
+    "Loopback-only synthetic auth/config/API and native persisted failed turn; no live LLM or production identity",
+    "No production/private runtime, credentials, deployment, image export or new native compilation",
+    "Publication locks/markers fail closed; delivered content cannot be recalled",
+    "No commit or push; parent final worktree guard and authorized commit remain separate"
+  ]
+}

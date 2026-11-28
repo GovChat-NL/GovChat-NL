@@ -1,0 +1,8 @@
+# Explicit opt-in; no deployment change is made merely by adding this recipe.
+# docker compose -f docker-compose.yml -f docker-compose.manual-native-build.yml build librechat
+services:
+  librechat:
+    image: govchat-manual-native:v0.8.8
+    build:
+      context: .
+      dockerfile: scripts/manual-native.Dockerfile
